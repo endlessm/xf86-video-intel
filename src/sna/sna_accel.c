@@ -4509,7 +4509,7 @@ sna_put_xybitmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 		struct kgem_bo *upload;
 		void *ptr;
 
-		if (!kgem_check_batch(&sna->kgem, 8) ||
+		if (!kgem_check_batch(&sna->kgem, 10) ||
 		    !kgem_check_bo_fenced(&sna->kgem, bo) ||
 		    !kgem_check_reloc_and_exec(&sna->kgem, 2)) {
 			kgem_submit(&sna->kgem);
@@ -4548,32 +4548,61 @@ sna_put_xybitmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 			} while (--bh);
 
 			assert(sna->kgem.mode == KGEM_BLT);
-			b = sna->kgem.batch + sna->kgem.nbatch;
-			b[0] = XY_MONO_SRC_COPY | 3 << 20;
-			b[0] |= ((box->x1 - x) & 7) << 17;
-			b[1] = bo->pitch;
-			if (sna->kgem.gen >= 040 && bo->tiling) {
-				b[0] |= BLT_DST_TILED;
-				b[1] >>= 2;
-			}
-			b[1] |= blt_depth(drawable->depth) << 24;
-			b[1] |= rop << 16;
-			b[2] = box->y1 << 16 | box->x1;
-			b[3] = box->y2 << 16 | box->x2;
-			b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
-					      I915_GEM_DOMAIN_RENDER << 16 |
-					      I915_GEM_DOMAIN_RENDER |
-					      KGEM_RELOC_FENCED,
-					      0);
-			b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5,
-					      upload,
-					      I915_GEM_DOMAIN_RENDER << 16 |
-					      KGEM_RELOC_FENCED,
-					      0);
-			b[6] = gc->bgPixel;
-			b[7] = gc->fgPixel;
+			if (sna->kgem.gen >= 0100) {
+				b = sna->kgem.batch + sna->kgem.nbatch;
+				b[0] = XY_MONO_SRC_COPY | 3 << 20 | 8;
+				b[0] |= ((box->x1 - x) & 7) << 17;
+				b[1] = bo->pitch;
+				if (bo->tiling) {
+					b[0] |= BLT_DST_TILED;
+					b[1] >>= 2;
+				}
+				b[1] |= blt_depth(drawable->depth) << 24;
+				b[1] |= rop << 16;
+				b[2] = box->y1 << 16 | box->x1;
+				b[3] = box->y2 << 16 | box->x2;
+				*(uint64_t *)(b+4) =
+					kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 4, bo,
+							I915_GEM_DOMAIN_RENDER << 16 |
+							I915_GEM_DOMAIN_RENDER |
+							KGEM_RELOC_FENCED,
+							0);
+				*(uint64_t *)(b+6) =
+					kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 6, upload,
+							I915_GEM_DOMAIN_RENDER << 16 |
+							KGEM_RELOC_FENCED,
+							0);
+				b[8] = gc->bgPixel;
+				b[9] = gc->fgPixel;
 
-			sna->kgem.nbatch += 8;
+				sna->kgem.nbatch += 10;
+			} else {
+				b = sna->kgem.batch + sna->kgem.nbatch;
+				b[0] = XY_MONO_SRC_COPY | 3 << 20 | 6;
+				b[0] |= ((box->x1 - x) & 7) << 17;
+				b[1] = bo->pitch;
+				if (sna->kgem.gen >= 040 && bo->tiling) {
+					b[0] |= BLT_DST_TILED;
+					b[1] >>= 2;
+				}
+				b[1] |= blt_depth(drawable->depth) << 24;
+				b[1] |= rop << 16;
+				b[2] = box->y1 << 16 | box->x1;
+				b[3] = box->y2 << 16 | box->x2;
+				b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
+						I915_GEM_DOMAIN_RENDER << 16 |
+						I915_GEM_DOMAIN_RENDER |
+						KGEM_RELOC_FENCED,
+						0);
+				b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5, upload,
+						I915_GEM_DOMAIN_RENDER << 16 |
+						KGEM_RELOC_FENCED,
+						0);
+				b[6] = gc->bgPixel;
+				b[7] = gc->fgPixel;
+
+				sna->kgem.nbatch += 8;
+			}
 			sigtrap_put();
 		}
 		kgem_bo_destroy(&sna->kgem, upload);
@@ -4646,7 +4675,7 @@ sna_put_xypixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 			struct kgem_bo *upload;
 			void *ptr;
 
-			if (!kgem_check_batch(&sna->kgem, 12) ||
+			if (!kgem_check_batch(&sna->kgem, 14) ||
 			    !kgem_check_bo_fenced(&sna->kgem, bo) ||
 			    !kgem_check_reloc_and_exec(&sna->kgem, 2)) {
 				kgem_submit(&sna->kgem);
@@ -4683,38 +4712,70 @@ sna_put_xypixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 				} while (--bh);
 
 				assert(sna->kgem.mode == KGEM_BLT);
-				b = sna->kgem.batch + sna->kgem.nbatch;
-				b[0] = XY_FULL_MONO_PATTERN_MONO_SRC_BLT | 3 << 20;
-				b[0] |= ((box->x1 - x) & 7) << 17;
-				b[1] = bo->pitch;
-				if (sna->kgem.gen >= 040 && bo->tiling) {
-					b[0] |= BLT_DST_TILED;
-					b[1] >>= 2;
+				if (sna->kgem.gen >= 0100) {
+					assert(sna->kgem.mode == KGEM_BLT);
+					b = sna->kgem.batch + sna->kgem.nbatch;
+					b[0] = XY_FULL_MONO_PATTERN_MONO_SRC_BLT | 3 << 20 | 12;
+					b[0] |= ((box->x1 - x) & 7) << 17;
+					b[1] = bo->pitch;
+					if (bo->tiling) {
+						b[0] |= BLT_DST_TILED;
+						b[1] >>= 2;
+					}
+					b[1] |= 1 << 31; /* solid pattern */
+					b[1] |= blt_depth(drawable->depth) << 24;
+					b[1] |= 0xce << 16; /* S or (D and !P) */
+					b[2] = box->y1 << 16 | box->x1;
+					b[3] = box->y2 << 16 | box->x2;
+					*(uint64_t *)(b+4) =
+						kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 4, bo,
+								I915_GEM_DOMAIN_RENDER << 16 |
+								I915_GEM_DOMAIN_RENDER |
+								KGEM_RELOC_FENCED,
+								0);
+					*(uint64_t *)(b+6) =
+						kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 6, upload,
+								I915_GEM_DOMAIN_RENDER << 16 |
+								KGEM_RELOC_FENCED,
+								0);
+					b[8] = 0;
+					b[9] = i;
+					b[10] = i;
+					b[11] = i;
+					b[12] = -1;
+					b[13] = -1;
+					sna->kgem.nbatch += 14;
+				} else {
+					b = sna->kgem.batch + sna->kgem.nbatch;
+					b[0] = XY_FULL_MONO_PATTERN_MONO_SRC_BLT | 3 << 20 | 10;
+					b[0] |= ((box->x1 - x) & 7) << 17;
+					b[1] = bo->pitch;
+					if (sna->kgem.gen >= 040 && bo->tiling) {
+						b[0] |= BLT_DST_TILED;
+						b[1] >>= 2;
+					}
+					b[1] |= 1 << 31; /* solid pattern */
+					b[1] |= blt_depth(drawable->depth) << 24;
+					b[1] |= 0xce << 16; /* S or (D and !P) */
+					b[2] = box->y1 << 16 | box->x1;
+					b[3] = box->y2 << 16 | box->x2;
+					b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
+							I915_GEM_DOMAIN_RENDER << 16 |
+							I915_GEM_DOMAIN_RENDER |
+							KGEM_RELOC_FENCED,
+							0);
+					b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5, upload,
+							I915_GEM_DOMAIN_RENDER << 16 |
+							KGEM_RELOC_FENCED,
+							0);
+					b[6] = 0;
+					b[7] = i;
+					b[8] = i;
+					b[9] = i;
+					b[10] = -1;
+					b[11] = -1;
+					sna->kgem.nbatch += 12;
 				}
-				b[1] |= 1 << 31; /* solid pattern */
-				b[1] |= blt_depth(drawable->depth) << 24;
-				b[1] |= 0xce << 16; /* S or (D and !P) */
-				b[2] = box->y1 << 16 | box->x1;
-				b[3] = box->y2 << 16 | box->x2;
-				b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4,
-						      bo,
-						      I915_GEM_DOMAIN_RENDER << 16 |
-						      I915_GEM_DOMAIN_RENDER |
-						      KGEM_RELOC_FENCED,
-						      0);
-				b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5,
-						      upload,
-						      I915_GEM_DOMAIN_RENDER << 16 |
-						      KGEM_RELOC_FENCED,
-						      0);
-				b[6] = 0;
-				b[7] = i;
-				b[8] = i;
-				b[9] = i;
-				b[10] = -1;
-				b[11] = -1;
-
-				sna->kgem.nbatch += 12;
 				sigtrap_put();
 			}
 			kgem_bo_destroy(&sna->kgem, upload);
@@ -7367,7 +7428,7 @@ sna_copy_bitmap_blt(DrawablePtr _bitmap, DrawablePtr drawable, GCPtr gc,
 		if (src_stride <= 128) {
 			src_stride = ALIGN(src_stride, 8) / 4;
 			assert(src_stride <= 32);
-			if (!kgem_check_batch(&sna->kgem, 7+src_stride) ||
+			if (!kgem_check_batch(&sna->kgem, 8+src_stride) ||
 			    !kgem_check_bo_fenced(&sna->kgem, arg->bo) ||
 			    !kgem_check_reloc(&sna->kgem, 1)) {
 				kgem_submit(&sna->kgem);
@@ -7377,24 +7438,43 @@ sna_copy_bitmap_blt(DrawablePtr _bitmap, DrawablePtr drawable, GCPtr gc,
 			}
 
 			assert(sna->kgem.mode == KGEM_BLT);
-			b = sna->kgem.batch + sna->kgem.nbatch;
-			b[0] = XY_MONO_SRC_COPY_IMM | (5 + src_stride) | br00;
-			b[0] |= ((box->x1 + sx) & 7) << 17;
-			b[1] = br13;
-			b[2] = (box->y1 + dy) << 16 | (box->x1 + dx);
-			b[3] = (box->y2 + dy) << 16 | (box->x2 + dx);
-			b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4,
-					      arg->bo,
-					      I915_GEM_DOMAIN_RENDER << 16 |
-					      I915_GEM_DOMAIN_RENDER |
-					      KGEM_RELOC_FENCED,
-					      0);
-			b[5] = gc->bgPixel;
-			b[6] = gc->fgPixel;
+			if (sna->kgem.gen >= 0100) {
+				b = sna->kgem.batch + sna->kgem.nbatch;
+				b[0] = XY_MONO_SRC_COPY_IMM | (6 + src_stride) | br00;
+				b[0] |= ((box->x1 + sx) & 7) << 17;
+				b[1] = br13;
+				b[2] = (box->y1 + dy) << 16 | (box->x1 + dx);
+				b[3] = (box->y2 + dy) << 16 | (box->x2 + dx);
+				*(uint64_t *)(b+4) =
+					kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 4, arg->bo,
+							 I915_GEM_DOMAIN_RENDER << 16 |
+							 I915_GEM_DOMAIN_RENDER |
+							 KGEM_RELOC_FENCED,
+							 0);
+				b[5] = gc->bgPixel;
+				b[6] = gc->fgPixel;
 
-			sna->kgem.nbatch += 7 + src_stride;
+				dst = (uint8_t *)&b[8];
+				sna->kgem.nbatch += 8 + src_stride;
+			} else {
+				b = sna->kgem.batch + sna->kgem.nbatch;
+				b[0] = XY_MONO_SRC_COPY_IMM | (5 + src_stride) | br00;
+				b[0] |= ((box->x1 + sx) & 7) << 17;
+				b[1] = br13;
+				b[2] = (box->y1 + dy) << 16 | (box->x1 + dx);
+				b[3] = (box->y2 + dy) << 16 | (box->x2 + dx);
+				b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, arg->bo,
+						      I915_GEM_DOMAIN_RENDER << 16 |
+						      I915_GEM_DOMAIN_RENDER |
+						      KGEM_RELOC_FENCED,
+						      0);
+				b[5] = gc->bgPixel;
+				b[6] = gc->fgPixel;
 
-			dst = (uint8_t *)&b[7];
+				dst = (uint8_t *)&b[7];
+				sna->kgem.nbatch += 7 + src_stride;
+			}
+
 			src_stride = bitmap->devKind;
 			src = bitmap->devPrivate.ptr;
 			src += (box->y1 + sy) * src_stride + bx1/8;
@@ -7414,7 +7494,7 @@ sna_copy_bitmap_blt(DrawablePtr _bitmap, DrawablePtr drawable, GCPtr gc,
 			struct kgem_bo *upload;
 			void *ptr;
 
-			if (!kgem_check_batch(&sna->kgem, 8) ||
+			if (!kgem_check_batch(&sna->kgem, 10) ||
 			    !kgem_check_bo_fenced(&sna->kgem, arg->bo) ||
 			    !kgem_check_reloc_and_exec(&sna->kgem, 2)) {
 				kgem_submit(&sna->kgem);
@@ -7433,27 +7513,47 @@ sna_copy_bitmap_blt(DrawablePtr _bitmap, DrawablePtr drawable, GCPtr gc,
 			if (sigtrap_get() == 0) {
 				assert(sna->kgem.mode == KGEM_BLT);
 				b = sna->kgem.batch + sna->kgem.nbatch;
+				if (sna->kgem.gen >= 0100) {
+					b[0] = XY_MONO_SRC_COPY | br00 | 8;
+					b[0] |= ((box->x1 + sx) & 7) << 17;
+					b[1] = br13;
+					b[2] = (box->y1 + dy) << 16 | (box->x1 + dx);
+					b[3] = (box->y2 + dy) << 16 | (box->x2 + dx);
+					*(uint64_t *)(b+4) =
+						kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 4, arg->bo,
+								I915_GEM_DOMAIN_RENDER << 16 |
+								I915_GEM_DOMAIN_RENDER |
+								KGEM_RELOC_FENCED,
+								0);
+					*(uint64_t *)(b+6) =
+						kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 6, upload,
+								I915_GEM_DOMAIN_RENDER << 16 |
+								KGEM_RELOC_FENCED,
+								0);
+					b[8] = gc->bgPixel;
+					b[9] = gc->fgPixel;
 
-				b[0] = XY_MONO_SRC_COPY | br00;
-				b[0] |= ((box->x1 + sx) & 7) << 17;
-				b[1] = br13;
-				b[2] = (box->y1 + dy) << 16 | (box->x1 + dx);
-				b[3] = (box->y2 + dy) << 16 | (box->x2 + dx);
-				b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4,
-						      arg->bo,
-						      I915_GEM_DOMAIN_RENDER << 16 |
-						      I915_GEM_DOMAIN_RENDER |
-						      KGEM_RELOC_FENCED,
-						      0);
-				b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5,
-						      upload,
-						      I915_GEM_DOMAIN_RENDER << 16 |
-						      KGEM_RELOC_FENCED,
-						      0);
-				b[6] = gc->bgPixel;
-				b[7] = gc->fgPixel;
+					sna->kgem.nbatch += 10;
+				} else {
+					b[0] = XY_MONO_SRC_COPY | br00 | 6;
+					b[0] |= ((box->x1 + sx) & 7) << 17;
+					b[1] = br13;
+					b[2] = (box->y1 + dy) << 16 | (box->x1 + dx);
+					b[3] = (box->y2 + dy) << 16 | (box->x2 + dx);
+					b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, arg->bo,
+							I915_GEM_DOMAIN_RENDER << 16 |
+							I915_GEM_DOMAIN_RENDER |
+							KGEM_RELOC_FENCED,
+							0);
+					b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5, upload,
+							I915_GEM_DOMAIN_RENDER << 16 |
+							KGEM_RELOC_FENCED,
+							0);
+					b[6] = gc->bgPixel;
+					b[7] = gc->fgPixel;
 
-				sna->kgem.nbatch += 8;
+					sna->kgem.nbatch += 8;
+				}
 
 				dst = ptr;
 				src_stride = bitmap->devKind;
@@ -7542,7 +7642,7 @@ sna_copy_plane_blt(DrawablePtr source, DrawablePtr drawable, GCPtr gc,
 		     box->x2, box->y2,
 		     sx, sy, bx1, bx2));
 
-		if (!kgem_check_batch(&sna->kgem, 8) ||
+		if (!kgem_check_batch(&sna->kgem, 10) ||
 		    !kgem_check_bo_fenced(&sna->kgem, arg->bo) ||
 		    !kgem_check_reloc_and_exec(&sna->kgem, 2)) {
 			kgem_submit(&sna->kgem);
@@ -7667,25 +7767,45 @@ sna_copy_plane_blt(DrawablePtr source, DrawablePtr drawable, GCPtr gc,
 
 			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
-			b[0] = br00 | ((box->x1 + sx) & 7) << 17;
-			b[1] = br13;
-			b[2] = (box->y1 + dy) << 16 | (box->x1 + dx);
-			b[3] = (box->y2 + dy) << 16 | (box->x2 + dx);
-			b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4,
-					      arg->bo,
-					      I915_GEM_DOMAIN_RENDER << 16 |
-					      I915_GEM_DOMAIN_RENDER |
-					      KGEM_RELOC_FENCED,
-					      0);
-			b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5,
-					      upload,
-					      I915_GEM_DOMAIN_RENDER << 16 |
-					      KGEM_RELOC_FENCED,
-					      0);
-			b[6] = gc->bgPixel;
-			b[7] = gc->fgPixel;
+			if (sna->kgem.gen >= 0100) {
+				b[0] = br00 | ((box->x1 + sx) & 7) << 17 | 8;
+				b[1] = br13;
+				b[2] = (box->y1 + dy) << 16 | (box->x1 + dx);
+				b[3] = (box->y2 + dy) << 16 | (box->x2 + dx);
+				*(uint64_t *)(b+4) =
+					kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 4, arg->bo,
+							I915_GEM_DOMAIN_RENDER << 16 |
+							I915_GEM_DOMAIN_RENDER |
+							KGEM_RELOC_FENCED,
+							0);
+				*(uint64_t *)(b+6) =
+					kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 6, upload,
+							I915_GEM_DOMAIN_RENDER << 16 |
+							KGEM_RELOC_FENCED,
+							0);
+				b[8] = gc->bgPixel;
+				b[9] = gc->fgPixel;
 
-			sna->kgem.nbatch += 8;
+				sna->kgem.nbatch += 10;
+			} else {
+				b[0] = br00 | ((box->x1 + sx) & 7) << 17 | 6;
+				b[1] = br13;
+				b[2] = (box->y1 + dy) << 16 | (box->x1 + dx);
+				b[3] = (box->y2 + dy) << 16 | (box->x2 + dx);
+				b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, arg->bo,
+						I915_GEM_DOMAIN_RENDER << 16 |
+						I915_GEM_DOMAIN_RENDER |
+						KGEM_RELOC_FENCED,
+						0);
+				b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5, upload,
+						I915_GEM_DOMAIN_RENDER << 16 |
+						KGEM_RELOC_FENCED,
+						0);
+				b[6] = gc->bgPixel;
+				b[7] = gc->fgPixel;
+
+				sna->kgem.nbatch += 8;
+			}
 			sigtrap_put();
 		}
 		kgem_bo_destroy(&sna->kgem, upload);
@@ -11174,7 +11294,7 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 	     __FUNCTION__, n, r->x, r->y, r->width, r->height, clipped));
 
 	kgem_set_mode(&sna->kgem, KGEM_BLT, bo);
-	if (!kgem_check_batch(&sna->kgem, 8+2*3) ||
+	if (!kgem_check_batch(&sna->kgem, 10+2*3) ||
 	    !kgem_check_reloc(&sna->kgem, 2) ||
 	    !kgem_check_bo_fenced(&sna->kgem, bo)) {
 		kgem_submit(&sna->kgem);
@@ -11218,41 +11338,81 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 
 			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
-			b[0] = XY_PAT_BLT | tx << 12 | ty << 8 | 3 << 20 | (br00 & BLT_DST_TILED);
-			b[1] = br13;
-			b[2] = (r->y + dy) << 16 | (r->x + dx);
-			b[3] = (r->y + r->height + dy) << 16 | (r->x + r->width + dx);
-			b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
-					      I915_GEM_DOMAIN_RENDER << 16 |
-					      I915_GEM_DOMAIN_RENDER |
-					      KGEM_RELOC_FENCED,
-					      0);
-			b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5, tile_bo,
-					      I915_GEM_DOMAIN_RENDER << 16 |
-					      KGEM_RELOC_FENCED,
-					      0);
-			sna->kgem.nbatch += 6;
+			if (sna->kgem.gen >= 0100) {
+				b[0] = XY_PAT_BLT | tx << 12 | ty << 8 | 3 << 20 | (br00 & BLT_DST_TILED) | 6;
+				b[1] = br13;
+				b[2] = (r->y + dy) << 16 | (r->x + dx);
+				b[3] = (r->y + r->height + dy) << 16 | (r->x + r->width + dx);
+				*(uint64_t *)(b+4) =
+					kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 4, bo,
+							 I915_GEM_DOMAIN_RENDER << 16 |
+							 I915_GEM_DOMAIN_RENDER |
+							 KGEM_RELOC_FENCED,
+							 0);
+				*(uint64_t *)(b+6) =
+					kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 6, tile_bo,
+							 I915_GEM_DOMAIN_RENDER << 16 |
+							 KGEM_RELOC_FENCED,
+							 0);
+				sna->kgem.nbatch += 8;
+			} else {
+				b[0] = XY_PAT_BLT | tx << 12 | ty << 8 | 3 << 20 | (br00 & BLT_DST_TILED) | 4;
+				b[1] = br13;
+				b[2] = (r->y + dy) << 16 | (r->x + dx);
+				b[3] = (r->y + r->height + dy) << 16 | (r->x + r->width + dx);
+				b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
+						      I915_GEM_DOMAIN_RENDER << 16 |
+						      I915_GEM_DOMAIN_RENDER |
+						      KGEM_RELOC_FENCED,
+						      0);
+				b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5, tile_bo,
+						      I915_GEM_DOMAIN_RENDER << 16 |
+						      KGEM_RELOC_FENCED,
+						      0);
+				sna->kgem.nbatch += 6;
+			}
 		} else do {
 			int n_this_time;
 
 			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
-			b[0] = XY_SETUP_BLT | 3 << 20;
-			b[1] = br13;
-			b[2] = 0;
-			b[3] = 0;
-			b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
-					      I915_GEM_DOMAIN_RENDER << 16 |
-					      I915_GEM_DOMAIN_RENDER |
-					      KGEM_RELOC_FENCED,
-					      0);
-			b[5] = gc->bgPixel;
-			b[6] = gc->fgPixel;
-			b[7] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 7, tile_bo,
-					      I915_GEM_DOMAIN_RENDER << 16 |
-					      KGEM_RELOC_FENCED,
-					      0);
-			sna->kgem.nbatch += 8;
+			if (sna->kgem.gen >= 0100) {
+				b[0] = XY_SETUP_BLT | 3 << 20 | 8;
+				b[1] = br13;
+				b[2] = 0;
+				b[3] = 0;
+				*(uint64_t *)(b+4) =
+					kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 4, bo,
+							 I915_GEM_DOMAIN_RENDER << 16 |
+							 I915_GEM_DOMAIN_RENDER |
+							 KGEM_RELOC_FENCED,
+							 0);
+				b[6] = gc->bgPixel;
+				b[7] = gc->fgPixel;
+				*(uint64_t *)(b+8) =
+					kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 8, tile_bo,
+							 I915_GEM_DOMAIN_RENDER << 16 |
+							 KGEM_RELOC_FENCED,
+							 0);
+				sna->kgem.nbatch += 10;
+			} else {
+				b[0] = XY_SETUP_BLT | 3 << 20 | 6;
+				b[1] = br13;
+				b[2] = 0;
+				b[3] = 0;
+				b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
+						      I915_GEM_DOMAIN_RENDER << 16 |
+						      I915_GEM_DOMAIN_RENDER |
+						      KGEM_RELOC_FENCED,
+						      0);
+				b[5] = gc->bgPixel;
+				b[6] = gc->fgPixel;
+				b[7] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 7, tile_bo,
+						      I915_GEM_DOMAIN_RENDER << 16 |
+						      KGEM_RELOC_FENCED,
+						      0);
+				sna->kgem.nbatch += 8;
+			}
 
 			n_this_time = n;
 			if (3*n_this_time > sna->kgem.surface - sna->kgem.nbatch - KGEM_BATCH_RESERVED)
@@ -11301,22 +11461,43 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 
 		assert(sna->kgem.mode == KGEM_BLT);
 		b = sna->kgem.batch + sna->kgem.nbatch;
-		b[0] = XY_SETUP_BLT | 3 << 20;
-		b[1] = br13;
-		b[2] = 0;
-		b[3] = 0;
-		b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
-				      I915_GEM_DOMAIN_RENDER << 16 |
-				      I915_GEM_DOMAIN_RENDER |
-				      KGEM_RELOC_FENCED,
-				      0);
-		b[5] = gc->bgPixel;
-		b[6] = gc->fgPixel;
-		b[7] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 7, tile_bo,
-				      I915_GEM_DOMAIN_RENDER << 16 |
-				      KGEM_RELOC_FENCED,
-				      0);
-		sna->kgem.nbatch += 8;
+		if (sna->kgem.gen >= 0100) {
+			b[0] = XY_SETUP_BLT | 3 << 20 | 8;
+			b[1] = br13;
+			b[2] = 0;
+			b[3] = 0;
+			*(uint64_t *)(b+4) =
+				kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 4, bo,
+						 I915_GEM_DOMAIN_RENDER << 16 |
+						 I915_GEM_DOMAIN_RENDER |
+						 KGEM_RELOC_FENCED,
+						 0);
+			b[6] = gc->bgPixel;
+			b[7] = gc->fgPixel;
+			*(uint64_t *)(b+8) =
+				kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 8, tile_bo,
+						 I915_GEM_DOMAIN_RENDER << 16 |
+						 KGEM_RELOC_FENCED,
+						 0);
+			sna->kgem.nbatch += 10;
+		} else {
+			b[0] = XY_SETUP_BLT | 3 << 20 | 6;
+			b[1] = br13;
+			b[2] = 0;
+			b[3] = 0;
+			b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
+					      I915_GEM_DOMAIN_RENDER << 16 |
+					      I915_GEM_DOMAIN_RENDER |
+					      KGEM_RELOC_FENCED,
+					      0);
+			b[5] = gc->bgPixel;
+			b[6] = gc->fgPixel;
+			b[7] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 7, tile_bo,
+					      I915_GEM_DOMAIN_RENDER << 16 |
+					      KGEM_RELOC_FENCED,
+					      0);
+			sna->kgem.nbatch += 8;
+		}
 
 		if (clip.data == NULL) {
 			const BoxRec *c = &clip.extents;
@@ -11339,22 +11520,43 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 
 						assert(sna->kgem.mode == KGEM_BLT);
 						b = sna->kgem.batch + sna->kgem.nbatch;
-						b[0] = XY_SETUP_BLT | 3 << 20;
-						b[1] = br13;
-						b[2] = 0;
-						b[3] = 0;
-						b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
-								      I915_GEM_DOMAIN_RENDER << 16 |
-								      I915_GEM_DOMAIN_RENDER |
-								      KGEM_RELOC_FENCED,
-								      0);
-						b[5] = gc->bgPixel;
-						b[6] = gc->fgPixel;
-						b[7] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 7, tile_bo,
-								      I915_GEM_DOMAIN_RENDER << 16 |
-								      KGEM_RELOC_FENCED,
-								      0);
-						sna->kgem.nbatch += 8;
+						if (sna->kgem.gen >= 0100) {
+							b[0] = XY_SETUP_BLT | 3 << 20 | 8;
+							b[1] = br13;
+							b[2] = 0;
+							b[3] = 0;
+							*(uint64_t *)(b+4) =
+								kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 4, bo,
+										 I915_GEM_DOMAIN_RENDER << 16 |
+										 I915_GEM_DOMAIN_RENDER |
+										 KGEM_RELOC_FENCED,
+										 0);
+							b[6] = gc->bgPixel;
+							b[7] = gc->fgPixel;
+							*(uint64_t *)(b+8) =
+								kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 8, tile_bo,
+										 I915_GEM_DOMAIN_RENDER << 16 |
+										 KGEM_RELOC_FENCED,
+										 0);
+							sna->kgem.nbatch += 10;
+						} else {
+							b[0] = XY_SETUP_BLT | 3 << 20 | 6;
+							b[1] = br13;
+							b[2] = 0;
+							b[3] = 0;
+							b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
+									      I915_GEM_DOMAIN_RENDER << 16 |
+									      I915_GEM_DOMAIN_RENDER |
+									      KGEM_RELOC_FENCED,
+									      0);
+							b[5] = gc->bgPixel;
+							b[6] = gc->fgPixel;
+							b[7] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 7, tile_bo,
+									      I915_GEM_DOMAIN_RENDER << 16 |
+									      KGEM_RELOC_FENCED,
+									      0);
+							sna->kgem.nbatch += 8;
+						}
 					}
 
 					assert(box.x1 + dx >= 0);
@@ -11412,22 +11614,43 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 
 							assert(sna->kgem.mode == KGEM_BLT);
 							b = sna->kgem.batch + sna->kgem.nbatch;
-							b[0] = XY_SETUP_BLT | 3 << 20;
-							b[1] = br13;
-							b[2] = 0;
-							b[3] = 0;
-							b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
-									      I915_GEM_DOMAIN_RENDER << 16 |
-									      I915_GEM_DOMAIN_RENDER |
-									      KGEM_RELOC_FENCED,
-									      0);
-							b[5] = gc->bgPixel;
-							b[6] = gc->fgPixel;
-							b[7] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 7, tile_bo,
-									      I915_GEM_DOMAIN_RENDER << 16 |
-									      KGEM_RELOC_FENCED,
-									      0);
-							sna->kgem.nbatch += 8;
+							if (sna->kgem.gen >= 0100) {
+								b[0] = XY_SETUP_BLT | 3 << 20 | 8;
+								b[1] = br13;
+								b[2] = 0;
+								b[3] = 0;
+								*(uint64_t *)(b+4) =
+									kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 4, bo,
+											 I915_GEM_DOMAIN_RENDER << 16 |
+											 I915_GEM_DOMAIN_RENDER |
+											 KGEM_RELOC_FENCED,
+											 0);
+								b[6] = gc->bgPixel;
+								b[7] = gc->fgPixel;
+								*(uint64_t *)(b+8) =
+									kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 8, tile_bo,
+											 I915_GEM_DOMAIN_RENDER << 16 |
+											 KGEM_RELOC_FENCED,
+											 0);
+								sna->kgem.nbatch += 10;
+							} else {
+								b[0] = XY_SETUP_BLT | 3 << 20 | 6;
+								b[1] = br13;
+								b[2] = 0;
+								b[3] = 0;
+								b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
+										      I915_GEM_DOMAIN_RENDER << 16 |
+										      I915_GEM_DOMAIN_RENDER |
+										      KGEM_RELOC_FENCED,
+										      0);
+								b[5] = gc->bgPixel;
+								b[6] = gc->fgPixel;
+								b[7] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 7, tile_bo,
+										      I915_GEM_DOMAIN_RENDER << 16 |
+										      KGEM_RELOC_FENCED,
+										      0);
+								sna->kgem.nbatch += 8;
+							}
 						}
 
 						assert(bb.x1 + dx >= 0);
@@ -11840,7 +12063,7 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 	}
 
 	kgem_set_mode(&sna->kgem, KGEM_BLT, bo);
-	if (!kgem_check_batch(&sna->kgem, 9 + 2*3) ||
+	if (!kgem_check_batch(&sna->kgem, 10 + 2*3) ||
 	    !kgem_check_bo_fenced(&sna->kgem, bo) ||
 	    !kgem_check_reloc(&sna->kgem, 1)) {
 		kgem_submit(&sna->kgem);
@@ -11860,39 +12083,75 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 
 			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
-			b[0] = XY_MONO_PAT | (br00 & (BLT_DST_TILED | 0x7<<12 | 0x7<<8)) | 3<<20;
-			b[1] = br13;
-			b[2] = (r->y + dy) << 16 | (r->x + dx);
-			b[3] = (r->y + r->height + dy) << 16 | (r->x + r->width + dx);
-			b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
-					      I915_GEM_DOMAIN_RENDER << 16 |
-					      I915_GEM_DOMAIN_RENDER |
-					      KGEM_RELOC_FENCED,
-					      0);
-			b[5] = gc->bgPixel;
-			b[6] = gc->fgPixel;
-			b[7] = pat[0];
-			b[8] = pat[1];
-			sna->kgem.nbatch += 9;
+			if (sna->kgem.gen >= 0100) {
+				b[0] = XY_MONO_PAT | (br00 & (BLT_DST_TILED | 0x7<<12 | 0x7<<8)) | 3<<20 | 8;
+				b[1] = br13;
+				b[2] = (r->y + dy) << 16 | (r->x + dx);
+				b[3] = (r->y + r->height + dy) << 16 | (r->x + r->width + dx);
+				*(uint64_t *)(b+4) =
+					kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 4, bo,
+							 I915_GEM_DOMAIN_RENDER << 16 |
+							 I915_GEM_DOMAIN_RENDER |
+							 KGEM_RELOC_FENCED,
+							 0);
+				b[6] = gc->bgPixel;
+				b[7] = gc->fgPixel;
+				b[8] = pat[0];
+				b[9] = pat[1];
+				sna->kgem.nbatch += 10;
+			} else {
+				b[0] = XY_MONO_PAT | (br00 & (BLT_DST_TILED | 0x7<<12 | 0x7<<8)) | 3<<20 | 7;
+				b[1] = br13;
+				b[2] = (r->y + dy) << 16 | (r->x + dx);
+				b[3] = (r->y + r->height + dy) << 16 | (r->x + r->width + dx);
+				b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
+						      I915_GEM_DOMAIN_RENDER << 16 |
+						      I915_GEM_DOMAIN_RENDER |
+						      KGEM_RELOC_FENCED,
+						      0);
+				b[5] = gc->bgPixel;
+				b[6] = gc->fgPixel;
+				b[7] = pat[0];
+				b[8] = pat[1];
+				sna->kgem.nbatch += 9;
+			}
 		} else do {
 			int n_this_time;
 
 			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
-			b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20;
-			b[1] = br13;
-			b[2] = 0;
-			b[3] = 0;
-			b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
-					      I915_GEM_DOMAIN_RENDER << 16 |
-					      I915_GEM_DOMAIN_RENDER |
-					      KGEM_RELOC_FENCED,
-					      0);
-			b[5] = gc->bgPixel;
-			b[6] = gc->fgPixel;
-			b[7] = pat[0];
-			b[8] = pat[1];
-			sna->kgem.nbatch += 9;
+			if (sna->kgem.gen >= 0100) {
+				b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20 | 8;
+				b[1] = br13;
+				b[2] = 0;
+				b[3] = 0;
+				*(uint64_t *)(b+4) =
+					kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 4, bo,
+							 I915_GEM_DOMAIN_RENDER << 16 |
+							 I915_GEM_DOMAIN_RENDER |
+							 KGEM_RELOC_FENCED,
+							 0);
+				b[6] = gc->bgPixel;
+				b[7] = gc->fgPixel;
+				b[8] = pat[0];
+				b[9] = pat[1];
+				sna->kgem.nbatch += 10;
+			} else {
+				b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20 | 7;
+				b[1] = br13;
+				b[2] = 0;
+				b[3] = 0;
+				b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
+						      I915_GEM_DOMAIN_RENDER << 16 |
+						      I915_GEM_DOMAIN_RENDER |
+						      KGEM_RELOC_FENCED,
+						      0);
+				b[5] = gc->bgPixel;
+				b[6] = gc->fgPixel;
+				b[7] = pat[0];
+				b[8] = pat[1];
+				sna->kgem.nbatch += 9;
+			}
 
 			n_this_time = n;
 			if (3*n_this_time > sna->kgem.surface - sna->kgem.nbatch - KGEM_BATCH_RESERVED)
@@ -11933,20 +12192,38 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 
 		assert(sna->kgem.mode == KGEM_BLT);
 		b = sna->kgem.batch + sna->kgem.nbatch;
-		b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20;
-		b[1] = br13;
-		b[2] = 0;
-		b[3] = 0;
-		b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
-				      I915_GEM_DOMAIN_RENDER << 16 |
-				      I915_GEM_DOMAIN_RENDER |
-				      KGEM_RELOC_FENCED,
-				      0);
-		b[5] = gc->bgPixel;
-		b[6] = gc->fgPixel;
-		b[7] = pat[0];
-		b[8] = pat[1];
-		sna->kgem.nbatch += 9;
+		if (sna->kgem.gen >= 0100) {
+			b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20 | 8;
+			b[1] = br13;
+			b[2] = 0;
+			b[3] = 0;
+			*(uint64_t *)(b+4) =
+				kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 4, bo,
+						 I915_GEM_DOMAIN_RENDER << 16 |
+						 I915_GEM_DOMAIN_RENDER |
+						 KGEM_RELOC_FENCED,
+						 0);
+			b[6] = gc->bgPixel;
+			b[7] = gc->fgPixel;
+			b[8] = pat[0];
+			b[9] = pat[1];
+			sna->kgem.nbatch += 10;
+		} else {
+			b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20 | 7;
+			b[1] = br13;
+			b[2] = 0;
+			b[3] = 0;
+			b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
+					      I915_GEM_DOMAIN_RENDER << 16 |
+					      I915_GEM_DOMAIN_RENDER |
+					      KGEM_RELOC_FENCED,
+					      0);
+			b[5] = gc->bgPixel;
+			b[6] = gc->fgPixel;
+			b[7] = pat[0];
+			b[8] = pat[1];
+			sna->kgem.nbatch += 9;
+		}
 
 		if (clip.data == NULL) {
 			do {
@@ -11965,20 +12242,38 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 
 						assert(sna->kgem.mode == KGEM_BLT);
 						b = sna->kgem.batch + sna->kgem.nbatch;
-						b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20;
-						b[1] = br13;
-						b[2] = 0;
-						b[3] = 0;
-						b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
-								      I915_GEM_DOMAIN_RENDER << 16 |
-								      I915_GEM_DOMAIN_RENDER |
-								      KGEM_RELOC_FENCED,
-								      0);
-						b[5] = gc->bgPixel;
-						b[6] = gc->fgPixel;
-						b[7] = pat[0];
-						b[8] = pat[1];
-						sna->kgem.nbatch += 9;
+						if (sna->kgem.gen >= 0100) {
+							b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20 | 8;
+							b[1] = br13;
+							b[2] = 0;
+							b[3] = 0;
+							*(uint64_t *)(b+4) =
+								kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 4, bo,
+										 I915_GEM_DOMAIN_RENDER << 16 |
+										 I915_GEM_DOMAIN_RENDER |
+										 KGEM_RELOC_FENCED,
+										 0);
+							b[6] = gc->bgPixel;
+							b[7] = gc->fgPixel;
+							b[8] = pat[0];
+							b[9] = pat[1];
+							sna->kgem.nbatch += 10;
+						} else {
+							b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20 | 7;
+							b[1] = br13;
+							b[2] = 0;
+							b[3] = 0;
+							b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
+									      I915_GEM_DOMAIN_RENDER << 16 |
+									      I915_GEM_DOMAIN_RENDER |
+									      KGEM_RELOC_FENCED,
+									      0);
+							b[5] = gc->bgPixel;
+							b[6] = gc->fgPixel;
+							b[7] = pat[0];
+							b[8] = pat[1];
+							sna->kgem.nbatch += 9;
+						}
 					}
 
 					assert(sna->kgem.mode == KGEM_BLT);
@@ -12019,20 +12314,38 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 
 							assert(sna->kgem.mode == KGEM_BLT);
 							b = sna->kgem.batch + sna->kgem.nbatch;
-							b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20;
-							b[1] = br13;
-							b[2] = 0;
-							b[3] = 0;
-							b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
-									      I915_GEM_DOMAIN_RENDER << 16 |
-									      I915_GEM_DOMAIN_RENDER |
-									      KGEM_RELOC_FENCED,
-									      0);
-							b[5] = gc->bgPixel;
-							b[6] = gc->fgPixel;
-							b[7] = pat[0];
-							b[8] = pat[1];
-							sna->kgem.nbatch += 9;
+							if (sna->kgem.gen >= 0100) {
+								b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20 | 8;
+								b[1] = br13;
+								b[2] = 0;
+								b[3] = 0;
+								*(uint64_t *)(b+4) =
+									kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 4, bo,
+											 I915_GEM_DOMAIN_RENDER << 16 |
+											 I915_GEM_DOMAIN_RENDER |
+											 KGEM_RELOC_FENCED,
+											 0);
+								b[6] = gc->bgPixel;
+								b[7] = gc->fgPixel;
+								b[8] = pat[0];
+								b[9] = pat[1];
+								sna->kgem.nbatch += 10;
+							} else {
+								b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20 | 7;
+								b[1] = br13;
+								b[2] = 0;
+								b[3] = 0;
+								b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
+										      I915_GEM_DOMAIN_RENDER << 16 |
+										      I915_GEM_DOMAIN_RENDER |
+										      KGEM_RELOC_FENCED,
+										      0);
+								b[5] = gc->bgPixel;
+								b[6] = gc->fgPixel;
+								b[7] = pat[0];
+								b[8] = pat[1];
+								sna->kgem.nbatch += 9;
+							}
 						}
 
 						assert(sna->kgem.mode == KGEM_BLT);
@@ -12161,7 +12474,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 			if (src_stride <= 128) {
 				src_stride = ALIGN(src_stride, 8) / 4;
 				assert(src_stride <= 32);
-				if (!kgem_check_batch(&sna->kgem, 7+src_stride) ||
+				if (!kgem_check_batch(&sna->kgem, 8+src_stride) ||
 				    !kgem_check_bo_fenced(&sna->kgem, bo) ||
 				    !kgem_check_reloc(&sna->kgem, 1)) {
 					kgem_submit(&sna->kgem);
@@ -12172,23 +12485,40 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 
 				assert(sna->kgem.mode == KGEM_BLT);
 				b = sna->kgem.batch + sna->kgem.nbatch;
-				b[0] = XY_MONO_SRC_COPY_IMM | (5 + src_stride) | br00;
-				b[0] |= ((r->x - origin->x) & 7) << 17;
-				b[1] = br13;
-				b[2] = (r->y + dy) << 16 | (r->x + dx);
-				b[3] = (r->y + r->height + dy) << 16 | (r->x + r->width + dx);
-				b[4] = kgem_add_reloc(&sna->kgem,
-						      sna->kgem.nbatch + 4, bo,
-						      I915_GEM_DOMAIN_RENDER << 16 |
-						      I915_GEM_DOMAIN_RENDER |
-						      KGEM_RELOC_FENCED,
-						      0);
-				b[5] = gc->bgPixel;
-				b[6] = gc->fgPixel;
+				if (sna->kgem.gen >= 0100) {
+					b[0] = XY_MONO_SRC_COPY_IMM | (6 + src_stride) | br00;
+					b[0] |= ((r->x - origin->x) & 7) << 17;
+					b[1] = br13;
+					b[2] = (r->y + dy) << 16 | (r->x + dx);
+					b[3] = (r->y + r->height + dy) << 16 | (r->x + r->width + dx);
+					*(uint64_t *)(b+4) =
+						kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 4, bo,
+								 I915_GEM_DOMAIN_RENDER << 16 |
+								 I915_GEM_DOMAIN_RENDER |
+								 KGEM_RELOC_FENCED,
+								 0);
+					b[6] = gc->bgPixel;
+					b[7] = gc->fgPixel;
 
-				sna->kgem.nbatch += 7 + src_stride;
+					dst = (uint8_t *)&b[8];
+					sna->kgem.nbatch += 8 + src_stride;
+				} else {
+					b[0] = XY_MONO_SRC_COPY_IMM | (5 + src_stride) | br00;
+					b[0] |= ((r->x - origin->x) & 7) << 17;
+					b[1] = br13;
+					b[2] = (r->y + dy) << 16 | (r->x + dx);
+					b[3] = (r->y + r->height + dy) << 16 | (r->x + r->width + dx);
+					b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
+							      I915_GEM_DOMAIN_RENDER << 16 |
+							      I915_GEM_DOMAIN_RENDER |
+							      KGEM_RELOC_FENCED,
+							      0);
+					b[5] = gc->bgPixel;
+					b[6] = gc->fgPixel;
 
-				dst = (uint8_t *)&b[7];
+					dst = (uint8_t *)&b[7];
+					sna->kgem.nbatch += 7 + src_stride;
+				}
 				src_stride = stipple->devKind;
 				src = stipple->devPrivate.ptr;
 				src += (r->y - origin->y) * src_stride + bx1/8;
@@ -12206,7 +12536,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 				struct kgem_bo *upload;
 				void *ptr;
 
-				if (!kgem_check_batch(&sna->kgem, 8) ||
+				if (!kgem_check_batch(&sna->kgem, 10) ||
 				    !kgem_check_bo_fenced(&sna->kgem, bo) ||
 				    !kgem_check_reloc_and_exec(&sna->kgem, 2)) {
 					kgem_submit(&sna->kgem);
@@ -12240,28 +12570,49 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 
 					assert(sna->kgem.mode == KGEM_BLT);
 					b = sna->kgem.batch + sna->kgem.nbatch;
-					b[0] = XY_MONO_SRC_COPY | br00;
-					b[0] |= ((r->x - origin->x) & 7) << 17;
-					b[1] = br13;
-					b[2] = (r->y + dy) << 16 | (r->x + dx);
-					b[3] = (r->y + r->height + dy) << 16 | (r->x + r->width + dx);
-					b[4] = kgem_add_reloc(&sna->kgem,
-							      sna->kgem.nbatch + 4, bo,
-							      I915_GEM_DOMAIN_RENDER << 16 |
-							      I915_GEM_DOMAIN_RENDER |
-							      KGEM_RELOC_FENCED,
-							      0);
-					b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5,
-							      upload,
-							      I915_GEM_DOMAIN_RENDER << 16 |
-							      KGEM_RELOC_FENCED,
-							      0);
-					b[6] = gc->bgPixel;
-					b[7] = gc->fgPixel;
+					if (sna->kgem.gen >= 0100) {
+						b[0] = XY_MONO_SRC_COPY | br00 | 8;
+						b[0] |= ((r->x - origin->x) & 7) << 17;
+						b[1] = br13;
+						b[2] = (r->y + dy) << 16 | (r->x + dx);
+						b[3] = (r->y + r->height + dy) << 16 | (r->x + r->width + dx);
+						*(uint64_t *)(b+4) =
+							kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 4, bo,
+									I915_GEM_DOMAIN_RENDER << 16 |
+									I915_GEM_DOMAIN_RENDER |
+									KGEM_RELOC_FENCED,
+									0);
+						*(uint64_t *)(b+6) =
+							kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 6, upload,
+									I915_GEM_DOMAIN_RENDER << 16 |
+									KGEM_RELOC_FENCED,
+									0);
+						b[8] = gc->bgPixel;
+						b[9] = gc->fgPixel;
+						sna->kgem.nbatch += 10;
+					} else {
+						b[0] = XY_MONO_SRC_COPY | br00 | 6;
+						b[0] |= ((r->x - origin->x) & 7) << 17;
+						b[1] = br13;
+						b[2] = (r->y + dy) << 16 | (r->x + dx);
+						b[3] = (r->y + r->height + dy) << 16 | (r->x + r->width + dx);
+						b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
+								I915_GEM_DOMAIN_RENDER << 16 |
+								I915_GEM_DOMAIN_RENDER |
+								KGEM_RELOC_FENCED,
+								0);
+						b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5, upload,
+								I915_GEM_DOMAIN_RENDER << 16 |
+								KGEM_RELOC_FENCED,
+								0);
+						b[6] = gc->bgPixel;
+						b[7] = gc->fgPixel;
 
-					sna->kgem.nbatch += 8;
+						sna->kgem.nbatch += 8;
+					}
 					sigtrap_put();
 				}
+
 				kgem_bo_destroy(&sna->kgem, upload);
 			}
 
@@ -12313,7 +12664,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 				if (src_stride <= 128) {
 					src_stride = ALIGN(src_stride, 8) / 4;
 					assert(src_stride <= 32);
-					if (!kgem_check_batch(&sna->kgem, 7+src_stride) ||
+					if (!kgem_check_batch(&sna->kgem, 8+src_stride) ||
 					    !kgem_check_bo_fenced(&sna->kgem, bo) ||
 					    !kgem_check_reloc(&sna->kgem, 1)) {
 						kgem_submit(&sna->kgem);
@@ -12324,23 +12675,41 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 
 					assert(sna->kgem.mode == KGEM_BLT);
 					b = sna->kgem.batch + sna->kgem.nbatch;
-					b[0] = XY_MONO_SRC_COPY_IMM | (5 + src_stride) | br00;
-					b[0] |= ((box.x1 - pat.x) & 7) << 17;
-					b[1] = br13;
-					b[2] = (box.y1 + dy) << 16 | (box.x1 + dx);
-					b[3] = (box.y2 + dy) << 16 | (box.x2 + dx);
-					b[4] = kgem_add_reloc(&sna->kgem,
-							      sna->kgem.nbatch + 4, bo,
-							      I915_GEM_DOMAIN_RENDER << 16 |
-							      I915_GEM_DOMAIN_RENDER |
-							      KGEM_RELOC_FENCED,
-							      0);
-					b[5] = gc->bgPixel;
-					b[6] = gc->fgPixel;
+					if (sna->kgem.gen >= 0100) {
+						b[0] = XY_MONO_SRC_COPY_IMM | (6 + src_stride) | br00;
+						b[0] |= ((box.x1 - pat.x) & 7) << 17;
+						b[1] = br13;
+						b[2] = (box.y1 + dy) << 16 | (box.x1 + dx);
+						b[3] = (box.y2 + dy) << 16 | (box.x2 + dx);
+						*(uint64_t *)(b+4) =
+							kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 4, bo,
+									 I915_GEM_DOMAIN_RENDER << 16 |
+									 I915_GEM_DOMAIN_RENDER |
+									 KGEM_RELOC_FENCED,
+									 0);
+						b[6] = gc->bgPixel;
+						b[7] = gc->fgPixel;
 
-					sna->kgem.nbatch += 7 + src_stride;
+						dst = (uint8_t *)&b[8];
+						sna->kgem.nbatch += 8 + src_stride;
+					} else {
+						b[0] = XY_MONO_SRC_COPY_IMM | (5 + src_stride) | br00;
+						b[0] |= ((box.x1 - pat.x) & 7) << 17;
+						b[1] = br13;
+						b[2] = (box.y1 + dy) << 16 | (box.x1 + dx);
+						b[3] = (box.y2 + dy) << 16 | (box.x2 + dx);
+						b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
+								      I915_GEM_DOMAIN_RENDER << 16 |
+								      I915_GEM_DOMAIN_RENDER |
+								      KGEM_RELOC_FENCED,
+								      0);
+						b[5] = gc->bgPixel;
+						b[6] = gc->fgPixel;
 
-					dst = (uint8_t *)&b[7];
+						dst = (uint8_t *)&b[7];
+						sna->kgem.nbatch += 7 + src_stride;
+					}
+
 					src_stride = stipple->devKind;
 					src = stipple->devPrivate.ptr;
 					src += (box.y1 - pat.y) * src_stride + bx1/8;
@@ -12355,7 +12724,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 						src += src_stride;
 					} while (--bh);
 				} else {
-					if (!kgem_check_batch(&sna->kgem, 8) ||
+					if (!kgem_check_batch(&sna->kgem, 10) ||
 					    !kgem_check_bo_fenced(&sna->kgem, bo) ||
 					    !kgem_check_reloc_and_exec(&sna->kgem, 2)) {
 						kgem_submit(&sna->kgem);
@@ -12389,26 +12758,46 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 
 						assert(sna->kgem.mode == KGEM_BLT);
 						b = sna->kgem.batch + sna->kgem.nbatch;
-						b[0] = XY_MONO_SRC_COPY | br00;
-						b[0] |= ((box.x1 - pat.x) & 7) << 17;
-						b[1] = br13;
-						b[2] = (box.y1 + dy) << 16 | (box.x1 + dx);
-						b[3] = (box.y2 + dy) << 16 | (box.x2 + dx);
-						b[4] = kgem_add_reloc(&sna->kgem,
-								      sna->kgem.nbatch + 4, bo,
-								      I915_GEM_DOMAIN_RENDER << 16 |
-								      I915_GEM_DOMAIN_RENDER |
-								      KGEM_RELOC_FENCED,
-								      0);
-						b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5,
-								      upload,
-								      I915_GEM_DOMAIN_RENDER << 16 |
-								      KGEM_RELOC_FENCED,
-								      0);
-						b[6] = gc->bgPixel;
-						b[7] = gc->fgPixel;
+						if (sna->kgem.gen >= 0100) {
+							b[0] = XY_MONO_SRC_COPY | br00 | 8;
+							b[0] |= ((box.x1 - pat.x) & 7) << 17;
+							b[1] = br13;
+							b[2] = (box.y1 + dy) << 16 | (box.x1 + dx);
+							b[3] = (box.y2 + dy) << 16 | (box.x2 + dx);
+							*(uint64_t *)(b+4) =
+								kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 4, bo,
+										I915_GEM_DOMAIN_RENDER << 16 |
+										I915_GEM_DOMAIN_RENDER |
+										KGEM_RELOC_FENCED,
+										0);
+							*(uint64_t *)(b+5) =
+								kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 6, upload,
+										I915_GEM_DOMAIN_RENDER << 16 |
+										KGEM_RELOC_FENCED,
+										0);
+							b[8] = gc->bgPixel;
+							b[9] = gc->fgPixel;
+							sna->kgem.nbatch += 10;
+						} else {
+							b[0] = XY_MONO_SRC_COPY | br00 | 6;
+							b[0] |= ((box.x1 - pat.x) & 7) << 17;
+							b[1] = br13;
+							b[2] = (box.y1 + dy) << 16 | (box.x1 + dx);
+							b[3] = (box.y2 + dy) << 16 | (box.x2 + dx);
+							b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
+									I915_GEM_DOMAIN_RENDER << 16 |
+									I915_GEM_DOMAIN_RENDER |
+									KGEM_RELOC_FENCED,
+									0);
+							b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5, upload,
+									I915_GEM_DOMAIN_RENDER << 16 |
+									KGEM_RELOC_FENCED,
+									0);
+							b[6] = gc->bgPixel;
+							b[7] = gc->fgPixel;
 
-						sna->kgem.nbatch += 8;
+							sna->kgem.nbatch += 8;
+						}
 						sigtrap_put();
 					}
 					kgem_bo_destroy(&sna->kgem, upload);
@@ -12463,7 +12852,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 					if (src_stride <= 128) {
 						src_stride = ALIGN(src_stride, 8) / 4;
 						assert(src_stride <= 32);
-						if (!kgem_check_batch(&sna->kgem, 7+src_stride) ||
+						if (!kgem_check_batch(&sna->kgem, 8+src_stride) ||
 						    !kgem_check_bo_fenced(&sna->kgem, bo) ||
 						    !kgem_check_reloc(&sna->kgem, 1)) {
 							kgem_submit(&sna->kgem);
@@ -12474,23 +12863,40 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 
 						assert(sna->kgem.mode == KGEM_BLT);
 						b = sna->kgem.batch + sna->kgem.nbatch;
-						b[0] = XY_MONO_SRC_COPY_IMM | (5 + src_stride) | br00;
-						b[0] |= ((box.x1 - pat.x) & 7) << 17;
-						b[1] = br13;
-						b[2] = (box.y1 + dy) << 16 | (box.x1 + dx);
-						b[3] = (box.y2 + dy) << 16 | (box.x2 + dx);
-						b[4] = kgem_add_reloc(&sna->kgem,
-								      sna->kgem.nbatch + 4, bo,
-								      I915_GEM_DOMAIN_RENDER << 16 |
-								      I915_GEM_DOMAIN_RENDER |
-								      KGEM_RELOC_FENCED,
-								      0);
-						b[5] = gc->bgPixel;
-						b[6] = gc->fgPixel;
+						if (sna->kgem.gen >= 0100) {
+							b[0] = XY_MONO_SRC_COPY_IMM | (6 + src_stride) | br00;
+							b[0] |= ((box.x1 - pat.x) & 7) << 17;
+							b[1] = br13;
+							b[2] = (box.y1 + dy) << 16 | (box.x1 + dx);
+							b[3] = (box.y2 + dy) << 16 | (box.x2 + dx);
+							*(uint64_t *)(b+4) =
+								kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 4, bo,
+										 I915_GEM_DOMAIN_RENDER << 16 |
+										 I915_GEM_DOMAIN_RENDER |
+										 KGEM_RELOC_FENCED,
+										 0);
+							b[6] = gc->bgPixel;
+							b[7] = gc->fgPixel;
 
-						sna->kgem.nbatch += 7 + src_stride;
+							dst = (uint8_t *)&b[8];
+							sna->kgem.nbatch += 8 + src_stride;
+						} else {
+							b[0] = XY_MONO_SRC_COPY_IMM | (5 + src_stride) | br00;
+							b[0] |= ((box.x1 - pat.x) & 7) << 17;
+							b[1] = br13;
+							b[2] = (box.y1 + dy) << 16 | (box.x1 + dx);
+							b[3] = (box.y2 + dy) << 16 | (box.x2 + dx);
+							b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
+									      I915_GEM_DOMAIN_RENDER << 16 |
+									      I915_GEM_DOMAIN_RENDER |
+									      KGEM_RELOC_FENCED,
+									      0);
+							b[5] = gc->bgPixel;
+							b[6] = gc->fgPixel;
 
-						dst = (uint8_t *)&b[7];
+							dst = (uint8_t *)&b[7];
+							sna->kgem.nbatch += 7 + src_stride;
+						}
 						src_stride = stipple->devKind;
 						src = stipple->devPrivate.ptr;
 						src += (box.y1 - pat.y) * src_stride + bx1/8;
@@ -12505,7 +12911,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 							src += src_stride;
 						} while (--bh);
 					} else {
-						if (!kgem_check_batch(&sna->kgem, 8) ||
+						if (!kgem_check_batch(&sna->kgem, 10) ||
 						    !kgem_check_bo_fenced(&sna->kgem, bo) ||
 						    !kgem_check_reloc_and_exec(&sna->kgem, 2)) {
 							kgem_submit(&sna->kgem);
@@ -12539,26 +12945,46 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 
 							assert(sna->kgem.mode == KGEM_BLT);
 							b = sna->kgem.batch + sna->kgem.nbatch;
-							b[0] = XY_MONO_SRC_COPY | br00;
-							b[0] |= ((box.x1 - pat.x) & 7) << 17;
-							b[1] = br13;
-							b[2] = (box.y1 + dy) << 16 | (box.x1 + dx);
-							b[3] = (box.y2 + dy) << 16 | (box.x2 + dx);
-							b[4] = kgem_add_reloc(&sna->kgem,
-									      sna->kgem.nbatch + 4, bo,
-									      I915_GEM_DOMAIN_RENDER << 16 |
-									      I915_GEM_DOMAIN_RENDER |
-									      KGEM_RELOC_FENCED,
-									      0);
-							b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5,
-									      upload,
-									      I915_GEM_DOMAIN_RENDER << 16 |
-									      KGEM_RELOC_FENCED,
-									      0);
-							b[6] = gc->bgPixel;
-							b[7] = gc->fgPixel;
+							if (sna->kgem.gen >= 0100) {
+								b[0] = XY_MONO_SRC_COPY | br00 | 8;
+								b[0] |= ((box.x1 - pat.x) & 7) << 17;
+								b[1] = br13;
+								b[2] = (box.y1 + dy) << 16 | (box.x1 + dx);
+								b[3] = (box.y2 + dy) << 16 | (box.x2 + dx);
+								*(uint64_t *)(b+4) =
+									kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 4, bo,
+											I915_GEM_DOMAIN_RENDER << 16 |
+											I915_GEM_DOMAIN_RENDER |
+											KGEM_RELOC_FENCED,
+											0);
+								*(uint64_t *)(b+6) =
+									kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 6, upload,
+											I915_GEM_DOMAIN_RENDER << 16 |
+											KGEM_RELOC_FENCED,
+											0);
+								b[8] = gc->bgPixel;
+								b[9] = gc->fgPixel;
+								sna->kgem.nbatch += 10;
+							} else {
+								b[0] = XY_MONO_SRC_COPY | br00 | 6;
+								b[0] |= ((box.x1 - pat.x) & 7) << 17;
+								b[1] = br13;
+								b[2] = (box.y1 + dy) << 16 | (box.x1 + dx);
+								b[3] = (box.y2 + dy) << 16 | (box.x2 + dx);
+								b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
+										I915_GEM_DOMAIN_RENDER << 16 |
+										I915_GEM_DOMAIN_RENDER |
+										KGEM_RELOC_FENCED,
+										0);
+								b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5, upload,
+										I915_GEM_DOMAIN_RENDER << 16 |
+										KGEM_RELOC_FENCED,
+										0);
+								b[6] = gc->bgPixel;
+								b[7] = gc->fgPixel;
 
-							sna->kgem.nbatch += 8;
+								sna->kgem.nbatch += 8;
+							}
 							sigtrap_put();
 						}
 						kgem_bo_destroy(&sna->kgem, upload);
@@ -12622,7 +13048,7 @@ sna_poly_fill_rect_stippled_n_box__imm(struct sna *sna,
 			len = bw*bh;
 			len = ALIGN(len, 8) / 4;
 			assert(len <= 32);
-			if (!kgem_check_batch(&sna->kgem, 7+len) ||
+			if (!kgem_check_batch(&sna->kgem, 8+len) ||
 			    !kgem_check_bo_fenced(&sna->kgem, bo) ||
 			    !kgem_check_reloc(&sna->kgem, 1)) {
 				kgem_submit(&sna->kgem);
@@ -12633,22 +13059,37 @@ sna_poly_fill_rect_stippled_n_box__imm(struct sna *sna,
 
 			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
-			b[0] = br00 | (5 + len) | (ox & 7) << 17;
-			b[1] = br13;
-			b[2] = y1 << 16 | x1;
-			b[3] = y2 << 16 | x2;
-			b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4,
-					      bo,
-					      I915_GEM_DOMAIN_RENDER << 16 |
-					      I915_GEM_DOMAIN_RENDER |
-					      KGEM_RELOC_FENCED,
-					      0);
-			b[5] = gc->bgPixel;
-			b[6] = gc->fgPixel;
+			if (sna->kgem.gen >= 0100) {
+				b[0] = br00 | (6 + len) | (ox & 7) << 17;
+				b[1] = br13;
+				b[2] = y1 << 16 | x1;
+				b[3] = y2 << 16 | x2;
+				*(uint64_t *)(b+4) =
+					kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 4, bo,
+							 I915_GEM_DOMAIN_RENDER << 16 |
+							 I915_GEM_DOMAIN_RENDER |
+							 KGEM_RELOC_FENCED,
+							 0);
+				b[6] = gc->bgPixel;
+				b[7] = gc->fgPixel;
+				dst = (uint8_t *)&b[8];
+				sna->kgem.nbatch += 8 + len;
+			} else {
+				b[0] = br00 | (5 + len) | (ox & 7) << 17;
+				b[1] = br13;
+				b[2] = y1 << 16 | x1;
+				b[3] = y2 << 16 | x2;
+				b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
+						      I915_GEM_DOMAIN_RENDER << 16 |
+						      I915_GEM_DOMAIN_RENDER |
+						      KGEM_RELOC_FENCED,
+						      0);
+				b[5] = gc->bgPixel;
+				b[6] = gc->fgPixel;
+				dst = (uint8_t *)&b[7];
+				sna->kgem.nbatch += 7 + len;
+			}
 
-			sna->kgem.nbatch += 7 + len;
-
-			dst = (uint8_t *)&b[7];
 			len = gc->stipple->devKind;
 			src = gc->stipple->devPrivate.ptr;
 			src += oy*len + ox/8;
@@ -12729,7 +13170,7 @@ sna_poly_fill_rect_stippled_n_box(struct sna *sna,
 
 			len = bw*bh;
 			len = ALIGN(len, 8) / 4;
-			if (!kgem_check_batch(&sna->kgem, 7+len) ||
+			if (!kgem_check_batch(&sna->kgem, 8+len) ||
 			    !kgem_check_bo_fenced(&sna->kgem, bo) ||
 			    !kgem_check_reloc(&sna->kgem, 2)) {
 				kgem_submit(&sna->kgem);
@@ -12744,25 +13185,45 @@ sna_poly_fill_rect_stippled_n_box(struct sna *sna,
 			if (!use_tile && len <= 32) {
 				uint8_t *dst, *src;
 
-				b[0] = XY_MONO_SRC_COPY_IMM;
-				b[0] |= (br00 & (BLT_DST_TILED | 3 << 20));
-				b[0] |= (ox & 7) << 17;
-				b[0] |= (5 + len);
-				b[1] = br13;
-				b[2] = y1 << 16 | x1;
-				b[3] = y2 << 16 | x2;
-				b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4,
-						      bo,
-						      I915_GEM_DOMAIN_RENDER << 16 |
-						      I915_GEM_DOMAIN_RENDER |
-						      KGEM_RELOC_FENCED,
-						      0);
-				b[5] = gc->bgPixel;
-				b[6] = gc->fgPixel;
+				if (sna->kgem.gen >= 0100) {
+					b[0] = XY_MONO_SRC_COPY_IMM;
+					b[0] |= (br00 & (BLT_DST_TILED | 3 << 20));
+					b[0] |= (ox & 7) << 17;
+					b[0] |= (6 + len);
+					b[1] = br13;
+					b[2] = y1 << 16 | x1;
+					b[3] = y2 << 16 | x2;
+					*(uint64_t *)(b+4) =
+						kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 4, bo,
+								 I915_GEM_DOMAIN_RENDER << 16 |
+								 I915_GEM_DOMAIN_RENDER |
+								 KGEM_RELOC_FENCED,
+								 0);
+					b[6] = gc->bgPixel;
+					b[7] = gc->fgPixel;
 
-				sna->kgem.nbatch += 7 + len;
+					dst = (uint8_t *)&b[8];
+					sna->kgem.nbatch += 8 + len;
+				} else {
+					b[0] = XY_MONO_SRC_COPY_IMM;
+					b[0] |= (br00 & (BLT_DST_TILED | 3 << 20));
+					b[0] |= (ox & 7) << 17;
+					b[0] |= (5 + len);
+					b[1] = br13;
+					b[2] = y1 << 16 | x1;
+					b[3] = y2 << 16 | x2;
+					b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
+							      I915_GEM_DOMAIN_RENDER << 16 |
+							      I915_GEM_DOMAIN_RENDER |
+							      KGEM_RELOC_FENCED,
+							      0);
+					b[5] = gc->bgPixel;
+					b[6] = gc->fgPixel;
 
-				dst = (uint8_t *)&b[7];
+					dst = (uint8_t *)&b[7];
+					sna->kgem.nbatch += 7 + len;
+				}
+
 				len = gc->stipple->devKind;
 				src = gc->stipple->devPrivate.ptr;
 				src += oy*len + ox/8;
@@ -12794,25 +13255,43 @@ sna_poly_fill_rect_stippled_n_box(struct sna *sna,
 
 				assert(sna->kgem.mode == KGEM_BLT);
 				b = sna->kgem.batch + sna->kgem.nbatch;
-				b[0] = br00 | (ox & 7) << 17;
-				b[1] = br13;
-				b[2] = y1 << 16 | x1;
-				b[3] = y2 << 16 | x2;
-				b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4,
-						      bo,
-						      I915_GEM_DOMAIN_RENDER << 16 |
-						      I915_GEM_DOMAIN_RENDER |
-						      KGEM_RELOC_FENCED,
-						      0);
-				b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5,
-						      upload,
-						      I915_GEM_DOMAIN_RENDER << 16 |
-						      KGEM_RELOC_FENCED,
-						      0);
-				b[6] = gc->bgPixel;
-				b[7] = gc->fgPixel;
-
-				sna->kgem.nbatch += 8;
+				if (sna->kgem.gen >= 0100) {
+					b[0] = br00 | (ox & 7) << 17 | 8;
+					b[1] = br13;
+					b[2] = y1 << 16 | x1;
+					b[3] = y2 << 16 | x2;
+					*(uint64_t *)(b+4) =
+						kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 4, bo,
+								 I915_GEM_DOMAIN_RENDER << 16 |
+								 I915_GEM_DOMAIN_RENDER |
+								 KGEM_RELOC_FENCED,
+								 0);
+					*(uint64_t *)(b+6) =
+						kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 6, upload,
+							       I915_GEM_DOMAIN_RENDER << 16 |
+							       KGEM_RELOC_FENCED,
+							       0);
+					b[8] = gc->bgPixel;
+					b[9] = gc->fgPixel;
+					sna->kgem.nbatch += 10;
+				} else {
+					b[0] = br00 | (ox & 7) << 17 | 6;
+					b[1] = br13;
+					b[2] = y1 << 16 | x1;
+					b[3] = y2 << 16 | x2;
+					b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
+							      I915_GEM_DOMAIN_RENDER << 16 |
+							      I915_GEM_DOMAIN_RENDER |
+							      KGEM_RELOC_FENCED,
+							      0);
+					b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5, upload,
+							      I915_GEM_DOMAIN_RENDER << 16 |
+							      KGEM_RELOC_FENCED,
+							      0);
+					b[6] = gc->bgPixel;
+					b[7] = gc->fgPixel;
+					sna->kgem.nbatch += 8;
+				}
 
 				if (!has_tile) {
 					dst = ptr;
@@ -13702,7 +14181,7 @@ sna_glyph_blt(DrawablePtr drawable, GCPtr gc,
 	}
 
 	kgem_set_mode(&sna->kgem, KGEM_BLT, bo);
-	if (!kgem_check_batch(&sna->kgem, 16) ||
+	if (!kgem_check_batch(&sna->kgem, 20) ||
 	    !kgem_check_bo_fenced(&sna->kgem, bo) ||
 	    !kgem_check_reloc(&sna->kgem, 1)) {
 		kgem_submit(&sna->kgem);
@@ -13723,24 +14202,47 @@ sna_glyph_blt(DrawablePtr drawable, GCPtr gc,
 
 	assert(sna->kgem.mode == KGEM_BLT);
 	b = sna->kgem.batch + sna->kgem.nbatch;
-	b[0] = XY_SETUP_BLT | 3 << 20;
-	b[1] = bo->pitch;
-	if (sna->kgem.gen >= 040 && bo->tiling) {
-		b[0] |= BLT_DST_TILED;
-		b[1] >>= 2;
+	if (sna->kgem.gen >= 0100) {
+		b[0] = XY_SETUP_BLT | 3 << 20 | 8;
+		b[1] = bo->pitch;
+		if (sna->kgem.gen >= 040 && bo->tiling) {
+			b[0] |= BLT_DST_TILED;
+			b[1] >>= 2;
+		}
+		b[1] |= 1 << 30 | transparent << 29 | blt_depth(drawable->depth) << 24 | rop << 16;
+		b[2] = extents->y1 << 16 | extents->x1;
+		b[3] = extents->y2 << 16 | extents->x2;
+		*(uint64_t *)(b+4) =
+			kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 4, bo,
+					 I915_GEM_DOMAIN_RENDER << 16 |
+					 I915_GEM_DOMAIN_RENDER |
+					 KGEM_RELOC_FENCED,
+					 0);
+		b[6] = bg;
+		b[7] = fg;
+		b[8] = 0;
+		b[9] = 0;
+		sna->kgem.nbatch += 10;
+	} else {
+		b[0] = XY_SETUP_BLT | 3 << 20 | 6;
+		b[1] = bo->pitch;
+		if (sna->kgem.gen >= 040 && bo->tiling) {
+			b[0] |= BLT_DST_TILED;
+			b[1] >>= 2;
+		}
+		b[1] |= 1 << 30 | transparent << 29 | blt_depth(drawable->depth) << 24 | rop << 16;
+		b[2] = extents->y1 << 16 | extents->x1;
+		b[3] = extents->y2 << 16 | extents->x2;
+		b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
+				      I915_GEM_DOMAIN_RENDER << 16 |
+				      I915_GEM_DOMAIN_RENDER |
+				      KGEM_RELOC_FENCED,
+				      0);
+		b[5] = bg;
+		b[6] = fg;
+		b[7] = 0;
+		sna->kgem.nbatch += 8;
 	}
-	b[1] |= 1 << 30 | transparent << 29 | blt_depth(drawable->depth) << 24 | rop << 16;
-	b[2] = extents->y1 << 16 | extents->x1;
-	b[3] = extents->y2 << 16 | extents->x2;
-	b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
-			      I915_GEM_DOMAIN_RENDER << 16 |
-			      I915_GEM_DOMAIN_RENDER |
-			      KGEM_RELOC_FENCED,
-			      0);
-	b[5] = bg;
-	b[6] = fg;
-	b[7] = 0;
-	sna->kgem.nbatch += 8;
 
 	br00 = XY_TEXT_IMMEDIATE_BLT;
 	if (bo->tiling && sna->kgem.gen >= 040)
@@ -13786,24 +14288,47 @@ sna_glyph_blt(DrawablePtr drawable, GCPtr gc,
 
 				assert(sna->kgem.mode == KGEM_BLT);
 				b = sna->kgem.batch + sna->kgem.nbatch;
-				b[0] = XY_SETUP_BLT | 3 << 20;
-				b[1] = bo->pitch;
-				if (sna->kgem.gen >= 040 && bo->tiling) {
-					b[0] |= BLT_DST_TILED;
-					b[1] >>= 2;
+				if (sna->kgem.gen >= 0100) {
+					b[0] = XY_SETUP_BLT | 3 << 20 | 8;
+					b[1] = bo->pitch;
+					if (bo->tiling) {
+						b[0] |= BLT_DST_TILED;
+						b[1] >>= 2;
+					}
+					b[1] |= 1 << 30 | transparent << 29 | blt_depth(drawable->depth) << 24 | rop << 16;
+					b[2] = extents->y1 << 16 | extents->x1;
+					b[3] = extents->y2 << 16 | extents->x2;
+					*(uint64_t *)(b+4) =
+						kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 4, bo,
+								 I915_GEM_DOMAIN_RENDER << 16 |
+								 I915_GEM_DOMAIN_RENDER |
+								 KGEM_RELOC_FENCED,
+								 0);
+					b[6] = bg;
+					b[7] = fg;
+					b[8] = 0;
+					b[9] = 0;
+					sna->kgem.nbatch += 10;
+				} else {
+					b[0] = XY_SETUP_BLT | 3 << 20 | 6;
+					b[1] = bo->pitch;
+					if (sna->kgem.gen >= 040 && bo->tiling) {
+						b[0] |= BLT_DST_TILED;
+						b[1] >>= 2;
+					}
+					b[1] |= 1 << 30 | transparent << 29 | blt_depth(drawable->depth) << 24 | rop << 16;
+					b[2] = extents->y1 << 16 | extents->x1;
+					b[3] = extents->y2 << 16 | extents->x2;
+					b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
+							      I915_GEM_DOMAIN_RENDER << 16 |
+							      I915_GEM_DOMAIN_RENDER |
+							      KGEM_RELOC_FENCED,
+							      0);
+					b[5] = bg;
+					b[6] = fg;
+					b[7] = 0;
+					sna->kgem.nbatch += 8;
 				}
-				b[1] |= 1 << 30 | transparent << 29 | blt_depth(drawable->depth) << 24 | rop << 16;
-				b[2] = extents->y1 << 16 | extents->x1;
-				b[3] = extents->y2 << 16 | extents->x2;
-				b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
-						      I915_GEM_DOMAIN_RENDER << 16 |
-						      I915_GEM_DOMAIN_RENDER |
-						      KGEM_RELOC_FENCED,
-						      0);
-				b[5] = bg;
-				b[6] = fg;
-				b[7] = 0;
-				sna->kgem.nbatch += 8;
 			}
 
 			assert(sna->kgem.mode == KGEM_BLT);
@@ -14370,7 +14895,7 @@ sna_reversed_glyph_blt(DrawablePtr drawable, GCPtr gc,
 	}
 
 	kgem_set_mode(&sna->kgem, KGEM_BLT, bo);
-	if (!kgem_check_batch(&sna->kgem, 16) ||
+	if (!kgem_check_batch(&sna->kgem, 20) ||
 	    !kgem_check_bo_fenced(&sna->kgem, bo) ||
 	    !kgem_check_reloc(&sna->kgem, 1)) {
 		kgem_submit(&sna->kgem);
@@ -14391,24 +14916,47 @@ sna_reversed_glyph_blt(DrawablePtr drawable, GCPtr gc,
 
 	assert(sna->kgem.mode == KGEM_BLT);
 	b = sna->kgem.batch + sna->kgem.nbatch;
-	b[0] = XY_SETUP_BLT | 1 << 20;
-	b[1] = bo->pitch;
-	if (sna->kgem.gen >= 040 && bo->tiling) {
-		b[0] |= BLT_DST_TILED;
-		b[1] >>= 2;
+	if (sna->kgem.gen >= 0100) {
+		b[0] = XY_SETUP_BLT | 1 << 20 | 8;
+		b[1] = bo->pitch;
+		if (sna->kgem.gen >= 040 && bo->tiling) {
+			b[0] |= BLT_DST_TILED;
+			b[1] >>= 2;
+		}
+		b[1] |= 1 << 30 | transparent << 29 | blt_depth(drawable->depth) << 24 | rop << 16;
+		b[2] = extents->y1 << 16 | extents->x1;
+		b[3] = extents->y2 << 16 | extents->x2;
+		*(uint64_t *)(b+4) =
+			kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 4, bo,
+					 I915_GEM_DOMAIN_RENDER << 16 |
+					 I915_GEM_DOMAIN_RENDER |
+					 KGEM_RELOC_FENCED,
+					 0);
+		b[6] = bg;
+		b[7] = fg;
+		b[8] = 0;
+		b[9] = 0;
+		sna->kgem.nbatch += 10;
+	} else {
+		b[0] = XY_SETUP_BLT | 1 << 20 | 6;
+		b[1] = bo->pitch;
+		if (sna->kgem.gen >= 040 && bo->tiling) {
+			b[0] |= BLT_DST_TILED;
+			b[1] >>= 2;
+		}
+		b[1] |= 1 << 30 | transparent << 29 | blt_depth(drawable->depth) << 24 | rop << 16;
+		b[2] = extents->y1 << 16 | extents->x1;
+		b[3] = extents->y2 << 16 | extents->x2;
+		b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
+				      I915_GEM_DOMAIN_RENDER << 16 |
+				      I915_GEM_DOMAIN_RENDER |
+				      KGEM_RELOC_FENCED,
+				      0);
+		b[5] = bg;
+		b[6] = fg;
+		b[7] = 0;
+		sna->kgem.nbatch += 8;
 	}
-	b[1] |= 1 << 30 | transparent << 29 | blt_depth(drawable->depth) << 24 | rop << 16;
-	b[2] = extents->y1 << 16 | extents->x1;
-	b[3] = extents->y2 << 16 | extents->x2;
-	b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
-			      I915_GEM_DOMAIN_RENDER << 16 |
-			      I915_GEM_DOMAIN_RENDER |
-			      KGEM_RELOC_FENCED,
-			      0);
-	b[5] = bg;
-	b[6] = fg;
-	b[7] = 0;
-	sna->kgem.nbatch += 8;
 
 	do {
 		CharInfoPtr *info = _info;
@@ -14476,25 +15024,47 @@ sna_reversed_glyph_blt(DrawablePtr drawable, GCPtr gc,
 
 				assert(sna->kgem.mode == KGEM_BLT);
 				b = sna->kgem.batch + sna->kgem.nbatch;
-				b[0] = XY_SETUP_BLT | 1 << 20;
-				b[1] = bo->pitch;
-				if (sna->kgem.gen >= 040 && bo->tiling) {
-					b[0] |= BLT_DST_TILED;
-					b[1] >>= 2;
+				if (sna->kgem.gen >= 0100) {
+					b[0] = XY_SETUP_BLT | 1 << 20 | 8;
+					b[1] = bo->pitch;
+					if (bo->tiling) {
+						b[0] |= BLT_DST_TILED;
+						b[1] >>= 2;
+					}
+					b[1] |= 1 << 30 | transparent << 29 | blt_depth(drawable->depth) << 24 | rop << 16;
+					b[2] = extents->y1 << 16 | extents->x1;
+					b[3] = extents->y2 << 16 | extents->x2;
+					*(uint64_t *)(b+4) =
+						kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 4, bo,
+								 I915_GEM_DOMAIN_RENDER << 16 |
+								 I915_GEM_DOMAIN_RENDER |
+								 KGEM_RELOC_FENCED,
+								 0);
+					b[6] = bg;
+					b[7] = fg;
+					b[8] = 0;
+					b[9] = 0;
+					sna->kgem.nbatch += 10;
+				} else {
+					b[0] = XY_SETUP_BLT | 1 << 20 | 6;
+					b[1] = bo->pitch;
+					if (sna->kgem.gen >= 040 && bo->tiling) {
+						b[0] |= BLT_DST_TILED;
+						b[1] >>= 2;
+					}
+					b[1] |= 1 << 30 | transparent << 29 | blt_depth(drawable->depth) << 24 | rop << 16;
+					b[2] = extents->y1 << 16 | extents->x1;
+					b[3] = extents->y2 << 16 | extents->x2;
+					b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
+							      I915_GEM_DOMAIN_RENDER << 16 |
+							      I915_GEM_DOMAIN_RENDER |
+							      KGEM_RELOC_FENCED,
+							      0);
+					b[5] = bg;
+					b[6] = fg;
+					b[7] = 0;
+					sna->kgem.nbatch += 8;
 				}
-				b[1] |= 1 << 30 | transparent << 29 | blt_depth(drawable->depth) << 24 | rop << 16;
-				b[2] = extents->y1 << 16 | extents->x1;
-				b[3] = extents->y2 << 16 | extents->x2;
-				b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4,
-						      bo,
-						      I915_GEM_DOMAIN_RENDER << 16 |
-						      I915_GEM_DOMAIN_RENDER |
-						      KGEM_RELOC_FENCED,
-						      0);
-				b[5] = bg;
-				b[6] = fg;
-				b[7] = 0;
-				sna->kgem.nbatch += 8;
 			}
 
 			assert(sna->kgem.mode == KGEM_BLT);
@@ -14789,7 +15359,7 @@ sna_push_pixels_solid_blt(GCPtr gc,
 		struct kgem_bo *upload;
 		void *ptr;
 
-		if (!kgem_check_batch(&sna->kgem, 8) ||
+		if (!kgem_check_batch(&sna->kgem, 10) ||
 		    !kgem_check_bo_fenced(&sna->kgem, bo) ||
 		    !kgem_check_reloc_and_exec(&sna->kgem, 2)) {
 			kgem_submit(&sna->kgem);
@@ -14827,34 +15397,63 @@ sna_push_pixels_solid_blt(GCPtr gc,
 
 			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
-			b[0] = XY_MONO_SRC_COPY | 3 << 20;
-			b[0] |= ((box->x1 - region->extents.x1) & 7) << 17;
-			b[1] = bo->pitch;
-			if (sna->kgem.gen >= 040 && bo->tiling) {
-				b[0] |= BLT_DST_TILED;
-				b[1] >>= 2;
-			}
-			b[1] |= 1 << 29;
-			b[1] |= blt_depth(drawable->depth) << 24;
-			b[1] |= rop << 16;
-			b[2] = box->y1 << 16 | box->x1;
-			b[3] = box->y2 << 16 | box->x2;
-			b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
-					      I915_GEM_DOMAIN_RENDER << 16 |
-					      I915_GEM_DOMAIN_RENDER |
-					      KGEM_RELOC_FENCED,
-					      0);
-			b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5,
-					      upload,
-					      I915_GEM_DOMAIN_RENDER << 16 |
-					      KGEM_RELOC_FENCED,
-					      0);
-			b[6] = gc->bgPixel;
-			b[7] = gc->fgPixel;
+			if (sna->kgem.gen >= 0100) {
+				b[0] = XY_MONO_SRC_COPY | 3 << 20 | 8;
+				b[0] |= ((box->x1 - region->extents.x1) & 7) << 17;
+				b[1] = bo->pitch;
+				if (sna->kgem.gen >= 040 && bo->tiling) {
+					b[0] |= BLT_DST_TILED;
+					b[1] >>= 2;
+				}
+				b[1] |= 1 << 29;
+				b[1] |= blt_depth(drawable->depth) << 24;
+				b[1] |= rop << 16;
+				b[2] = box->y1 << 16 | box->x1;
+				b[3] = box->y2 << 16 | box->x2;
+				*(uint64_t *)(b+4) =
+					kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 4, bo,
+							I915_GEM_DOMAIN_RENDER << 16 |
+							I915_GEM_DOMAIN_RENDER |
+							KGEM_RELOC_FENCED,
+							0);
+				*(uint64_t *)(b+6) =
+					kgem_add_reloc64(&sna->kgem, sna->kgem.nbatch + 6, upload,
+							I915_GEM_DOMAIN_RENDER << 16 |
+							KGEM_RELOC_FENCED,
+							0);
+				b[8] = gc->bgPixel;
+				b[9] = gc->fgPixel;
+				sna->kgem.nbatch += 10;
+			} else {
+				b[0] = XY_MONO_SRC_COPY | 3 << 20 | 6;
+				b[0] |= ((box->x1 - region->extents.x1) & 7) << 17;
+				b[1] = bo->pitch;
+				if (sna->kgem.gen >= 040 && bo->tiling) {
+					b[0] |= BLT_DST_TILED;
+					b[1] >>= 2;
+				}
+				b[1] |= 1 << 29;
+				b[1] |= blt_depth(drawable->depth) << 24;
+				b[1] |= rop << 16;
+				b[2] = box->y1 << 16 | box->x1;
+				b[3] = box->y2 << 16 | box->x2;
+				b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
+						I915_GEM_DOMAIN_RENDER << 16 |
+						I915_GEM_DOMAIN_RENDER |
+						KGEM_RELOC_FENCED,
+						0);
+				b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5, upload,
+						I915_GEM_DOMAIN_RENDER << 16 |
+						KGEM_RELOC_FENCED,
+						0);
+				b[6] = gc->bgPixel;
+				b[7] = gc->fgPixel;
 
-			sna->kgem.nbatch += 8;
+				sna->kgem.nbatch += 8;
+			}
 			sigtrap_put();
 		}
+
 		kgem_bo_destroy(&sna->kgem, upload);
 
 		box++;

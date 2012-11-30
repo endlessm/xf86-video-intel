@@ -4982,6 +4982,7 @@ uint32_t kgem_add_reloc(struct kgem *kgem,
 	DBG(("%s: handle=%d, pos=%d, delta=%d, domains=%08x\n",
 	     __FUNCTION__, bo ? bo->handle : 0, pos, delta, read_write_domain));
 
+	assert(kgem->gen < 0100);
 	assert((read_write_domain & 0x7fff) == 0 || bo != NULL);
 
 	index = kgem->nreloc++;
@@ -5029,6 +5030,77 @@ uint32_t kgem_add_reloc(struct kgem *kgem,
 			}
 			bo->exec->flags |= EXEC_OBJECT_NEEDS_FENCE;
 		}
+
+		kgem->reloc[index].delta = delta;
+		kgem->reloc[index].target_handle = bo->target_handle;
+		kgem->reloc[index].presumed_offset = bo->presumed_offset;
+
+		if (read_write_domain & 0x7fff && !bo->gpu_dirty) {
+			assert(!bo->snoop || kgem->can_blt_cpu);
+			__kgem_bo_mark_dirty(bo);
+		}
+
+		delta += bo->presumed_offset;
+	} else {
+		kgem->reloc[index].delta = delta;
+		kgem->reloc[index].target_handle = ~0U;
+		kgem->reloc[index].presumed_offset = 0;
+		if (kgem->nreloc__self < 256)
+			kgem->reloc__self[kgem->nreloc__self++] = index;
+	}
+	kgem->reloc[index].read_domains = read_write_domain >> 16;
+	kgem->reloc[index].write_domain = read_write_domain & 0x7fff;
+
+	return delta;
+}
+
+uint64_t kgem_add_reloc64(struct kgem *kgem,
+			  uint32_t pos,
+			  struct kgem_bo *bo,
+			  uint32_t read_write_domain,
+			  uint64_t delta)
+{
+	int index;
+
+	DBG(("%s: handle=%d, pos=%d, delta=%d, domains=%08x\n",
+	     __FUNCTION__, bo ? bo->handle : 0, pos, delta, read_write_domain));
+
+	assert(kgem->gen >= 0100);
+	assert((read_write_domain & 0x7fff) == 0 || bo != NULL);
+
+	index = kgem->nreloc++;
+	assert(index < ARRAY_SIZE(kgem->reloc));
+	kgem->reloc[index].offset = pos * sizeof(kgem->batch[0]);
+	if (bo) {
+		assert(kgem->mode != KGEM_NONE);
+		assert(bo->refcnt);
+		while (bo->proxy) {
+			DBG(("%s: adding proxy [delta=%d] for handle=%d\n",
+			     __FUNCTION__, bo->delta, bo->handle));
+			delta += bo->delta;
+			assert(bo->handle == bo->proxy->handle);
+			/* need to release the cache upon batch submit */
+			if (bo->exec == NULL) {
+				list_move_tail(&bo->request,
+					       &kgem->next_request->buffers);
+				bo->rq = MAKE_REQUEST(kgem->next_request,
+						      kgem->ring);
+				bo->exec = &_kgem_dummy_exec;
+				bo->domain = DOMAIN_GPU;
+			}
+
+			if (read_write_domain & 0x7fff && !bo->gpu_dirty)
+				__kgem_bo_mark_dirty(bo);
+
+			bo = bo->proxy;
+			assert(bo->refcnt);
+		}
+		assert(bo->refcnt);
+
+		if (bo->exec == NULL)
+			kgem_add_bo(kgem, bo);
+		assert(bo->rq == MAKE_REQUEST(kgem->next_request, kgem->ring));
+		assert(RQ_RING(bo->rq) == kgem->ring);
 
 		kgem->reloc[index].delta = delta;
 		kgem->reloc[index].target_handle = bo->target_handle;
@@ -6338,6 +6410,7 @@ kgem_replace_bo(struct kgem *kgem,
 	 * we only attempt to allocate a linear bo.
 	 */
 	assert(src->tiling == I915_TILING_NONE);
+	assert(kgem_bo_can_blt(kgem, src));
 
 	size = height * pitch;
 	size = NUM_PAGES(size);
@@ -6363,7 +6436,7 @@ kgem_replace_bo(struct kgem *kgem,
 	dst->refcnt = 1;
 
 	kgem_set_mode(kgem, KGEM_BLT, dst);
-	if (!kgem_check_batch(kgem, 8) ||
+	if (!kgem_check_batch(kgem, 10) ||
 	    !kgem_check_reloc(kgem, 2) ||
 	    !kgem_check_many_bo_fenced(kgem, src, dst, NULL)) {
 		kgem_submit(kgem);
@@ -6392,22 +6465,43 @@ kgem_replace_bo(struct kgem *kgem,
 	}
 
 	b = kgem->batch + kgem->nbatch;
-	b[0] = br00;
-	b[1] = br13;
-	b[2] = 0;
-	b[3] = height << 16 | width;
-	b[4] = kgem_add_reloc(kgem, kgem->nbatch + 4, dst,
-			      I915_GEM_DOMAIN_RENDER << 16 |
-			      I915_GEM_DOMAIN_RENDER |
-			      KGEM_RELOC_FENCED,
-			      0);
-	b[5] = 0;
-	b[6] = pitch;
-	b[7] = kgem_add_reloc(kgem, kgem->nbatch + 7, src,
-			      I915_GEM_DOMAIN_RENDER << 16 |
-			      KGEM_RELOC_FENCED,
-			      0);
-	kgem->nbatch += 8;
+	if (kgem->gen >= 0100) {
+		b[0] = br00 | 8;
+		b[1] = br13;
+		b[2] = 0;
+		b[3] = height << 16 | width;
+		*(uint64_t *)(b+4) =
+			kgem_add_reloc64(kgem, kgem->nbatch + 4, dst,
+					 I915_GEM_DOMAIN_RENDER << 16 |
+					 I915_GEM_DOMAIN_RENDER |
+					 KGEM_RELOC_FENCED,
+					 0);
+		b[6] = 0;
+		b[7] = pitch;
+		*(uint64_t *)(b+8) =
+			kgem_add_reloc64(kgem, kgem->nbatch + 8, src,
+					 I915_GEM_DOMAIN_RENDER << 16 |
+					 KGEM_RELOC_FENCED,
+					 0);
+		kgem->nbatch += 10;
+	} else {
+		b[0] = br00 | 6;
+		b[1] = br13;
+		b[2] = 0;
+		b[3] = height << 16 | width;
+		b[4] = kgem_add_reloc(kgem, kgem->nbatch + 4, dst,
+				      I915_GEM_DOMAIN_RENDER << 16 |
+				      I915_GEM_DOMAIN_RENDER |
+				      KGEM_RELOC_FENCED,
+				      0);
+		b[5] = 0;
+		b[6] = pitch;
+		b[7] = kgem_add_reloc(kgem, kgem->nbatch + 7, src,
+				      I915_GEM_DOMAIN_RENDER << 16 |
+				      KGEM_RELOC_FENCED,
+				      0);
+		kgem->nbatch += 8;
+	}
 
 	return dst;
 }

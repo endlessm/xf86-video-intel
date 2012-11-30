@@ -461,7 +461,7 @@ fallback:
 	}
 
 	kgem_set_mode(kgem, KGEM_BLT, dst_bo);
-	if (!kgem_check_batch(kgem, 8) ||
+	if (!kgem_check_batch(kgem, 10) ||
 	    !kgem_check_reloc_and_exec(kgem, 2) ||
 	    !kgem_check_many_bo_fenced(kgem, dst_bo, src_bo, NULL)) {
 		kgem_submit(kgem);
@@ -473,59 +473,123 @@ fallback:
 	tmp_nbox = nbox;
 	tmp_box = box;
 	offset = 0;
-	do {
-		int nbox_this_time;
+	if (sna->kgem.gen >= 0100) {
+		cmd |= 8;
+		do {
+			int nbox_this_time;
 
-		nbox_this_time = tmp_nbox;
-		if (8*nbox_this_time > kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED)
-			nbox_this_time = (kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED) / 8;
-		if (2*nbox_this_time > KGEM_RELOC_SIZE(kgem) - kgem->nreloc)
-			nbox_this_time = (KGEM_RELOC_SIZE(kgem) - kgem->nreloc) / 2;
-		assert(nbox_this_time);
-		tmp_nbox -= nbox_this_time;
+			nbox_this_time = tmp_nbox;
+			if (10*nbox_this_time > kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED)
+				nbox_this_time = (kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED) / 8;
+			if (2*nbox_this_time > KGEM_RELOC_SIZE(kgem) - kgem->nreloc)
+				nbox_this_time = (KGEM_RELOC_SIZE(kgem) - kgem->nreloc) / 2;
+			assert(nbox_this_time);
+			tmp_nbox -= nbox_this_time;
 
-		for (n = 0; n < nbox_this_time; n++) {
-			int height = tmp_box[n].y2 - tmp_box[n].y1;
-			int width = tmp_box[n].x2 - tmp_box[n].x1;
-			int pitch = PITCH(width, cpp);
-			uint32_t *b = kgem->batch + kgem->nbatch;
+			assert(kgem->mode == KGEM_BLT);
+			for (n = 0; n < nbox_this_time; n++) {
+				int height = tmp_box[n].y2 - tmp_box[n].y1;
+				int width = tmp_box[n].x2 - tmp_box[n].x1;
+				int pitch = PITCH(width, cpp);
+				uint32_t *b = kgem->batch + kgem->nbatch;
 
-			DBG(("    blt offset %x: (%d, %d) x (%d, %d), pitch=%d\n",
-			     offset, tmp_box[n].x1, tmp_box[n].y1,
-			     width, height, pitch));
+				DBG(("    blt offset %x: (%d, %d) x (%d, %d), pitch=%d\n",
+				     offset,
+				     tmp_box[n].x1, tmp_box[n].y1,
+				     width, height, pitch));
 
-			assert(tmp_box[n].x1 >= 0);
-			assert(tmp_box[n].x2 * dst->drawable.bitsPerPixel/8 <= src_bo->pitch);
-			assert(tmp_box[n].y1 >= 0);
-			assert(tmp_box[n].y2 * src_bo->pitch <= kgem_bo_size(src_bo));
+				assert(tmp_box[n].x1 >= 0);
+				assert(tmp_box[n].x2 * dst->drawable.bitsPerPixel/8 <= src_bo->pitch);
+				assert(tmp_box[n].y1 >= 0);
+				assert(tmp_box[n].y2 * src_bo->pitch <= kgem_bo_size(src_bo));
 
-			b[0] = cmd;
-			b[1] = br13 | pitch;
-			b[2] = 0;
-			b[3] = height << 16 | width;
-			b[4] = kgem_add_reloc(kgem, kgem->nbatch + 4, dst_bo,
-					      I915_GEM_DOMAIN_RENDER << 16 |
-					      I915_GEM_DOMAIN_RENDER |
-					      KGEM_RELOC_FENCED,
-					      offset);
-			b[5] = tmp_box[n].y1 << 16 | tmp_box[n].x1;
-			b[6] = src_pitch;
-			b[7] = kgem_add_reloc(kgem, kgem->nbatch + 7, src_bo,
-					      I915_GEM_DOMAIN_RENDER << 16 |
-					      KGEM_RELOC_FENCED,
-					      0);
-			kgem->nbatch += 8;
+				b[0] = cmd;
+				b[1] = br13 | pitch;
+				b[2] = 0;
+				b[3] = height << 16 | width;
+				*(uint64_t *)(b+4) =
+					kgem_add_reloc64(kgem, kgem->nbatch + 4, dst_bo,
+							 I915_GEM_DOMAIN_RENDER << 16 |
+							 I915_GEM_DOMAIN_RENDER |
+							 KGEM_RELOC_FENCED,
+							 offset);
+				b[6] = tmp_box[n].y1 << 16 | tmp_box[n].x1;
+				b[7] = src_pitch;
+				*(uint64_t *)(b+8) =
+					kgem_add_reloc64(kgem, kgem->nbatch + 8, src_bo,
+							 I915_GEM_DOMAIN_RENDER << 16 |
+							 KGEM_RELOC_FENCED,
+							 0);
+				kgem->nbatch += 10;
 
-			offset += pitch * height;
-		}
+				offset += pitch * height;
+			}
 
-		_kgem_submit(kgem);
-		if (!tmp_nbox)
-			break;
+			_kgem_submit(kgem);
+			if (!tmp_nbox)
+				break;
 
-		_kgem_set_mode(kgem, KGEM_BLT);
-		tmp_box += nbox_this_time;
-	} while (1);
+			_kgem_set_mode(kgem, KGEM_BLT);
+			tmp_box += nbox_this_time;
+		} while (1);
+	} else {
+		cmd |= 6;
+		do {
+			int nbox_this_time;
+
+			nbox_this_time = tmp_nbox;
+			if (8*nbox_this_time > kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED)
+				nbox_this_time = (kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED) / 8;
+			if (2*nbox_this_time > KGEM_RELOC_SIZE(kgem) - kgem->nreloc)
+				nbox_this_time = (KGEM_RELOC_SIZE(kgem) - kgem->nreloc) / 2;
+			assert(nbox_this_time);
+			tmp_nbox -= nbox_this_time;
+
+			assert(kgem->mode == KGEM_BLT);
+			for (n = 0; n < nbox_this_time; n++) {
+				int height = tmp_box[n].y2 - tmp_box[n].y1;
+				int width = tmp_box[n].x2 - tmp_box[n].x1;
+				int pitch = PITCH(width, cpp);
+				uint32_t *b = kgem->batch + kgem->nbatch;
+
+				DBG(("    blt offset %x: (%d, %d) x (%d, %d), pitch=%d\n",
+				     offset,
+				     tmp_box[n].x1, tmp_box[n].y1,
+				     width, height, pitch));
+
+				assert(tmp_box[n].x1 >= 0);
+				assert(tmp_box[n].x2 * dst->drawable.bitsPerPixel/8 <= src_bo->pitch);
+				assert(tmp_box[n].y1 >= 0);
+				assert(tmp_box[n].y2 * src_bo->pitch <= kgem_bo_size(src_bo));
+
+				b[0] = cmd;
+				b[1] = br13 | pitch;
+				b[2] = 0;
+				b[3] = height << 16 | width;
+				b[4] = kgem_add_reloc(kgem, kgem->nbatch + 4, dst_bo,
+						      I915_GEM_DOMAIN_RENDER << 16 |
+						      I915_GEM_DOMAIN_RENDER |
+						      KGEM_RELOC_FENCED,
+						      offset);
+				b[5] = tmp_box[n].y1 << 16 | tmp_box[n].x1;
+				b[6] = src_pitch;
+				b[7] = kgem_add_reloc(kgem, kgem->nbatch + 7, src_bo,
+						      I915_GEM_DOMAIN_RENDER << 16 |
+						      KGEM_RELOC_FENCED,
+						      0);
+				kgem->nbatch += 8;
+
+				offset += pitch * height;
+			}
+
+			_kgem_submit(kgem);
+			if (!tmp_nbox)
+				break;
+
+			_kgem_set_mode(kgem, KGEM_BLT);
+			tmp_box += nbox_this_time;
+		} while (1);
+	}
 	assert(offset == __kgem_buffer_size(dst_bo));
 
 	kgem_buffer_read_sync(kgem, dst_bo);
@@ -924,7 +988,7 @@ tile:
 	}
 
 	kgem_set_mode(kgem, KGEM_BLT, dst_bo);
-	if (!kgem_check_batch(kgem, 8) ||
+	if (!kgem_check_batch(kgem, 10) ||
 	    !kgem_check_reloc_and_exec(kgem, 2) ||
 	    !kgem_check_bo_fenced(kgem, dst_bo)) {
 		kgem_submit(kgem);
@@ -933,91 +997,185 @@ tile:
 		_kgem_set_mode(kgem, KGEM_BLT);
 	}
 
-	do {
-		int nbox_this_time;
-
-		nbox_this_time = nbox;
-		if (8*nbox_this_time > kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED)
-			nbox_this_time = (kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED) / 8;
-		if (2*nbox_this_time > KGEM_RELOC_SIZE(kgem) - kgem->nreloc)
-			nbox_this_time = (KGEM_RELOC_SIZE(kgem) - kgem->nreloc) / 2;
-		assert(nbox_this_time);
-		nbox -= nbox_this_time;
-
-		/* Count the total number of bytes to be read and allocate a
-		 * single buffer large enough. Or if it is very small, combine
-		 * with other allocations. */
-		offset = 0;
-		for (n = 0; n < nbox_this_time; n++) {
-			int height = box[n].y2 - box[n].y1;
-			int width = box[n].x2 - box[n].x1;
-			offset += PITCH(width, dst->drawable.bitsPerPixel >> 3) * height;
-		}
-
-		src_bo = kgem_create_buffer(kgem, offset,
-					    KGEM_BUFFER_WRITE_INPLACE | (nbox ? KGEM_BUFFER_LAST : 0),
-					    &ptr);
-		if (!src_bo)
-			break;
-
-		offset = 0;
+	if (kgem->gen >= 0100) {
+		cmd |= 8;
 		do {
-			int height = box->y2 - box->y1;
-			int width = box->x2 - box->x1;
-			int pitch = PITCH(width, dst->drawable.bitsPerPixel >> 3);
-			uint32_t *b;
+			int nbox_this_time;
 
-			DBG(("  %s: box src=(%d, %d), dst=(%d, %d) size=(%d, %d), dst offset=%d, dst pitch=%d\n",
-			     __FUNCTION__,
-			     box->x1 + src_dx, box->y1 + src_dy,
-			     box->x1 + dst_dx, box->y1 + dst_dy,
-			     width, height,
-			     offset, pitch));
+			nbox_this_time = nbox;
+			if (10*nbox_this_time > kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED)
+				nbox_this_time = (kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED) / 8;
+			if (2*nbox_this_time > KGEM_RELOC_SIZE(kgem) - kgem->nreloc)
+				nbox_this_time = (KGEM_RELOC_SIZE(kgem) - kgem->nreloc) / 2;
+			assert(nbox_this_time);
+			nbox -= nbox_this_time;
 
-			assert(box->x1 + src_dx >= 0);
-			assert((box->x2 + src_dx)*dst->drawable.bitsPerPixel <= 8*stride);
-			assert(box->y1 + src_dy >= 0);
+			/* Count the total number of bytes to be read and allocate a
+			 * single buffer large enough. Or if it is very small, combine
+			 * with other allocations. */
+			offset = 0;
+			for (n = 0; n < nbox_this_time; n++) {
+				int height = box[n].y2 - box[n].y1;
+				int width = box[n].x2 - box[n].x1;
+				offset += PITCH(width, dst->drawable.bitsPerPixel >> 3) * height;
+			}
 
-			assert(box->x1 + dst_dx >= 0);
-			assert(box->y1 + dst_dy >= 0);
+			src_bo = kgem_create_buffer(kgem, offset,
+						    KGEM_BUFFER_WRITE_INPLACE | (nbox ? KGEM_BUFFER_LAST : 0),
+						    &ptr);
+			if (!src_bo)
+				break;
 
-			memcpy_blt(src, (char *)ptr + offset,
-				   dst->drawable.bitsPerPixel,
-				   stride, pitch,
-				   box->x1 + src_dx, box->y1 + src_dy,
-				   0, 0,
-				   width, height);
+			offset = 0;
+			do {
+				int height = box->y2 - box->y1;
+				int width = box->x2 - box->x1;
+				int pitch = PITCH(width, dst->drawable.bitsPerPixel >> 3);
+				uint32_t *b;
 
-			b = kgem->batch + kgem->nbatch;
-			b[0] = cmd;
-			b[1] = br13;
-			b[2] = (box->y1 + dst_dy) << 16 | (box->x1 + dst_dx);
-			b[3] = (box->y2 + dst_dy) << 16 | (box->x2 + dst_dx);
-			b[4] = kgem_add_reloc(kgem, kgem->nbatch + 4, dst_bo,
-					      I915_GEM_DOMAIN_RENDER << 16 |
-					      I915_GEM_DOMAIN_RENDER |
-					      KGEM_RELOC_FENCED,
-					      0);
-			b[5] = 0;
-			b[6] = pitch;
-			b[7] = kgem_add_reloc(kgem, kgem->nbatch + 7, src_bo,
-					      I915_GEM_DOMAIN_RENDER << 16 |
-					      KGEM_RELOC_FENCED,
-					      offset);
-			kgem->nbatch += 8;
+				DBG(("  %s: box src=(%d, %d), dst=(%d, %d) size=(%d, %d), dst offset=%d, dst pitch=%d\n",
+				     __FUNCTION__,
+				     box->x1 + src_dx, box->y1 + src_dy,
+				     box->x1 + dst_dx, box->y1 + dst_dy,
+				     width, height,
+				     offset, pitch));
 
-			box++;
-			offset += pitch * height;
-		} while (--nbox_this_time);
-		assert(offset == __kgem_buffer_size(src_bo));
+				assert(box->x1 + src_dx >= 0);
+				assert((box->x2 + src_dx)*dst->drawable.bitsPerPixel <= 8*stride);
+				assert(box->y1 + src_dy >= 0);
 
-		if (nbox) {
-			_kgem_submit(kgem);
-			_kgem_set_mode(kgem, KGEM_BLT);
-		}
+				assert(box->x1 + dst_dx >= 0);
+				assert(box->y1 + dst_dy >= 0);
 
-		kgem_bo_destroy(kgem, src_bo);
-	} while (nbox);
+				memcpy_blt(src, (char *)ptr + offset,
+					   dst->drawable.bitsPerPixel,
+					   stride, pitch,
+					   box->x1 + src_dx, box->y1 + src_dy,
+					   0, 0,
+					   width, height);
+
+				assert(kgem->mode == KGEM_BLT);
+				b = kgem->batch + kgem->nbatch;
+				b[0] = cmd;
+				b[1] = br13;
+				b[2] = (box->y1 + dst_dy) << 16 | (box->x1 + dst_dx);
+				b[3] = (box->y2 + dst_dy) << 16 | (box->x2 + dst_dx);
+				*(uint64_t *)(b+4) =
+					kgem_add_reloc64(kgem, kgem->nbatch + 4, dst_bo,
+							 I915_GEM_DOMAIN_RENDER << 16 |
+							 I915_GEM_DOMAIN_RENDER |
+							 KGEM_RELOC_FENCED,
+							 0);
+				b[6] = 0;
+				b[7] = pitch;
+				*(uint64_t *)(b+8) =
+					kgem_add_reloc64(kgem, kgem->nbatch + 8, src_bo,
+							 I915_GEM_DOMAIN_RENDER << 16 |
+							 KGEM_RELOC_FENCED,
+							 offset);
+				kgem->nbatch += 10;
+
+				box++;
+				offset += pitch * height;
+			} while (--nbox_this_time);
+			assert(offset == __kgem_buffer_size(src_bo));
+
+			if (nbox) {
+				_kgem_submit(kgem);
+				_kgem_set_mode(kgem, KGEM_BLT);
+			}
+
+			kgem_bo_destroy(kgem, src_bo);
+		} while (nbox);
+	} else {
+		cmd |= 6;
+		do {
+			int nbox_this_time;
+
+			nbox_this_time = nbox;
+			if (8*nbox_this_time > kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED)
+				nbox_this_time = (kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED) / 8;
+			if (2*nbox_this_time > KGEM_RELOC_SIZE(kgem) - kgem->nreloc)
+				nbox_this_time = (KGEM_RELOC_SIZE(kgem) - kgem->nreloc) / 2;
+			assert(nbox_this_time);
+			nbox -= nbox_this_time;
+
+			/* Count the total number of bytes to be read and allocate a
+			 * single buffer large enough. Or if it is very small, combine
+			 * with other allocations. */
+			offset = 0;
+			for (n = 0; n < nbox_this_time; n++) {
+				int height = box[n].y2 - box[n].y1;
+				int width = box[n].x2 - box[n].x1;
+				offset += PITCH(width, dst->drawable.bitsPerPixel >> 3) * height;
+			}
+
+			src_bo = kgem_create_buffer(kgem, offset,
+						    KGEM_BUFFER_WRITE_INPLACE | (nbox ? KGEM_BUFFER_LAST : 0),
+						    &ptr);
+			if (!src_bo)
+				break;
+
+			offset = 0;
+			do {
+				int height = box->y2 - box->y1;
+				int width = box->x2 - box->x1;
+				int pitch = PITCH(width, dst->drawable.bitsPerPixel >> 3);
+				uint32_t *b;
+
+				DBG(("  %s: box src=(%d, %d), dst=(%d, %d) size=(%d, %d), dst offset=%d, dst pitch=%d\n",
+				     __FUNCTION__,
+				     box->x1 + src_dx, box->y1 + src_dy,
+				     box->x1 + dst_dx, box->y1 + dst_dy,
+				     width, height,
+				     offset, pitch));
+
+				assert(box->x1 + src_dx >= 0);
+				assert((box->x2 + src_dx)*dst->drawable.bitsPerPixel <= 8*stride);
+				assert(box->y1 + src_dy >= 0);
+
+				assert(box->x1 + dst_dx >= 0);
+				assert(box->y1 + dst_dy >= 0);
+
+				memcpy_blt(src, (char *)ptr + offset,
+					   dst->drawable.bitsPerPixel,
+					   stride, pitch,
+					   box->x1 + src_dx, box->y1 + src_dy,
+					   0, 0,
+					   width, height);
+
+				assert(kgem->mode == KGEM_BLT);
+				b = kgem->batch + kgem->nbatch;
+				b[0] = cmd;
+				b[1] = br13;
+				b[2] = (box->y1 + dst_dy) << 16 | (box->x1 + dst_dx);
+				b[3] = (box->y2 + dst_dy) << 16 | (box->x2 + dst_dx);
+				b[4] = kgem_add_reloc(kgem, kgem->nbatch + 4, dst_bo,
+						      I915_GEM_DOMAIN_RENDER << 16 |
+						      I915_GEM_DOMAIN_RENDER |
+						      KGEM_RELOC_FENCED,
+						      0);
+				b[5] = 0;
+				b[6] = pitch;
+				b[7] = kgem_add_reloc(kgem, kgem->nbatch + 7, src_bo,
+						      I915_GEM_DOMAIN_RENDER << 16 |
+						      KGEM_RELOC_FENCED,
+						      offset);
+				kgem->nbatch += 8;
+
+				box++;
+				offset += pitch * height;
+			} while (--nbox_this_time);
+			assert(offset == __kgem_buffer_size(src_bo));
+
+			if (nbox) {
+				_kgem_submit(kgem);
+				_kgem_set_mode(kgem, KGEM_BLT);
+			}
+
+			kgem_bo_destroy(kgem, src_bo);
+		} while (nbox);
+	}
 
 	sna->blt_state.fill_bo = 0;
 	return true;
@@ -1315,7 +1473,7 @@ tile:
 	}
 
 	kgem_set_mode(kgem, KGEM_BLT, dst_bo);
-	if (!kgem_check_batch(kgem, 8) ||
+	if (!kgem_check_batch(kgem, 10) ||
 	    !kgem_check_reloc_and_exec(kgem, 2) ||
 	    !kgem_check_bo_fenced(kgem, dst_bo)) {
 		kgem_submit(kgem);
@@ -1324,92 +1482,187 @@ tile:
 		_kgem_set_mode(kgem, KGEM_BLT);
 	}
 
-	do {
-		int nbox_this_time;
-
-		nbox_this_time = nbox;
-		if (8*nbox_this_time > kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED)
-			nbox_this_time = (kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED) / 8;
-		if (2*nbox_this_time > KGEM_RELOC_SIZE(kgem) - kgem->nreloc)
-			nbox_this_time = (KGEM_RELOC_SIZE(kgem) - kgem->nreloc) / 2;
-		assert(nbox_this_time);
-		nbox -= nbox_this_time;
-
-		/* Count the total number of bytes to be read and allocate a
-		 * single buffer large enough. Or if it is very small, combine
-		 * with other allocations. */
-		offset = 0;
-		for (n = 0; n < nbox_this_time; n++) {
-			int height = box[n].y2 - box[n].y1;
-			int width = box[n].x2 - box[n].x1;
-			offset += PITCH(width, dst->drawable.bitsPerPixel >> 3) * height;
-		}
-
-		src_bo = kgem_create_buffer(kgem, offset,
-					    KGEM_BUFFER_WRITE_INPLACE | (nbox ? KGEM_BUFFER_LAST : 0),
-					    &ptr);
-		if (!src_bo)
-			break;
-
-		offset = 0;
+	if (sna->kgem.gen >= 0100) {
+		cmd |= 8;
 		do {
-			int height = box->y2 - box->y1;
-			int width = box->x2 - box->x1;
-			int pitch = PITCH(width, dst->drawable.bitsPerPixel >> 3);
-			uint32_t *b;
+			int nbox_this_time;
 
-			DBG(("  %s: box src=(%d, %d), dst=(%d, %d) size=(%d, %d), dst offset=%d, dst pitch=%d\n",
-			     __FUNCTION__,
-			     box->x1 + src_dx, box->y1 + src_dy,
-			     box->x1 + dst_dx, box->y1 + dst_dy,
-			     width, height,
-			     offset, pitch));
+			nbox_this_time = nbox;
+			if (10*nbox_this_time > kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED)
+				nbox_this_time = (kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED) / 8;
+			if (2*nbox_this_time > KGEM_RELOC_SIZE(kgem) - kgem->nreloc)
+				nbox_this_time = (KGEM_RELOC_SIZE(kgem) - kgem->nreloc) / 2;
+			assert(nbox_this_time);
+			nbox -= nbox_this_time;
 
-			assert(box->x1 + src_dx >= 0);
-			assert((box->x2 + src_dx)*dst->drawable.bitsPerPixel <= 8*stride);
-			assert(box->y1 + src_dy >= 0);
+			/* Count the total number of bytes to be read and allocate a
+			 * single buffer large enough. Or if it is very small, combine
+			 * with other allocations. */
+			offset = 0;
+			for (n = 0; n < nbox_this_time; n++) {
+				int height = box[n].y2 - box[n].y1;
+				int width = box[n].x2 - box[n].x1;
+				offset += PITCH(width, dst->drawable.bitsPerPixel >> 3) * height;
+			}
 
-			assert(box->x1 + dst_dx >= 0);
-			assert(box->y1 + dst_dy >= 0);
+			src_bo = kgem_create_buffer(kgem, offset,
+						    KGEM_BUFFER_WRITE_INPLACE | (nbox ? KGEM_BUFFER_LAST : 0),
+						    &ptr);
+			if (!src_bo)
+				break;
 
-			memcpy_xor(src, (char *)ptr + offset,
-				   dst->drawable.bitsPerPixel,
-				   stride, pitch,
-				   box->x1 + src_dx, box->y1 + src_dy,
-				   0, 0,
-				   width, height,
-				   and, or);
+			offset = 0;
+			do {
+				int height = box->y2 - box->y1;
+				int width = box->x2 - box->x1;
+				int pitch = PITCH(width, dst->drawable.bitsPerPixel >> 3);
+				uint32_t *b;
 
-			b = kgem->batch + kgem->nbatch;
-			b[0] = cmd;
-			b[1] = br13;
-			b[2] = (box->y1 + dst_dy) << 16 | (box->x1 + dst_dx);
-			b[3] = (box->y2 + dst_dy) << 16 | (box->x2 + dst_dx);
-			b[4] = kgem_add_reloc(kgem, kgem->nbatch + 4, dst_bo,
-					      I915_GEM_DOMAIN_RENDER << 16 |
-					      I915_GEM_DOMAIN_RENDER |
-					      KGEM_RELOC_FENCED,
-					      0);
-			b[5] = 0;
-			b[6] = pitch;
-			b[7] = kgem_add_reloc(kgem, kgem->nbatch + 7, src_bo,
-					      I915_GEM_DOMAIN_RENDER << 16 |
-					      KGEM_RELOC_FENCED,
-					      offset);
-			kgem->nbatch += 8;
+				DBG(("  %s: box src=(%d, %d), dst=(%d, %d) size=(%d, %d), dst offset=%d, dst pitch=%d\n",
+				     __FUNCTION__,
+				     box->x1 + src_dx, box->y1 + src_dy,
+				     box->x1 + dst_dx, box->y1 + dst_dy,
+				     width, height,
+				     offset, pitch));
 
-			box++;
-			offset += pitch * height;
-		} while (--nbox_this_time);
-		assert(offset == __kgem_buffer_size(src_bo));
+				assert(box->x1 + src_dx >= 0);
+				assert((box->x2 + src_dx)*dst->drawable.bitsPerPixel <= 8*stride);
+				assert(box->y1 + src_dy >= 0);
 
-		if (nbox) {
-			_kgem_submit(kgem);
-			_kgem_set_mode(kgem, KGEM_BLT);
-		}
+				assert(box->x1 + dst_dx >= 0);
+				assert(box->y1 + dst_dy >= 0);
 
-		kgem_bo_destroy(kgem, src_bo);
-	} while (nbox);
+				memcpy_xor(src, (char *)ptr + offset,
+					   dst->drawable.bitsPerPixel,
+					   stride, pitch,
+					   box->x1 + src_dx, box->y1 + src_dy,
+					   0, 0,
+					   width, height,
+					   and, or);
+
+				assert(kgem->mode == KGEM_BLT);
+				b = kgem->batch + kgem->nbatch;
+				b[0] = cmd;
+				b[1] = br13;
+				b[2] = (box->y1 + dst_dy) << 16 | (box->x1 + dst_dx);
+				b[3] = (box->y2 + dst_dy) << 16 | (box->x2 + dst_dx);
+				*(uint64_t *)(b+4) =
+					kgem_add_reloc64(kgem, kgem->nbatch + 4, dst_bo,
+							 I915_GEM_DOMAIN_RENDER << 16 |
+							 I915_GEM_DOMAIN_RENDER |
+							 KGEM_RELOC_FENCED,
+							 0);
+				b[6] = 0;
+				b[7] = pitch;
+				*(uint64_t *)(b+8) =
+					kgem_add_reloc64(kgem, kgem->nbatch + 8, src_bo,
+							 I915_GEM_DOMAIN_RENDER << 16 |
+							 KGEM_RELOC_FENCED,
+							 offset);
+				kgem->nbatch += 10;
+
+				box++;
+				offset += pitch * height;
+			} while (--nbox_this_time);
+			assert(offset == __kgem_buffer_size(src_bo));
+
+			if (nbox) {
+				_kgem_submit(kgem);
+				_kgem_set_mode(kgem, KGEM_BLT);
+			}
+
+			kgem_bo_destroy(kgem, src_bo);
+		} while (nbox);
+	} else {
+		cmd |= 6;
+		do {
+			int nbox_this_time;
+
+			nbox_this_time = nbox;
+			if (8*nbox_this_time > kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED)
+				nbox_this_time = (kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED) / 8;
+			if (2*nbox_this_time > KGEM_RELOC_SIZE(kgem) - kgem->nreloc)
+				nbox_this_time = (KGEM_RELOC_SIZE(kgem) - kgem->nreloc) / 2;
+			assert(nbox_this_time);
+			nbox -= nbox_this_time;
+
+			/* Count the total number of bytes to be read and allocate a
+			 * single buffer large enough. Or if it is very small, combine
+			 * with other allocations. */
+			offset = 0;
+			for (n = 0; n < nbox_this_time; n++) {
+				int height = box[n].y2 - box[n].y1;
+				int width = box[n].x2 - box[n].x1;
+				offset += PITCH(width, dst->drawable.bitsPerPixel >> 3) * height;
+			}
+
+			src_bo = kgem_create_buffer(kgem, offset,
+						    KGEM_BUFFER_WRITE_INPLACE | (nbox ? KGEM_BUFFER_LAST : 0),
+						    &ptr);
+			if (!src_bo)
+				break;
+
+			offset = 0;
+			do {
+				int height = box->y2 - box->y1;
+				int width = box->x2 - box->x1;
+				int pitch = PITCH(width, dst->drawable.bitsPerPixel >> 3);
+				uint32_t *b;
+
+				DBG(("  %s: box src=(%d, %d), dst=(%d, %d) size=(%d, %d), dst offset=%d, dst pitch=%d\n",
+				     __FUNCTION__,
+				     box->x1 + src_dx, box->y1 + src_dy,
+				     box->x1 + dst_dx, box->y1 + dst_dy,
+				     width, height,
+				     offset, pitch));
+
+				assert(box->x1 + src_dx >= 0);
+				assert((box->x2 + src_dx)*dst->drawable.bitsPerPixel <= 8*stride);
+				assert(box->y1 + src_dy >= 0);
+
+				assert(box->x1 + dst_dx >= 0);
+				assert(box->y1 + dst_dy >= 0);
+
+				memcpy_xor(src, (char *)ptr + offset,
+					   dst->drawable.bitsPerPixel,
+					   stride, pitch,
+					   box->x1 + src_dx, box->y1 + src_dy,
+					   0, 0,
+					   width, height,
+					   and, or);
+
+				assert(kgem->mode == KGEM_BLT);
+				b = kgem->batch + kgem->nbatch;
+				b[0] = cmd;
+				b[1] = br13;
+				b[2] = (box->y1 + dst_dy) << 16 | (box->x1 + dst_dx);
+				b[3] = (box->y2 + dst_dy) << 16 | (box->x2 + dst_dx);
+				b[4] = kgem_add_reloc(kgem, kgem->nbatch + 4, dst_bo,
+						      I915_GEM_DOMAIN_RENDER << 16 |
+						      I915_GEM_DOMAIN_RENDER |
+						      KGEM_RELOC_FENCED,
+						      0);
+				b[5] = 0;
+				b[6] = pitch;
+				b[7] = kgem_add_reloc(kgem, kgem->nbatch + 7, src_bo,
+						      I915_GEM_DOMAIN_RENDER << 16 |
+						      KGEM_RELOC_FENCED,
+						      offset);
+				kgem->nbatch += 8;
+
+				box++;
+				offset += pitch * height;
+			} while (--nbox_this_time);
+			assert(offset == __kgem_buffer_size(src_bo));
+
+			if (nbox) {
+				_kgem_submit(kgem);
+				_kgem_set_mode(kgem, KGEM_BLT);
+			}
+
+			kgem_bo_destroy(kgem, src_bo);
+		} while (nbox);
+	}
 
 	sna->blt_state.fill_bo = 0;
 	return true;

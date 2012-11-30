@@ -65,11 +65,11 @@ struct kgem_bo {
 		uint16_t offset;
 	} binding;
 
+	uint64_t presumed_offset;
 	uint32_t unique_id;
 	uint32_t refcnt;
 	uint32_t handle;
 	uint32_t target_handle;
-	uint32_t presumed_offset;
 	uint32_t delta;
 	union {
 		struct {
@@ -446,6 +446,11 @@ uint32_t kgem_add_reloc(struct kgem *kgem,
 			struct kgem_bo *bo,
 			uint32_t read_write_domains,
 			uint32_t delta);
+uint64_t kgem_add_reloc64(struct kgem *kgem,
+			  uint32_t pos,
+			  struct kgem_bo *bo,
+			  uint32_t read_write_domains,
+			  uint64_t delta);
 
 void *kgem_bo_map(struct kgem *kgem, struct kgem_bo *bo);
 void *kgem_bo_map__async(struct kgem *kgem, struct kgem_bo *bo);
