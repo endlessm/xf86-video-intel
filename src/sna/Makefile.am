@@ -100,6 +100,12 @@ libsna_la_SOURCES = \
 	gen6_render.h \
 	gen7_render.c \
 	gen7_render.h \
+	gen8_eu.c \
+	gen8_eu.h \
+	gen8_render.c \
+	gen8_render.h \
+	gen8_vertex.c \
+	gen8_vertex.h \
 	$(NULL)
 
 if DRI2

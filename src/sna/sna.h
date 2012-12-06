@@ -316,6 +316,7 @@ struct sna {
 		struct gen5_render_state gen5;
 		struct gen6_render_state gen6;
 		struct gen7_render_state gen7;
+		struct gen8_render_state gen8;
 	} render_state;
 
 	bool dri_available;

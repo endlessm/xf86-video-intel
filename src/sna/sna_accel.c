@@ -16813,8 +16813,10 @@ bool sna_accel_init(ScreenPtr screen, struct sna *sna)
 	if (sna_option_accel_none(sna)) {
 		backend = "disabled";
 		sna->kgem.wedged = true;
-	} else if (sna_option_accel_blt(sna) || sna->info->gen >= 0100)
+	} else if (sna_option_accel_blt(sna) || sna->info->gen >= 0110)
 		(void)backend;
+	else if (sna->info->gen >= 0100)
+		backend = gen8_render_init(sna, backend);
 	else if (sna->info->gen >= 070)
 		backend = gen7_render_init(sna, backend);
 	else if (sna->info->gen >= 060)

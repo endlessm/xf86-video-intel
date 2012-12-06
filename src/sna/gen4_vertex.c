@@ -88,6 +88,7 @@ int gen4_vertex_finish(struct sna *sna)
 	assert(sna->render.vertex_offset == 0);
 	assert(sna->render.vertex_used);
 	assert(sna->render.vertex_used <= sna->render.vertex_size);
+	assert(sna->render.nvertex_reloc);
 
 	sna_vertex_wait__locked(&sna->render);
 
@@ -124,7 +125,6 @@ int gen4_vertex_finish(struct sna *sna)
 			return 0;
 		}
 	}
-
 
 	size = 256*1024;
 	assert(!sna->render.active);
