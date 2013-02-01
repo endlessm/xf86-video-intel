@@ -328,7 +328,7 @@ AM_CONDITIONAL(XAA, test "x$XAA" = "xyes")
 
 AC_ARG_WITH(default-accel,
 	    AS_HELP_STRING([--with-default-accel],
-			   [Select the default acceleration method [default=uxa if enabled, otherwise sna]]),
+			   [Select the default acceleration method [default=sna if enabled, otherwise uxa]]),
 			   [accel="$withval"],
 			   [accel="auto"])
 if test "x$accel" = "xyes"; then
@@ -338,11 +338,11 @@ fi
 
 AC_MSG_CHECKING([which acceleration method to use by default])
 if test "x$accel" = "xauto"; then
-	if test "x$UXA" != "xno"; then
-		accel="uxa"
+	if test "x$SNA" != "xno"; then
+		accel="sna"
 	else
-		if test "x$SNA" != "xno"; then
-			accel="sna"
+		if test "x$UXA" != "xno"; then
+			accel="uxa"
 		fi
 	fi
 	if test "x$accel" = "xauto" -a "x$KMS" = "xyes"; then
