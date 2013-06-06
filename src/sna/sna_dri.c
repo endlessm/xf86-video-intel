@@ -1768,7 +1768,7 @@ static void sna_dri_flip_event(struct sna *sna,
 			sna_dri_frame_event_info_free(sna, flip->draw, flip);
 		} else if (!sna_dri_flip_continue(sna, flip)) {
 			DBG(("%s: no longer able to flip\n", __FUNCTION__));
-			if (flip->draw || !sna_dri_immediate_blit(sna, flip, true, flip->mode == 1))
+			if (flip->draw || !sna_dri_immediate_blit(sna, flip, false, flip->mode == 1))
 				sna_dri_frame_event_info_free(sna, flip->draw, flip);
 		}
 		break;
