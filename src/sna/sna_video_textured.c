@@ -192,7 +192,7 @@ sna_video_textured_put_image(ClientPtr client,
 	     drw_x, drw_y, drw_w, drw_h,
 	     format->id, width, height, sync));
 
-	DBG(("%s: region %d:(%d, %d), (%d, %d)\n", __FUNCTION__,
+	DBG(("%s: region %ld:(%d, %d), (%d, %d)\n", __FUNCTION__,
 	     RegionNumRects(&clip),
 	     clip.extents.x1, clip.extents.y1,
 	     clip.extents.x2, clip.extents.y2));

@@ -415,7 +415,7 @@ static void __sna_damage_reduce(struct sna_damage *damage)
 	assert(damage->mode != DAMAGE_ALL);
 	assert(damage->dirty);
 
-	DBG(("    reduce: before region.n=%d\n", REGION_NUM_RECTS(region)));
+	DBG(("    reduce: before region.n=%ld\n", REGION_NUM_RECTS(region)));
 
 	nboxes = damage->embedded_box.size;
 	list_for_each_entry(iter, &damage->embedded_box.list, list)
@@ -529,7 +529,7 @@ done:
 	free_list(&damage->embedded_box.list);
 	reset_embedded_box(damage);
 
-	DBG(("    reduce: after region.n=%d\n", REGION_NUM_RECTS(region)));
+	DBG(("    reduce: after region.n=%ld\n", REGION_NUM_RECTS(region)));
 }
 
 static void damage_union(struct sna_damage *damage, const BoxRec *box)
@@ -1251,7 +1251,6 @@ fastcall struct sna_damage *_sna_damage_subtract_boxes(struct sna_damage *damage
 						       int dx, int dy)
 {
 	char damage_buf[1000];
-	char region_buf[120];
 
 	ErrorF("%s(%s - [(%d,%d), (%d,%d)...x%d])...\n", __FUNCTION__,
 	       _debug_describe_damage(damage_buf, sizeof(damage_buf), damage),

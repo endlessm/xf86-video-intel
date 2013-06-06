@@ -1548,7 +1548,7 @@ sna_pixmap_undo_cow(struct sna *sna, struct sna_pixmap *priv, unsigned flags)
 {
 	struct sna_cow *cow = COW(priv->cow);
 
-	DBG(("%s: pixmap=%ld, handle=%ld, flags=%x\n",
+	DBG(("%s: pixmap=%ld, handle=%d, flags=%x\n",
 	     __FUNCTION__,
 	     priv->pixmap->drawable.serialNumber,
 	     priv->gpu_bo->handle,
@@ -1668,7 +1668,7 @@ sna_pixmap_make_cow(struct sna *sna,
 	if (src_priv->gpu_bo->proxy)
 		return false;
 
-	DBG(("%s: make cow src=%ld, dst=%ld, handle=%ld (already cow? src=%d, dst=%d)\n",
+	DBG(("%s: make cow src=%ld, dst=%ld, handle=%d (already cow? src=%d, dst=%d)\n",
 	     __FUNCTION__,
 	     src_priv->pixmap->drawable.serialNumber,
 	     dst_priv->pixmap->drawable.serialNumber,

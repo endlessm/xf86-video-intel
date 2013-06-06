@@ -1591,7 +1591,7 @@ gen6_render_video(struct sna *sna,
 	unsigned filter;
 	BoxPtr box;
 
-	DBG(("%s: src=(%d, %d), dst=(%d, %d), %dx[(%d, %d), (%d, %d)...]\n",
+	DBG(("%s: src=(%d, %d), dst=(%d, %d), %ldx[(%d, %d), (%d, %d)...]\n",
 	     __FUNCTION__,
 	     src_width, src_height, dst_width, dst_height,
 	     REGION_NUM_RECTS(dstRegion),

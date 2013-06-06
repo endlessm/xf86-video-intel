@@ -3471,7 +3471,7 @@ sna_crtc_redisplay(xf86CrtcPtr crtc, RegionPtr region)
 	struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
 	int16_t tx, ty;
 
-	DBG(("%s: crtc %d [pipe=%d], damage (%d, %d), (%d, %d) x %d\n",
+	DBG(("%s: crtc %d [pipe=%d], damage (%d, %d), (%d, %d) x %ld\n",
 	     __FUNCTION__, sna_crtc->id, sna_crtc->pipe,
 	     region->extents.x1, region->extents.y1,
 	     region->extents.x2, region->extents.y2,
