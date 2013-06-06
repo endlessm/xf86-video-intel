@@ -1502,6 +1502,70 @@ done:
 	sna_dri_frame_event_info_free(sna, draw, info);
 }
 
+static bool
+sna_dri_immediate_blit(struct sna *sna,
+		       struct sna_dri_frame_event *info,
+		       bool sync, bool event)
+{
+	DrawablePtr draw = info->draw;
+	bool ret = false;
+
+	if (!can_blit(sna, draw, info->front, info->back))
+		goto out;
+
+	if (sna->flags & SNA_NO_WAIT)
+		sync = false;
+
+	DBG(("%s: emitting immediate blit, throttling client, synced? %d, chained? %d\n",
+	     __FUNCTION__, sync, sna_dri_window_get_chain((WindowPtr)draw) == info));
+
+	if (sync) {
+		info->type = DRI2_SWAP_THROTTLE;
+		if (sna_dri_window_get_chain((WindowPtr)draw) == info) {
+			drmVBlank vbl;
+
+			DBG(("%s: no pending blit, starting chain\n",
+			     __FUNCTION__));
+
+			info->bo = sna_dri_copy_to_front(sna, draw, NULL,
+							 get_private(info->front)->bo,
+							 get_private(info->back)->bo,
+							 true);
+			if (event) {
+				DRI2SwapComplete(info->client, draw, 0, 0, 0,
+						 DRI2_BLIT_COMPLETE,
+						 info->event_complete,
+						 info->event_data);
+
+				VG_CLEAR(vbl);
+				vbl.request.type =
+					DRM_VBLANK_RELATIVE |
+					DRM_VBLANK_NEXTONMISS |
+					DRM_VBLANK_EVENT |
+					pipe_select(info->pipe);
+				vbl.request.sequence = 0;
+				vbl.request.signal = (unsigned long)info;
+				ret = !sna_wait_vblank(sna, &vbl);
+			}
+		}
+	} else {
+		info->bo = sna_dri_copy_to_front(sna, draw, NULL,
+						 get_private(info->front)->bo,
+						 get_private(info->back)->bo,
+						 false);
+out:
+		if (event) {
+			DRI2SwapComplete(info->client, draw, 0, 0, 0,
+					 DRI2_BLIT_COMPLETE,
+					 info->event_complete,
+					 info->event_data);
+		}
+	}
+
+	return ret;
+}
+
+
 static void
 sna_dri_flip_get_back(struct sna *sna, struct sna_dri_frame_event *info)
 {
@@ -1704,22 +1768,8 @@ static void sna_dri_flip_event(struct sna *sna,
 			sna_dri_frame_event_info_free(sna, flip->draw, flip);
 		} else if (!sna_dri_flip_continue(sna, flip)) {
 			DBG(("%s: no longer able to flip\n", __FUNCTION__));
-
-			if (flip->draw) {
-				if (can_blit(sna, flip->draw, flip->front, flip->back)) {
-					flip->bo = sna_dri_copy_to_front(sna, flip->draw, NULL,
-									 get_private(flip->front)->bo,
-									 get_private(flip->back)->bo,
-									 false);
-				}
-				DRI2SwapComplete(flip->client, flip->draw,
-						 0, 0, 0,
-						 DRI2_BLIT_COMPLETE,
-						 flip->client ? flip->event_complete : NULL,
-						 flip->event_data);
-			}
-
-			sna_dri_frame_event_info_free(sna, flip->draw, flip);
+			if (flip->draw || !sna_dri_immediate_blit(sna, flip, true, flip->mode == 1))
+				sna_dri_frame_event_info_free(sna, flip->draw, flip);
 		}
 		break;
 
@@ -1753,59 +1803,6 @@ sna_dri_page_flip_handler(struct sna *sna,
 		return;
 
 	sna_dri_flip_event(sna, info);
-}
-
-static void
-sna_dri_immediate_blit(struct sna *sna,
-		       DrawablePtr draw,
-		       struct sna_dri_frame_event *info,
-		       bool sync)
-{
-	if (sna->flags & SNA_NO_WAIT)
-		sync = false;
-
-	DBG(("%s: emitting immediate blit, throttling client, synced? %d, chained? %d\n",
-	     __FUNCTION__, sync, sna_dri_window_get_chain((WindowPtr)draw) == info));
-
-	if (sync) {
-		info->type = DRI2_SWAP_THROTTLE;
-		if (sna_dri_window_get_chain((WindowPtr)draw) == info) {
-			drmVBlank vbl;
-
-			DBG(("%s: no pending blit, starting chain\n",
-			     __FUNCTION__));
-
-			info->bo = sna_dri_copy_to_front(sna, draw, NULL,
-							 get_private(info->front)->bo,
-							 get_private(info->back)->bo,
-							 true);
-			DRI2SwapComplete(info->client, draw, 0, 0, 0,
-					 DRI2_BLIT_COMPLETE,
-					 info->event_complete,
-					 info->event_data);
-
-			VG_CLEAR(vbl);
-			vbl.request.type =
-				DRM_VBLANK_RELATIVE |
-				DRM_VBLANK_NEXTONMISS |
-				DRM_VBLANK_EVENT |
-				pipe_select(info->pipe);
-			vbl.request.sequence = 0;
-			vbl.request.signal = (unsigned long)info;
-			if (sna_wait_vblank(sna, &vbl))
-				sna_dri_frame_event_info_free(sna, draw, info);
-		}
-	} else {
-		info->bo = sna_dri_copy_to_front(sna, draw, NULL,
-						 get_private(info->front)->bo,
-						 get_private(info->back)->bo,
-						 false);
-		DRI2SwapComplete(info->client, draw, 0, 0, 0,
-				 DRI2_BLIT_COMPLETE,
-				 info->event_complete,
-				 info->event_data);
-		sna_dri_frame_event_info_free(sna, draw, info);
-	}
 }
 
 static CARD64
@@ -2105,13 +2102,8 @@ sna_dri_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 
 	if (divisor == 0 && current_msc >= *target_msc - 1) {
 		bool sync = current_msc < *target_msc;
-		if (can_blit(sna, draw, front, back)) {
-			sna_dri_immediate_blit(sna, draw, info, sync);
-		} else {
-			DRI2SwapComplete(client, draw, 0, 0, 0,
-					 DRI2_BLIT_COMPLETE, func, data);
+		if (!sna_dri_immediate_blit(sna, info, sync, true))
 			sna_dri_frame_event_info_free(sna, draw, info);
-		}
 		*target_msc = current_msc + sync;
 		return TRUE;
 	}
