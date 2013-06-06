@@ -109,6 +109,9 @@ void sna_video_textured_setup(struct sna *sna, ScreenPtr screen);
 void sna_video_destroy_window(WindowPtr win);
 
 XvAdaptorPtr sna_xv_adaptor_alloc(struct sna *sna);
+int sna_xv_fixup_formats(ScreenPtr screen,
+			 XvFormatPtr formats,
+			 int num_formats);
 int sna_xv_alloc_port(unsigned long port, XvPortPtr in, XvPortPtr *out);
 int sna_xv_free_port(XvPortPtr port);
 

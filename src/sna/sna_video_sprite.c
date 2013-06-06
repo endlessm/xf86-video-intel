@@ -50,7 +50,7 @@
 
 static Atom xvColorKey;
 
-static const XvFormatRec formats[] = { {15, TrueColor}, {16, TrueColor}, {24, TrueColor} };
+static XvFormatRec formats[] = { {15}, {16}, {24} };
 static const XvImageRec images[] = { XVIMAGE_YUY2, XVIMAGE_UYVY, XVMC_YUV };
 static const XvAttributeRec attribs[] = {
 	{ XvSettable | XvGettable, 0, 0xffffff, "XV_COLORKEY" },
@@ -489,8 +489,9 @@ void sna_video_sprite_setup(struct sna *sna, ScreenPtr screen)
 	adaptor->pEncodings[0].height = IMAGE_MAX_HEIGHT;
 	adaptor->pEncodings[0].rate.numerator = 1;
 	adaptor->pEncodings[0].rate.denominator = 1;
-	adaptor->nFormats = ARRAY_SIZE(formats);
 	adaptor->pFormats = formats;
+	adaptor->nFormats = sna_xv_fixup_formats(screen, formats,
+						 ARRAY_SIZE(formats));
 	adaptor->nAttributes = ARRAY_SIZE(attribs);
 	adaptor->pAttributes = attribs;
 	adaptor->nImages = ARRAY_SIZE(images);

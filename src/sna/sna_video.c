@@ -564,6 +564,35 @@ sna_xv_free_port(XvPortPtr port)
 	return Success;
 }
 
+int
+sna_xv_fixup_formats(ScreenPtr screen, XvFormatPtr formats, int num_formats)
+{
+	XvFormatPtr out = formats;
+	int count = 0;
+
+	while (num_formats--) {
+		int num_visuals = screen->numVisuals;
+		VisualPtr v = screen->visuals;
+
+		while (num_visuals--) {
+			if (v->class == TrueColor &&
+			    v->nplanes == formats->depth) {
+				int tmp = out[count].depth;
+				out[count].depth = formats->depth;
+				out[count].visual = v->vid;
+				formats->depth = tmp;
+				count++;
+				break;
+			}
+			v++;
+		}
+
+		formats++;
+	}
+
+	return count;
+}
+
 static int
 sna_xv_query_adaptors(ScreenPtr screen,
 		      XvAdaptorPtr *adaptors,

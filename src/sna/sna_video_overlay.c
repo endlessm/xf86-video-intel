@@ -57,9 +57,7 @@ static Atom xvSyncToVblank;
 #define IMAGE_MAX_WIDTH_LEGACY	1024
 #define IMAGE_MAX_HEIGHT_LEGACY	1088
 
-static const XvFormatRec Formats[] = {
-	{15, TrueColor}, {16, TrueColor}, {24, TrueColor}
-};
+static XvFormatRec Formats[] = { {15}, {16}, {24} };
 
 static const XvAttributeRec Attributes[] = {
 	{XvSettable | XvGettable, 0, (1 << 24) - 1, "XV_COLORKEY"},
@@ -715,8 +713,9 @@ void sna_video_overlay_setup(struct sna *sna, ScreenPtr screen)
 	adaptor->pEncodings[0].height = sna->kgem.gen < 021 ? IMAGE_MAX_HEIGHT_LEGACY : IMAGE_MAX_HEIGHT;
 	adaptor->pEncodings[0].rate.numerator = 1;
 	adaptor->pEncodings[0].rate.denominator = 1;
-	adaptor->nFormats = ARRAY_SIZE(Formats);
 	adaptor->pFormats = Formats;
+	adaptor->nFormats = sna_xv_fixup_formats(screen, Formats,
+						 ARRAY_SIZE(Formats));
 	adaptor->nAttributes = NUM_ATTRIBUTES;
 	if (HAS_GAMMA(sna))
 		adaptor->nAttributes += GAMMA_ATTRIBUTES;
