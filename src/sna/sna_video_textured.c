@@ -397,7 +397,7 @@ void sna_video_textured_setup(struct sna *sna, ScreenPtr screen)
 		v->textured = true;
 		v->alignment = 4;
 		v->rotation = RR_Rotate_0;
-		v->SyncToVblank = 1;
+		v->SyncToVblank = (sna->flags & SNA_NO_WAIT) == 0;
 
 		RegionNull(&v->clip);
 
