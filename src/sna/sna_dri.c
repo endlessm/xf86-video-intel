@@ -998,6 +998,7 @@ sna_dri_copy_region(DrawablePtr draw,
 
 static inline int sna_wait_vblank(struct sna *sna, drmVBlank *vbl)
 {
+	DBG(("%s\n", __FUNCTION__));
 	return drmIoctl(sna->kgem.fd, DRM_IOCTL_WAIT_VBLANK, vbl);
 }
 
@@ -1516,8 +1517,9 @@ sna_dri_immediate_blit(struct sna *sna,
 	if (sna->flags & SNA_NO_WAIT)
 		sync = false;
 
-	DBG(("%s: emitting immediate blit, throttling client, synced? %d, chained? %d\n",
-	     __FUNCTION__, sync, sna_dri_window_get_chain((WindowPtr)draw) == info));
+	DBG(("%s: emitting immediate blit, throttling client, synced? %d, chained? %d, send-event? %d\n",
+	     __FUNCTION__, sync, sna_dri_window_get_chain((WindowPtr)draw) == info,
+	     event));
 
 	if (sync) {
 		info->type = DRI2_SWAP_THROTTLE;
@@ -1547,7 +1549,8 @@ sna_dri_immediate_blit(struct sna *sna,
 				vbl.request.signal = (unsigned long)info;
 				ret = !sna_wait_vblank(sna, &vbl);
 			}
-		}
+		} else
+			ret = true;
 	} else {
 		info->bo = sna_dri_copy_to_front(sna, draw, NULL,
 						 get_private(info->front)->bo,
@@ -1562,6 +1565,7 @@ out:
 		}
 	}
 
+	DBG(("%s: continue? %d\n", __FUNCTION__, ret));
 	return ret;
 }
 
