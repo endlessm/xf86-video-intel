@@ -281,12 +281,12 @@ sna_dri_create_buffer(DrawablePtr draw,
 
 		bo = ref(bo);
 		bpp = pixmap->drawable.bitsPerPixel;
-		DBG(("%s: attaching to front buffer %dx%d [%p:%d]\n",
-		     __FUNCTION__,
-		     pixmap->drawable.width, pixmap->drawable.height,
-		     pixmap, pixmap->refcnt));
 		if (pixmap == sna->front)
 			flags |= CREATE_SCANOUT;
+		DBG(("%s: attaching to front buffer %dx%d [%p:%d], scanout? %d\n",
+		     __FUNCTION__,
+		     pixmap->drawable.width, pixmap->drawable.height,
+		     pixmap, pixmap->refcnt, flags & CREATE_SCANOUT));
 		size = (uint32_t)pixmap->drawable.height << 16 | pixmap->drawable.width;
 		break;
 
@@ -299,6 +299,11 @@ sna_dri_create_buffer(DrawablePtr draw,
 		if (draw->width  == sna->front->drawable.width &&
 		    draw->height == sna->front->drawable.height)
 			flags |= CREATE_SCANOUT;
+		DBG(("%s: creating back buffer %dx%d, suitable for scanout? %d\n",
+		     __FUNCTION__,
+		     draw->width, draw->height,
+		     flags & CREATE_SCANOUT));
+
 		bo = kgem_create_2d(&sna->kgem,
 				    draw->width,
 				    draw->height,
@@ -1253,7 +1258,12 @@ can_flip(struct sna * sna,
 		     __FUNCTION__));
 		return false;
 	}
-	assert(get_private(back)->size == get_private(front)->size);
+
+	if (get_private(back)->size != get_private(front)->size) {
+		DBG(("%s: no, DRI2 drawable does not fit into scanout\n",
+		     __FUNCTION__));
+		return false;
+	}
 
 	DBG(("%s: window size: %dx%d, clip=(%d, %d), (%d, %d) x %d\n",
 	     __FUNCTION__,
