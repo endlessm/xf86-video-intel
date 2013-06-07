@@ -14199,8 +14199,10 @@ static bool start_flush(struct sna *sna, struct sna_pixmap *scanout)
 	if (!scanout)
 		return false;
 
-	if (sna->flags & SNA_FLUSH_GTT && scanout->gtt_dirty)
+	if (sna->flags & SNA_FLUSH_GTT && scanout->gtt_dirty) {
+		scanout->gpu_bo->needs_flush = true;
 		return true;
+	}
 
 	return scanout->cpu_damage || scanout->gpu_bo->exec;
 }
@@ -14223,8 +14225,10 @@ static bool stop_flush(struct sna *sna, struct sna_pixmap *scanout)
 	if (!scanout)
 		return false;
 
-	if (sna->flags & SNA_FLUSH_GTT && scanout->gtt_dirty)
+	if (sna->flags & SNA_FLUSH_GTT && scanout->gtt_dirty) {
+		scanout->gpu_bo->needs_flush = true;
 		return true;
+	}
 
 	return scanout->cpu_damage || scanout->gpu_bo->needs_flush;
 }
