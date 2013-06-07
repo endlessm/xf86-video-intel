@@ -140,6 +140,7 @@ struct sna_pixmap {
 	uint8_t clear :1;
 	uint8_t header :1;
 	uint8_t cpu :1;
+	uint8_t gtt_dirty :1;
 };
 
 struct sna_glyph {
@@ -217,6 +218,7 @@ struct sna {
 #define SNA_TRIPLE_BUFFER	0x4
 #define SNA_TEAR_FREE		0x10
 #define SNA_FORCE_SHADOW	0x20
+#define SNA_FLUSH_GTT		0x40
 #define SNA_REPROBE		0x80000000
 
 	unsigned cpu_features;

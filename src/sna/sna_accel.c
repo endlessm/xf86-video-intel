@@ -1828,6 +1828,7 @@ _sna_pixmap_move_to_cpu(PixmapPtr pixmap, unsigned int flags)
 			sna_damage_destroy(&priv->cpu_damage);
 			priv->clear = false;
 			priv->cpu = false;
+			priv->gtt_dirty = true;
 			list_del(&priv->flush_list);
 
 			assert(!priv->shm);
@@ -1889,6 +1890,7 @@ skip_inplace_map:
 				sna_pixmap_free_cpu(sna, priv);
 				list_del(&priv->flush_list);
 				priv->clear = false;
+				priv->gtt_dirty = true;
 			}
 			priv->cpu = false;
 
@@ -2279,6 +2281,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 								    region);
 				}
 				priv->clear = false;
+				priv->gtt_dirty = true;
 			}
 			assert_pixmap_damage(pixmap);
 			priv->cpu = false;
@@ -2857,6 +2860,8 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 				}
 				if (!ok)
 					return false;
+
+				priv->gtt_dirty = true;
 			}
 		}
 
@@ -3584,6 +3589,8 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 			}
 			if (!ok)
 				return NULL;
+
+			priv->gtt_dirty = true;
 		}
 	}
 
@@ -14192,6 +14199,9 @@ static bool start_flush(struct sna *sna, struct sna_pixmap *scanout)
 	if (!scanout)
 		return false;
 
+	if (sna->flags & SNA_FLUSH_GTT && scanout->gtt_dirty)
+		return true;
+
 	return scanout->cpu_damage || scanout->gpu_bo->exec;
 }
 
@@ -14213,6 +14223,9 @@ static bool stop_flush(struct sna *sna, struct sna_pixmap *scanout)
 	if (!scanout)
 		return false;
 
+	if (sna->flags & SNA_FLUSH_GTT && scanout->gtt_dirty)
+		return true;
+
 	return scanout->cpu_damage || scanout->gpu_bo->needs_flush;
 }
 
@@ -14223,6 +14236,12 @@ static void timer_enable(struct sna *sna, int whom, int interval)
 	sna->timer_active |= 1 << whom;
 	sna->timer_expire[whom] = TIME + interval;
 	DBG(("%s (time=%ld), starting timer %d\n", __FUNCTION__, (long)TIME, whom));
+}
+
+static void sna_pixmap_flush(struct sna *sna, struct sna_pixmap *priv)
+{
+	kgem_bo_flush(&sna->kgem, priv->gpu_bo);
+	priv->gtt_dirty = false;
 }
 
 static bool sna_accel_do_flush(struct sna *sna)
@@ -14250,7 +14269,7 @@ static bool sna_accel_do_flush(struct sna *sna)
 	} else if (!start_flush(sna, priv)) {
 		DBG(("%s -- no pending write to scanout\n", __FUNCTION__));
 		if (priv)
-			kgem_bo_flush(&sna->kgem, priv->gpu_bo);
+			sna_pixmap_flush(sna, priv);
 	} else
 		timer_enable(sna, FLUSH_TIMER, interval/2);
 
@@ -14427,7 +14446,7 @@ static void sna_accel_flush(struct sna *sna)
 	if (priv) {
 		sna_pixmap_force_to_gpu(priv->pixmap,
 					MOVE_READ | MOVE_ASYNC_HINT);
-		kgem_bo_flush(&sna->kgem, priv->gpu_bo);
+		sna_pixmap_flush(sna, priv);
 		assert(!priv->cpu);
 	}
 
