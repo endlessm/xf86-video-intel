@@ -2889,6 +2889,7 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 					     pixmap->devKind,
 					     0, 0,
 					     box, 1);
+			priv->gtt_dirty = true;
 		}
 		if (!ok)
 			return false;
@@ -2920,6 +2921,7 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 					     pixmap->devKind,
 					     0, 0,
 					     box, n);
+			priv->gtt_dirty = true;
 		}
 		if (!ok)
 			return false;
@@ -3581,11 +3583,11 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 						 pixmap->devKind);
 			} else {
 				ok = sna_write_boxes(sna, pixmap,
-						priv->gpu_bo, 0, 0,
-						pixmap->devPrivate.ptr,
-						pixmap->devKind,
-						0, 0,
-						box, n);
+						     priv->gpu_bo, 0, 0,
+						     pixmap->devPrivate.ptr,
+						     pixmap->devKind,
+						     0, 0,
+						     box, n);
 			}
 			if (!ok)
 				return NULL;
@@ -4976,6 +4978,8 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 						     src_dx, src_dy,
 						     box, n))
 					goto fallback;
+
+				dst_priv->gtt_dirty = true;
 			}
 
 			assert(dst_priv->clear == false);
