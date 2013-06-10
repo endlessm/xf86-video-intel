@@ -445,6 +445,7 @@ bool kgem_bo_write(struct kgem *kgem, struct kgem_bo *bo,
 		kgem_bo_retire(kgem, bo);
 		bo->domain = DOMAIN_NONE;
 	}
+	bo->gtt_dirty = true;
 	return true;
 }
 
@@ -4621,6 +4622,7 @@ void *kgem_bo_map(struct kgem *kgem, struct kgem_bo *bo)
 		if (drmIoctl(kgem->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain) == 0) {
 			kgem_bo_retire(kgem, bo);
 			bo->domain = DOMAIN_GTT;
+			bo->gtt_dirty = true;
 		}
 	}
 
@@ -4943,6 +4945,7 @@ void kgem_bo_sync__gtt(struct kgem *kgem, struct kgem_bo *bo)
 		if (drmIoctl(kgem->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain) == 0) {
 			kgem_bo_retire(kgem, bo);
 			bo->domain = DOMAIN_GTT;
+			bo->gtt_dirty = true;
 		}
 	}
 }

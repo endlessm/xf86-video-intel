@@ -1828,7 +1828,6 @@ _sna_pixmap_move_to_cpu(PixmapPtr pixmap, unsigned int flags)
 			sna_damage_destroy(&priv->cpu_damage);
 			priv->clear = false;
 			priv->cpu = false;
-			priv->gtt_dirty = true;
 			list_del(&priv->flush_list);
 
 			assert(!priv->shm);
@@ -1890,7 +1889,6 @@ skip_inplace_map:
 				sna_pixmap_free_cpu(sna, priv);
 				list_del(&priv->flush_list);
 				priv->clear = false;
-				priv->gtt_dirty = true;
 			}
 			priv->cpu = false;
 
@@ -2281,7 +2279,6 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 								    region);
 				}
 				priv->clear = false;
-				priv->gtt_dirty = true;
 			}
 			assert_pixmap_damage(pixmap);
 			priv->cpu = false;
@@ -2860,8 +2857,6 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 				}
 				if (!ok)
 					return false;
-
-				priv->gtt_dirty = true;
 			}
 		}
 
@@ -2889,7 +2884,6 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 					     pixmap->devKind,
 					     0, 0,
 					     box, 1);
-			priv->gtt_dirty = true;
 		}
 		if (!ok)
 			return false;
@@ -2921,7 +2915,6 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 					     pixmap->devKind,
 					     0, 0,
 					     box, n);
-			priv->gtt_dirty = true;
 		}
 		if (!ok)
 			return false;
@@ -3591,8 +3584,6 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 			}
 			if (!ok)
 				return NULL;
-
-			priv->gtt_dirty = true;
 		}
 	}
 
@@ -4978,8 +4969,6 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 						     src_dx, src_dy,
 						     box, n))
 					goto fallback;
-
-				dst_priv->gtt_dirty = true;
 			}
 
 			assert(dst_priv->clear == false);
@@ -14203,7 +14192,7 @@ static bool start_flush(struct sna *sna, struct sna_pixmap *scanout)
 	if (!scanout)
 		return false;
 
-	if (sna->flags & SNA_FLUSH_GTT && scanout->gtt_dirty) {
+	if (sna->flags & SNA_FLUSH_GTT && scanout->gpu_bo->gtt_dirty) {
 		scanout->gpu_bo->needs_flush = true;
 		return true;
 	}
@@ -14229,7 +14218,7 @@ static bool stop_flush(struct sna *sna, struct sna_pixmap *scanout)
 	if (!scanout)
 		return false;
 
-	if (sna->flags & SNA_FLUSH_GTT && scanout->gtt_dirty) {
+	if (sna->flags & SNA_FLUSH_GTT && scanout->gpu_bo->gtt_dirty) {
 		scanout->gpu_bo->needs_flush = true;
 		return true;
 	}
@@ -14249,7 +14238,6 @@ static void timer_enable(struct sna *sna, int whom, int interval)
 static void sna_pixmap_flush(struct sna *sna, struct sna_pixmap *priv)
 {
 	kgem_bo_flush(&sna->kgem, priv->gpu_bo);
-	priv->gtt_dirty = false;
 }
 
 static bool sna_accel_do_flush(struct sna *sna)

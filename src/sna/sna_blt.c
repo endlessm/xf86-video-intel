@@ -1719,8 +1719,6 @@ blt_put_composite(struct sna *sna,
 				     &box, 1);
 		assert(ok);
 	}
-
-	dst_priv->gtt_dirty = true;
 }
 
 fastcall static void blt_put_composite_box(struct sna *sna,
@@ -1757,8 +1755,6 @@ fastcall static void blt_put_composite_box(struct sna *sna,
 				     box, 1);
 		assert(ok);
 	}
-
-	dst_priv->gtt_dirty = true;
 }
 
 static void blt_put_composite_boxes(struct sna *sna,
@@ -1796,8 +1792,6 @@ static void blt_put_composite_boxes(struct sna *sna,
 				     box, n);
 		assert(ok);
 	}
-
-	dst_priv->gtt_dirty = true;
 }
 
 fastcall static void
@@ -1843,8 +1837,6 @@ blt_put_composite_with_alpha(struct sna *sna,
 				     &box, 1,
 				     0xffffffff, op->u.blt.pixel);
 	}
-
-	dst_priv->gtt_dirty = true;
 }
 
 fastcall static void
@@ -1882,8 +1874,6 @@ blt_put_composite_box_with_alpha(struct sna *sna,
 				     box, 1,
 				     0xffffffff, op->u.blt.pixel);
 	}
-
-	dst_priv->gtt_dirty = true;
 }
 
 static void
@@ -1922,8 +1912,6 @@ blt_put_composite_boxes_with_alpha(struct sna *sna,
 				     box, n,
 				     0xffffffff, op->u.blt.pixel);
 	}
-
-	dst_priv->gtt_dirty = true;
 }
 
 static bool

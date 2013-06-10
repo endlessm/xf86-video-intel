@@ -85,6 +85,7 @@ struct kgem_bo {
 	uint32_t tiling : 2;
 	uint32_t reusable : 1;
 	uint32_t gpu_dirty : 1;
+	uint32_t gtt_dirty : 1;
 	uint32_t domain : 2;
 	uint32_t needs_flush : 1;
 	uint32_t snoop : 1;
@@ -584,10 +585,12 @@ static inline void kgem_bo_mark_busy(struct kgem_bo *bo, int ring)
 
 inline static void __kgem_bo_clear_busy(struct kgem_bo *bo)
 {
-	bo->needs_flush = false;
-	list_del(&bo->request);
 	bo->rq = NULL;
+	list_del(&bo->request);
+
 	bo->domain = DOMAIN_NONE;
+	bo->needs_flush = false;
+	bo->gtt_dirty = false;
 }
 
 static inline bool kgem_bo_is_busy(struct kgem_bo *bo)
