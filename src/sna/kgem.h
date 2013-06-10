@@ -84,7 +84,7 @@ struct kgem_bo {
 	uint32_t pitch : 18; /* max 128k */
 	uint32_t tiling : 2;
 	uint32_t reusable : 1;
-	uint32_t dirty : 1;
+	uint32_t gpu_dirty : 1;
 	uint32_t domain : 2;
 	uint32_t needs_flush : 1;
 	uint32_t snoop : 1;
@@ -622,7 +622,7 @@ static inline bool kgem_bo_is_dirty(struct kgem_bo *bo)
 		return false;
 
 	assert(bo->refcnt);
-	return bo->dirty;
+	return bo->gpu_dirty;
 }
 
 static inline void kgem_bo_unclean(struct kgem *kgem, struct kgem_bo *bo)
@@ -642,7 +642,7 @@ static inline void __kgem_bo_mark_dirty(struct kgem_bo *bo)
 	     bo->handle, bo->proxy != NULL));
 
 	bo->exec->flags |= LOCAL_EXEC_OBJECT_WRITE;
-	bo->needs_flush = bo->dirty = true;
+	bo->needs_flush = bo->gpu_dirty = true;
 	list_move(&bo->request, &RQ(bo->rq)->buffers);
 }
 
@@ -653,7 +653,7 @@ static inline void kgem_bo_mark_dirty(struct kgem_bo *bo)
 		assert(bo->exec);
 		assert(bo->rq);
 
-		if (bo->dirty)
+		if (bo->gpu_dirty)
 			return;
 
 		__kgem_bo_mark_dirty(bo);

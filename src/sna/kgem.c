@@ -2139,7 +2139,7 @@ static void kgem_commit(struct kgem *kgem)
 
 		DBG(("%s: release handle=%d (proxy? %d), dirty? %d flush? %d, snoop? %d -> offset=%x\n",
 		     __FUNCTION__, bo->handle, bo->proxy != NULL,
-		     bo->dirty, bo->needs_flush, bo->snoop,
+		     bo->gpu_dirty, bo->needs_flush, bo->snoop,
 		     (unsigned)bo->exec->offset));
 
 		assert(!bo->purged);
@@ -2159,7 +2159,7 @@ static void kgem_commit(struct kgem *kgem)
 
 		bo->binding.offset = 0;
 		bo->domain = DOMAIN_GPU;
-		bo->dirty = false;
+		bo->gpu_dirty = false;
 
 		if (bo->proxy) {
 			/* proxies are not used for domain tracking */
@@ -2311,11 +2311,11 @@ static void kgem_finish_buffers(struct kgem *kgem)
 					list_replace(&bo->base.request,
 						     &shrink->request);
 					list_init(&bo->base.request);
-					shrink->needs_flush = bo->base.dirty;
+					shrink->needs_flush = bo->base.gpu_dirty;
 
 					bo->base.exec = NULL;
 					bo->base.rq = NULL;
-					bo->base.dirty = false;
+					bo->base.gpu_dirty = false;
 					bo->base.needs_flush = false;
 					bo->used = 0;
 
@@ -2356,11 +2356,11 @@ static void kgem_finish_buffers(struct kgem *kgem)
 					list_replace(&bo->base.request,
 						     &shrink->request);
 					list_init(&bo->base.request);
-					shrink->needs_flush = bo->base.dirty;
+					shrink->needs_flush = bo->base.gpu_dirty;
 
 					bo->base.exec = NULL;
 					bo->base.rq = NULL;
-					bo->base.dirty = false;
+					bo->base.gpu_dirty = false;
 					bo->base.needs_flush = false;
 					bo->used = 0;
 
@@ -2406,7 +2406,7 @@ static void kgem_cleanup(struct kgem *kgem)
 						      request);
 
 				bo->exec = NULL;
-				bo->dirty = false;
+				bo->gpu_dirty = false;
 				__kgem_bo_clear_busy(bo);
 				if (bo->refcnt == 0)
 					kgem_bo_free(kgem, bo);
@@ -2471,7 +2471,7 @@ void kgem_reset(struct kgem *kgem)
 			bo->binding.offset = 0;
 			bo->exec = NULL;
 			bo->target_handle = -1;
-			bo->dirty = false;
+			bo->gpu_dirty = false;
 
 			if (bo->needs_flush && __kgem_busy(kgem, bo->handle)) {
 				list_add(&bo->request, &kgem->flushing);
@@ -4417,7 +4417,7 @@ uint32_t kgem_add_reloc(struct kgem *kgem,
 				bo->exec = &_kgem_dummy_exec;
 			}
 
-			if (read_write_domain & 0x7fff && !bo->dirty)
+			if (read_write_domain & 0x7fff && !bo->gpu_dirty)
 				__kgem_bo_mark_dirty(bo);
 
 			bo = bo->proxy;
@@ -4445,7 +4445,7 @@ uint32_t kgem_add_reloc(struct kgem *kgem,
 		kgem->reloc[index].target_handle = bo->target_handle;
 		kgem->reloc[index].presumed_offset = bo->presumed_offset;
 
-		if (read_write_domain & 0x7fff && !bo->dirty) {
+		if (read_write_domain & 0x7fff && !bo->gpu_dirty) {
 			assert(!bo->snoop || kgem->can_blt_cpu);
 			__kgem_bo_mark_dirty(bo);
 		}
@@ -4953,10 +4953,10 @@ void kgem_clear_dirty(struct kgem *kgem)
 	struct kgem_bo *bo;
 
 	list_for_each_entry(bo, buffers, request) {
-		if (!bo->dirty)
+		if (!bo->gpu_dirty)
 			break;
 
-		bo->dirty = false;
+		bo->gpu_dirty = false;
 	}
 }
 
@@ -4979,7 +4979,7 @@ struct kgem_bo *kgem_create_proxy(struct kgem *kgem,
 	bo->size.bytes = length;
 
 	bo->io = target->io && target->proxy == NULL;
-	bo->dirty = target->dirty;
+	bo->gpu_dirty = target->gpu_dirty;
 	bo->tiling = target->tiling;
 	bo->pitch = target->pitch;
 	bo->flush = target->flush;
