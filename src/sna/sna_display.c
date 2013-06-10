@@ -1814,7 +1814,6 @@ sna_output_detect(xf86OutputPtr output)
 		conn.count_encoders = 0;
 		conn.count_props = 0;
 		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETCONNECTOR, &conn)) {
-			ErrorF("err = %d\n", errno);
 			sna_output->num_modes = min(old_count, sna_output->num_modes);
 			break;
 		}
@@ -1880,8 +1879,21 @@ sna_output_attach_edid(xf86OutputPtr output)
 	blob.length = sna_output->edid_len;
 
 	blob.blob_id = sna_output->prop_values[sna_output->edid_idx];
-	if (blob.blob_id == sna_output->edid_blob_id)
+	if (blob.blob_id == sna_output->edid_blob_id) {
+		if (output->MonInfo) {
+			/* XXX the property keeps on disappearing... */
+			RRChangeOutputProperty(output->randr_output,
+					       MakeAtom("EDID", strlen("EDID"), TRUE),
+					       XA_INTEGER, 8, PropModeReplace,
+					       sna_output->edid_len,
+					       sna_output->edid_raw,
+					       FALSE, TRUE);
+
+			return;
+		}
+
 		goto skip_read;
+	}
 
 	blob.data = (uintptr_t)raw;
 	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPBLOB, &blob))
