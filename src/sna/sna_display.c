@@ -776,7 +776,6 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 	int i;
 
 	DBG(("%s\n", __FUNCTION__));
-	kgem_bo_submit(&sna->kgem, sna_crtc->bo);
 
 	assert(xf86_config->num_output < ARRAY_SIZE(output_ids));
 
@@ -2072,9 +2071,6 @@ sna_output_dpms(xf86OutputPtr output, int dpms)
 
 	DBG(("%s: dpms=%d\n", __FUNCTION__, dpms));
 
-	if (dpms != DPMSModeOn)
-		kgem_submit(&sna->kgem);
-
 	/* Record the value of the backlight before turning
 	 * off the display, and reset if after turning it on.
 	 * Order is important as the kernel may record and also
@@ -2887,7 +2883,7 @@ sna_page_flip(struct sna *sna,
 	DBG(("%s: handle %d attached\n", __FUNCTION__, bo->handle));
 	assert(bo->refcnt);
 
-	kgem_submit(&sna->kgem);
+	kgem_bo_submit(&sna->kgem, bo);
 
 	/*
 	 * Queue flips on all enabled CRTCs
