@@ -523,21 +523,20 @@ static struct kgem_bo *upload(struct sna *sna,
 
 	priv = sna_pixmap(pixmap);
 	if (priv) {
+		RegionRec region;
+
 		if (priv->cpu_damage == NULL)
+			return NULL; /* uninitialised */
+
+		region.extents = *box;
+		region.data = NULL;
+		if (!sna_drawable_move_region_to_cpu(&pixmap->drawable,
+						     &region, MOVE_READ))
 			return NULL;
 
-		/* As we know this box is on the CPU just fixup the shadow */
-		if (priv->mapped) {
-			pixmap->devPrivate.ptr = NULL;
-			priv->mapped = false;
-		}
-		if (pixmap->devPrivate.ptr == NULL) {
-			if (priv->ptr == NULL) /* uninitialised */
-				return NULL;
-			assert(priv->stride);
-			pixmap->devPrivate.ptr = PTR(priv->ptr);
-			pixmap->devKind = priv->stride;
-		}
+		assert(!priv->mapped);
+		if (pixmap->devPrivate.ptr == NULL)
+			return NULL; /* uninitialised */
 	}
 
 	bo = kgem_upload_source_image(&sna->kgem,
@@ -1188,20 +1187,32 @@ sna_render_picture_extract(struct sna *sna,
 	if (src_bo == NULL) {
 		src_bo = move_to_gpu(pixmap, &box, false);
 		if (src_bo == NULL) {
+			struct sna_pixmap *priv = sna_pixmap(pixmap);
+			if (priv) {
+				RegionRec region;
+
+				region.extents = box;
+				region.data = NULL;
+				if (!sna_drawable_move_region_to_cpu(&pixmap->drawable,
+								     &region, MOVE_READ))
+					return 0;
+
+				assert(!priv->mapped);
+				if (pixmap->devPrivate.ptr == NULL)
+					return 0; /* uninitialised */
+			}
+
 			bo = kgem_upload_source_image(&sna->kgem,
 						      pixmap->devPrivate.ptr,
 						      &box,
 						      pixmap->devKind,
 						      pixmap->drawable.bitsPerPixel);
-			if (bo != NULL &&
+			if (priv != NULL && bo != NULL &&
 			    box.x2 - box.x1 == pixmap->drawable.width &&
 			    box.y2 - box.y1 == pixmap->drawable.height) {
-				struct sna_pixmap *priv = sna_pixmap(pixmap);
-				if (priv) {
-					assert(priv->gpu_damage == NULL);
-					assert(priv->gpu_bo == NULL);
-					kgem_proxy_bo_attach(bo, &priv->gpu_bo);
-				}
+				assert(priv->gpu_damage == NULL);
+				assert(priv->gpu_bo == NULL);
+				kgem_proxy_bo_attach(bo, &priv->gpu_bo);
 			}
 		}
 	}
