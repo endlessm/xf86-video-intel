@@ -4861,6 +4861,22 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 			}
 		}
 
+		if (src_priv) {
+			bool ret;
+
+			RegionTranslate(region, src_dx, src_dy);
+			ret = sna_drawable_move_region_to_cpu(&src_pixmap->drawable,
+							      region, MOVE_READ);
+			RegionTranslate(region, -src_dx, -src_dy);
+			if (!ret)
+				goto fallback;
+
+			assert(!src_priv->mapped);
+			if (src_pixmap->devPrivate.ptr == NULL)
+				/* uninitialised!*/
+				return;
+		}
+
 		if (alu != GXcopy) {
 			PixmapPtr tmp;
 			struct kgem_bo *src_bo;
@@ -4935,21 +4951,6 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 		} else {
 			DBG(("%s: dst is on the GPU, src is on the CPU, uploading into dst\n",
 			     __FUNCTION__));
-
-			if (src_priv) {
-				/* Fixup the shadow pointer as necessary */
-				if (src_priv->mapped) {
-					assert(!src_priv->shm);
-					src_pixmap->devPrivate.ptr = NULL;
-					src_priv->mapped = false;
-				}
-				if (src_pixmap->devPrivate.ptr == NULL) {
-					if (!src_priv->ptr) /* uninitialised!*/
-						return;
-					src_pixmap->devPrivate.ptr = PTR(src_priv->ptr);
-					src_pixmap->devKind = src_priv->stride;
-				}
-			}
 
 			if (!dst_priv->pinned && replaces) {
 				stride = src_pixmap->devKind;
