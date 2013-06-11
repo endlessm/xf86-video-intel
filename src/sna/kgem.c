@@ -4182,16 +4182,14 @@ void _kgem_bo_destroy(struct kgem *kgem, struct kgem_bo *bo)
 
 void __kgem_flush(struct kgem *kgem, struct kgem_bo *bo)
 {
-	assert(bo->rq);
-	assert(bo->exec == NULL);
 	assert(bo->needs_flush);
 
 	/* The kernel will emit a flush *and* update its own flushing lists. */
-	if (!__kgem_busy(kgem, bo->handle))
+	if (bo->exec == NULL && !__kgem_busy(kgem, bo->handle))
 		__kgem_bo_clear_busy(bo);
 
-	DBG(("%s: handle=%d, busy?=%d\n",
-	     __FUNCTION__, bo->handle, bo->rq != NULL));
+	DBG(("%s: handle=%d, busy?=%d, flushed?=%d\n",
+	     __FUNCTION__, bo->handle, bo->rq != NULL, bo->exec == NULL));
 }
 
 inline static bool needs_semaphore(struct kgem *kgem, struct kgem_bo *bo)

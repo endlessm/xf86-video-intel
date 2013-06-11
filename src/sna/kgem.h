@@ -338,10 +338,15 @@ static inline void kgem_bo_flush(struct kgem *kgem, struct kgem_bo *bo)
 		return;
 
 	/* If the kernel fails to emit the flush, then it will be forced when
-	 * we assume direct access. And as the useual failure is EIO, we do
-	 * not actualy care.
+	 * we assume direct access. And as the usual failure is EIO, we do
+	 * not actually care.
 	 */
 	__kgem_flush(kgem, bo);
+
+	/* Whatever actually happens, we can regard the GTT write domain
+	 * as being flushed.
+	 */
+	bo->gtt_dirty = false;
 }
 
 static inline struct kgem_bo *kgem_bo_reference(struct kgem_bo *bo)
