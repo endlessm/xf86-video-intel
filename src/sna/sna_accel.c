@@ -14247,11 +14247,6 @@ static void timer_enable(struct sna *sna, int whom, int interval)
 	DBG(("%s (time=%ld), starting timer %d\n", __FUNCTION__, (long)TIME, whom));
 }
 
-static void sna_pixmap_flush(struct sna *sna, struct sna_pixmap *priv)
-{
-	kgem_bo_flush(&sna->kgem, priv->gpu_bo);
-}
-
 static bool sna_accel_do_flush(struct sna *sna)
 {
 	struct sna_pixmap *priv;
@@ -14277,7 +14272,7 @@ static bool sna_accel_do_flush(struct sna *sna)
 	} else if (!start_flush(sna, priv)) {
 		DBG(("%s -- no pending write to scanout\n", __FUNCTION__));
 		if (priv)
-			sna_pixmap_flush(sna, priv);
+			kgem_scanout_flush(&sna->kgem, priv->gpu_bo);
 	} else
 		timer_enable(sna, FLUSH_TIMER, interval/2);
 
@@ -14454,7 +14449,7 @@ static void sna_accel_flush(struct sna *sna)
 	if (priv) {
 		sna_pixmap_force_to_gpu(priv->pixmap,
 					MOVE_READ | MOVE_ASYNC_HINT);
-		sna_pixmap_flush(sna, priv);
+		kgem_scanout_flush(&sna->kgem, priv->gpu_bo);
 		assert(!priv->cpu);
 	}
 

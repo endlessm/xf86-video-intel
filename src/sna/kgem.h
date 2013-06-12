@@ -329,25 +329,7 @@ static inline void kgem_bo_submit(struct kgem *kgem, struct kgem_bo *bo)
 		_kgem_submit(kgem);
 }
 
-void __kgem_flush(struct kgem *kgem, struct kgem_bo *bo);
-static inline void kgem_bo_flush(struct kgem *kgem, struct kgem_bo *bo)
-{
-	kgem_bo_submit(kgem, bo);
-
-	if (!bo->needs_flush)
-		return;
-
-	/* If the kernel fails to emit the flush, then it will be forced when
-	 * we assume direct access. And as the usual failure is EIO, we do
-	 * not actually care.
-	 */
-	__kgem_flush(kgem, bo);
-
-	/* Whatever actually happens, we can regard the GTT write domain
-	 * as being flushed.
-	 */
-	bo->gtt_dirty = false;
-}
+void kgem_scanout_flush(struct kgem *kgem, struct kgem_bo *bo);
 
 static inline struct kgem_bo *kgem_bo_reference(struct kgem_bo *bo)
 {

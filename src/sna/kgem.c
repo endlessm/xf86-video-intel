@@ -1638,7 +1638,7 @@ static void kgem_bo_clear_scanout(struct kgem *kgem, struct kgem_bo *bo)
 	     __FUNCTION__, bo->handle, bo->delta, bo->reusable));
 	if (bo->delta) {
 		/* XXX will leak if we are not DRM_MASTER. *shrug* */
-		drmModeRmFB(kgem->fd, bo->delta);
+		drmIoctl(kgem->fd, DRM_IOCTL_MODE_RMFB, &bo->delta);
 		bo->delta = 0;
 	}
 
@@ -4184,16 +4184,40 @@ void _kgem_bo_destroy(struct kgem *kgem, struct kgem_bo *bo)
 	__kgem_bo_destroy(kgem, bo);
 }
 
-void __kgem_flush(struct kgem *kgem, struct kgem_bo *bo)
+static void __kgem_flush(struct kgem *kgem, struct kgem_bo *bo)
 {
+	assert(bo->rq);
+	assert(bo->exec == NULL);
 	assert(bo->needs_flush);
 
 	/* The kernel will emit a flush *and* update its own flushing lists. */
-	if (bo->exec == NULL && !__kgem_busy(kgem, bo->handle))
+	if (!__kgem_busy(kgem, bo->handle))
 		__kgem_bo_clear_busy(bo);
 
-	DBG(("%s: handle=%d, busy?=%d, flushed?=%d\n",
-	     __FUNCTION__, bo->handle, bo->rq != NULL, bo->exec == NULL));
+	DBG(("%s: handle=%d, busy?=%d\n",
+	     __FUNCTION__, bo->handle, bo->rq != NULL));
+}
+
+void kgem_scanout_flush(struct kgem *kgem, struct kgem_bo *bo)
+{
+	kgem_bo_submit(kgem, bo);
+	if (!bo->needs_flush)
+		return;
+
+	/* If the kernel fails to emit the flush, then it will be forced when
+	 * we assume direct access. And as the usual failure is EIO, we do
+	 * not actually care.
+	 */
+	assert(bo->exec == NULL);
+	if (bo->rq)
+		__kgem_flush(kgem, bo);
+
+	/* Whatever actually happens, we can regard the GTT write domain
+	 * as being flushed.
+	 */
+	bo->gtt_dirty = false;
+	bo->needs_flush = false;
+	bo->domain = DOMAIN_NONE;
 }
 
 inline static bool needs_semaphore(struct kgem *kgem, struct kgem_bo *bo)

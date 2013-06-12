@@ -3651,7 +3651,7 @@ void sna_mode_redisplay(struct sna *sna)
 		RegionIntersect(&damage, &damage, region);
 		if (RegionNotEmpty(&damage)) {
 			sna_crtc_redisplay(crtc, &damage);
-			kgem_bo_flush(&sna->kgem, sna_crtc->bo);
+			kgem_scanout_flush(&sna->kgem, sna_crtc->bo);
 		}
 		RegionUninit(&damage);
 	}
