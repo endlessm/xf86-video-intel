@@ -757,7 +757,11 @@ static bool test_has_semaphores_enabled(struct kgem *kgem)
 
 static bool __kgem_throttle(struct kgem *kgem)
 {
-	if (drmIoctl(kgem->fd, DRM_IOCTL_I915_GEM_THROTTLE, NULL) == 0)
+	/* Let this be woken up by sigtimer so that we don't block here
+	 * too much and completely starve X. We will sleep again shortly,
+	 * and so catch up or detect the hang.
+	 */
+	if (ioctl(kgem->fd, DRM_IOCTL_I915_GEM_THROTTLE) == 0)
 		return false;
 
 	return errno == EIO;
