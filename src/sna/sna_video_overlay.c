@@ -737,7 +737,6 @@ void sna_video_overlay_setup(struct sna *sna, ScreenPtr screen)
 
 	adaptor->nPorts = 1;
 	adaptor->pPorts = port;
-
 	adaptor->base_id = port->id = FakeClientID(0);
 	AddResource(port->id, XvGetRTPort(), port);
 

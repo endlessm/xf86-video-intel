@@ -350,10 +350,14 @@ void sna_video_textured_setup(struct sna *sna, ScreenPtr screen)
 		return;
 
 	video = calloc(nports, sizeof(struct sna_video));
-	if ( video == NULL) {
+	adaptor->pPorts = calloc(nports, sizeof(XvPortRec));
+	if (video == NULL || adaptor->pPorts == NULL) {
+		free(video);
+		free(adaptor->pPorts);
 		sna->xv.num_adaptors--;
 		return;
 	}
+
 
 	adaptor->type = XvInputMask | XvImageMask;
 	adaptor->pScreen = screen;
@@ -387,8 +391,6 @@ void sna_video_textured_setup(struct sna *sna, ScreenPtr screen)
 	adaptor->ddPutImage = sna_video_textured_put_image;
 	adaptor->ddQueryImageAttributes = sna_video_textured_query;
 
-	adaptor->nPorts = nports;
-	adaptor->pPorts = calloc(nports, sizeof(XvPortRec));
 	for (i = 0; i < nports; i++) {
 		struct sna_video *v = &video[i];
 		XvPortPtr port = &adaptor->pPorts[i];
@@ -413,6 +415,7 @@ void sna_video_textured_setup(struct sna *sna, ScreenPtr screen)
 		port->devPriv.ptr = v;
 	}
 	adaptor->base_id = adaptor->pPorts[0].id;
+	adaptor->nPorts = nports;
 
 	xvBrightness = MAKE_ATOM("XV_BRIGHTNESS");
 	xvContrast = MAKE_ATOM("XV_CONTRAST");
