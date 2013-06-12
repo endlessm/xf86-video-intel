@@ -606,8 +606,21 @@ sna_xv_query_adaptors(ScreenPtr screen,
 }
 
 static Bool
-sna_xv_close_screen(ScreenPtr screen)
+sna_xv_close_screen(CLOSE_SCREEN_ARGS_DECL)
 {
+	struct sna *sna = to_sna_from_screen(screen);
+	int i;
+
+	for (i = 0; i < sna->xv.num_adaptors; i++) {
+		free(sna->xv.adaptors[i].pPorts->devPriv.ptr);
+		free(sna->xv.adaptors[i].pPorts);
+		free(sna->xv.adaptors[i].pEncodings);
+	}
+	free(sna->xv.adaptors);
+
+	sna->xv.adaptors = NULL;
+	sna->xv.num_adaptors = 0;
+
 	return TRUE;
 }
 
