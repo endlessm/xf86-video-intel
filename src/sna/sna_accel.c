@@ -2451,7 +2451,11 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 			if (flags & MOVE_WRITE) {
 				int n = RegionNumRects(region), i;
 				BoxPtr boxes = RegionRects(region);
-				BoxPtr blocks = malloc(sizeof(BoxRec) * RegionNumRects(region));
+				BoxPtr blocks;
+
+				blocks = NULL;
+				if (priv->cpu_damage == NULL)
+					blocks = malloc(sizeof(BoxRec) * RegionNumRects(region));
 				if (blocks) {
 					for (i = 0; i < n; i++) {
 						blocks[i].x1 = boxes[i].x1 & ~31;
