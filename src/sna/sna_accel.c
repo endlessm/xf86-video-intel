@@ -1783,6 +1783,7 @@ _sna_pixmap_move_to_cpu(PixmapPtr pixmap, unsigned int flags)
 	     pixmap->drawable.height,
 	     flags));
 
+	assert(flags & (MOVE_READ | MOVE_WRITE));
 	assert_pixmap_damage(pixmap);
 
 	priv = sna_pixmap(pixmap);
@@ -2061,7 +2062,8 @@ done:
 			sna_pixmap_free_gpu(sna, priv);
 		}
 	}
-	priv->cpu = (flags & MOVE_ASYNC_HINT) == 0;
+	priv->cpu = (flags & (MOVE_INPLACE_HINT | MOVE_ASYNC_HINT)) == 0;
+	assert(priv->cpu == false || !DAMAGE_IS_ALL(priv->gpu_damage));
 	assert(pixmap->devPrivate.ptr);
 	assert(pixmap->devKind);
 	assert_pixmap_damage(pixmap);
@@ -2191,6 +2193,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 	if (flags & MOVE_WRITE) {
 		assert_drawable_contains_box(drawable, &region->extents);
 	}
+	assert(flags & (MOVE_WRITE | MOVE_READ));
 
 	if (box_empty(&region->extents))
 		return true;
@@ -2593,6 +2596,7 @@ done:
 
 out:
 	if (flags & MOVE_WRITE) {
+		assert(!DAMAGE_IS_ALL(priv->gpu_damage));
 		priv->source_count = SOURCE_BIAS;
 		assert(priv->gpu_bo == NULL || priv->gpu_bo->proxy == NULL);
 		assert(priv->gpu_bo || priv->gpu_damage == NULL);
@@ -2606,7 +2610,8 @@ out:
 		assert(pixmap->devPrivate.ptr == (void *)((unsigned long)priv->cpu_bo->map & ~3));
 		assert((flags & MOVE_WRITE) == 0 || !kgem_bo_is_busy(priv->cpu_bo));
 	}
-	priv->cpu = (flags & MOVE_ASYNC_HINT) == 0;
+	priv->cpu = (flags & (MOVE_INPLACE_HINT | MOVE_ASYNC_HINT)) == 0;
+	assert(priv->cpu == false || !DAMAGE_IS_ALL(priv->gpu_damage));
 	assert(pixmap->devPrivate.ptr);
 	assert(pixmap->devKind);
 	assert_pixmap_damage(pixmap);
