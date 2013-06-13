@@ -1014,6 +1014,8 @@ gen4_emit_state(struct sna *sna,
 {
 	bool flush;
 
+	assert(op->dst.bo->exec);
+
 	flush = wm_binding_table & 1;
 	if (kgem_bo_is_dirty(op->src.bo) || kgem_bo_is_dirty(op->mask.bo)) {
 		DBG(("%s: flushing dirty (%d, %d), forced? %d\n", __FUNCTION__,

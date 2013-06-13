@@ -1048,6 +1048,8 @@ gen7_emit_state(struct sna *sna,
 {
 	bool need_stall;
 
+	assert(op->dst.bo->exec);
+
 	if (sna->render_state.gen7.emit_flush)
 		gen7_emit_pipe_flush(sna);
 
@@ -1063,8 +1065,8 @@ gen7_emit_state(struct sna *sna,
 	if (kgem_bo_is_dirty(op->src.bo) || kgem_bo_is_dirty(op->mask.bo)) {
 		gen7_emit_pipe_invalidate(sna);
 		kgem_clear_dirty(&sna->kgem);
-		if (op->dst.bo->exec)
-			kgem_bo_mark_dirty(op->dst.bo);
+		assert(op->dst.bo->exec);
+		kgem_bo_mark_dirty(op->dst.bo);
 		need_stall = false;
 	}
 	if (need_stall)

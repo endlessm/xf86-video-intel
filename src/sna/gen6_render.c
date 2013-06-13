@@ -862,6 +862,8 @@ gen6_emit_state(struct sna *sna,
 {
 	bool need_stall = wm_binding_table & 1;
 
+	assert(op->dst.bo->exec);
+
 	if (gen6_emit_cc(sna, GEN6_BLEND(op->u.gen6.flags)))
 		need_stall = false;
 	gen6_emit_sampler(sna, GEN6_SAMPLER(op->u.gen6.flags));
@@ -875,8 +877,8 @@ gen6_emit_state(struct sna *sna,
 	if (kgem_bo_is_dirty(op->src.bo) || kgem_bo_is_dirty(op->mask.bo)) {
 		gen6_emit_flush(sna);
 		kgem_clear_dirty(&sna->kgem);
-		if (op->dst.bo->exec)
-			kgem_bo_mark_dirty(op->dst.bo);
+		assert(op->dst.bo->exec);
+		kgem_bo_mark_dirty(op->dst.bo);
 		need_stall = false;
 	}
 	if (need_stall) {

@@ -1975,6 +1975,7 @@ static void gen3_emit_target(struct sna *sna,
 
 		state->current_dst = bo->unique_id;
 	}
+	assert(bo->exec);
 	kgem_bo_mark_dirty(bo);
 }
 
