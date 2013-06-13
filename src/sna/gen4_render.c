@@ -1432,7 +1432,6 @@ gen4_render_video(struct sna *sna,
 		OUT_BATCH(MI_FLUSH | MI_INHIBIT_RENDER_CACHE_FLUSH);
 	} while (1);
 
-	priv->clear = false;
 	return true;
 }
 

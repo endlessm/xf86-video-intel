@@ -5533,7 +5533,6 @@ gen3_render_video(struct sna *sna,
 						  pix_xoff, pix_yoff);
 		}
 	}
-	priv->clear = false;
 
 	return true;
 }
