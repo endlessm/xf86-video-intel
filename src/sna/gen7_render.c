@@ -1638,33 +1638,41 @@ gen7_composite_create_blend_state(struct sna_static_stream *stream)
 }
 
 static uint32_t gen7_bind_video_source(struct sna *sna,
-				       struct kgem_bo *src_bo,
-				       uint32_t src_offset,
-				       int src_width,
-				       int src_height,
-				       int src_pitch,
-				       uint32_t src_surf_format)
+				       struct kgem_bo *bo,
+				       uint32_t offset,
+				       int width,
+				       int height,
+				       int pitch,
+				       uint32_t format)
 {
-	struct gen7_surface_state *ss;
+	uint32_t *ss, bind;
 
-	sna->kgem.surface -= sizeof(struct gen7_surface_state) / sizeof(uint32_t);
+	bind = sna->kgem.surface -=
+		sizeof(struct gen7_surface_state) / sizeof(uint32_t);
 
-	ss = memset(sna->kgem.batch + sna->kgem.surface, 0, sizeof(*ss));
-	ss->ss0.surface_type = GEN7_SURFACE_2D;
-	ss->ss0.surface_format = src_surf_format;
+	assert(bo->tiling == I915_TILING_NONE);
 
-	ss->ss1.base_addr =
-		kgem_add_reloc(&sna->kgem,
-			       sna->kgem.surface + 1,
-			       src_bo,
+	ss = sna->kgem.batch + bind;
+	ss[0] = (GEN7_SURFACE_2D << GEN7_SURFACE_TYPE_SHIFT |
+		 format << GEN7_SURFACE_FORMAT_SHIFT);
+	ss[1] = kgem_add_reloc(&sna->kgem, bind + 1, bo,
 			       I915_GEM_DOMAIN_SAMPLER << 16,
-			       src_offset);
+			       offset);
+	ss[2] = ((width - 1)  << GEN7_SURFACE_WIDTH_SHIFT |
+		 (height - 1) << GEN7_SURFACE_HEIGHT_SHIFT);
+	ss[3] = (pitch - 1) << GEN7_SURFACE_PITCH_SHIFT;
+	ss[4] = 0;
+	ss[5] = 0;
+	ss[6] = 0;
+	ss[7] = 0;
+	if (sna->kgem.gen == 075)
+		ss[7] |= HSW_SURFACE_SWIZZLE(RED, GREEN, BLUE, ALPHA);
 
-	ss->ss2.width  = src_width - 1;
-	ss->ss2.height = src_height - 1;
-	ss->ss3.pitch  = src_pitch - 1;
+	DBG(("[%x] bind bo(handle=%d, addr=%d), format=%d, width=%d, height=%d, pitch=%d, offset=%d\n",
+	     bind, bo->handle, ss[1],
+	     format, width, height, pitch, offset));
 
-	return sna->kgem.surface * sizeof(uint32_t);
+	return bind * sizeof(uint32_t);
 }
 
 static void gen7_emit_video_state(struct sna *sna,
