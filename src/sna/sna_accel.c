@@ -2062,8 +2062,9 @@ done:
 			sna_pixmap_free_gpu(sna, priv);
 		}
 	}
-	priv->cpu = (flags & (MOVE_INPLACE_HINT | MOVE_ASYNC_HINT)) == 0;
-	assert(priv->cpu == false || !DAMAGE_IS_ALL(priv->gpu_damage));
+	priv->cpu =
+		(flags & (MOVE_INPLACE_HINT | MOVE_ASYNC_HINT)) == 0 &&
+		!DAMAGE_IS_ALL(priv->gpu_damage);
 	assert(pixmap->devPrivate.ptr);
 	assert(pixmap->devKind);
 	assert_pixmap_damage(pixmap);
@@ -2610,8 +2611,9 @@ out:
 		assert(pixmap->devPrivate.ptr == (void *)((unsigned long)priv->cpu_bo->map & ~3));
 		assert((flags & MOVE_WRITE) == 0 || !kgem_bo_is_busy(priv->cpu_bo));
 	}
-	priv->cpu = (flags & (MOVE_INPLACE_HINT | MOVE_ASYNC_HINT)) == 0;
-	assert(priv->cpu == false || !DAMAGE_IS_ALL(priv->gpu_damage));
+	priv->cpu =
+		(flags & (MOVE_INPLACE_HINT | MOVE_ASYNC_HINT)) == 0 &&
+		!DAMAGE_IS_ALL(priv->gpu_damage);
 	assert(pixmap->devPrivate.ptr);
 	assert(pixmap->devKind);
 	assert_pixmap_damage(pixmap);
