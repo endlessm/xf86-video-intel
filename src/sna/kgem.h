@@ -58,6 +58,7 @@ struct kgem_bo {
 	void *map;
 #define IS_CPU_MAP(ptr) ((uintptr_t)(ptr) & 1)
 #define IS_GTT_MAP(ptr) (ptr && ((uintptr_t)(ptr) & 1) == 0)
+#define MAP(ptr) ((void*)((uintptr_t)(ptr) & ~3))
 
 	struct kgem_bo_binding {
 		struct kgem_bo_binding *next;

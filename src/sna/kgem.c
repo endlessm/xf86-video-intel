@@ -104,7 +104,6 @@ search_snoop_cache(struct kgem *kgem, unsigned int num_pages, unsigned flags);
 #define MAX_CPU_VMA_CACHE INT16_MAX
 #define MAP_PRESERVE_TIME 10
 
-#define MAP(ptr) ((void*)((uintptr_t)(ptr) & ~3))
 #define MAKE_CPU_MAP(ptr) ((void*)((uintptr_t)(ptr) | 1))
 #define MAKE_USER_MAP(ptr) ((void*)((uintptr_t)(ptr) | 3))
 #define IS_USER_MAP(ptr) ((uintptr_t)(ptr) & 2)
@@ -5659,6 +5658,7 @@ struct kgem_bo *kgem_create_buffer_2d(struct kgem *kgem,
 		bo->size.bytes -= stride;
 	}
 
+	bo->map = MAKE_CPU_MAP(*ret);
 	bo->pitch = stride;
 	bo->unique_id = kgem_get_unique_id(kgem);
 	return bo;
@@ -5703,7 +5703,7 @@ void kgem_proxy_bo_attach(struct kgem_bo *bo,
 			  struct kgem_bo **ptr)
 {
 	DBG(("%s: handle=%d\n", __FUNCTION__, bo->handle));
-	assert(bo->map == NULL);
+	assert(bo->map == NULL || IS_CPU_MAP(bo->map));
 	assert(bo->proxy);
 	list_add(&bo->vma, &bo->proxy->vma);
 	bo->map = ptr;

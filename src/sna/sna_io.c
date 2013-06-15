@@ -74,6 +74,7 @@ static void read_boxes_inplace(struct kgem *kgem,
 	if (src == NULL)
 		return;
 
+	assert(src != dst);
 	do {
 		DBG(("%s: copying box (%d, %d), (%d, %d)\n",
 		     __FUNCTION__, box->x1, box->y1, box->x2, box->y2));

@@ -1412,6 +1412,24 @@ static inline bool has_coherent_map(struct sna *sna,
 	return bo->domain == DOMAIN_CPU || sna->kgem.has_llc;
 }
 
+static inline bool has_coherent_ptr(struct sna_pixmap *priv)
+{
+	if (priv == NULL)
+		return true;
+
+	if (!priv->mapped) {
+		if (!priv->cpu_bo)
+			return true;
+
+		return priv->pixmap->devPrivate.ptr == MAP(priv->cpu_bo->map);
+	}
+
+	if (priv->cpu && !IS_CPU_MAP(priv->gpu_bo->map))
+		return false;
+
+	return priv->pixmap->devPrivate.ptr == MAP(priv->gpu_bo->map);
+}
+
 static inline bool pixmap_inplace(struct sna *sna,
 				  PixmapPtr pixmap,
 				  struct sna_pixmap *priv,
@@ -2006,11 +2024,13 @@ skip_inplace_map:
 							    pixmap, priv->cpu_bo, 0, 0,
 							    box, n, COPY_LAST);
 			}
-			if (!ok)
+			if (!ok) {
+				assert(has_coherent_ptr(sna_pixmap(pixmap)));
 				sna_read_boxes(sna,
 					       priv->gpu_bo, 0, 0,
 					       pixmap, 0, 0,
 					       box, n);
+			}
 		}
 
 		__sna_damage_destroy(DAMAGE_PTR(priv->gpu_damage));
@@ -2068,6 +2088,7 @@ done:
 	assert(pixmap->devPrivate.ptr);
 	assert(pixmap->devKind);
 	assert_pixmap_damage(pixmap);
+	assert(has_coherent_ptr(sna_pixmap(pixmap)));
 	return true;
 }
 
@@ -2389,11 +2410,13 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 							    pixmap, priv->cpu_bo, 0, 0,
 							    box, n, COPY_LAST);
 			}
-			if (!ok)
+			if (!ok) {
+				assert(has_coherent_ptr(sna_pixmap(pixmap)));
 				sna_read_boxes(sna,
 					       priv->gpu_bo, 0, 0,
 					       pixmap, 0, 0,
 					       box, n);
+			}
 		}
 		sna_damage_destroy(&priv->gpu_damage);
 	}
@@ -2504,11 +2527,13 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 									    box, n, COPY_LAST);
 					}
 
-					if (!ok)
+					if (!ok) {
+						assert(has_coherent_ptr(sna_pixmap(pixmap)));
 						sna_read_boxes(sna,
 							       priv->gpu_bo, 0, 0,
 							       pixmap, 0, 0,
 							       box, n);
+					}
 				}
 
 				sna_damage_destroy(&priv->gpu_damage);
@@ -2529,11 +2554,13 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 								    pixmap, priv->cpu_bo, 0, 0,
 								    box, n, COPY_LAST);
 				}
-				if (!ok)
+				if (!ok) {
+					assert(has_coherent_ptr(sna_pixmap(pixmap)));
 					sna_read_boxes(sna,
 						       priv->gpu_bo, 0, 0,
 						       pixmap, 0, 0,
 						       box, n);
+				}
 
 				sna_damage_subtract(&priv->gpu_damage, r);
 			} else {
@@ -2555,11 +2582,13 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 									    pixmap, priv->cpu_bo, 0, 0,
 									    box, n, COPY_LAST);
 					}
-					if (!ok)
+					if (!ok) {
+						assert(has_coherent_ptr(sna_pixmap(pixmap)));
 						sna_read_boxes(sna,
 							       priv->gpu_bo, 0, 0,
 							       pixmap, 0, 0,
 							       box, n);
+					}
 
 					sna_damage_subtract(&priv->gpu_damage, r);
 					RegionUninit(&need);
@@ -2617,6 +2646,7 @@ out:
 	assert(pixmap->devPrivate.ptr);
 	assert(pixmap->devKind);
 	assert_pixmap_damage(pixmap);
+	assert(has_coherent_ptr(sna_pixmap(pixmap)));
 	return true;
 }
 
@@ -3380,6 +3410,7 @@ sna_pixmap_create_upload(ScreenPtr screen,
 		FreePixmap(pixmap);
 		return NullPixmap;
 	}
+	priv->mapped = true;
 
 	/* Marking both the shadow and the GPU bo is a little dubious,
 	 * but will work so long as we always check before doing the
@@ -3881,6 +3912,7 @@ sna_put_zpixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 		assert(box->x2 - x <= w);
 		assert(box->y2 - y <= h);
 
+		assert(has_coherent_ptr(sna_pixmap(pixmap)));
 		memcpy_blt(bits, pixmap->devPrivate.ptr,
 			   pixmap->drawable.bitsPerPixel,
 			   stride, pixmap->devKind,
@@ -4922,6 +4954,8 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 				assert(box[i].x2 + dx <= tmp->drawable.width);
 				assert(box[i].y2 + dy <= tmp->drawable.height);
 
+				assert(has_coherent_ptr(sna_pixmap(src_pixmap)));
+				assert(has_coherent_ptr(sna_pixmap(tmp)));
 				memcpy_blt(src_pixmap->devPrivate.ptr,
 					   tmp->devPrivate.ptr,
 					   src_pixmap->drawable.bitsPerPixel,
@@ -5093,7 +5127,8 @@ fallback:
 				assert(box->y1 + src_dy >= 0);
 				assert(box->x2 + src_dx <= src_pixmap->drawable.width);
 				assert(box->y2 + src_dy <= src_pixmap->drawable.height);
-
+				assert(has_coherent_ptr(sna_pixmap(src_pixmap)));
+				assert(has_coherent_ptr(sna_pixmap(dst_pixmap)));
 				memcpy_blt(src_bits, dst_bits, bpp,
 					   src_stride, dst_stride,
 					   box->x1, box->y1,
@@ -10092,6 +10127,7 @@ sna_pixmap_get_source_bo(PixmapPtr pixmap)
 		if (upload == NULL)
 			return NULL;
 
+		assert(has_coherent_ptr(sna_pixmap(pixmap)));
 		memcpy_blt(pixmap->devPrivate.ptr, ptr,
 			   pixmap->drawable.bitsPerPixel,
 			   pixmap->devKind, upload->pitch,
@@ -10443,6 +10479,7 @@ sna_poly_fill_rect_tiled_nxm_blt(DrawablePtr drawable,
 
 	assert(tile->drawable.height && tile->drawable.height <= 8);
 	assert(tile->drawable.width && tile->drawable.width <= 8);
+	assert(has_coherent_ptr(sna_pixmap(tile)));
 
 	cpp = tile->drawable.bitsPerPixel/8;
 	for (h = 0; h < tile->drawable.height; h++) {
@@ -13993,6 +14030,7 @@ sna_get_image(DrawablePtr drawable,
 		     region.extents.x1, region.extents.y1,
 		     region.extents.x2, region.extents.y2));
 		get_drawable_deltas(drawable, pixmap, &dx, &dy);
+		assert(has_coherent_ptr(sna_pixmap(pixmap)));
 		memcpy_blt(pixmap->devPrivate.ptr, dst, drawable->bitsPerPixel,
 			   pixmap->devKind, PixmapBytePad(w, drawable->depth),
 			   region.extents.x1 + dx,
@@ -14391,6 +14429,8 @@ fallback:
 				assert(box->x2 <= src->drawable.width);
 				assert(box->y2 <= src->drawable.height);
 
+				assert(has_coherent_ptr(sna_pixmap(src)));
+				assert(has_coherent_ptr(sna_pixmap(dst)));
 				memcpy_blt(src->devPrivate.ptr,
 					   dst->devPrivate.ptr,
 					   src->drawable.bitsPerPixel,
