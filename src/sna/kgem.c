@@ -4897,8 +4897,11 @@ struct kgem_bo *kgem_create_map(struct kgem *kgem,
 void kgem_bo_sync__cpu(struct kgem *kgem, struct kgem_bo *bo)
 {
 	DBG(("%s: handle=%d\n", __FUNCTION__, bo->handle));
-	assert(bo->proxy == NULL);
 	kgem_bo_submit(kgem, bo);
+
+	/* SHM pixmaps use proxies for subpage offsets */
+	while (bo->proxy)
+		bo = bo->proxy;
 
 	if (bo->domain != DOMAIN_CPU) {
 		struct drm_i915_gem_set_domain set_domain;
@@ -4923,10 +4926,13 @@ void kgem_bo_sync__cpu(struct kgem *kgem, struct kgem_bo *bo)
 void kgem_bo_sync__cpu_full(struct kgem *kgem, struct kgem_bo *bo, bool write)
 {
 	DBG(("%s: handle=%d\n", __FUNCTION__, bo->handle));
-	assert(bo->proxy == NULL);
 
 	if (write || bo->needs_flush)
 		kgem_bo_submit(kgem, bo);
+
+	/* SHM pixmaps use proxies for subpage offsets */
+	while (bo->proxy)
+		bo = bo->proxy;
 
 	if (bo->domain != DOMAIN_CPU) {
 		struct drm_i915_gem_set_domain set_domain;
