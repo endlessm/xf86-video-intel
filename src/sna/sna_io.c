@@ -1392,48 +1392,44 @@ bool sna_replace(struct sna *sna,
 			bo = new_bo;
 	}
 
-	if (bo->tiling == I915_TILING_NONE && bo->pitch == stride) {
-		if (!kgem_bo_write(kgem, bo, src,
-				   (pixmap->drawable.height-1)*stride + pixmap->drawable.width*pixmap->drawable.bitsPerPixel/8))
-			goto err;
+	if (bo->tiling == I915_TILING_NONE && bo->pitch == stride &&
+	    kgem_bo_write(kgem, bo, src,
+			  (pixmap->drawable.height-1)*stride + pixmap->drawable.width*pixmap->drawable.bitsPerPixel/8))
+			goto done;
+
+	if (upload_inplace__tiled(kgem, bo)) {
+		BoxRec box;
+
+		box.x1 = box.y1 = 0;
+		box.x2 = pixmap->drawable.width;
+		box.y2 = pixmap->drawable.height;
+
+		if (write_boxes_inplace__tiled(kgem, src,
+					       stride, pixmap->drawable.bitsPerPixel, 0, 0,
+					       bo, 0, 0, &box, 1))
+			goto done;
+	}
+
+	if (kgem_bo_is_mappable(kgem, bo) &&
+	    (dst = kgem_bo_map(kgem, bo)) != NULL) {
+		memcpy_blt(src, dst, pixmap->drawable.bitsPerPixel,
+			   stride, bo->pitch,
+			   0, 0,
+			   0, 0,
+			   pixmap->drawable.width,
+			   pixmap->drawable.height);
 	} else {
-		if (upload_inplace__tiled(kgem, bo)) {
-			BoxRec box;
+		BoxRec box;
 
-			box.x1 = box.y1 = 0;
-			box.x2 = pixmap->drawable.width;
-			box.y2 = pixmap->drawable.height;
+		box.x1 = box.y1 = 0;
+		box.x2 = pixmap->drawable.width;
+		box.y2 = pixmap->drawable.height;
 
-			if (write_boxes_inplace__tiled(kgem, src,
-						       stride, pixmap->drawable.bitsPerPixel, 0, 0,
-						       bo, 0, 0, &box, 1))
-				goto done;
-		}
-
-		if (kgem_bo_is_mappable(kgem, bo)) {
-			dst = kgem_bo_map(kgem, bo);
-			if (!dst)
-				goto err;
-
-			memcpy_blt(src, dst, pixmap->drawable.bitsPerPixel,
-				   stride, bo->pitch,
-				   0, 0,
-				   0, 0,
-				   pixmap->drawable.width,
-				   pixmap->drawable.height);
-		} else {
-			BoxRec box;
-
-			box.x1 = box.y1 = 0;
-			box.x2 = pixmap->drawable.width;
-			box.y2 = pixmap->drawable.height;
-
-			if (!sna_write_boxes(sna, pixmap,
-					     bo, 0, 0,
-					     src, stride, 0, 0,
-					     &box, 1))
-				goto err;
-		}
+		if (!sna_write_boxes(sna, pixmap,
+				     bo, 0, 0,
+				     src, stride, 0, 0,
+				     &box, 1))
+			goto err;
 	}
 
 done:

@@ -1484,6 +1484,7 @@ static void kgem_bo_free(struct kgem *kgem, struct kgem_bo *bo)
 {
 	DBG(("%s: handle=%d\n", __FUNCTION__, bo->handle));
 	assert(bo->refcnt == 0);
+	assert(bo->proxy == NULL);
 	assert(bo->exec == NULL);
 	assert(!bo->snoop || bo->rq == NULL);
 
@@ -5635,6 +5636,7 @@ struct kgem_bo *kgem_create_buffer_2d(struct kgem *kgem,
 		return NULL;
 	}
 	assert(*ret != NULL);
+	assert(bo->proxy != NULL);
 
 	if (height & 1) {
 		struct kgem_buffer *io = (struct kgem_buffer *)bo->proxy;
