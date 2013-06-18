@@ -4607,7 +4607,8 @@ void *kgem_bo_map(struct kgem *kgem, struct kgem_bo *bo)
 		DBG(("%s: converting request for GTT map into CPU map\n",
 		     __FUNCTION__));
 		ptr = kgem_bo_map__cpu(kgem, bo);
-		kgem_bo_sync__cpu(kgem, bo);
+		if (ptr)
+			kgem_bo_sync__cpu(kgem, bo);
 		return ptr;
 	}
 
