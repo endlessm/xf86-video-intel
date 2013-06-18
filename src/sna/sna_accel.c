@@ -207,6 +207,9 @@ static GCOps sna_gc_ops__tmp;
 static const GCFuncs sna_gc_funcs;
 static const GCFuncs sna_gc_funcs__cpu;
 
+static void
+sna_poly_fill_rect__gpu(DrawablePtr draw, GCPtr gc, int n, xRectangle *rect);
+
 static inline void region_set(RegionRec *r, const BoxRec *b)
 {
 	r->extents = *b;
@@ -8042,6 +8045,7 @@ spans_fallback:
 			 * cannot use the fill fast paths.
 			 */
 			sna_gc_ops__tmp.FillSpans = sna_fill_spans__gpu;
+			sna_gc_ops__tmp.PolyFillRect = sna_poly_fill_rect__gpu;
 			gc->ops = &sna_gc_ops__tmp;
 
 			switch (gc->lineStyle) {
@@ -12362,6 +12366,45 @@ out_gc:
 	sna_gc_move_to_gpu(gc);
 out:
 	RegionUninit(&region);
+}
+
+static void
+sna_poly_fill_rect__gpu(DrawablePtr draw, GCPtr gc, int n, xRectangle *r)
+{
+	struct sna_fill_spans *data = sna_gc(gc)->priv;
+	uint32_t color;
+
+	DBG(("%s(n=%d, PlaneMask: %lx (solid %d), solid fill: %d [style=%d, tileIsPixel=%d], alu=%d)\n", __FUNCTION__,
+	     n, gc->planemask, !!PM_IS_SOLID(draw, gc->planemask),
+	     (gc->fillStyle == FillSolid ||
+	      (gc->fillStyle == FillTiled && gc->tileIsPixel)),
+	     gc->fillStyle, gc->tileIsPixel,
+	     gc->alu));
+
+	assert(PM_IS_SOLID(draw, gc->planemask));
+	if (n == 0)
+		return;
+
+	/* The mi routines do not attempt to keep the spans it generates
+	 * within the clip, so we must run them through the clipper.
+	 */
+
+	if (gc_is_solid(gc, &color)) {
+		(void)sna_poly_fill_rect_blt(draw,
+					     data->bo, data->damage,
+					     gc, color, n, r,
+					     &data->region.extents, true);
+	} else if (gc->fillStyle == FillTiled) {
+		(void)sna_poly_fill_rect_tiled_blt(draw,
+						   data->bo, data->damage,
+						   gc, n, r,
+						   &data->region.extents, true);
+	} else {
+		(void)sna_poly_fill_rect_stippled_blt(draw,
+						    data->bo, data->damage,
+						    gc, n, r,
+						    &data->region.extents, true);
+	}
 }
 
 static void
