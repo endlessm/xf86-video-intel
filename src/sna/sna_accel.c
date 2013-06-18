@@ -4853,7 +4853,7 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 			if (src_bo) {
 				src_bo->flush = true;
 				src_bo->pitch = src_pixmap->devKind;
-				src_bo->reusable = false;
+				kgem_bo_mark_unreusable(src_bo);
 
 				ok = sna->render.copy_boxes(sna, alu,
 							    src_pixmap, src_bo, src_dx, src_dy,
@@ -13927,7 +13927,7 @@ sna_get_image_blt(DrawablePtr drawable,
 
 		dst_bo->flush = true;
 		dst_bo->pitch = pitch;
-		dst_bo->reusable = false;
+		kgem_bo_mark_unreusable(dst_bo);
 
 		get_drawable_deltas(drawable, pixmap, &dx, &dy);
 
