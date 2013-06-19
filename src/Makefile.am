@@ -95,6 +95,7 @@ intel_drv_la_SOURCES += \
 	$(NULL)
 intel_drv_la_LIBADD += \
 	$(DRI_LIBS) \
+	@CLOCK_GETTIME_LIBS@ \
 	$(NULL)
 endif
 

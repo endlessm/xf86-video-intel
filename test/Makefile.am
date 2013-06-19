@@ -25,7 +25,7 @@ check_PROGRAMS = $(stress_TESTS)
 noinst_PROGRAMS = lowlevel-blt-bench
 
 AM_CFLAGS = @CWARNFLAGS@ @X11_CFLAGS@ @DRM_CFLAGS@
-LDADD = libtest.la @X11_LIBS@ -lXfixes @DRM_LIBS@ -lrt
+LDADD = libtest.la @X11_LIBS@ -lXfixes @DRM_LIBS@ @CLOCK_GETTIME_LIBS@
 
 noinst_LTLIBRARIES = libtest.la
 libtest_la_SOURCES = \

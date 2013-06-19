@@ -374,6 +374,10 @@ PKG_CHECK_MODULES(DRI, [xf86driproto], , DRI=no)
 PKG_CHECK_MODULES(DRI2, [dri2proto >= 2.6],, DRI2=no)
 PKG_CHECK_MODULES(PCIACCESS, [pciaccess >= 0.10])
 
+LIBS=""
+AC_SEARCH_LIBS(clock_gettime, rt, [CLOCK_GETTIME_LIBS=$LIBS])
+AC_SUBST(CLOCK_GETTIME_LIBS)
+
 sdkdir=`$PKG_CONFIG --variable=sdkdir xorg-server`
 
 if test "x$enable_dri" != "xno"; then
