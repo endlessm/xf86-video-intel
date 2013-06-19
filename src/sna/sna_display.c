@@ -1157,6 +1157,8 @@ static bool use_shadow(struct sna *sna, xf86CrtcPtr crtc)
 		pitch_limit = 32 * 1024;
 	else if ((sna->kgem.gen >> 3) == 4)
 		pitch_limit = bo->tiling ? 16 * 1024 : 32 * 1024;
+	else if ((sna->kgem.gen >> 3) == 3)
+		pitch_limit = bo->tiling ? 8 * 1024 : 16 * 1024;
 	else
 		pitch_limit = 8 * 1024;
 	if (bo->pitch > pitch_limit)
