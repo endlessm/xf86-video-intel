@@ -1126,6 +1126,8 @@ static bool use_shadow(struct sna *sna, xf86CrtcPtr crtc)
 	RRTransformPtr transform;
 	PictTransform crtc_to_fb;
 	struct pict_f_transform f_crtc_to_fb, f_fb_to_crtc;
+	unsigned long pitch_limit;
+	struct kgem_bo *bo;
 	BoxRec b;
 
 	assert(sna->scrn->virtualX && sna->scrn->virtualY);
@@ -1149,6 +1151,16 @@ static bool use_shadow(struct sna *sna, xf86CrtcPtr crtc)
 		    sna->mode.kmode->max_height));
 		return true;
 	}
+
+	bo = sna_pixmap_get_bo(sna->front);
+	if ((sna->kgem.gen >> 3) > 4)
+		pitch_limit = 32 * 1024;
+	else if ((sna->kgem.gen >> 3) == 4)
+		pitch_limit = bo->tiling ? 16 * 1024 : 32 * 1024;
+	else
+		pitch_limit = 8 * 1024;
+	if (bo->pitch > pitch_limit)
+		return true;
 
 	transform = NULL;
 	if (crtc->transformPresent)
@@ -1206,16 +1218,29 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 		sna_crtc->transform = true;
 		return kgem_bo_reference(bo);
 	} else if (use_shadow(sna, crtc)) {
+		unsigned long tiled_limit;
+		int tiling;
+
 		if (!sna_crtc_enable_shadow(sna, sna_crtc))
 			return NULL;
 
 		DBG(("%s: attaching to per-crtc pixmap %dx%d\n",
 		     __FUNCTION__, crtc->mode.HDisplay, crtc->mode.VDisplay));
 
+		tiling = I915_TILING_X;
+		if ((sna->kgem.gen >> 3) > 4)
+			tiled_limit = 32 * 1024 * 8;
+		else if ((sna->kgem.gen >> 3) == 4)
+			tiled_limit = 16 * 1024 * 8;
+		else
+			tiled_limit = 8 * 1024 * 8;
+		if ((unsigned long)crtc->mode.HDisplay * scrn->bitsPerPixel > tiled_limit)
+			tiling = I915_TILING_NONE;
+
 		bo = kgem_create_2d(&sna->kgem,
 				    crtc->mode.HDisplay, crtc->mode.VDisplay,
 				    scrn->bitsPerPixel,
-				    I915_TILING_X, CREATE_SCANOUT);
+				    tiling, CREATE_EXACT | CREATE_SCANOUT);
 		if (bo == NULL)
 			return NULL;
 
