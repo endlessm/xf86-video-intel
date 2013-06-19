@@ -4325,6 +4325,9 @@ move_to_gpu(PixmapPtr pixmap, struct sna_pixmap *priv,
 	}
 
 	if (priv->gpu_bo) {
+		if (priv->cpu_damage == NULL)
+			return true;
+
 		if (alu != GXcopy)
 			return true;
 
@@ -4763,7 +4766,7 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 			if (replaces)
 				kgem_bo_undo(&sna->kgem, bo);
 
-			if (replaces && alu == GXcopy &&
+			if (replaces &&
 			    src_pixmap->drawable.width == dst_pixmap->drawable.width &&
 			    src_pixmap->drawable.height == dst_pixmap->drawable.height) {
 				assert(src_pixmap->drawable.depth == dst_pixmap->drawable.depth);
