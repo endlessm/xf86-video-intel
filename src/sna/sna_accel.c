@@ -576,18 +576,7 @@ pure static uint32_t sna_pixmap_choose_tiling(PixmapPtr pixmap,
 
 	/* Use tiling by default, but disable per user request */
 	if (pixmap->usage_hint == SNA_CREATE_FB) {
-		unsigned long tiled_limit;
-
 		tiling = -I915_TILING_X;
-
-		if ((sna->kgem.gen >> 3) > 4)
-			tiled_limit = 32 * 1024 * 8;
-		else if ((sna->kgem.gen >> 3) == 4)
-			tiled_limit = 16 * 1024 * 8;
-		else
-			tiled_limit = 8 * 1024 * 8;
-		if ((unsigned long)pixmap->drawable.width * pixmap->drawable.bitsPerPixel > tiled_limit)
-			tiling = I915_TILING_NONE;
 		bit = SNA_TILING_FB;
 	} else {
 		tiling = default_tiling(pixmap, tiling);
