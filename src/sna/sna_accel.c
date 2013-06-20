@@ -2693,7 +2693,7 @@ sna_drawable_move_to_cpu(DrawablePtr drawable, unsigned flags)
 	return sna_drawable_move_region_to_cpu(&pixmap->drawable, &region, flags);
 }
 
-static bool alu_overwrites(uint8_t alu)
+pure static bool alu_overwrites(uint8_t alu)
 {
 	switch (alu) {
 	case GXclear:
@@ -4700,10 +4700,8 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 			list_del(&dst_priv->flush_list);
 			dst_priv->cpu = false;
 		}
-		if (region->data == NULL)
-			hint |= IGNORE_CPU;
 	}
-	if (replaces)
+	if (alu_overwrites(alu))
 		hint |= IGNORE_CPU;
 
 	/* XXX hack for firefox -- subsequent uses of src will be corrupt! */
