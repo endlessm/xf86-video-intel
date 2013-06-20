@@ -4312,10 +4312,11 @@ out:
 
 static bool
 move_to_gpu(PixmapPtr pixmap, struct sna_pixmap *priv,
-	    const BoxRec *box, uint8_t alu)
+	    const RegionRec *region, int16_t dx, int16_t dy,
+	    uint8_t alu)
 {
-	int w = box->x2 - box->x1;
-	int h = box->y2 - box->y1;
+	int w = region->extents.x2 - region->extents.x1;
+	int h = region->extents.y2 - region->extents.y1;
 	int count;
 
 	if (DAMAGE_IS_ALL(priv->gpu_damage)) {
@@ -4335,6 +4336,12 @@ move_to_gpu(PixmapPtr pixmap, struct sna_pixmap *priv,
 			return true;
 
 		if (priv->gpu_bo->tiling)
+			return true;
+
+		RegionTranslate(region, dx, dy);
+		count = region_subsumes_damage(region, priv->cpu_damage);
+		RegionTranslate(region, -dx, -dy);
+		if (count)
 			return true;
 	} else {
 		if ((priv->create & KGEM_CAN_CREATE_GPU) == 0)
@@ -4759,7 +4766,7 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 		}
 
 		if (src_priv &&
-		    move_to_gpu(src_pixmap, src_priv, &region->extents, alu) &&
+		    move_to_gpu(src_pixmap, src_priv, region, src_dx, src_dy, alu) &&
 		    sna_pixmap_move_to_gpu(src_pixmap, MOVE_READ | MOVE_ASYNC_HINT)) {
 			DBG(("%s: move whole src_pixmap to GPU and copy\n",
 			     __FUNCTION__));
