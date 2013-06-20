@@ -1153,7 +1153,9 @@ static bool use_shadow(struct sna *sna, xf86CrtcPtr crtc)
 	}
 
 	bo = sna_pixmap_get_bo(sna->front);
-	if ((sna->kgem.gen >> 3) > 4)
+	if (sna->kgem.gen == 071)
+		pitch_limit = bo->tiling ? 16 * 1024 : 32 * 1024;
+	else if ((sna->kgem.gen >> 3) > 4)
 		pitch_limit = 32 * 1024;
 	else if ((sna->kgem.gen >> 3) == 4)
 		pitch_limit = bo->tiling ? 16 * 1024 : 32 * 1024;
@@ -1230,7 +1232,9 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 		     __FUNCTION__, crtc->mode.HDisplay, crtc->mode.VDisplay));
 
 		tiling = I915_TILING_X;
-		if ((sna->kgem.gen >> 3) > 4)
+		if (sna->kgem.gen == 071)
+			tiled_limit = 16 * 1024 * 8;
+		else if ((sna->kgem.gen >> 3) > 4)
 			tiled_limit = 32 * 1024 * 8;
 		else if ((sna->kgem.gen >> 3) == 4)
 			tiled_limit = 16 * 1024 * 8;
