@@ -4312,9 +4312,26 @@ out:
 }
 
 static bool
+source_contains_region(struct sna_damage *damage,
+		       const RegionRec *region, int16_t dx, int16_t dy)
+{
+	BoxRec box;
+
+	if (DAMAGE_IS_ALL(damage))
+		return true;
+
+	box = region->extents;
+	box.x1 += dx;
+	box.x2 += dx;
+	box.y1 += dy;
+	box.y2 += dy;
+	return sna_damage_contains_box__no_reduce(damage, &box);
+}
+
+static bool
 move_to_gpu(PixmapPtr pixmap, struct sna_pixmap *priv,
 	    const RegionRec *region, int16_t dx, int16_t dy,
-	    uint8_t alu)
+	    uint8_t alu, bool dst_is_gpu)
 {
 	int w = region->extents.x2 - region->extents.x1;
 	int h = region->extents.y2 - region->extents.y1;
@@ -4326,7 +4343,26 @@ move_to_gpu(PixmapPtr pixmap, struct sna_pixmap *priv,
 		return true;
 	}
 
+	if (dst_is_gpu && priv->cpu_bo && priv->cpu_damage) {
+		DBG(("%s: can use CPU bo? cpu_damage=%d, gpu_damage=%d, cpu hint=%d\n",
+		     __FUNCTION__,
+		     priv->cpu_damage ? DAMAGE_IS_ALL(priv->cpu_damage) ? -1 : 1 : 0,
+		     priv->gpu_damage ? DAMAGE_IS_ALL(priv->gpu_damage) ? -1 : 1 : 0,
+		     priv->cpu));
+		if (DAMAGE_IS_ALL(priv->cpu_damage) || priv->gpu_damage == NULL)
+			return false;
+
+		if (priv->cpu &&
+		    source_contains_region(priv->cpu_damage, region, dx, dy))
+			return false;
+	}
+
 	if (priv->gpu_bo) {
+		DBG(("%s: has gpu bo (cpu damage?=%d, cpu=%d, gpu tiling=%d)\n",
+		     __FUNCTION__,
+		     priv->cpu_damage ? DAMAGE_IS_ALL(priv->cpu_damage) ? -1 : 1 : 0,
+		     priv->cpu, priv->gpu_bo->tiling));
+
 		if (priv->cpu_damage == NULL)
 			return true;
 
@@ -4548,7 +4584,8 @@ sna_pixmap_is_gpu(PixmapPtr pixmap)
 }
 
 static int
-source_prefer_gpu(struct sna *sna, struct sna_pixmap *priv)
+source_prefer_gpu(struct sna *sna, struct sna_pixmap *priv,
+		  RegionRec *region, int16_t dx, int16_t dy)
 {
 	if (priv == NULL) {
 		DBG(("%s: source unattached, use cpu\n", __FUNCTION__));
@@ -4560,10 +4597,13 @@ source_prefer_gpu(struct sna *sna, struct sna_pixmap *priv)
 		return 0;
 	}
 
-	if (priv->gpu_damage) {
-		DBG(("%s: source has gpu damage, force gpu\n", __FUNCTION__));
+	if (priv->gpu_damage &&
+	    (priv->cpu_damage == NULL ||
+	     !source_contains_region(priv->cpu_damage, region, dx, dy))) {
+		DBG(("%s: source has gpu damage, force gpu? %d\n",
+		     __FUNCTION__, priv->cpu_damage == NULL));
 		assert(priv->gpu_bo);
-		return PREFER_GPU | FORCE_GPU;
+		return priv->cpu_damage ? PREFER_GPU : PREFER_GPU | FORCE_GPU;
 	}
 
 	if (priv->cpu_bo && kgem_bo_is_busy(priv->cpu_bo)) {
@@ -4589,7 +4629,7 @@ static bool use_shm_bo(struct sna *sna,
 		return false;
 	}
 
-	if (!priv->shm) {
+	if (!priv->shm && !priv->cpu) {
 		DBG(("%s: yes, ordinary CPU bo\n", __FUNCTION__));
 		return true;
 	}
@@ -4685,7 +4725,7 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	if (dst_priv == NULL)
 		goto fallback;
 
-	hint = source_prefer_gpu(sna, src_priv) ?:
+	hint = source_prefer_gpu(sna, src_priv, region, src_dx, src_dy) ?:
 		region_inplace(sna, dst_pixmap, region,
 			       dst_priv, alu_overwrites(alu));
 	if (dst_priv->cpu_damage && alu_overwrites(alu)) {
@@ -4765,7 +4805,7 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 		}
 
 		if (src_priv &&
-		    move_to_gpu(src_pixmap, src_priv, region, src_dx, src_dy, alu) &&
+		    move_to_gpu(src_pixmap, src_priv, region, src_dx, src_dy, alu, bo == dst_priv->gpu_bo) &&
 		    sna_pixmap_move_to_gpu(src_pixmap, MOVE_READ | MOVE_ASYNC_HINT)) {
 			DBG(("%s: move whole src_pixmap to GPU and copy\n",
 			     __FUNCTION__));
