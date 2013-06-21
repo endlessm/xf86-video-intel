@@ -3866,6 +3866,74 @@ static inline void box32_add_rect(Box32Rec *box, const xRectangle *r)
 		box->y2 = v;
 }
 
+static bool can_upload_tiled_x(struct kgem *kgem, struct kgem_bo *bo)
+{
+#ifndef __x86_64__
+	/* Between a register starved compiler emitting attrocious code
+	 * and the extra overhead in the kernel for managing the tight
+	 * 32-bit address space, unless we have a 64-bit system,
+	 * using memcpy_to_tiled_x() is extremely slow.
+	 */
+	return false;
+#endif
+	if (kgem->gen < 050) /* bit17 swizzling :( */
+		return false;
+
+	if (bo->tiling != I915_TILING_X)
+		return false;
+
+	if (bo->scanout)
+		return false;
+
+	return bo->domain == DOMAIN_CPU || kgem->has_llc;
+}
+
+static bool
+try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
+		   int x, int y, int w, int  h, char *bits, int stride)
+{
+	struct sna *sna = to_sna_from_pixmap(pixmap);
+	struct sna_pixmap *priv = sna_pixmap(pixmap);
+	BoxRec *box;
+	uint8_t *dst;
+	int swizzle;
+	int n;
+
+	DBG(("%s: bo? %d, can tile? %d\n", __FUNCTION__,
+	     priv->gpu_bo != NULL,
+	     priv->gpu_bo ? can_upload_tiled(&sna->kgem, priv->gpu_bo) : 0));
+
+	if (!DAMAGE_IS_ALL(priv->gpu_damage) ||
+	    !can_upload_tiled_x(&sna->kgem, priv->gpu_bo))
+		return false;
+
+	assert(priv->gpu_bo->tiling == I915_TILING_X);
+
+	dst = __kgem_bo_map__cpu(&sna->kgem, priv->gpu_bo);
+	if (dst == NULL)
+		return false;
+
+	box = RegionRects(region);
+	n = RegionNumRects(region);
+
+	DBG(("%s: upload(%d, %d, %d, %d) x %d\n", __FUNCTION__, x, y, w, h, n));
+
+	kgem_bo_sync__cpu(&sna->kgem, priv->gpu_bo);
+	swizzle = kgem_bo_get_swizzling(&sna->kgem, priv->gpu_bo);
+	do {
+		memcpy_to_tiled_x(bits, dst,
+				  pixmap->drawable.bitsPerPixel, swizzle,
+				  stride, priv->gpu_bo->pitch,
+				  box->x1 - x, box->y1 - y,
+				  box->x1, box->y1,
+				  box->x2 - box->x1, box->y2 - box->y1);
+		box++;
+	} while (--n);
+	__kgem_bo_unmap__cpu(&sna->kgem, priv->gpu_bo, dst);
+
+	return true;
+}
+
 static bool
 sna_put_zpixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 		    int x, int y, int w, int  h, char *bits, int stride)
@@ -3883,13 +3951,16 @@ sna_put_zpixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 	if (drawable->depth < 8)
 		return false;
 
-	if (!sna_drawable_move_region_to_cpu(&pixmap->drawable,
-					     region, MOVE_WRITE))
-		return false;
-
 	get_drawable_deltas(drawable, pixmap, &dx, &dy);
 	x += dx + drawable->x;
 	y += dy + drawable->y;
+
+	if (try_upload_tiled_x(pixmap, region, x, y, w, h, bits, stride))
+		return true;
+
+	if (!sna_drawable_move_region_to_cpu(&pixmap->drawable,
+					     region, MOVE_WRITE))
+		return false;
 
 	DBG(("%s: upload(%d, %d, %d, %d)\n", __FUNCTION__, x, y, w, h));
 
@@ -4330,7 +4401,7 @@ source_contains_region(struct sna_damage *damage,
 
 static bool
 move_to_gpu(PixmapPtr pixmap, struct sna_pixmap *priv,
-	    const RegionRec *region, int16_t dx, int16_t dy,
+	    RegionRec *region, int16_t dx, int16_t dy,
 	    uint8_t alu, bool dst_is_gpu)
 {
 	int w = region->extents.x2 - region->extents.x1;
@@ -14488,7 +14559,7 @@ static void sna_accel_post_damage(struct sna *sna)
 		DBG(("%s: slave:  ((%d, %d), (%d, %d))x%d\n", __FUNCTION__,
 		     region.extents.x1, region.extents.y1,
 		     region.extents.x2, region.extents.y2,
-		     RegionNumRects(&region.extents)));
+		     RegionNumRects(&region)));
 
 		box = RegionRects(&region);
 		n = RegionNumRects(&region);
