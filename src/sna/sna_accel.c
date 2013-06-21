@@ -1505,7 +1505,7 @@ sna_pixmap_create_mappable_gpu(PixmapPtr pixmap,
 
 static inline bool use_cpu_bo_for_download(struct sna *sna,
 					   struct sna_pixmap *priv,
-					   const BoxRec *box)
+					   int nbox, const BoxRec *box)
 {
 	if (DBG_NO_CPU_DOWNLOAD)
 		return false;
@@ -1523,10 +1523,11 @@ static inline bool use_cpu_bo_for_download(struct sna *sna,
 	}
 
 	/* Is it worth detiling? */
+	assert(box[0].y1 < box[nbox-1].y2);
 	if (kgem_bo_is_mappable(&sna->kgem, priv->gpu_bo) &&
-	    (box->y2 - box->y1 - 1) * priv->gpu_bo->pitch < 4096) {
-		DBG(("%s: no, tiny transfer, expect to read inplace\n",
-		     __FUNCTION__));
+	    (box[nbox-1].y2 - box[0].y1 - 1) * priv->gpu_bo->pitch < 4096) {
+		DBG(("%s: no, tiny transfer (height=%d, pitch=%d) expect to read inplace\n",
+		     __FUNCTION__, box[nbox-1].y2-box[0].y1, priv->gpu_bo->pitch));
 		return false;
 	}
 
@@ -2020,7 +2021,7 @@ skip_inplace_map:
 		if (n) {
 			bool ok = false;
 
-			if (use_cpu_bo_for_download(sna, priv, &priv->gpu_damage->extents)) {
+			if (use_cpu_bo_for_download(sna, priv, n, box)) {
 				DBG(("%s: using CPU bo for download from GPU\n", __FUNCTION__));
 				ok = sna->render.copy_boxes(sna, GXcopy,
 							    pixmap, priv->gpu_bo, 0, 0,
@@ -2406,7 +2407,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 			assert(priv->gpu_bo);
 
 			ok = false;
-			if (use_cpu_bo_for_download(sna, priv, &priv->gpu_damage->extents)) {
+			if (use_cpu_bo_for_download(sna, priv, n, box)) {
 				DBG(("%s: using CPU bo for download from GPU\n", __FUNCTION__));
 				ok = sna->render.copy_boxes(sna, GXcopy,
 							    pixmap, priv->gpu_bo, 0, 0,
@@ -2522,7 +2523,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 				if (n) {
 					bool ok = false;
 
-					if (use_cpu_bo_for_download(sna, priv, &priv->gpu_damage->extents)) {
+					if (use_cpu_bo_for_download(sna, priv, n, box)) {
 						DBG(("%s: using CPU bo for download from GPU\n", __FUNCTION__));
 						ok = sna->render.copy_boxes(sna, GXcopy,
 									    pixmap, priv->gpu_bo, 0, 0,
@@ -2550,7 +2551,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 				DBG(("%s: region wholly inside damage\n",
 				     __FUNCTION__));
 
-				if (use_cpu_bo_for_download(sna, priv, &r->extents)) {
+				if (use_cpu_bo_for_download(sna, priv, n, box)) {
 					DBG(("%s: using CPU bo for download from GPU\n", __FUNCTION__));
 					ok = sna->render.copy_boxes(sna, GXcopy,
 								    pixmap, priv->gpu_bo, 0, 0,
@@ -2578,7 +2579,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 					DBG(("%s: region intersects damage\n",
 					     __FUNCTION__));
 
-					if (use_cpu_bo_for_download(sna, priv, &need.extents)) {
+					if (use_cpu_bo_for_download(sna, priv, n, box)) {
 						DBG(("%s: using CPU bo for download from GPU\n", __FUNCTION__));
 						ok = sna->render.copy_boxes(sna, GXcopy,
 									    pixmap, priv->gpu_bo, 0, 0,
