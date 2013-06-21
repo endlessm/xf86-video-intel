@@ -213,12 +213,12 @@ memcpy_blt(const void *src, void *dst, int bpp,
 	}
 }
 
-fast_memcpy void
-memcpy_to_tiled_x(const void *src, void *dst, int bpp, int swizzling,
-		  int32_t src_stride, int32_t dst_stride,
-		  int16_t src_x, int16_t src_y,
-		  int16_t dst_x, int16_t dst_y,
-		  uint16_t width, uint16_t height)
+static fast_memcpy void
+memcpy_to_tiled_x__swizzle_0(const void *src, void *dst, int bpp,
+			     int32_t src_stride, int32_t dst_stride,
+			     int16_t src_x, int16_t src_y,
+			     int16_t dst_x, int16_t dst_y,
+			     uint16_t width, uint16_t height)
 {
 	const unsigned tile_width = 512;
 	const unsigned tile_height = 8;
@@ -226,14 +226,14 @@ memcpy_to_tiled_x(const void *src, void *dst, int bpp, int swizzling,
 
 	const unsigned cpp = bpp / 8;
 	const unsigned stride_tiles = dst_stride / tile_width;
-	const unsigned swizzle_pixels = (swizzling ? 64 : tile_width) / cpp;
+	const unsigned swizzle_pixels = tile_width / cpp;
 	const unsigned tile_pixels = ffs(tile_width / cpp) - 1;
 	const unsigned tile_mask = (1 << tile_pixels) - 1;
 
 	unsigned x, y;
 
-	DBG(("%s(bpp=%d, swizzling=%d): src=(%d, %d), dst=(%d, %d), size=%dx%d, pitch=%d/%d\n",
-	     __FUNCTION__, bpp, swizzling, src_x, src_y, dst_x, dst_y, width, height, src_stride, dst_stride));
+	DBG(("%s(bpp=%d): src=(%d, %d), dst=(%d, %d), size=%dx%d, pitch=%d/%d\n",
+	     __FUNCTION__, bpp, src_x, src_y, dst_x, dst_y, width, height, src_stride, dst_stride));
 
 	src = (const uint8_t *)src + src_y * src_stride + src_x * cpp;
 
@@ -252,19 +252,71 @@ memcpy_to_tiled_x(const void *src, void *dst, int bpp, int swizzling,
 			offset = tile_row +
 				(dx >> tile_pixels) * tile_size +
 				(dx & tile_mask) * cpp;
-			switch (swizzling) {
-			case I915_BIT_6_SWIZZLE_NONE:
-				break;
-			case I915_BIT_6_SWIZZLE_9:
-				offset ^= (offset >> 3) & 64;
-				break;
-			case I915_BIT_6_SWIZZLE_9_10:
-				offset ^= ((offset ^ (offset >> 1)) >> 3) & 64;
-				break;
-			case I915_BIT_6_SWIZZLE_9_11:
-				offset ^= ((offset ^ (offset >> 2)) >> 3) & 64;
-				break;
-			}
+			memcpy((char *)dst + offset, src_row, length * cpp);
+
+			src_row += length * cpp;
+			x -= length * cpp;
+			dx += length;
+		}
+		while (x >= 512) {
+			assert((dx & tile_mask) == 0);
+			offset = tile_row + (dx >> tile_pixels) * tile_size;
+
+			memcpy((char *)dst + offset, src_row, 512);
+
+			src_row += 512;
+			x -= 512;
+			dx += swizzle_pixels;
+		}
+		if (x) {
+			offset = tile_row +
+				(dx >> tile_pixels) * tile_size +
+				(dx & tile_mask) * cpp;
+			memcpy((char *)dst + offset, src_row, x);
+		}
+	}
+}
+
+fast_memcpy static void
+memcpy_to_tiled_x__swizzle_9(const void *src, void *dst, int bpp,
+			     int32_t src_stride, int32_t dst_stride,
+			     int16_t src_x, int16_t src_y,
+			     int16_t dst_x, int16_t dst_y,
+			     uint16_t width, uint16_t height)
+{
+	const unsigned tile_width = 512;
+	const unsigned tile_height = 8;
+	const unsigned tile_size = 4096;
+
+	const unsigned cpp = bpp / 8;
+	const unsigned stride_tiles = dst_stride / tile_width;
+	const unsigned swizzle_pixels = 64 / cpp;
+	const unsigned tile_pixels = ffs(tile_width / cpp) - 1;
+	const unsigned tile_mask = (1 << tile_pixels) - 1;
+
+	unsigned x, y;
+
+	DBG(("%s(bpp=%d): src=(%d, %d), dst=(%d, %d), size=%dx%d, pitch=%d/%d\n",
+	     __FUNCTION__, bpp, src_x, src_y, dst_x, dst_y, width, height, src_stride, dst_stride));
+
+	src = (const uint8_t *)src + src_y * src_stride + src_x * cpp;
+
+	for (y = 0; y < height; ++y) {
+		const uint32_t dy = y + dst_y;
+		const uint32_t tile_row =
+			(dy / tile_height * stride_tiles * tile_size +
+			 (dy & (tile_height-1)) * tile_width);
+		const uint8_t *src_row = (const uint8_t *)src + src_stride * y;
+		uint32_t dx = dst_x, offset;
+
+		x = width * cpp;
+		if (dx & (swizzle_pixels - 1)) {
+			const uint32_t swizzle_bound_pixels = ALIGN(dx + 1, swizzle_pixels);
+			const uint32_t length = min(dst_x + width, swizzle_bound_pixels) - dx;
+			offset = tile_row +
+				(dx >> tile_pixels) * tile_size +
+				(dx & tile_mask) * cpp;
+			offset ^= (offset >> 3) & 64;
 
 			memcpy((char *)dst + offset, src_row, length * cpp);
 
@@ -272,61 +324,181 @@ memcpy_to_tiled_x(const void *src, void *dst, int bpp, int swizzling,
 			x -= length * cpp;
 			dx += length;
 		}
-		if (swizzling) {
-			while (x >= 64) {
-				offset = tile_row +
-					(dx >> tile_pixels) * tile_size +
-					(dx & tile_mask) * cpp;
-				switch (swizzling) {
-				case I915_BIT_6_SWIZZLE_9:
-					offset ^= (offset >> 3) & 64;
-					break;
-				case I915_BIT_6_SWIZZLE_9_10:
-					offset ^= ((offset ^ (offset >> 1)) >> 3) & 64;
-					break;
-				case I915_BIT_6_SWIZZLE_9_11:
-					offset ^= ((offset ^ (offset >> 2)) >> 3) & 64;
-					break;
-				}
+		while (x >= 64) {
+			offset = tile_row +
+				(dx >> tile_pixels) * tile_size +
+				(dx & tile_mask) * cpp;
+			offset ^= (offset >> 3) & 64;
 
-				memcpy((char *)dst + offset, src_row, 64);
+			memcpy((char *)dst + offset, src_row, 64);
 
-				src_row += 64;
-				x -= 64;
-				dx += swizzle_pixels;
-			}
-		} else {
-			while (x >= 512) {
-				assert((dx & tile_mask) == 0);
-				offset = tile_row + (dx >> tile_pixels) * tile_size;
-
-				memcpy((char *)dst + offset, src_row, 512);
-
-				src_row += 512;
-				x -= 512;
-				dx += swizzle_pixels;
-			}
+			src_row += 64;
+			x -= 64;
+			dx += swizzle_pixels;
 		}
 		if (x) {
 			offset = tile_row +
 				(dx >> tile_pixels) * tile_size +
 				(dx & tile_mask) * cpp;
-			switch (swizzling) {
-			case I915_BIT_6_SWIZZLE_NONE:
-				break;
-			case I915_BIT_6_SWIZZLE_9:
-				offset ^= (offset >> 3) & 64;
-				break;
-			case I915_BIT_6_SWIZZLE_9_10:
-				offset ^= ((offset ^ (offset >> 1)) >> 3) & 64;
-				break;
-			case I915_BIT_6_SWIZZLE_9_11:
-				offset ^= ((offset ^ (offset >> 2)) >> 3) & 64;
-				break;
-			}
-
+			offset ^= (offset >> 3) & 64;
 			memcpy((char *)dst + offset, src_row, x);
 		}
+	}
+}
+
+fast_memcpy static void
+memcpy_to_tiled_x__swizzle_9_10(const void *src, void *dst, int bpp,
+				int32_t src_stride, int32_t dst_stride,
+				int16_t src_x, int16_t src_y,
+				int16_t dst_x, int16_t dst_y,
+				uint16_t width, uint16_t height)
+{
+	const unsigned tile_width = 512;
+	const unsigned tile_height = 8;
+	const unsigned tile_size = 4096;
+
+	const unsigned cpp = bpp / 8;
+	const unsigned stride_tiles = dst_stride / tile_width;
+	const unsigned swizzle_pixels = 64 / cpp;
+	const unsigned tile_pixels = ffs(tile_width / cpp) - 1;
+	const unsigned tile_mask = (1 << tile_pixels) - 1;
+
+	unsigned x, y;
+
+	DBG(("%s(bpp=%d): src=(%d, %d), dst=(%d, %d), size=%dx%d, pitch=%d/%d\n",
+	     __FUNCTION__, bpp, src_x, src_y, dst_x, dst_y, width, height, src_stride, dst_stride));
+
+	src = (const uint8_t *)src + src_y * src_stride + src_x * cpp;
+
+	for (y = 0; y < height; ++y) {
+		const uint32_t dy = y + dst_y;
+		const uint32_t tile_row =
+			(dy / tile_height * stride_tiles * tile_size +
+			 (dy & (tile_height-1)) * tile_width);
+		const uint8_t *src_row = (const uint8_t *)src + src_stride * y;
+		uint32_t dx = dst_x, offset;
+
+		x = width * cpp;
+		if (dx & (swizzle_pixels - 1)) {
+			const uint32_t swizzle_bound_pixels = ALIGN(dx + 1, swizzle_pixels);
+			const uint32_t length = min(dst_x + width, swizzle_bound_pixels) - dx;
+			offset = tile_row +
+				(dx >> tile_pixels) * tile_size +
+				(dx & tile_mask) * cpp;
+			offset ^= ((offset ^ (offset >> 1)) >> 3) & 64;
+
+			memcpy((char *)dst + offset, src_row, length * cpp);
+
+			src_row += length * cpp;
+			x -= length * cpp;
+			dx += length;
+		}
+		while (x >= 64) {
+			offset = tile_row +
+				(dx >> tile_pixels) * tile_size +
+				(dx & tile_mask) * cpp;
+			offset ^= ((offset ^ (offset >> 1)) >> 3) & 64;
+
+			memcpy((char *)dst + offset, src_row, 64);
+
+			src_row += 64;
+			x -= 64;
+			dx += swizzle_pixels;
+		}
+		if (x) {
+			offset = tile_row +
+				(dx >> tile_pixels) * tile_size +
+				(dx & tile_mask) * cpp;
+			offset ^= ((offset ^ (offset >> 1)) >> 3) & 64;
+			memcpy((char *)dst + offset, src_row, x);
+		}
+	}
+}
+
+fast_memcpy static void
+memcpy_to_tiled_x__swizzle_9_11(const void *src, void *dst, int bpp,
+				int32_t src_stride, int32_t dst_stride,
+				int16_t src_x, int16_t src_y,
+				int16_t dst_x, int16_t dst_y,
+				uint16_t width, uint16_t height)
+{
+	const unsigned tile_width = 512;
+	const unsigned tile_height = 8;
+	const unsigned tile_size = 4096;
+
+	const unsigned cpp = bpp / 8;
+	const unsigned stride_tiles = dst_stride / tile_width;
+	const unsigned swizzle_pixels = 64 / cpp;
+	const unsigned tile_pixels = ffs(tile_width / cpp) - 1;
+	const unsigned tile_mask = (1 << tile_pixels) - 1;
+
+	unsigned x, y;
+
+	DBG(("%s(bpp=%d): src=(%d, %d), dst=(%d, %d), size=%dx%d, pitch=%d/%d\n",
+	     __FUNCTION__, bpp, src_x, src_y, dst_x, dst_y, width, height, src_stride, dst_stride));
+
+	src = (const uint8_t *)src + src_y * src_stride + src_x * cpp;
+
+	for (y = 0; y < height; ++y) {
+		const uint32_t dy = y + dst_y;
+		const uint32_t tile_row =
+			(dy / tile_height * stride_tiles * tile_size +
+			 (dy & (tile_height-1)) * tile_width);
+		const uint8_t *src_row = (const uint8_t *)src + src_stride * y;
+		uint32_t dx = dst_x, offset;
+
+		x = width * cpp;
+		if (dx & (swizzle_pixels - 1)) {
+			const uint32_t swizzle_bound_pixels = ALIGN(dx + 1, swizzle_pixels);
+			const uint32_t length = min(dst_x + width, swizzle_bound_pixels) - dx;
+			offset = tile_row +
+				(dx >> tile_pixels) * tile_size +
+				(dx & tile_mask) * cpp;
+			offset ^= ((offset ^ (offset >> 2)) >> 3) & 64;
+			memcpy((char *)dst + offset, src_row, length * cpp);
+
+			src_row += length * cpp;
+			x -= length * cpp;
+			dx += length;
+		}
+		while (x >= 64) {
+			offset = tile_row +
+				(dx >> tile_pixels) * tile_size +
+				(dx & tile_mask) * cpp;
+			offset ^= ((offset ^ (offset >> 2)) >> 3) & 64;
+
+			memcpy((char *)dst + offset, src_row, 64);
+
+			src_row += 64;
+			x -= 64;
+			dx += swizzle_pixels;
+		}
+		if (x) {
+			offset = tile_row +
+				(dx >> tile_pixels) * tile_size +
+				(dx & tile_mask) * cpp;
+			offset ^= ((offset ^ (offset >> 2)) >> 3) & 64;
+			memcpy((char *)dst + offset, src_row, x);
+		}
+	}
+}
+
+void choose_memcpy_to_tiled_x(struct kgem *kgem, int swizzling)
+{
+	switch (swizzling) {
+	default:
+	case I915_BIT_6_SWIZZLE_NONE:
+		kgem->memcpy_to_tiled_x = memcpy_to_tiled_x__swizzle_0;
+		break;
+	case I915_BIT_6_SWIZZLE_9:
+		kgem->memcpy_to_tiled_x = memcpy_to_tiled_x__swizzle_9;
+		break;
+	case I915_BIT_6_SWIZZLE_9_10:
+		kgem->memcpy_to_tiled_x = memcpy_to_tiled_x__swizzle_9_10;
+		break;
+	case I915_BIT_6_SWIZZLE_9_11:
+		kgem->memcpy_to_tiled_x = memcpy_to_tiled_x__swizzle_9_11;
+		break;
 	}
 }
 
@@ -561,10 +733,10 @@ memcpy_xor(const void *src, void *dst, int bpp,
 					while (i >= 16) {
 						__m128i xmm1, xmm2, xmm3, xmm4;
 
-						xmm1 = xmm_load_128u((__m128i*)s + 0);
-						xmm2 = xmm_load_128u((__m128i*)s + 1);
-						xmm3 = xmm_load_128u((__m128i*)s + 2);
-						xmm4 = xmm_load_128u((__m128i*)s + 3);
+						xmm1 = xmm_load_128u((const __m128i*)s + 0);
+						xmm2 = xmm_load_128u((const __m128i*)s + 1);
+						xmm3 = xmm_load_128u((const __m128i*)s + 2);
+						xmm4 = xmm_load_128u((const __m128i*)s + 3);
 
 						xmm_save_128((__m128i*)d + 0,
 							     _mm_or_si128(xmm1, mask));
@@ -583,8 +755,8 @@ memcpy_xor(const void *src, void *dst, int bpp,
 					if (i & 8) {
 						__m128i xmm1, xmm2;
 
-						xmm1 = xmm_load_128u((__m128i*)s + 0);
-						xmm2 = xmm_load_128u((__m128i*)s + 1);
+						xmm1 = xmm_load_128u((const __m128i*)s + 0);
+						xmm2 = xmm_load_128u((const __m128i*)s + 1);
 
 						xmm_save_128((__m128i*)d + 0,
 							     _mm_or_si128(xmm1, mask));
@@ -597,7 +769,7 @@ memcpy_xor(const void *src, void *dst, int bpp,
 
 					if (i & 4) {
 						xmm_save_128((__m128i*)d,
-							     _mm_or_si128(xmm_load_128u((__m128i*)s),
+							     _mm_or_si128(xmm_load_128u((const __m128i*)s),
 									  mask));
 
 						d += 4;
@@ -643,7 +815,7 @@ memcpy_xor(const void *src, void *dst, int bpp,
 		case 2:
 			do {
 				uint16_t *d = (uint16_t *)dst_bytes;
-				uint16_t *s = (uint16_t *)src_bytes;
+				const uint16_t *s = (const uint16_t *)src_bytes;
 
 				for (i = 0; i < width; i++)
 					d[i] = (s[i] & and) | or;
@@ -656,7 +828,7 @@ memcpy_xor(const void *src, void *dst, int bpp,
 		case 4:
 			do {
 				uint32_t *d = (uint32_t *)dst_bytes;
-				uint32_t *s = (uint32_t *)src_bytes;
+				const uint32_t *s = (const uint32_t *)src_bytes;
 
 				for (i = 0; i < width; i++)
 					d[i] = (s[i] & and) | or;

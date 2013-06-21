@@ -964,6 +964,39 @@ err:
 	return false;
 }
 
+static void kgem_init_swizzling(struct kgem *kgem)
+{
+	struct drm_i915_gem_get_tiling tiling;
+
+#ifndef __x86_64__
+	/* Between a register starved compiler emitting attrocious code
+	 * and the extra overhead in the kernel for managing the tight
+	 * 32-bit address space, unless we have a 64-bit system,
+	 * using memcpy_to_tiled_x() is extremely slow.
+	 */
+	return;
+#endif
+
+	if (kgem->gen < 050) /* bit17 swizzling :( */
+		return;
+
+	VG_CLEAR(tiling);
+	tiling.handle = gem_create(kgem->fd, 1);
+	if (!tiling.handle)
+		return;
+
+	if (!gem_set_tiling(kgem->fd, tiling.handle, I915_TILING_X, 512))
+		goto out;
+
+	if (drmIoctl(kgem->fd, DRM_IOCTL_I915_GEM_GET_TILING, &tiling))
+		goto out;
+
+	choose_memcpy_to_tiled_x(kgem, tiling.swizzle_mode);
+out:
+	gem_close(kgem->fd, tiling.handle);
+}
+
+
 void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 {
 	struct drm_i915_gem_get_aperture aperture;
@@ -1212,6 +1245,8 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 		kgem->batch_flags_base |= LOCAL_I915_EXEC_HANDLE_LUT;
 	if (kgem->has_pinned_batches)
 		kgem->batch_flags_base |= LOCAL_I915_EXEC_IS_PINNED;
+
+	kgem_init_swizzling(kgem);
 }
 
 /* XXX hopefully a good approximation */
@@ -5795,19 +5830,6 @@ void kgem_bo_set_binding(struct kgem_bo *bo, uint32_t format, uint16_t offset)
 		b->offset = offset;
 		bo->binding.next = b;
 	}
-}
-
-int kgem_bo_get_swizzling(struct kgem *kgem, struct kgem_bo *bo)
-{
-	struct drm_i915_gem_get_tiling tiling;
-
-	VG_CLEAR(tiling);
-	tiling.handle = bo->handle;
-	if (drmIoctl(kgem->fd, DRM_IOCTL_I915_GEM_GET_TILING, &tiling))
-		return 0;
-
-	assert(bo->tiling == tiling.tiling_mode);
-	return tiling.swizzle_mode;
 }
 
 struct kgem_bo *

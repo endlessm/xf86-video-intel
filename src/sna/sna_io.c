@@ -477,16 +477,7 @@ fallback:
 
 static bool upload_inplace__tiled(struct kgem *kgem, struct kgem_bo *bo)
 {
-#ifndef __x86_64__
-	/* Between a register starved compiler emitting attrocious code
-	 * and the extra overhead in the kernel for managing the tight
-	 * 32-bit address space, unless we have a 64-bit system,
-	 * using memcpy_to_tiled_x() is extremely slow.
-	 */
-	return false;
-#endif
-
-	if (kgem->gen < 050) /* bit17 swizzling :( */
+	if (!kgem->memcpy_to_tiled_x)
 		return false;
 
 	if (bo->tiling != I915_TILING_X)
@@ -505,7 +496,6 @@ write_boxes_inplace__tiled(struct kgem *kgem,
                            const BoxRec *box, int n)
 {
 	uint8_t *dst;
-	int swizzle;
 
 	assert(bo->tiling == I915_TILING_X);
 
@@ -514,9 +504,8 @@ write_boxes_inplace__tiled(struct kgem *kgem,
 		return false;
 
 	kgem_bo_sync__cpu(kgem, bo);
-	swizzle = kgem_bo_get_swizzling(kgem, bo);
 	do {
-		memcpy_to_tiled_x(src, dst, bpp, swizzle, stride, bo->pitch,
+		memcpy_to_tiled_x(kgem, src, dst, bpp, stride, bo->pitch,
 				  box->x1 + src_dx, box->y1 + src_dy,
 				  box->x1 + dst_dx, box->y1 + dst_dy,
 				  box->x2 - box->x1, box->y2 - box->y1);

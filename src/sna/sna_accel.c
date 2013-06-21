@@ -3868,15 +3868,7 @@ static inline void box32_add_rect(Box32Rec *box, const xRectangle *r)
 
 static bool can_upload_tiled_x(struct kgem *kgem, struct kgem_bo *bo)
 {
-#ifndef __x86_64__
-	/* Between a register starved compiler emitting attrocious code
-	 * and the extra overhead in the kernel for managing the tight
-	 * 32-bit address space, unless we have a 64-bit system,
-	 * using memcpy_to_tiled_x() is extremely slow.
-	 */
-	return false;
-#endif
-	if (kgem->gen < 050) /* bit17 swizzling :( */
+	if (!kgem->memcpy_to_tiled_x)
 		return false;
 
 	if (bo->tiling != I915_TILING_X)
@@ -3896,7 +3888,6 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 	struct sna_pixmap *priv = sna_pixmap(pixmap);
 	BoxRec *box;
 	uint8_t *dst;
-	int swizzle;
 	int n;
 
 	DBG(("%s: bo? %d, can tile? %d\n", __FUNCTION__,
@@ -3919,10 +3910,9 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 	DBG(("%s: upload(%d, %d, %d, %d) x %d\n", __FUNCTION__, x, y, w, h, n));
 
 	kgem_bo_sync__cpu(&sna->kgem, priv->gpu_bo);
-	swizzle = kgem_bo_get_swizzling(&sna->kgem, priv->gpu_bo);
 	do {
-		memcpy_to_tiled_x(bits, dst,
-				  pixmap->drawable.bitsPerPixel, swizzle,
+		memcpy_to_tiled_x(&sna->kgem, bits, dst,
+				  pixmap->drawable.bitsPerPixel,
 				  stride, priv->gpu_bo->pitch,
 				  box->x1 - x, box->y1 - y,
 				  box->x1, box->y1,

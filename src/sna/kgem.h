@@ -196,6 +196,12 @@ struct kgem {
 	void (*retire)(struct kgem *kgem);
 	void (*expire)(struct kgem *kgem);
 
+	void (*memcpy_to_tiled_x)(const void *src, void *dst, int bpp,
+				  int32_t src_stride, int32_t dst_stride,
+				  int16_t src_x, int16_t src_y,
+				  int16_t dst_x, int16_t dst_y,
+				  uint16_t width, uint16_t height);
+
 	uint16_t reloc__self[256];
 	uint32_t batch[64*1024-8] page_aligned;
 	struct drm_i915_gem_exec_object2 exec[256] page_aligned;
@@ -286,7 +292,6 @@ struct kgem_bo *kgem_create_cpu_2d(struct kgem *kgem,
 
 uint32_t kgem_bo_get_binding(struct kgem_bo *bo, uint32_t format);
 void kgem_bo_set_binding(struct kgem_bo *bo, uint32_t format, uint16_t offset);
-int kgem_bo_get_swizzling(struct kgem *kgem, struct kgem_bo *bo);
 
 bool kgem_retire(struct kgem *kgem);
 
@@ -692,5 +697,22 @@ static inline void __kgem_batch_debug(struct kgem *kgem, uint32_t nbatch)
 	(void)nbatch;
 }
 #endif
+
+static inline void
+memcpy_to_tiled_x(struct kgem *kgem,
+		  const void *src, void *dst, int bpp,
+		  int32_t src_stride, int32_t dst_stride,
+		  int16_t src_x, int16_t src_y,
+		  int16_t dst_x, int16_t dst_y,
+		  uint16_t width, uint16_t height)
+{
+	return kgem->memcpy_to_tiled_x(src, dst, bpp,
+				       src_stride, dst_stride,
+				       src_x, src_y,
+				       dst_x, dst_y,
+				       width, height);
+}
+
+void choose_memcpy_to_tiled_x(struct kgem *kgem, int swizzling);
 
 #endif /* KGEM_H */
