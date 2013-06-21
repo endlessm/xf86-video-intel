@@ -1981,21 +1981,6 @@ is_clear(PixmapPtr pixmap)
 	return priv && priv->clear;
 }
 
-static struct kgem_bo *
-peek_bo(DrawablePtr draw)
-{
-	struct sna_pixmap *priv;
-
-	if (draw == NULL)
-		return NULL;
-
-	priv = sna_pixmap(get_drawable_pixmap(draw));
-	if (priv == NULL)
-		return NULL;
-
-	return priv->gpu_bo;
-}
-
 bool
 sna_blt_composite(struct sna *sna,
 		  uint32_t op,
@@ -2013,6 +1998,7 @@ sna_blt_composite(struct sna *sna,
 	int16_t tx, ty;
 	BoxRec dst_box, src_box;
 	uint32_t alpha_fixup;
+	uint32_t color, hint;
 	bool was_clear;
 	bool ret;
 
@@ -2045,27 +2031,29 @@ sna_blt_composite(struct sna *sna,
 	} else
 		sna_render_picture_extents(dst, &dst_box);
 
-	bo = sna_pixmap(tmp->dst.pixmap)->gpu_bo;
-	if (bo == NULL || bo != peek_bo(src->pDrawable))
-		bo = sna_drawable_use_bo(dst->pDrawable, PREFER_GPU,
-					 &dst_box, &tmp->damage);
-	if (bo && !kgem_bo_can_blt(&sna->kgem, bo)) {
-		DBG(("%s: can not blit to dst, tiling? %d, pitch? %d\n",
-		     __FUNCTION__, bo->tiling, bo->pitch));
-		return false;
-	}
-
 	tmp->dst.format = dst->format;
 	tmp->dst.width = tmp->dst.pixmap->drawable.width;
 	tmp->dst.height = tmp->dst.pixmap->drawable.height;
 	get_drawable_deltas(dst->pDrawable, tmp->dst.pixmap,
 			    &tmp->dst.x, &tmp->dst.y);
-	tmp->dst.bo = bo;
 
 	if (op == PictOpClear) {
 clear:
 		if (was_clear)
 			return prepare_blt_nop(sna, tmp);
+
+		hint = 0;
+		if (can_render(sna))
+			hint |= PREFER_GPU;
+		if (dst->pCompositeClip->data == NULL)
+			hint |= IGNORE_CPU;
+		tmp->dst.bo = sna_drawable_use_bo(dst->pDrawable, hint,
+						  &dst_box, &tmp->damage);
+		if (tmp->dst.bo && !kgem_bo_can_blt(&sna->kgem, tmp->dst.bo)) {
+			DBG(("%s: can not blit to dst, tiling? %d, pitch? %d\n",
+			     __FUNCTION__, tmp->dst.bo->tiling, tmp->dst.bo->pitch));
+			return false;
+		}
 
 		if (!tmp->dst.bo) {
 			RegionRec region;
@@ -2096,6 +2084,21 @@ clear:
 			return false;
 		}
 
+		color = get_solid_color(src, tmp->dst.format);
+fill:
+		hint = 0;
+		if (can_render(sna))
+			hint |= PREFER_GPU;
+		if (dst->pCompositeClip->data == NULL)
+			hint |= IGNORE_CPU;
+		tmp->dst.bo = sna_drawable_use_bo(dst->pDrawable, hint,
+						  &dst_box, &tmp->damage);
+		if (tmp->dst.bo && !kgem_bo_can_blt(&sna->kgem, tmp->dst.bo)) {
+			DBG(("%s: can not blit to dst, tiling? %d, pitch? %d\n",
+			     __FUNCTION__, tmp->dst.bo->tiling, tmp->dst.bo->pitch));
+			return false;
+		}
+
 		if (!tmp->dst.bo) {
 			RegionRec region;
 
@@ -2107,7 +2110,7 @@ clear:
 				return false;
 		}
 
-		return prepare_blt_fill(sna, tmp, get_solid_color(src, tmp->dst.format));
+		return prepare_blt_fill(sna, tmp, color);
 	}
 
 	if (!src->pDrawable) {
@@ -2151,9 +2154,9 @@ clear:
 
 	src_pixmap = get_drawable_pixmap(src->pDrawable);
 	if (is_clear(src_pixmap)) {
-		return prepare_blt_fill(sna, tmp,
-					color_convert(sna_pixmap(src_pixmap)->clear_color,
-						      src->format, tmp->dst.format));
+		color = color_convert(sna_pixmap(src_pixmap)->clear_color,
+				      src->format, tmp->dst.format);
+		goto fill;
 	}
 
 	alpha_fixup = 0;
@@ -2214,6 +2217,23 @@ clear:
 	src_box.x2 = x + width;
 	src_box.y2 = y + height;
 	bo = NULL;
+
+	hint = 0;
+	if (can_render(sna))
+		hint |= PREFER_GPU;
+	if (dst->pCompositeClip->data == NULL)
+		hint |= IGNORE_CPU;
+	if (source_is_gpu(src_pixmap, &src_box))
+		hint |= FORCE_GPU;
+
+	tmp->dst.bo = sna_drawable_use_bo(dst->pDrawable, hint,
+					  &dst_box, &tmp->damage);
+	if (tmp->dst.bo && !kgem_bo_can_blt(&sna->kgem, tmp->dst.bo)) {
+		DBG(("%s: can not blit to dst, tiling? %d, pitch? %d\n",
+		     __FUNCTION__, tmp->dst.bo->tiling, tmp->dst.bo->pitch));
+		return false;
+	}
+
 	if (tmp->dst.bo || source_is_gpu(src_pixmap, &src_box))
 		bo = __sna_render_pixmap_bo(sna, src_pixmap, &src_box, true);
 	if (bo) {

@@ -920,7 +920,7 @@ sna_composite_rectangles(CARD8		 op,
 	 * operation, then we may as well delete it without moving it
 	 * first to the GPU.
 	 */
-	hint = PREFER_GPU;
+	hint = can_render(sna) ? PREFER_GPU : 0;
 	if (op <= PictOpSrc) {
 		if (priv->cpu_damage &&
 		    region_subsumes_damage(&region, priv->cpu_damage)) {
