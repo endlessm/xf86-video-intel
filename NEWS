@@ -1,3 +1,31 @@
+Release 2.21.10 (2013-06-22)
+============================
+Fixes missing support for Xv (with the textured video adaptor) on
+Haswell, and an old bug with wide monitors on various generation. Along
+with a few other regression fixes and performance tweaks for various
+corner cases.
+
+ * Do not lose track of fast pageflips across mode changes
+   [regression from 2.20.8]
+
+ * Fix listing of Visuals for Xv
+   [regression from 2.21.8]
+   https://bugs.freedesktop.org/show_bug.cgi?id=65479
+
+ * Improve coherency of concurrent CPU accesses to a pixmap
+   https://bugs.freedesktop.org/show_bug.cgi?id=61628
+
+ * Set sampler swizzling for textured video on Haswell
+   https://bugs.freedesktop.org/show_bug.cgi?id=65699
+
+ * Apply scanout stride limits
+   https://bugs.freedesktop.org/show_bug.cgi?id=65099
+
+ * Undo the self-copy for cloned pixmaps for loimpress's animations
+   [regression from 2.21.7]
+   https://bugs.freedesktop.org/show_bug.cgi?id=65665
+
+
 Release 2.21.9 (2013-06-06)
 ===========================
 Consolidating the copy-on-write support, hopefully cleaning up the last of
