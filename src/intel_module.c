@@ -434,11 +434,25 @@ static Bool intel_driver_func(ScrnInfoPtr pScrn,
 	}
 }
 
+static Bool is_i915_device(int fd)
+{
+	drm_version_t version;
+	char name[5] = "";
+
+	memset(&version, 0, sizeof(version));
+	version.name_len = 4;
+	version.name = name;
+
+	if (drmIoctl(fd, DRM_IOCTL_VERSION, &version))
+		return FALSE;
+
+	return strcmp("i915", name) == 0;
+}
+
 static Bool has_kernel_mode_setting(int entity_num,
 				    const struct pci_device *dev,
 				    const char *path)
 {
-	drmVersionPtr version;
 	int ret, fd;
 
 	fd = intel_open_device(entity_num, dev, path);
@@ -446,12 +460,7 @@ static Bool has_kernel_mode_setting(int entity_num,
 		return FALSE;
 
 	/* Confirm that this is a i915.ko device with GEM/KMS enabled */
-	ret = FALSE;
-	version = drmGetVersion(fd);
-	if (version) {
-		ret = strcmp ("i915", version->name) == 0;
-		drmFreeVersion(version);
-	}
+	ret = is_i915_device(fd);
 	if (ret) {
 		struct drm_i915_getparam gp;
 		gp.param = I915_PARAM_HAS_GEM;
