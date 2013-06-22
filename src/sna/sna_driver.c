@@ -78,9 +78,6 @@ DevPrivateKeyRec sna_gc_key;
 DevPrivateKeyRec sna_window_key;
 DevPrivateKeyRec sna_glyph_key;
 
-static int sna_put_drm_master(ScrnInfoPtr scrn);
-static int sna_get_drm_master(ScrnInfoPtr scrn);
-
 static void
 sna_load_palette(ScrnInfoPtr scrn, int numColors, int *indices,
 		 LOCO * colors, VisualPtr pVisual)
@@ -200,15 +197,8 @@ static Bool sna_become_master(struct sna *sna)
 
 	DBG(("%s\n", __FUNCTION__));
 
-	if (sna_get_drm_master(scrn)) {
-		sleep(2); /* XXX wait for the current master to decease */
-		if (drmSetMaster(sna->kgem.fd)) {
-			xf86DrvMsg(scrn->scrnIndex, X_ERROR,
-					"drmSetMaster failed: %s\n",
-					strerror(errno));
-			return FALSE;
-		}
-	}
+	if (intel_get_master(scrn))
+		return FALSE;
 
 	if (!xf86SetDesiredModes(scrn)) {
 		xf86DrvMsg(scrn->scrnIndex, X_WARNING,
@@ -291,139 +281,6 @@ static void PreInitCleanup(ScrnInfoPtr scrn)
 
 	free(scrn->driverPrivate);
 	scrn->driverPrivate = NULL;
-}
-
-struct sna_device {
-	int fd;
-	int open_count;
-	int master_count;
-};
-static int sna_device_key = -1;
-
-static inline struct sna_device *sna_device(ScrnInfoPtr scrn)
-{
-	if (scrn->entityList == NULL)
-		return NULL;
-
-	return xf86GetEntityPrivate(scrn->entityList[0], sna_device_key)->ptr;
-}
-
-static inline void sna_set_device(ScrnInfoPtr scrn, struct sna_device *dev)
-{
-	xf86GetEntityPrivate(scrn->entityList[0], sna_device_key)->ptr = dev;
-}
-
-static int sna_open_drm_master(ScrnInfoPtr scrn)
-{
-	struct sna_device *dev;
-	struct sna *sna = to_sna(scrn);
-	struct pci_device *pci = sna->PciInfo;
-	drmSetVersion sv;
-	int err;
-	char busid[20];
-	int fd;
-
-	DBG(("%s\n", __FUNCTION__));
-
-	dev = sna_device(scrn);
-	if (dev) {
-		DBG(("%s: reusing device, count=%d (master=%d)\n",
-		     __FUNCTION__, dev->open_count, dev->master_count));
-		assert(dev->open_count);
-		dev->open_count++;
-		return dev->fd;
-	}
-
-	snprintf(busid, sizeof(busid), "pci:%04x:%02x:%02x.%d",
-		 pci->domain, pci->bus, pci->dev, pci->func);
-
-	DBG(("%s: opening device '%s'\n",  __FUNCTION__, busid));
-	fd = drmOpen(NULL, busid);
-	if (fd == -1) {
-		xf86DrvMsg(scrn->scrnIndex, X_ERROR,
-			   "[drm] Failed to open DRM device for %s: %s\n",
-			   busid, strerror(errno));
-		return -1;
-	}
-
-	/* Check that what we opened was a master or a master-capable FD,
-	 * by setting the version of the interface we'll use to talk to it.
-	 * (see DRIOpenDRMMaster() in DRI1)
-	 */
-	sv.drm_di_major = 1;
-	sv.drm_di_minor = 1;
-	sv.drm_dd_major = -1;
-	sv.drm_dd_minor = -1;
-	err = drmSetInterfaceVersion(fd, &sv);
-	if (err != 0) {
-		xf86DrvMsg(scrn->scrnIndex, X_ERROR,
-			   "[drm] failed to set drm interface version: %s [%d].\n",
-			   strerror(-err), -err);
-		drmClose(fd);
-		return -1;
-	}
-
-	dev = malloc(sizeof(*dev));
-	if (dev) {
-		int flags;
-
-		/* make the fd nonblocking to handle event loops */
-		flags = fcntl(fd, F_GETFL, 0);
-		if (flags != -1)
-			(void)fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-
-		dev->fd = fd;
-		dev->open_count = 1;
-		sna_set_device(scrn, dev);
-	}
-
-	return fd;
-}
-
-static int sna_get_drm_master(ScrnInfoPtr scrn)
-{
-	struct sna_device *dev = sna_device(scrn);
-	int ret;
-
-	if (dev == NULL)
-		return -1;
-
-	ret = 0;
-	if (dev->master_count++ == 0)
-		ret = drmSetMaster(dev->fd);
-	return ret;
-}
-
-static int sna_put_drm_master(ScrnInfoPtr scrn)
-{
-	struct sna_device *dev = sna_device(scrn);
-	int ret;
-
-	if (dev == NULL)
-		return -1;
-
-	ret = 0;
-	assert(dev->master_count);
-	if (--dev->master_count == 0)
-		ret = drmDropMaster(dev->fd);
-
-	return ret;
-}
-
-static void sna_close_drm_master(ScrnInfoPtr scrn)
-{
-	struct sna_device *dev = sna_device(scrn);
-
-	if (dev == NULL)
-		return;
-
-	DBG(("%s(open_count=%d)\n", __FUNCTION__, dev->open_count));
-	if (--dev->open_count)
-		return;
-
-	drmClose(dev->fd);
-	sna_set_device(scrn, NULL);
-	free(dev);
 }
 
 static void sna_selftest(void)
@@ -571,7 +428,7 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 	scrn->progClock = TRUE;
 	scrn->rgbBits = 8;
 
-	fd = sna_open_drm_master(scrn);
+	fd = intel_get_device(scrn);
 	if (fd == -1) {
 		xf86DrvMsg(scrn->scrnIndex, X_ERROR,
 			   "Failed to become DRM master.\n");
@@ -865,7 +722,7 @@ static void sna_leave_vt(VT_FUNC_ARGS_DECL)
 
 	xf86_hide_cursors(scrn);
 
-	if (sna_put_drm_master(scrn))
+	if (intel_put_master(scrn))
 		xf86DrvMsg(scrn->scrnIndex, X_WARNING,
 			   "drmDropMaster failed: %s\n", strerror(errno));
 }
@@ -1129,7 +986,7 @@ static void sna_free_screen(FREE_SCREEN_ARGS_DECL)
 	}
 	scrn->driverPrivate = NULL;
 
-	sna_close_drm_master(scrn);
+	intel_put_device(scrn);
 }
 
 /*
@@ -1257,9 +1114,6 @@ Bool sna_init_scrn(ScrnInfoPtr scrn, int entity_num)
 		   "SNA compiled with extra pixmap/damage validation\n");
 #endif
 	DBG(("pixman version: %s\n", pixman_version_string()));
-
-	if (sna_device_key == -1)
-		sna_device_key = xf86AllocateEntityPrivateIndex();
 
 	scrn->PreInit = sna_pre_init;
 	scrn->ScreenInit = sna_screen_init;

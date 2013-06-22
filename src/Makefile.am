@@ -43,6 +43,7 @@ NULL:=#
 intel_drv_la_SOURCES = \
 	intel_list.h \
 	intel_options.h \
+	intel_device.c \
 	intel_options.c \
 	intel_module.c \
 	compat-api.h \
@@ -53,33 +54,33 @@ AM_CFLAGS += @UDEV_CFLAGS@ @DRM_CFLAGS@ @DRMINTEL_CFLAGS@
 AM_CFLAGS += -I$(top_srcdir)/uxa -I$(top_srcdir)/src/render_program
 intel_drv_la_LIBADD += @UDEV_LIBS@ @DRMINTEL_LIBS@ @DRM_LIBS@ ../uxa/libuxa.la
 intel_drv_la_SOURCES += \
-         brw_defines.h \
-         brw_structs.h \
-         common.h \
-         intel.h \
-         intel_batchbuffer.c \
-         intel_batchbuffer.h \
-	 intel_display.c \
-         intel_driver.c \
-         intel_driver.h \
-	 intel_glamor.h \
-         intel_memory.c \
-	 intel_uxa.c \
-         intel_video.c \
-         intel_video.h \
-	 i830_3d.c \
-	 i830_render.c \
-	 i830_reg.h \
-	 i915_3d.h \
-	 i915_reg.h \
-	 i915_3d.c \
-	 i915_render.c \
-	 i915_video.c \
-	 i965_reg.h \
-	 i965_3d.c \
-	 i965_video.c \
-	 i965_render.c \
-	 $(NULL)
+	brw_defines.h \
+	brw_structs.h \
+	common.h \
+	intel.h \
+	intel_batchbuffer.c \
+	intel_batchbuffer.h \
+	intel_display.c \
+	intel_driver.c \
+	intel_driver.h \
+	intel_glamor.h \
+	intel_memory.c \
+	intel_uxa.c \
+	intel_video.c \
+	intel_video.h \
+	i830_3d.c \
+	i830_render.c \
+	i830_reg.h \
+	i915_3d.h \
+	i915_reg.h \
+	i915_3d.c \
+	i915_render.c \
+	i915_video.c \
+	i965_reg.h \
+	i965_3d.c \
+	i965_video.c \
+	i965_render.c \
+	$(NULL)
 
 if GLAMOR
 AM_CFLAGS += @LIBGLAMOR_CFLAGS@

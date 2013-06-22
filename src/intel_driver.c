@@ -1298,6 +1298,8 @@ static Bool I830PMEvent(SCRN_ARG_TYPE arg, pmEvent event, Bool undo)
 
 Bool intel_init_scrn(ScrnInfoPtr scrn)
 {
+	__intel_uxa_release_device(scrn);
+
 	scrn->PreInit = I830PreInit;
 	scrn->ScreenInit = I830ScreenInit;
 	scrn->SwitchMode = I830SwitchMode;
