@@ -78,6 +78,9 @@ DevPrivateKeyRec sna_gc_key;
 DevPrivateKeyRec sna_window_key;
 DevPrivateKeyRec sna_glyph_key;
 
+static int sna_put_drm_master(ScrnInfoPtr scrn);
+static int sna_get_drm_master(ScrnInfoPtr scrn);
+
 static void
 sna_load_palette(ScrnInfoPtr scrn, int numColors, int *indices,
 		 LOCO * colors, VisualPtr pVisual)
@@ -197,7 +200,7 @@ static Bool sna_become_master(struct sna *sna)
 
 	DBG(("%s\n", __FUNCTION__));
 
-	if (drmSetMaster(sna->kgem.fd)) {
+	if (sna_get_drm_master(scrn)) {
 		sleep(2); /* XXX wait for the current master to decease */
 		if (drmSetMaster(sna->kgem.fd)) {
 			xf86DrvMsg(scrn->scrnIndex, X_ERROR,
@@ -293,6 +296,7 @@ static void PreInitCleanup(ScrnInfoPtr scrn)
 struct sna_device {
 	int fd;
 	int open_count;
+	int master_count;
 };
 static int sna_device_key = -1;
 
@@ -323,9 +327,10 @@ static int sna_open_drm_master(ScrnInfoPtr scrn)
 
 	dev = sna_device(scrn);
 	if (dev) {
+		DBG(("%s: reusing device, count=%d (master=%d)\n",
+		     __FUNCTION__, dev->open_count, dev->master_count));
+		assert(dev->open_count);
 		dev->open_count++;
-		DBG(("%s: reusing device, count=%d\n",
-		     __FUNCTION__, dev->open_count));
 		return dev->fd;
 	}
 
@@ -373,6 +378,36 @@ static int sna_open_drm_master(ScrnInfoPtr scrn)
 	}
 
 	return fd;
+}
+
+static int sna_get_drm_master(ScrnInfoPtr scrn)
+{
+	struct sna_device *dev = sna_device(scrn);
+	int ret;
+
+	if (dev == NULL)
+		return -1;
+
+	ret = 0;
+	if (dev->master_count++ == 0)
+		ret = drmSetMaster(dev->fd);
+	return ret;
+}
+
+static int sna_put_drm_master(ScrnInfoPtr scrn)
+{
+	struct sna_device *dev = sna_device(scrn);
+	int ret;
+
+	if (dev == NULL)
+		return -1;
+
+	ret = 0;
+	assert(dev->master_count);
+	if (--dev->master_count == 0)
+		ret = drmDropMaster(dev->fd);
+
+	return ret;
 }
 
 static void sna_close_drm_master(ScrnInfoPtr scrn)
@@ -825,13 +860,12 @@ static void sna_uevent_fini(ScrnInfoPtr scrn) { }
 static void sna_leave_vt(VT_FUNC_ARGS_DECL)
 {
 	SCRN_INFO_PTR(arg);
-	struct sna *sna = to_sna(scrn);
 
 	DBG(("%s\n", __FUNCTION__));
 
 	xf86_hide_cursors(scrn);
 
-	if (drmDropMaster(sna->kgem.fd))
+	if (sna_put_drm_master(scrn))
 		xf86DrvMsg(scrn->scrnIndex, X_WARNING,
 			   "drmDropMaster failed: %s\n", strerror(errno));
 }
