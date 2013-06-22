@@ -4807,8 +4807,10 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 		hint |= IGNORE_CPU;
 
 	/* XXX hack for firefox -- subsequent uses of src will be corrupt! */
-	if (src_priv && src_priv->cow && src_priv->gpu_bo == dst_priv->gpu_bo) {
-		DBG(("%s: discarding cow reference for cousin copy\n",
+	if (src_priv &&
+	    COW(src_priv->cow) == COW(dst_priv->cow) &&
+	    IS_COW_OWNER(dst_priv->cow)) {
+		DBG(("%s: ignoring cow reference for cousin copy\n",
 		     __FUNCTION__));
 		assert(src_priv->cpu_damage == NULL);
 		bo = dst_priv->gpu_bo;
