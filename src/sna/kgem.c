@@ -3665,8 +3665,7 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 	size /= PAGE_SIZE;
 	bucket = cache_bucket(size);
 
-	if (flags & CREATE_SCANOUT) {
-		assert((flags & CREATE_INACTIVE) == 0);
+	if ((flags & (CREATE_SCANOUT | CREATE_INACTIVE)) == CREATE_SCANOUT) {
 		list_for_each_entry_reverse(bo, &kgem->scanout, list) {
 			assert(bo->scanout);
 			assert(bo->delta);
