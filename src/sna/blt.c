@@ -487,16 +487,22 @@ void choose_memcpy_to_tiled_x(struct kgem *kgem, int swizzling)
 {
 	switch (swizzling) {
 	default:
+		DBG(("%s: unknown swizzling, %d\n", __FUNCTION__, swizzling));
+		break;
 	case I915_BIT_6_SWIZZLE_NONE:
+		DBG(("%s: no swizzling\n", __FUNCTION__));
 		kgem->memcpy_to_tiled_x = memcpy_to_tiled_x__swizzle_0;
 		break;
 	case I915_BIT_6_SWIZZLE_9:
+		DBG(("%s: 6^9 swizzling\n", __FUNCTION__));
 		kgem->memcpy_to_tiled_x = memcpy_to_tiled_x__swizzle_9;
 		break;
 	case I915_BIT_6_SWIZZLE_9_10:
+		DBG(("%s: 6^9^10 swizzling\n", __FUNCTION__));
 		kgem->memcpy_to_tiled_x = memcpy_to_tiled_x__swizzle_9_10;
 		break;
 	case I915_BIT_6_SWIZZLE_9_11:
+		DBG(("%s: 6^9^11 swizzling\n", __FUNCTION__));
 		kgem->memcpy_to_tiled_x = memcpy_to_tiled_x__swizzle_9_11;
 		break;
 	}
