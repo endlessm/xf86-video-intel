@@ -2519,9 +2519,18 @@ void kgem_reset(struct kgem *kgem)
 			} else
 				__kgem_bo_clear_busy(bo);
 
-			if (!bo->refcnt && !bo->reusable) {
-				assert(!bo->snoop);
-				DBG(("%s: discarding handle=%d\n",
+			if (bo->refcnt || bo->rq)
+				continue;
+
+			if (bo->snoop) {
+				kgem_bo_move_to_snoop(kgem, bo);
+			} else if (bo->scanout) {
+				kgem_bo_move_to_scanout(kgem, bo);
+			} else if ((bo = kgem_bo_replace_io(bo))->reusable &&
+				   kgem_bo_set_purgeable(kgem, bo)) {
+				kgem_bo_move_to_inactive(kgem, bo);
+			} else {
+				DBG(("%s: closing %d\n",
 				     __FUNCTION__, bo->handle));
 				kgem_bo_free(kgem, bo);
 			}
