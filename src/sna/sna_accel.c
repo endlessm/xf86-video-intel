@@ -1821,6 +1821,13 @@ _sna_pixmap_move_to_cpu(PixmapPtr pixmap, unsigned int flags)
 
 	assert(priv->gpu_damage == NULL || priv->gpu_bo);
 
+	if ((flags & MOVE_READ) == 0) {
+		if (priv->gpu_bo)
+			kgem_bo_undo(&sna->kgem, priv->gpu_bo);
+		if (priv->cpu_bo)
+			kgem_bo_undo(&sna->kgem, priv->cpu_bo);
+	}
+
 	if (USE_INPLACE && (flags & MOVE_READ) == 0 && !priv->cow) {
 		assert(flags & MOVE_WRITE);
 		DBG(("%s: no readbck, discarding gpu damage [%d], pending clear[%d]\n",
@@ -3482,6 +3489,13 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 
 	assert(priv->gpu_damage == NULL || priv->gpu_bo);
 
+	if ((flags & MOVE_READ) == 0) {
+		if (priv->gpu_bo)
+			kgem_bo_undo(&sna->kgem, priv->gpu_bo);
+		if (priv->cpu_bo)
+			kgem_bo_undo(&sna->kgem, priv->cpu_bo);
+	}
+
 	if (priv->cow && (flags & MOVE_WRITE || priv->cpu_damage)) {
 		if (!sna_pixmap_undo_cow(sna, priv, flags & MOVE_READ))
 			return false;
@@ -3947,6 +3961,14 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 	n = RegionNumRects(region);
 
 	DBG(("%s: upload(%d, %d, %d, %d) x %d\n", __FUNCTION__, x, y, w, h, n));
+
+	if (n == 1 &&
+	    w >= pixmap->drawable.width &&
+	    h >= pixmap->drawable.height) {
+		DBG(("%s: discarding operations to GPU bo\n", __FUNCTION__));
+		kgem_bo_undo(&sna->kgem, priv->gpu_bo);
+	}
+
 	if (!DAMAGE_IS_ALL(priv->gpu_damage)) {
 		sna_damage_add(&priv->gpu_damage, region);
 		sna_damage_reduce_all(&priv->gpu_damage,
