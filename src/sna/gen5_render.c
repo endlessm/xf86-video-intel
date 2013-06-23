@@ -862,7 +862,7 @@ gen5_emit_pipelined_pointers(struct sna *sna,
 	return true;
 }
 
-static void
+static bool
 gen5_emit_drawing_rectangle(struct sna *sna, const struct sna_composite_op *op)
 {
 	uint32_t limit = (op->dst.height - 1) << 16 | (op->dst.width - 1);
@@ -874,7 +874,7 @@ gen5_emit_drawing_rectangle(struct sna *sna, const struct sna_composite_op *op)
 	if (!DBG_NO_STATE_CACHE &&
 	    sna->render_state.gen5.drawrect_limit == limit &&
 	    sna->render_state.gen5.drawrect_offset == offset)
-		return;
+		return false;
 
 	sna->render_state.gen5.drawrect_offset = offset;
 	sna->render_state.gen5.drawrect_limit = limit;
@@ -883,6 +883,7 @@ gen5_emit_drawing_rectangle(struct sna *sna, const struct sna_composite_op *op)
 	OUT_BATCH(0x00000000);
 	OUT_BATCH(limit);
 	OUT_BATCH(offset);
+	return true;
 }
 
 static void
@@ -1014,7 +1015,8 @@ gen5_emit_state(struct sna *sna,
 	assert(op->dst.bo->exec);
 
 	/* drawrect must be first for Ironlake BLT workaround */
-	gen5_emit_drawing_rectangle(sna, op);
+	if (gen5_emit_drawing_rectangle(sna, op))
+		offset &= ~1;
 	gen5_emit_binding_table(sna, offset & ~1);
 	if (gen5_emit_pipelined_pointers(sna, op, op->op, op->u.gen5.wm_kernel)){
 		gen5_emit_urb(sna);
