@@ -3942,7 +3942,13 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 
 	DBG(("%s: bo? %d, can tile? %d\n", __FUNCTION__,
 	     priv->gpu_bo != NULL,
-	     priv->gpu_bo ? can_upload_tiled(&sna->kgem, priv->gpu_bo) : 0));
+	     priv->gpu_bo ? can_upload_tiled_x(&sna->kgem, priv->gpu_bo) : 0));
+
+	if (priv->gpu_bo && priv->gpu_bo->proxy) {
+		DBG(("%s: discarding cached upload proxy\n", __FUNCTION__));
+		kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
+		priv->gpu_bo = NULL;
+	}
 
 	if (priv->gpu_bo == NULL &&
 	    !create_upload_tiled_x(&sna->kgem, pixmap, priv))
