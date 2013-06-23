@@ -1009,9 +1009,20 @@ gen5_emit_state(struct sna *sna,
 		const struct sna_composite_op *op,
 		uint16_t offset)
 {
+	bool flush = false;
+
 	assert(op->dst.bo->exec);
 
-	if (kgem_bo_is_dirty(op->src.bo) || kgem_bo_is_dirty(op->mask.bo)) {
+	/* drawrect must be first for Ironlake BLT workaround */
+	gen5_emit_drawing_rectangle(sna, op);
+	gen5_emit_binding_table(sna, offset & ~1);
+	if (gen5_emit_pipelined_pointers(sna, op, op->op, op->u.gen5.wm_kernel)){
+		gen5_emit_urb(sna);
+		flush = (offset & 1) && op->op > PictOpSrc;
+	}
+	gen5_emit_vertex_elements(sna, op);
+
+	if (flush || kgem_bo_is_dirty(op->src.bo) || kgem_bo_is_dirty(op->mask.bo)) {
 		DBG(("%s: flushing dirty (%d, %d)\n", __FUNCTION__,
 		     kgem_bo_is_dirty(op->src.bo),
 		     kgem_bo_is_dirty(op->mask.bo)));
@@ -1019,18 +1030,12 @@ gen5_emit_state(struct sna *sna,
 		kgem_clear_dirty(&sna->kgem);
 		kgem_bo_mark_dirty(op->dst.bo);
 	}
-
-	/* drawrect must be first for Ironlake BLT workaround */
-	gen5_emit_drawing_rectangle(sna, op);
-	gen5_emit_binding_table(sna, offset);
-	if (gen5_emit_pipelined_pointers(sna, op, op->op, op->u.gen5.wm_kernel))
-		gen5_emit_urb(sna);
-	gen5_emit_vertex_elements(sna, op);
 }
 
 static void gen5_bind_surfaces(struct sna *sna,
 			       const struct sna_composite_op *op)
 {
+	bool dirty = kgem_bo_is_dirty(op->dst.bo);
 	uint32_t *binding_table;
 	uint16_t offset;
 
@@ -1067,7 +1072,7 @@ static void gen5_bind_surfaces(struct sna *sna,
 		offset = sna->render_state.gen5.surface_table;
 	}
 
-	gen5_emit_state(sna, op, offset);
+	gen5_emit_state(sna, op, offset | dirty);
 }
 
 fastcall static void
@@ -1239,6 +1244,7 @@ static uint32_t gen5_bind_video_source(struct sna *sna,
 static void gen5_video_bind_surfaces(struct sna *sna,
 				     const struct sna_composite_op *op)
 {
+	bool dirty = kgem_bo_is_dirty(op->dst.bo);
 	struct sna_video_frame *frame = op->priv;
 	uint32_t src_surf_format;
 	uint32_t src_surf_base[6];
@@ -1299,7 +1305,7 @@ static void gen5_video_bind_surfaces(struct sna *sna,
 					       src_surf_format);
 	}
 
-	gen5_emit_state(sna, op, offset);
+	gen5_emit_state(sna, op, offset | dirty);
 }
 
 static bool
@@ -2201,6 +2207,7 @@ static void
 gen5_copy_bind_surfaces(struct sna *sna,
 			const struct sna_composite_op *op)
 {
+	bool dirty = kgem_bo_is_dirty(op->dst.bo);
 	uint32_t *binding_table;
 	uint16_t offset;
 
@@ -2225,7 +2232,7 @@ gen5_copy_bind_surfaces(struct sna *sna,
 		offset = sna->render_state.gen5.surface_table;
 	}
 
-	gen5_emit_state(sna, op, offset);
+	gen5_emit_state(sna, op, offset | dirty);
 }
 
 static bool
@@ -2537,6 +2544,7 @@ static void
 gen5_fill_bind_surfaces(struct sna *sna,
 			const struct sna_composite_op *op)
 {
+	bool dirty = kgem_bo_is_dirty(op->dst.bo);
 	uint32_t *binding_table;
 	uint16_t offset;
 
@@ -2562,7 +2570,7 @@ gen5_fill_bind_surfaces(struct sna *sna,
 		offset = sna->render_state.gen5.surface_table;
 	}
 
-	gen5_emit_state(sna, op, offset);
+	gen5_emit_state(sna, op, offset | dirty);
 }
 
 static inline bool prefer_blt_fill(struct sna *sna)
