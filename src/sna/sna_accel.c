@@ -4000,6 +4000,8 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 	} while (--n);
 	__kgem_bo_unmap__cpu(&sna->kgem, priv->gpu_bo, dst);
 
+	priv->clear = false;
+	priv->cpu = false;
 	return true;
 }
 
