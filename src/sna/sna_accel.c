@@ -3868,9 +3868,6 @@ static inline void box32_add_rect(Box32Rec *box, const xRectangle *r)
 
 static bool can_upload_tiled_x(struct kgem *kgem, struct kgem_bo *bo)
 {
-	if (!kgem->memcpy_to_tiled_x)
-		return false;
-
 	if (bo->tiling != I915_TILING_X)
 		return false;
 
@@ -3878,6 +3875,39 @@ static bool can_upload_tiled_x(struct kgem *kgem, struct kgem_bo *bo)
 		return false;
 
 	return bo->domain == DOMAIN_CPU || kgem->has_llc;
+}
+
+static bool
+create_upload_tiled_x(struct kgem *kgem,
+		      PixmapPtr pixmap,
+		      struct sna_pixmap *priv)
+{
+	unsigned create, tiling;
+
+	if (priv->shm)
+		return false;
+
+	if ((priv->create & KGEM_CAN_CREATE_GPU) == 0)
+		return false;
+
+	tiling = sna_pixmap_choose_tiling(pixmap, I915_TILING_X);
+	if (!(tiling == I915_TILING_X || tiling == -I915_TILING_X))
+		return false;
+
+	assert(priv->gpu_bo == NULL);
+	assert(priv->gpu_damage == NULL);
+
+	create = CREATE_CPU_MAP | CREATE_INACTIVE | CREATE_EXACT;
+	if (pixmap->usage_hint == SNA_CREATE_FB)
+		create |= CREATE_SCANOUT;
+
+	priv->gpu_bo =
+		kgem_create_2d(kgem,
+			       pixmap->drawable.width,
+			       pixmap->drawable.height,
+			       pixmap->drawable.bitsPerPixel,
+			       tiling, create);
+	return priv->gpu_bo != NULL;
 }
 
 static bool
@@ -3890,12 +3920,21 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 	uint8_t *dst;
 	int n;
 
+	if (!sna->kgem.memcpy_to_tiled_x)
+		return false;
+
+	if (wedged(sna))
+		return false;
+
 	DBG(("%s: bo? %d, can tile? %d\n", __FUNCTION__,
 	     priv->gpu_bo != NULL,
 	     priv->gpu_bo ? can_upload_tiled(&sna->kgem, priv->gpu_bo) : 0));
 
-	if (!DAMAGE_IS_ALL(priv->gpu_damage) ||
-	    !can_upload_tiled_x(&sna->kgem, priv->gpu_bo))
+	if (priv->gpu_bo == NULL &&
+	    !create_upload_tiled_x(&sna->kgem, pixmap, priv))
+		return false;
+
+	if (!can_upload_tiled_x(&sna->kgem, priv->gpu_bo))
 		return false;
 
 	assert(priv->gpu_bo->tiling == I915_TILING_X);
@@ -3908,6 +3947,18 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 	n = RegionNumRects(region);
 
 	DBG(("%s: upload(%d, %d, %d, %d) x %d\n", __FUNCTION__, x, y, w, h, n));
+	if (!DAMAGE_IS_ALL(priv->gpu_damage)) {
+		sna_damage_add(&priv->gpu_damage, region);
+		sna_damage_reduce_all(&priv->gpu_damage,
+				      pixmap->drawable.width,
+				      pixmap->drawable.height);
+		if (DAMAGE_IS_ALL(priv->gpu_damage)) {
+			list_del(&priv->flush_list);
+			sna_pixmap_free_cpu(sna, priv);
+		}
+	}
+	if (priv->cpu_damage)
+		sna_damage_subtract(&priv->cpu_damage, region);
 
 	kgem_bo_sync__cpu(&sna->kgem, priv->gpu_bo);
 	do {
@@ -6111,7 +6162,7 @@ damage_clipped:
 
 		DBG(("%s: clip %ld x [(%d, %d), (%d, %d)] x %d [(%d, %d)...]\n",
 		     __FUNCTION__,
-		     RegionNumRects(&clip),
+		     (long)RegionNumRects(&clip),
 		     clip.extents.x1, clip.extents.y1, clip.extents.x2, clip.extents.y2,
 		     n, pt->x, pt->y));
 
