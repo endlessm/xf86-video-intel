@@ -107,3 +107,10 @@ intel_drv_la_SOURCES += \
 	$(NULL)
 endif
 endif
+
+EXTRA_DIST = \
+	scripts/clock.5c \
+	scripts/clock-graph.5c \
+	scripts/fix.5c \
+	scripts/tv.5c \
+	$(NULL)
