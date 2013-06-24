@@ -5750,6 +5750,39 @@ sna_poly_point__fill_clip_boxes(DrawablePtr drawable, GCPtr gc,
 }
 
 static void
+sna_poly_point__dash(DrawablePtr drawable, GCPtr gc,
+		     int mode, int n, DDXPointPtr pt)
+{
+	struct sna_fill_spans *data = sna_gc(gc)->priv;
+	struct sna_fill_op *op = data->op;
+
+	if (op->base.u.blt.pixel == gc->fgPixel)
+		sna_poly_point__fill(drawable, gc, mode, n, pt);
+}
+
+static void
+sna_poly_point__dash_clip_extents(DrawablePtr drawable, GCPtr gc,
+				  int mode, int n, DDXPointPtr pt)
+{
+	struct sna_fill_spans *data = sna_gc(gc)->priv;
+	struct sna_fill_op *op = data->op;
+
+	if (op->base.u.blt.pixel == gc->fgPixel)
+		sna_poly_point__fill_clip_extents(drawable, gc, mode, n, pt);
+}
+
+static void
+sna_poly_point__dash_clip_boxes(DrawablePtr drawable, GCPtr gc,
+				  int mode, int n, DDXPointPtr pt)
+{
+	struct sna_fill_spans *data = sna_gc(gc)->priv;
+	struct sna_fill_op *op = data->op;
+
+	if (op->base.u.blt.pixel == gc->fgPixel)
+		sna_poly_point__fill_clip_boxes(drawable, gc, mode, n, pt);
+}
+
+static void
 sna_fill_spans__fill(DrawablePtr drawable,
 		     GCPtr gc, int n,
 		     DDXPointPtr pt, int *width, int sorted)
@@ -8175,16 +8208,20 @@ spans_fallback:
 						sna_gc_ops__tmp.FillSpans = sna_fill_spans__fill_offset;
 					else
 						sna_gc_ops__tmp.FillSpans = sna_fill_spans__fill;
+					sna_gc_ops__tmp.PolyPoint = sna_poly_point__fill;
 				} else {
 					region_maybe_clip(&data.region,
 							  gc->pCompositeClip);
 					if (RegionNil(&data.region))
 						return;
 
-					if (region_is_singular(&data.region))
+					if (region_is_singular(&data.region)) {
 						sna_gc_ops__tmp.FillSpans = sna_fill_spans__fill_clip_extents;
-					else
+						sna_gc_ops__tmp.PolyPoint = sna_poly_point__fill_clip_extents;
+					} else {
 						sna_gc_ops__tmp.FillSpans = sna_fill_spans__fill_clip_boxes;
+						sna_gc_ops__tmp.PolyPoint = sna_poly_point__fill_clip_boxes;
+					}
 				}
 				assert(gc->miTranslate);
 
@@ -8200,16 +8237,20 @@ spans_fallback:
 						sna_gc_ops__tmp.FillSpans = sna_fill_spans__dash_offset;
 					else
 						sna_gc_ops__tmp.FillSpans = sna_fill_spans__dash;
+					sna_gc_ops__tmp.PolyPoint = sna_poly_point__dash;
 				} else {
 					region_maybe_clip(&data.region,
 							  gc->pCompositeClip);
 					if (RegionNil(&data.region))
 						return;
 
-					if (region_is_singular(&data.region))
+					if (region_is_singular(&data.region)) {
 						sna_gc_ops__tmp.FillSpans = sna_fill_spans__dash_clip_extents;
-					else
+						sna_gc_ops__tmp.PolyPoint = sna_poly_point__dash_clip_extents;
+					} else {
 						sna_gc_ops__tmp.FillSpans = sna_fill_spans__dash_clip_boxes;
+						sna_gc_ops__tmp.PolyPoint = sna_poly_point__dash_clip_boxes;
+					}
 				}
 				assert(gc->miTranslate);
 
@@ -8239,6 +8280,7 @@ spans_fallback:
 			 */
 			sna_gc_ops__tmp.FillSpans = sna_fill_spans__gpu;
 			sna_gc_ops__tmp.PolyFillRect = sna_poly_fill_rect__gpu;
+			sna_gc_ops__tmp.PolyPoint = sna_poly_point__gpu;
 			gc->ops = &sna_gc_ops__tmp;
 
 			switch (gc->lineStyle) {
@@ -9083,16 +9125,20 @@ spans_fallback:
 					sna_gc_ops__tmp.FillSpans = sna_fill_spans__fill_offset;
 				else
 					sna_gc_ops__tmp.FillSpans = sna_fill_spans__fill;
+				sna_gc_ops__tmp.PolyPoint = sna_poly_point__fill;
 			} else {
 				region_maybe_clip(&data.region,
 						  gc->pCompositeClip);
 				if (RegionNil(&data.region))
 					return;
 
-				if (region_is_singular(&data.region))
+				if (region_is_singular(&data.region)) {
 					sna_gc_ops__tmp.FillSpans = sna_fill_spans__fill_clip_extents;
-				else
+					sna_gc_ops__tmp.PolyPoint = sna_poly_point__fill_clip_extents;
+				} else {
 					sna_gc_ops__tmp.FillSpans = sna_fill_spans__fill_clip_boxes;
+					sna_gc_ops__tmp.PolyPoint = sna_poly_point__fill_clip_boxes;
+				}
 			}
 			assert(gc->miTranslate);
 			gc->ops = &sna_gc_ops__tmp;
@@ -9103,6 +9149,8 @@ spans_fallback:
 			fill.done(data.sna, &fill);
 		} else {
 			sna_gc_ops__tmp.FillSpans = sna_fill_spans__gpu;
+			sna_gc_ops__tmp.PolyFillRect = sna_poly_fill_rect__gpu;
+			sna_gc_ops__tmp.PolyPoint = sna_poly_point__gpu;
 			gc->ops = &sna_gc_ops__tmp;
 
 			for (i = 0; i < n; i++)
