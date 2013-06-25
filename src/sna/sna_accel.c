@@ -3920,7 +3920,7 @@ create_upload_tiled_x(struct kgem *kgem,
 			       pixmap->drawable.width,
 			       pixmap->drawable.height,
 			       pixmap->drawable.bitsPerPixel,
-			       tiling, create);
+			       I915_TILING_X, create);
 	return priv->gpu_bo != NULL;
 }
 
@@ -3982,6 +3982,7 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 				      pixmap->drawable.height);
 		if (DAMAGE_IS_ALL(priv->gpu_damage)) {
 			list_del(&priv->flush_list);
+			sna_damage_destroy(&priv->cpu_damage);
 			sna_pixmap_free_cpu(sna, priv);
 		}
 	}
