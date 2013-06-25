@@ -3959,6 +3959,16 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 
 	assert(priv->gpu_bo->tiling == I915_TILING_X);
 
+	if (region->data == NULL &&
+	    w >= pixmap->drawable.width &&
+	    h >= pixmap->drawable.height) {
+		DBG(("%s: discarding operations to GPU bo\n", __FUNCTION__));
+		kgem_bo_undo(&sna->kgem, priv->gpu_bo);
+	}
+
+	if (__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo))
+		return false;
+
 	dst = __kgem_bo_map__cpu(&sna->kgem, priv->gpu_bo);
 	if (dst == NULL)
 		return false;
@@ -3967,13 +3977,6 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 	n = RegionNumRects(region);
 
 	DBG(("%s: upload(%d, %d, %d, %d) x %d\n", __FUNCTION__, x, y, w, h, n));
-
-	if (n == 1 &&
-	    w >= pixmap->drawable.width &&
-	    h >= pixmap->drawable.height) {
-		DBG(("%s: discarding operations to GPU bo\n", __FUNCTION__));
-		kgem_bo_undo(&sna->kgem, priv->gpu_bo);
-	}
 
 	if (!DAMAGE_IS_ALL(priv->gpu_damage)) {
 		sna_damage_add(&priv->gpu_damage, region);
