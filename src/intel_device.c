@@ -156,7 +156,7 @@ int intel_get_device(ScrnInfoPtr scrn)
 		if (ret != 0) {
 			xf86DrvMsg(scrn->scrnIndex, X_ERROR,
 				   "[drm] failed to set drm interface version: %s [%d].\n",
-				   strerror(ret), ret);
+				   strerror(errno), errno);
 			dev->open_count--;
 			return -1;
 		}
