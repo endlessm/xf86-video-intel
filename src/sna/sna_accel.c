@@ -4884,7 +4884,7 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 			dst_priv->cpu = false;
 		}
 	}
-	if (alu_overwrites(alu))
+	if (region->data == NULL && alu_overwrites(alu))
 		hint |= IGNORE_CPU;
 
 	/* XXX hack for firefox -- subsequent uses of src will be corrupt! */
