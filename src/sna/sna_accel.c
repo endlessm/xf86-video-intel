@@ -4010,6 +4010,12 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 	if (priv->cpu_damage)
 		sna_damage_subtract(&priv->cpu_damage, region);
 
+	if (priv->mapped) {
+		assert(!priv->shm);
+		priv->pixmap->devPrivate.ptr = NULL;
+		priv->mapped = false;
+	}
+
 	priv->clear = false;
 	priv->cpu = false;
 	return true;
