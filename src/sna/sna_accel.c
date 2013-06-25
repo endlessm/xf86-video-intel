@@ -1987,8 +1987,9 @@ skip_inplace_map:
 	assert(!priv->mapped);
 
 	if (priv->clear) {
-		DBG(("%s: applying clear [%08x]\n",
-		     __FUNCTION__, priv->clear_color));
+		DBG(("%s: applying clear [%08x] size=%dx%d, stride=%d (total=%d)\n",
+		     __FUNCTION__, priv->clear_color, pixmap->drawable.width, pixmap->drawable.height,
+		     pixmap->devKind, pixmap->devKind * pixmap->drawable.height));
 
 		if (priv->cpu_bo) {
 			DBG(("%s: syncing CPU bo\n", __FUNCTION__));
@@ -1996,7 +1997,9 @@ skip_inplace_map:
 			assert(pixmap->devPrivate.ptr == (void *)((unsigned long)priv->cpu_bo->map & ~3));
 		}
 
-		if (priv->clear_color == 0 || pixmap->drawable.bitsPerPixel == 8) {
+		if (priv->clear_color == 0 ||
+		    pixmap->drawable.bitsPerPixel == 8 ||
+		    priv->clear_color == (1 << pixmap->drawable.bitsPerPixel) - 1) {
 			memset(pixmap->devPrivate.ptr, priv->clear_color,
 			       pixmap->devKind * pixmap->drawable.height);
 		} else {
@@ -14208,7 +14211,8 @@ sna_get_image_blt(DrawablePtr drawable,
 
 		pitch = PixmapBytePad(w, pixmap->drawable.depth);
 		if (priv->clear_color == 0 ||
-		    pixmap->drawable.bitsPerPixel == 8) {
+		    pixmap->drawable.bitsPerPixel == 8 ||
+		    priv->clear_color == (1U << pixmap->drawable.bitsPerPixel) - 1) {
 			memset(dst, priv->clear_color, pitch * h);
 		} else {
 			pixman_fill((uint32_t *)dst,
