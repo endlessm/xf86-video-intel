@@ -3976,10 +3976,23 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 	if (dst == NULL)
 		return false;
 
+	kgem_bo_sync__cpu(&sna->kgem, priv->gpu_bo);
+
 	box = RegionRects(region);
 	n = RegionNumRects(region);
 
 	DBG(("%s: upload(%d, %d, %d, %d) x %d\n", __FUNCTION__, x, y, w, h, n));
+
+	do {
+		memcpy_to_tiled_x(&sna->kgem, bits, dst,
+				  pixmap->drawable.bitsPerPixel,
+				  stride, priv->gpu_bo->pitch,
+				  box->x1 - x, box->y1 - y,
+				  box->x1, box->y1,
+				  box->x2 - box->x1, box->y2 - box->y1);
+		box++;
+	} while (--n);
+	__kgem_bo_unmap__cpu(&sna->kgem, priv->gpu_bo, dst);
 
 	if (!DAMAGE_IS_ALL(priv->gpu_damage)) {
 		sna_damage_add(&priv->gpu_damage, region);
@@ -3994,18 +4007,6 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 	}
 	if (priv->cpu_damage)
 		sna_damage_subtract(&priv->cpu_damage, region);
-
-	kgem_bo_sync__cpu(&sna->kgem, priv->gpu_bo);
-	do {
-		memcpy_to_tiled_x(&sna->kgem, bits, dst,
-				  pixmap->drawable.bitsPerPixel,
-				  stride, priv->gpu_bo->pitch,
-				  box->x1 - x, box->y1 - y,
-				  box->x1, box->y1,
-				  box->x2 - box->x1, box->y2 - box->y1);
-		box++;
-	} while (--n);
-	__kgem_bo_unmap__cpu(&sna->kgem, priv->gpu_bo, dst);
 
 	priv->clear = false;
 	priv->cpu = false;
