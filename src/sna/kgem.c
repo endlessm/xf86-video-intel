@@ -3777,6 +3777,7 @@ large_inactive:
 
 			list_del(&bo->list);
 
+			assert(bo->domain != DOMAIN_GPU);
 			bo->unique_id = kgem_get_unique_id(kgem);
 			bo->pitch = pitch;
 			bo->delta = 0;
@@ -3827,9 +3828,11 @@ large_inactive:
 					break;
 				}
 
+				assert(bo->tiling == tiling);
 				bo->pitch = pitch;
 				bo->delta = 0;
 				bo->unique_id = kgem_get_unique_id(kgem);
+				bo->domain = DOMAIN_NONE;
 
 				kgem_bo_remove_from_inactive(kgem, bo);
 
@@ -4092,16 +4095,24 @@ create:
 		return NULL;
 	}
 
-	bo->domain = DOMAIN_CPU;
-	bo->unique_id = kgem_get_unique_id(kgem);
-	bo->pitch = pitch;
-	if (tiling != I915_TILING_NONE &&
-	    gem_set_tiling(kgem->fd, handle, tiling, pitch))
-		bo->tiling = tiling;
 	if (bucket >= NUM_CACHE_BUCKETS) {
 		DBG(("%s: marking large bo for automatic flushing\n",
 		     __FUNCTION__));
 		bo->flush = true;
+	}
+
+	bo->unique_id = kgem_get_unique_id(kgem);
+	if (tiling == I915_TILING_NONE ||
+	    gem_set_tiling(kgem->fd, handle, tiling, pitch)) {
+		bo->tiling = tiling;
+		bo->pitch = pitch;
+	} else {
+		if (flags & CREATE_EXACT) {
+			if (bo->pitch != pitch || bo->tiling != tiling) {
+				kgem_bo_free(kgem, bo);
+				return NULL;
+			}
+		}
 	}
 
 	assert(bytes(bo) >= bo->pitch * kgem_aligned_height(kgem, height, bo->tiling));
