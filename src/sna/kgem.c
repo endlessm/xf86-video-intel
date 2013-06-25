@@ -3848,8 +3848,13 @@ large_inactive:
 		} while (!list_is_empty(cache) &&
 			 __kgem_throttle_retire(kgem, flags));
 
-		if (flags & CREATE_CPU_MAP && !kgem->has_llc)
+		if (flags & CREATE_CPU_MAP && !kgem->has_llc) {
+			if (list_is_empty(&kgem->active[bucket][tiling]) &&
+			    list_is_empty(&kgem->inactive[bucket]))
+				flags &= ~CREATE_CACHED;
+
 			goto create;
+		}
 	}
 
 	if (flags & CREATE_INACTIVE)
@@ -4083,6 +4088,9 @@ search_inactive:
 	}
 
 create:
+	if (flags & CREATE_CACHED)
+		return NULL;
+
 	if (bucket >= NUM_CACHE_BUCKETS)
 		size = ALIGN(size, 1024);
 	handle = gem_create(kgem->fd, size);

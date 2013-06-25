@@ -3901,7 +3901,7 @@ create_upload_tiled_x(struct kgem *kgem,
 {
 	unsigned create, tiling;
 
-	if (priv->shm)
+	if (priv->shm || priv->cpu)
 		return false;
 
 	if ((priv->create & KGEM_CAN_CREATE_GPU) == 0)
@@ -3917,6 +3917,8 @@ create_upload_tiled_x(struct kgem *kgem,
 	create = CREATE_CPU_MAP | CREATE_INACTIVE | CREATE_EXACT;
 	if (pixmap->usage_hint == SNA_CREATE_FB)
 		create |= CREATE_SCANOUT;
+	if (!kgem->has_llc)
+		create |= CREATE_CACHED;
 
 	priv->gpu_bo =
 		kgem_create_2d(kgem,
