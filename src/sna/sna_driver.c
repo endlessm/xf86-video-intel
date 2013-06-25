@@ -773,6 +773,7 @@ static Bool sna_late_close_screen(CLOSE_SCREEN_ARGS_DECL)
 	free(depths);
 
 	free(screen->visuals);
+	intel_put_master(xf86ScreenToScrn(screen));
 
 	return TRUE;
 }

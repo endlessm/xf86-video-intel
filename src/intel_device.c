@@ -196,8 +196,10 @@ int intel_put_master(ScrnInfoPtr scrn)
 
 	ret = 0;
 	assert(dev->master_count);
-	if (--dev->master_count == 0)
+	if (--dev->master_count == 0) {
+		assert(ioctl(dev->fd, DRM_IOCTL_SET_MASTER) == 0);
 		ret = ioctl(dev->fd, DRM_IOCTL_DROP_MASTER);
+	}
 
 	return ret;
 }
