@@ -2945,6 +2945,159 @@ static void set_size_range(struct sna *sna)
 	xf86CrtcSetSizeRange(sna->scrn, 320, 200, INT16_MAX, INT16_MAX);
 }
 
+static bool sna_probe_initial_configuration(struct sna *sna)
+{
+	ScrnInfoPtr scrn = sna->scrn;
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(scrn);
+	const int user_overrides[] = {
+		2, 3, 4, 5, 6, /* position */
+		11, /* rotate */
+		12, /* panning */
+	};
+	int width, height;
+	int i, j;
+
+	/* First scan through all outputs and look for user overrides */
+	for (i = 0; i < config->num_output; i++) {
+		xf86OutputPtr output = config->output[i];
+		DisplayModePtr mode;
+
+		for (j = 0; j < ARRAY_SIZE(user_overrides); j++) {
+			if (xf86GetOptValString(output->options, user_overrides[j])) {
+				DBG(("%s: user placement [%d] for %s\j",
+				     __FUNCTION__,
+				     user_overrides[j],
+				     output->name));
+				return false;
+			}
+		}
+
+		for (mode = output->probed_modes;
+		     mode && mode->next != output->probed_modes;
+		     mode = mode->next) {
+			if (mode->type & M_T_USERPREF) {
+				DBG(("%s: user mode for %s\n",
+				     __FUNCTION__,
+				     output->name));
+				return false;
+			}
+		}
+	}
+
+	/* Copy the existing modes on each CRTCs */
+	for (i = 0; i < config->num_crtc; i++) {
+		xf86CrtcPtr crtc = config->crtc[i];
+		struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
+		struct drm_mode_crtc mode;
+		uint16_t *gamma;
+
+		crtc->enabled = FALSE;
+		crtc->desiredMode.status = MODE_NOMODE;
+
+		VG_CLEAR(mode);
+		mode.crtc_id = sna_crtc->id;
+		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETCRTC, &mode))
+			continue;
+
+		if (!mode.mode_valid)
+			continue;
+
+		memset(&crtc->desiredMode, 0, sizeof(crtc->desiredMode));
+		mode_from_kmode(scrn, &mode.mode, &crtc->desiredMode);
+		crtc->desiredRotation = 0;
+		crtc->desiredX = mode.x;
+		crtc->desiredY = mode.y;
+
+		memset(&crtc->panningTotalArea, 0, sizeof(BoxRec));
+		memset(&crtc->panningTrackingArea, 0, sizeof(BoxRec));
+		memset(crtc->panningBorder, 0, 4 * sizeof(INT16));
+
+		gamma = malloc(3 * mode.gamma_size * sizeof(uint16_t));
+		if (gamma) {
+			struct drm_mode_crtc_lut lut;
+
+			lut.crtc_id = mode.crtc_id;
+			lut.gamma_size = mode.gamma_size;
+			lut.red = (uintptr_t)(gamma);
+			lut.green = (uintptr_t)(gamma + mode.gamma_size);
+			lut.blue = (uintptr_t)(gamma + 2 * mode.gamma_size);
+			if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETGAMMA, &lut) == 0) {
+				free(crtc->gamma_red);
+				crtc->gamma_size = mode.gamma_size;
+				crtc->gamma_red = gamma;
+				crtc->gamma_green = gamma + mode.gamma_size;
+				crtc->gamma_blue = gamma + 2*mode.gamma_size;
+			}
+		}
+	}
+
+	/* Reconstruct outputs pointing to active CRTC */
+	for (i = 0; i < config->num_output; i++) {
+		xf86OutputPtr output = config->output[i];
+		struct sna_output *sna_output = to_sna_output(output);
+		struct drm_mode_get_encoder enc;
+		Bool disable;
+
+		output->crtc = NULL;
+		if (xf86GetOptValBool(output->options,
+				      8 /* OPTION_DISABLE */,
+				      &disable) && disable)
+			continue;
+
+		VG_CLEAR(enc);
+		enc.encoder_id = sna->mode.kmode->encoders[sna_output->encoder_idx];
+		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETENCODER, &enc))
+			continue;
+
+		if (enc.crtc_id == 0)
+			continue;
+
+		for (j = 0; j < config->num_crtc; j++) {
+			xf86CrtcPtr crtc = config->crtc[j];
+			if (to_sna_crtc(crtc)->id == enc.crtc_id) {
+				if (crtc->desiredMode.status == MODE_OK) {
+					xf86DrvMsg(scrn->scrnIndex, X_INFO,
+						   "Output %s using initial mode %s on pipe %d\n",
+						   output->name,
+						   crtc->desiredMode.name,
+						   to_sna_crtc(crtc)->pipe);
+
+					output->crtc = crtc;
+					crtc->enabled = TRUE;
+				}
+				break;
+			}
+		}
+	}
+
+	width = height = 0;
+	for (i = 0; i < config->num_crtc; i++) {
+		xf86CrtcPtr crtc = config->crtc[i];
+		int w, h;
+
+		if (!crtc->enabled)
+			continue;
+
+		w = crtc->desiredX + crtc->desiredMode.HDisplay;
+		if (w > width)
+			width = w;
+		h = crtc->desiredY + crtc->desiredMode.VDisplay;
+		if (h > height)
+			height = h;
+	}
+
+	scrn->display->frameX0 = 0;
+	scrn->display->frameY0 = 0;
+	scrn->display->virtualX = width;
+	scrn->display->virtualY = height;
+
+	scrn->virtualX = width;
+	scrn->virtualY = height;
+
+	xf86SetScrnInfoModes(sna->scrn);
+	return true;
+}
+
 bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 {
 	struct sna_mode *mode = &sna->mode;
@@ -2975,7 +3128,8 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 
 	set_size_range(sna);
 
-	xf86InitialConfiguration(scrn, TRUE);
+	if (!sna_probe_initial_configuration(sna))
+		xf86InitialConfiguration(scrn, TRUE);
 	return scrn->modes != NULL;
 }
 
