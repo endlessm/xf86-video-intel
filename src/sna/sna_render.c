@@ -1890,11 +1890,12 @@ sna_render_composite_redirect(struct sna *sna,
 	return false;
 #endif
 
-	DBG(("%s: target too large (%dx%d), copying to temporary %dx%d, max %d\n",
+	DBG(("%s: target too large (%dx%d), copying to temporary %dx%d, max %d / %d\n",
 	     __FUNCTION__,
 	     op->dst.width, op->dst.height,
 	     width, height,
-	     sna->render.max_3d_size));
+	     sna->render.max_3d_size,
+	     sna->render.max_3d_pitch));
 
 	if (!width || !height)
 		return false;
