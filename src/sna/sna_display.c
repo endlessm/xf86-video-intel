@@ -3086,6 +3086,9 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 			height = h;
 	}
 
+	if (!width || !height)
+		return false;
+
 	scrn->display->frameX0 = 0;
 	scrn->display->frameY0 = 0;
 	scrn->display->virtualX = width;
@@ -3095,7 +3098,7 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 	scrn->virtualY = height;
 
 	xf86SetScrnInfoModes(sna->scrn);
-	return true;
+	return scrn->modes != NULL;
 }
 
 bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
