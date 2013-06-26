@@ -3004,7 +3004,7 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 
 		memset(&crtc->desiredMode, 0, sizeof(crtc->desiredMode));
 		mode_from_kmode(scrn, &mode.mode, &crtc->desiredMode);
-		crtc->desiredRotation = 0;
+		crtc->desiredRotation = RR_Rotate_0;
 		crtc->desiredX = mode.x;
 		crtc->desiredY = mode.y;
 
