@@ -3016,6 +3016,7 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 		gamma = malloc(3 * mode.gamma_size * sizeof(uint16_t));
 		if (gamma) {
 			struct drm_mode_crtc_lut lut;
+			bool gamma_set = false;
 
 			lut.crtc_id = mode.crtc_id;
 			lut.gamma_size = mode.gamma_size;
@@ -3023,12 +3024,25 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 			lut.green = (uintptr_t)(gamma + mode.gamma_size);
 			lut.blue = (uintptr_t)(gamma + 2 * mode.gamma_size);
 			if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETGAMMA, &lut) == 0) {
-				free(crtc->gamma_red);
-				crtc->gamma_size = mode.gamma_size;
-				crtc->gamma_red = gamma;
-				crtc->gamma_green = gamma + mode.gamma_size;
-				crtc->gamma_blue = gamma + 2*mode.gamma_size;
+				gamma_set =
+					gamma[mode.gamma_size - 1] &&
+					gamma[2*mode.gamma_size - 1] &&
+					gamma[3*mode.gamma_size - 1];
 			}
+
+			if (!gamma_set) {
+				for (j = 0; j < mode.gamma_size; j++) {
+					gamma[j] = j << 8;
+					gamma[mode.gamma_size + j] = j << 8;
+					gamma[2* mode.gamma_size + j] = j << 8;
+				}
+			}
+
+			free(crtc->gamma_red);
+			crtc->gamma_size = mode.gamma_size;
+			crtc->gamma_red = gamma;
+			crtc->gamma_green = gamma + mode.gamma_size;
+			crtc->gamma_blue = gamma + 2*mode.gamma_size;
 		}
 	}
 
