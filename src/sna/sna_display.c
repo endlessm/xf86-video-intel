@@ -2964,7 +2964,7 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 
 		for (j = 0; j < ARRAY_SIZE(user_overrides); j++) {
 			if (xf86GetOptValString(output->options, user_overrides[j])) {
-				DBG(("%s: user placement [%d] for %s\j",
+				DBG(("%s: user placement [%d] for %s\n",
 				     __FUNCTION__,
 				     user_overrides[j],
 				     output->name));
