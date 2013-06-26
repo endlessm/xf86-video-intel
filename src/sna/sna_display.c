@@ -3007,6 +3007,7 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 		crtc->desiredRotation = RR_Rotate_0;
 		crtc->desiredX = mode.x;
 		crtc->desiredY = mode.y;
+		crtc->desiredTransformPresent = FALSE;
 
 		memset(&crtc->panningTotalArea, 0, sizeof(BoxRec));
 		memset(&crtc->panningTrackingArea, 0, sizeof(BoxRec));
