@@ -804,32 +804,40 @@ sna_tiling_copy_boxes(struct sna *sna, uint8_t alu,
 	BoxRec extents, tile, stack[64], *clipped, *c;
 	PixmapRec p;
 	int i, step, tiling;
+	bool create = true;
 	bool ret = false;
 
 	extents = box[0];
 	for (i = 1; i < n; i++) {
-		if (extents.x1 < box[i].x1)
+		if (box[i].x1 < extents.x1)
 			extents.x1 = box[i].x1;
-		if (extents.y1 < box[i].y1)
+		if (box[i].y1 < extents.y1)
 			extents.y1 = box[i].y1;
 
-		if (extents.x2 > box[i].x2)
+		if (box[i].x2 > extents.x2)
 			extents.x2 = box[i].x2;
-		if (extents.y2 > box[i].y2)
+		if (box[i].y2 > extents.y2)
 			extents.y2 = box[i].y2;
 	}
-
-	step = sna->render.max_3d_size - 4096 / dst->drawable.bitsPerPixel;
-	while (step * step * 4 > sna->kgem.max_upload_tile_size)
-		step /= 2;
 
 	tiling = I915_TILING_X;
 	if (!kgem_bo_can_blt(&sna->kgem, src_bo) ||
 	    !kgem_bo_can_blt(&sna->kgem, dst_bo))
 		tiling = I915_TILING_Y;
 
-	DBG(("%s: tiling copy, using %dx%d %c tiles\n",
-	     __FUNCTION__, step, step, tiling == I915_TILING_X ? 'X' : 'Y'));
+	create = (src_bo->pitch > sna->render.max_3d_pitch ||
+		  dst_bo->pitch > sna->render.max_3d_pitch);
+
+	step = sna->render.max_3d_size / 2;
+	if (create) {
+		while (step * step * 4 > sna->kgem.max_upload_tile_size)
+			step /= 2;
+	}
+
+	DBG(("%s: tiling copy %dx%d, %s %dx%d %c tiles\n", __FUNCTION__,
+	     extents.x2-extents.x1, extents.y2-extents.y1,
+	     create ? "creating" : "using",
+	     step, step, tiling == I915_TILING_X ? 'X' : 'Y'));
 
 	if (n > ARRAY_SIZE(stack)) {
 		clipped = malloc(sizeof(BoxRec) * n);
@@ -878,24 +886,31 @@ sna_tiling_copy_boxes(struct sna *sna, uint8_t alu,
 			DBG(("%s: tile (%d, %d), (%d, %d)\n",
 			     __FUNCTION__, tile.x1, tile.y1, tile.x2, tile.y2));
 
-			tmp_bo = kgem_create_2d(&sna->kgem,
-						p.drawable.width,
-						p.drawable.height,
-						p.drawable.bitsPerPixel,
-						tiling, CREATE_TEMPORARY);
-			if (!tmp_bo)
-				goto tiled_error;
+			if (create) {
+				tmp_bo = kgem_create_2d(&sna->kgem,
+							p.drawable.width,
+							p.drawable.height,
+							p.drawable.bitsPerPixel,
+							tiling, CREATE_TEMPORARY);
+				if (!tmp_bo)
+					goto tiled_error;
 
-			i = (sna->render.copy_boxes(sna, GXcopy,
-						    src, src_bo, src_dx, src_dy,
-						    &p, tmp_bo, -tile.x1, -tile.y1,
-						    clipped, c - clipped, 0) &&
-			     sna->render.copy_boxes(sna, alu,
-						    &p, tmp_bo, -tile.x1, -tile.y1,
-						    dst, dst_bo, dst_dx, dst_dy,
-						    clipped, c - clipped, 0));
+				i = (sna->render.copy_boxes(sna, GXcopy,
+							    src, src_bo, src_dx, src_dy,
+							    &p, tmp_bo, -tile.x1, -tile.y1,
+							    clipped, c - clipped, 0) &&
+				     sna->render.copy_boxes(sna, alu,
+							    &p, tmp_bo, -tile.x1, -tile.y1,
+							    dst, dst_bo, dst_dx, dst_dy,
+							    clipped, c - clipped, 0));
 
-			kgem_bo_destroy(&sna->kgem, tmp_bo);
+				kgem_bo_destroy(&sna->kgem, tmp_bo);
+			} else {
+				i = sna->render.copy_boxes(sna, GXcopy,
+							   src, src_bo, src_dx, src_dy,
+							   dst, dst_bo, dst_dx, dst_dy,
+							   clipped, c - clipped, 0);
+			}
 
 			if (!i)
 				goto tiled_error;
