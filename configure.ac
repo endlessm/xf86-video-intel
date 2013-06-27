@@ -203,9 +203,6 @@ AC_ARG_ENABLE(sna,
 	      [SNA="$enableval"],
 	      [SNA=auto])
 
-if test "x$SNA" = "xauto" && pkg-config --exists "xorg-server >= 1.10"; then
-	SNA=yes
-fi
 if test "x$SNA" != "xno"; then
 	AC_DEFINE(USE_SNA, 1, [Enable SNA support])
 	AC_CHECK_HEADERS([sys/sysinfo.h])
