@@ -3082,6 +3082,8 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 			xf86CrtcPtr crtc = config->crtc[j];
 			if (to_sna_crtc(crtc)->id == enc.crtc_id) {
 				if (crtc->desiredMode.status == MODE_OK) {
+					DisplayModePtr M;
+
 					xf86DrvMsg(scrn->scrnIndex, X_INFO,
 						   "Output %s using initial mode %s on pipe %d\n",
 						   output->name,
@@ -3095,6 +3097,14 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 					    output->mm_height == 0) {
 						output->mm_height = (crtc->desiredMode.VDisplay * 254) / (10*DEFAULT_DPI);
 						output->mm_width = (crtc->desiredMode.HDisplay * 254) / (10*DEFAULT_DPI);
+					}
+
+					M = calloc(1, sizeof(DisplayModeRec));
+					if (M) {
+						*M = crtc->desiredMode;
+						M->name = strdup(M->name);
+						output->probed_modes =
+							xf86ModesAdd(output->probed_modes, M);
 					}
 				}
 				break;
