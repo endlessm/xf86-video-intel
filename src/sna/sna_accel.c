@@ -3954,7 +3954,7 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 
 	DBG(("%s: bo? %d, can tile? %d\n", __FUNCTION__,
 	     priv->gpu_bo != NULL,
-	     priv->gpu_bo ? can_upload_tiled_x(&sna->kgem, priv->gpu_bo) : 0));
+	     priv->gpu_bo ? can_upload_tiled_x(&sna->kgem, priv) : 0));
 
 	replaces = region->data == NULL &&
 		w >= pixmap->drawable.width &&
