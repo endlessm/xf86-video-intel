@@ -3883,8 +3883,14 @@ static inline void box32_add_rect(Box32Rec *box, const xRectangle *r)
 		box->y2 = v;
 }
 
-static bool can_upload_tiled_x(struct kgem *kgem, struct kgem_bo *bo)
+static bool can_upload_tiled_x(struct kgem *kgem, struct sna_pixmap *priv)
 {
+	struct kgem_bo *bo = priv->gpu_bo;
+	assert(bo);
+
+	if (priv->cow)
+		return false;
+
 	if (bo->tiling != I915_TILING_X)
 		return false;
 
@@ -3935,6 +3941,7 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 {
 	struct sna *sna = to_sna_from_pixmap(pixmap);
 	struct sna_pixmap *priv = sna_pixmap(pixmap);
+	bool replaces;
 	BoxRec *box;
 	uint8_t *dst;
 	int n;
@@ -3949,8 +3956,13 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 	     priv->gpu_bo != NULL,
 	     priv->gpu_bo ? can_upload_tiled_x(&sna->kgem, priv->gpu_bo) : 0));
 
-	if (priv->gpu_bo && priv->gpu_bo->proxy) {
+	replaces = region->data == NULL &&
+		w >= pixmap->drawable.width &&
+		h >= pixmap->drawable.height;
+
+	if (priv->gpu_bo && (replaces || priv->gpu_bo->proxy)) {
 		DBG(("%s: discarding cached upload proxy\n", __FUNCTION__));
+		sna_damage_destroy(&priv->gpu_damage);
 		kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
 		priv->gpu_bo = NULL;
 	}
@@ -3959,18 +3971,10 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 	    !create_upload_tiled_x(&sna->kgem, pixmap, priv))
 		return false;
 
-	if (!can_upload_tiled_x(&sna->kgem, priv->gpu_bo))
+	if (!can_upload_tiled_x(&sna->kgem, priv))
 		return false;
 
 	assert(priv->gpu_bo->tiling == I915_TILING_X);
-
-	if (region->data == NULL &&
-	    w >= pixmap->drawable.width &&
-	    h >= pixmap->drawable.height) {
-		DBG(("%s: discarding operations to GPU bo\n", __FUNCTION__));
-		kgem_bo_undo(&sna->kgem, priv->gpu_bo);
-	}
-
 	if (__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo))
 		return false;
 
@@ -3997,10 +4001,16 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 	__kgem_bo_unmap__cpu(&sna->kgem, priv->gpu_bo, dst);
 
 	if (!DAMAGE_IS_ALL(priv->gpu_damage)) {
-		sna_damage_add(&priv->gpu_damage, region);
-		sna_damage_reduce_all(&priv->gpu_damage,
-				      pixmap->drawable.width,
-				      pixmap->drawable.height);
+		if (replaces) {
+			sna_damage_all(&priv->gpu_damage,
+					pixmap->drawable.width,
+					pixmap->drawable.height);
+		} else {
+			sna_damage_add(&priv->gpu_damage, region);
+			sna_damage_reduce_all(&priv->gpu_damage,
+					pixmap->drawable.width,
+					pixmap->drawable.height);
+		}
 		if (DAMAGE_IS_ALL(priv->gpu_damage)) {
 			list_del(&priv->flush_list);
 			sna_damage_destroy(&priv->cpu_damage);
