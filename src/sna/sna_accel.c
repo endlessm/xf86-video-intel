@@ -2017,7 +2017,7 @@ skip_inplace_map:
 			       pixmap->drawable.height);
 		sna_pixmap_free_gpu(sna, priv);
 		assert(priv->gpu_damage == NULL);
-		priv->clear = false;
+		assert(priv->clear == false);
 	}
 
 	if (priv->gpu_damage) {
@@ -3962,9 +3962,9 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 
 	if (priv->gpu_bo && (replaces || priv->gpu_bo->proxy)) {
 		DBG(("%s: discarding cached upload proxy\n", __FUNCTION__));
-		sna_damage_destroy(&priv->gpu_damage);
-		kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
-		priv->gpu_bo = NULL;
+		if (priv->cow)
+			sna_pixmap_undo_cow(sna, priv, 0);
+		sna_pixmap_free_gpu(sna, priv);
 	}
 
 	if (priv->gpu_bo == NULL &&
