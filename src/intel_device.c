@@ -85,8 +85,15 @@ static int __intel_open_device(const struct pci_device *pci, const char *path)
 		}
 
 		fd = drmOpen(NULL, id);
-	} else
-		fd = open(path, O_RDWR | O_CLOEXEC);
+	} else {
+		fd = open(path, O_RDWR |
+#ifdef O_CLOEXEC
+			  O_CLOEXEC |
+#endif
+			  0);
+		if (fd == -1)
+			fd = open(path, O_RDWR);
+	}
 
 	return fd;
 }
