@@ -1785,6 +1785,12 @@ static inline bool operate_inplace(struct sna_pixmap *priv, unsigned flags)
 		return true;
 	}
 
+	if (priv->create & KGEM_CAN_CREATE_LARGE) {
+		DBG(("%s: large object, has GPU? %d\n",
+		     __FUNCTION__, priv->gpu_bo));
+		return priv->gpu_bo != NULL;
+	}
+
 	if (flags & MOVE_WRITE && priv->gpu_bo&&kgem_bo_is_busy(priv->gpu_bo)) {
 		DBG(("%s: no, GPU is busy, so stage write\n", __FUNCTION__));
 		return false;
@@ -2261,8 +2267,9 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 	}
 
 	if (USE_INPLACE &&
-	    (flags & (MOVE_READ | MOVE_ASYNC_HINT)) == 0 &&
-	    (priv->flush || box_inplace(pixmap, &region->extents))) {
+	    (priv->create & KGEM_CAN_CREATE_LARGE ||
+	     ((flags & (MOVE_READ | MOVE_ASYNC_HINT)) == 0 &&
+	      (priv->flush || box_inplace(pixmap, &region->extents))))) {
 		DBG(("%s: marking for inplace hint (%d, %d)\n",
 		     __FUNCTION__, priv->flush, box_inplace(pixmap, &region->extents)));
 		flags |= MOVE_INPLACE_HINT;
@@ -3938,15 +3945,22 @@ static bool can_upload_tiled_x(struct kgem *kgem, struct sna_pixmap *priv)
 	struct kgem_bo *bo = priv->gpu_bo;
 	assert(bo);
 
-	if (priv->cow)
+	if (priv->cow) {
+		DBG(("%s: no, has COW\n", __FUNCTION__));
 		return false;
+	}
 
-	if (bo->tiling != I915_TILING_X)
+	if (bo->tiling != I915_TILING_X) {
+		DBG(("%s: no, uses %d tiling\n", __FUNCTION__, bo->tiling));
 		return false;
+	}
 
-	if (bo->scanout)
+	if (bo->scanout) {
+		DBG(("%s: no, is scanout\n", __FUNCTION__, bo->scanout));
 		return false;
+	}
 
+	DBG(("%s? domain=%d, has_llc=%d\n", __FUNCTION__, bo->domain, kgem->has_llc));
 	return bo->domain == DOMAIN_CPU || kgem->has_llc;
 }
 
@@ -4025,7 +4039,8 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 		return false;
 
 	assert(priv->gpu_bo->tiling == I915_TILING_X);
-	if (__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo))
+	if ((priv->create & KGEM_CAN_CREATE_LARGE) == 0 &&
+	    __kgem_bo_is_busy(&sna->kgem, priv->gpu_bo))
 		return false;
 
 	dst = kgem_bo_map__cpu(&sna->kgem, priv->gpu_bo);
