@@ -3013,6 +3013,13 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 		crtc->desiredY = mode.y;
 		crtc->desiredTransformPresent = FALSE;
 
+		crtc->mode = crtc->desiredMode;
+		crtc->mode.name = NULL;
+		crtc->x = mode.x;
+		crtc->y = mode.y;
+		crtc->rotation = RR_Rotate_0;
+		crtc->transformPresent = FALSE;
+
 		memset(&crtc->panningTotalArea, 0, sizeof(BoxRec));
 		memset(&crtc->panningTrackingArea, 0, sizeof(BoxRec));
 		memset(crtc->panningBorder, 0, 4 * sizeof(INT16));
