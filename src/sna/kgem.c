@@ -1205,8 +1205,8 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 		kgem->max_upload_tile_size = kgem->aperture_low;
 
 	kgem->large_object_size = MAX_CACHE_SIZE;
-	if (kgem->large_object_size > kgem->max_gpu_size)
-		kgem->large_object_size = kgem->max_gpu_size;
+	if (kgem->large_object_size > half_gpu_max)
+		kgem->large_object_size = half_gpu_max;
 	if (kgem->max_copy_tile_size > kgem->aperture_high/2)
 		kgem->max_copy_tile_size = kgem->aperture_high/2;
 	if (kgem->max_copy_tile_size > kgem->aperture_low)
