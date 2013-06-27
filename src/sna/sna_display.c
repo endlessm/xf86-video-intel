@@ -54,6 +54,10 @@
 
 #define KNOWN_MODE_FLAGS ((1<<14)-1)
 
+#ifndef DEFAULT_DPI
+#define DEFAULT_DPI 96
+#endif
+
 #if 0
 #define __DBG DBG
 #else
@@ -3079,6 +3083,12 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 
 					output->crtc = crtc;
 					crtc->enabled = TRUE;
+
+					if (output->mm_width == 0 ||
+					    output->mm_height == 0) {
+						output->mm_height = (crtc->desiredMode.VDisplay * 254) / (10*DEFAULT_DPI);
+						output->mm_width = (crtc->desiredMode.HDisplay * 254) / (10*DEFAULT_DPI);
+					}
 				}
 				break;
 			}
