@@ -201,6 +201,11 @@ struct kgem {
 				  int16_t src_x, int16_t src_y,
 				  int16_t dst_x, int16_t dst_y,
 				  uint16_t width, uint16_t height);
+	void (*memcpy_from_tiled_x)(const void *src, void *dst, int bpp,
+				    int32_t src_stride, int32_t dst_stride,
+				    int16_t src_x, int16_t src_y,
+				    int16_t dst_x, int16_t dst_y,
+				    uint16_t width, uint16_t height);
 
 	uint16_t reloc__self[256];
 	uint32_t batch[64*1024-8] page_aligned;
@@ -713,6 +718,21 @@ memcpy_to_tiled_x(struct kgem *kgem,
 				       width, height);
 }
 
-void choose_memcpy_to_tiled_x(struct kgem *kgem, int swizzling);
+static inline void
+memcpy_from_tiled_x(struct kgem *kgem,
+		    const void *src, void *dst, int bpp,
+		    int32_t src_stride, int32_t dst_stride,
+		    int16_t src_x, int16_t src_y,
+		    int16_t dst_x, int16_t dst_y,
+		    uint16_t width, uint16_t height)
+{
+	return kgem->memcpy_from_tiled_x(src, dst, bpp,
+					 src_stride, dst_stride,
+					 src_x, src_y,
+					 dst_x, dst_y,
+					 width, height);
+}
+
+void choose_memcpy_tiled_x(struct kgem *kgem, int swizzling);
 
 #endif /* KGEM_H */

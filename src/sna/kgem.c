@@ -991,7 +991,7 @@ static void kgem_init_swizzling(struct kgem *kgem)
 	if (drmIoctl(kgem->fd, DRM_IOCTL_I915_GEM_GET_TILING, &tiling))
 		goto out;
 
-	choose_memcpy_to_tiled_x(kgem, tiling.swizzle_mode);
+	choose_memcpy_tiled_x(kgem, tiling.swizzle_mode);
 out:
 	gem_close(kgem->fd, tiling.handle);
 }
