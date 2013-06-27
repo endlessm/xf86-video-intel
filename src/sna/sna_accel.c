@@ -4028,7 +4028,7 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 	if (__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo))
 		return false;
 
-	dst = __kgem_bo_map__cpu(&sna->kgem, priv->gpu_bo);
+	dst = kgem_bo_map__cpu(&sna->kgem, priv->gpu_bo);
 	if (dst == NULL)
 		return false;
 
@@ -4048,7 +4048,6 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 				  box->x2 - box->x1, box->y2 - box->y1);
 		box++;
 	} while (--n);
-	__kgem_bo_unmap__cpu(&sna->kgem, priv->gpu_bo, dst);
 
 	if (!DAMAGE_IS_ALL(priv->gpu_damage)) {
 		if (replaces) {
@@ -14345,6 +14344,62 @@ sna_get_image_blt(DrawablePtr drawable,
 	return ok;
 }
 
+static bool
+sna_get_image_tiled(DrawablePtr drawable,
+		    RegionPtr region,
+		    char *dst,
+		    unsigned flags)
+{
+	PixmapPtr pixmap = get_drawable_pixmap(drawable);
+	struct sna_pixmap *priv = sna_pixmap(pixmap);
+	struct sna *sna = to_sna_from_pixmap(pixmap);
+	char *src;
+
+	if (!sna->kgem.memcpy_from_tiled_x)
+		return false;
+
+	if (flags & MOVE_INPLACE_HINT)
+		return false;
+
+	if (priv == NULL || priv->gpu_bo == NULL)
+		return false;
+
+	if (priv->gpu_bo->tiling != I915_TILING_X)
+		return false;
+
+	if (priv->gpu_bo->scanout)
+		return false;
+
+	if (!sna->kgem.has_llc && priv->gpu_bo->domain != DOMAIN_CPU)
+		return false;
+
+	if (priv->gpu_damage == NULL ||
+	    !(DAMAGE_IS_ALL(priv->gpu_damage) ||
+	      sna_damage_contains_box__no_reduce(priv->gpu_damage,
+						 &region->extents)))
+		return false;
+
+	src = kgem_bo_map__cpu(&sna->kgem, priv->gpu_bo);
+	if (src == NULL)
+		return false;
+
+	DBG(("%s: download through a tiled CPU map\n", __FUNCTION__));
+
+	kgem_bo_sync__cpu_full(&sna->kgem, priv->gpu_bo, FORCE_FULL_SYNC);
+
+	memcpy_from_tiled_x(&sna->kgem, src, dst,
+			    pixmap->drawable.bitsPerPixel,
+			    priv->gpu_bo->pitch,
+			    PixmapBytePad(region->extents.x2 - region->extents.x1,
+					  drawable->depth),
+			    region->extents.x1, region->extents.y1,
+			    0, 0,
+			    region->extents.x2 - region->extents.x1,
+			    region->extents.y2 - region->extents.y1);
+
+	return true;
+}
+
 static void
 sna_get_image(DrawablePtr drawable,
 	      int x, int y, int w, int h,
@@ -14377,6 +14432,9 @@ sna_get_image(DrawablePtr drawable,
 		flags |= MOVE_WHOLE_HINT;
 
 	if (can_blt && sna_get_image_blt(drawable, &region, dst, flags))
+		return;
+
+	if (can_blt && sna_get_image_tiled(drawable, &region, dst, flags))
 		return;
 
 	if (!sna_drawable_move_region_to_cpu(drawable, &region, flags))
