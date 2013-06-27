@@ -2113,7 +2113,9 @@ void intel_copy_fb(ScrnInfoPtr scrn)
 				0, 0,
 				scrn->virtualX, scrn->virtualY);
 	intel->uxa_driver->done_copy(dst);
+#if ABI_VIDEODRV_VERSION >= SET_ABI_VERSION(10, 0)
 	pScreen->canDoBGNoneRoot = TRUE;
+#endif
 
 cleanup_dst:
 	(*pScreen->DestroyPixmap)(dst);
