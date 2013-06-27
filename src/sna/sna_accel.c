@@ -5089,11 +5089,27 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 			return;
 		}
 
+		if (src_priv) {
+			bool ret;
+
+			RegionTranslate(region, src_dx, src_dy);
+			ret = sna_drawable_move_region_to_cpu(&src_pixmap->drawable,
+							      region, MOVE_READ);
+			RegionTranslate(region, -src_dx, -src_dy);
+			if (!ret)
+				goto fallback;
+
+			assert(!src_priv->mapped);
+			if (src_pixmap->devPrivate.ptr == NULL)
+				/* uninitialised!*/
+				return;
+		}
+
 		if (USE_USERPTR_UPLOADS &&
-		    src_priv == NULL &&
 		    sna->kgem.has_userptr &&
-		    box_inplace(src_pixmap, &region->extents) &&
-		     __kgem_bo_is_busy(&sna->kgem, bo)) {
+		    (alu != GXcopy ||
+		     (box_inplace(src_pixmap, &region->extents)) &&
+		     __kgem_bo_is_busy(&sna->kgem, bo))) {
 			struct kgem_bo *src_bo;
 			bool ok = false;
 
@@ -5124,22 +5140,6 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 					sna_damage_add(damage, region);
 				return;
 			}
-		}
-
-		if (src_priv) {
-			bool ret;
-
-			RegionTranslate(region, src_dx, src_dy);
-			ret = sna_drawable_move_region_to_cpu(&src_pixmap->drawable,
-							      region, MOVE_READ);
-			RegionTranslate(region, -src_dx, -src_dy);
-			if (!ret)
-				goto fallback;
-
-			assert(!src_priv->mapped);
-			if (src_pixmap->devPrivate.ptr == NULL)
-				/* uninitialised!*/
-				return;
 		}
 
 		if (alu != GXcopy) {
