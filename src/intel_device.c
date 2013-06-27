@@ -62,6 +62,24 @@ static inline void intel_set_device(ScrnInfoPtr scrn, struct intel_device *dev)
 	xf86GetEntityPrivate(scrn->entityList[0], intel_device_key)->ptr = dev;
 }
 
+static int fd_set_cloexec(int fd)
+{
+	int flags;
+
+	if (fd == -1)
+		return fd;
+
+#ifdef FD_CLOEXEC
+	flags = fcntl(fd, F_GETFD);
+	if (flags != -1) {
+		flags |= FD_CLOEXEC;
+		fcntl(fd, F_SETFD, flags);
+	}
+#endif
+
+	return fd;
+}
+
 static int __intel_open_device(const struct pci_device *pci, const char *path)
 {
 	int fd;
@@ -86,13 +104,13 @@ static int __intel_open_device(const struct pci_device *pci, const char *path)
 
 		fd = drmOpen(NULL, id);
 	} else {
-		fd = open(path, O_RDWR |
 #ifdef O_CLOEXEC
-			  O_CLOEXEC |
+		fd = open(path, O_RDWR | O_CLOEXEC);
+#else
+		fd = -1;
 #endif
-			  0);
 		if (fd == -1)
-			fd = open(path, O_RDWR);
+			fd = fd_set_cloexec(open(path, O_RDWR));
 	}
 
 	return fd;
