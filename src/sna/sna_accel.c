@@ -2341,6 +2341,56 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 		priv->mapped = false;
 	}
 
+	if (priv->gpu_damage &&
+	    (DAMAGE_IS_ALL(priv->gpu_damage) ||
+	     sna_damage_contains_box__no_reduce(priv->gpu_damage,
+						&region->extents)) &&
+	    priv->gpu_bo->tiling == I915_TILING_NONE &&
+	    (priv->gpu_bo->domain == DOMAIN_CPU || sna->kgem.has_llc) &&
+	    ((flags & (MOVE_WRITE | MOVE_ASYNC_HINT)) == 0 ||
+	     !__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo))) {
+		DBG(("%s: try to operate inplace (CPU)\n", __FUNCTION__));
+		assert(priv->cow == NULL || (flags & MOVE_WRITE) == 0);
+
+		assert(!priv->mapped);
+		pixmap->devPrivate.ptr =
+			kgem_bo_map__cpu(&sna->kgem, priv->gpu_bo);
+		if (pixmap->devPrivate.ptr != NULL) {
+			assert(has_coherent_map(sna, priv->gpu_bo));
+			assert(IS_CPU_MAP(priv->gpu_bo->map));
+			pixmap->devKind = priv->gpu_bo->pitch;
+			priv->cpu = true;
+			priv->mapped = true;
+			if (flags & MOVE_WRITE) {
+				if (!DAMAGE_IS_ALL(priv->gpu_damage)) {
+					sna_damage_add(&priv->gpu_damage, region);
+					if (sna_damage_is_all(&priv->gpu_damage,
+							      pixmap->drawable.width,
+							      pixmap->drawable.height)) {
+						DBG(("%s: replaced entire pixmap, destroying CPU shadow\n",
+						     __FUNCTION__));
+						assert(priv->cpu == false || (priv->mapped && IS_CPU_MAP(priv->gpu_bo->map)));
+						sna_damage_destroy(&priv->cpu_damage);
+						list_del(&priv->flush_list);
+					} else
+						sna_damage_subtract(&priv->cpu_damage,
+								    region);
+				}
+				priv->clear = false;
+			}
+			assert_pixmap_damage(pixmap);
+			kgem_bo_sync__cpu_full(&sna->kgem, priv->gpu_bo,
+					       FORCE_FULL_SYNC || flags & MOVE_WRITE);
+			assert(pixmap->devPrivate.ptr == (void *)((unsigned long)priv->gpu_bo->map & ~3));
+			assert((flags & MOVE_WRITE) == 0 || !kgem_bo_is_busy(priv->gpu_bo));
+			assert_pixmap_damage(pixmap);
+			if (dx | dy)
+				RegionTranslate(region, -dx, -dy);
+			DBG(("%s: operate inplace (CPU)\n", __FUNCTION__));
+			return true;
+		}
+	}
+
 	if ((priv->clear || (flags & MOVE_READ) == 0) &&
 	    priv->cpu_bo && !priv->cpu_bo->flush &&
 	    __kgem_bo_is_busy(&sna->kgem, priv->cpu_bo)) {
