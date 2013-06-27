@@ -1911,10 +1911,15 @@ sna_render_composite_redirect(struct sna *sna,
 		DBG(("%s: dst pitch (%d) fits within render pipeline (%d)\n",
 		     __FUNCTION__, op->dst.bo->pitch, sna->render.max_3d_pitch));
 
-		box.x1 = x;
-		box.x2 = bound(x, width);
-		box.y1 = y;
-		box.y2 = bound(y, height);
+		box.x1 = x + op->dst.x;
+		box.x2 = bound(box.x1, width);
+		box.y1 = y + op->dst.y;
+		box.y2 = bound(box.y1, height);
+
+		if (box.x1 < 0)
+			box.x1 = 0;
+		if (box.y1 < 0)
+			box.y1 = 0;
 
 		/* Ensure we align to an even tile row */
 		if (op->dst.bo->tiling) {
