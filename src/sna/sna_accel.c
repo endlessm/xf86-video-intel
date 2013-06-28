@@ -14362,27 +14362,28 @@ sna_get_image_blt(DrawablePtr drawable,
 }
 
 static bool
-sna_get_image_tiled(DrawablePtr drawable,
-		    RegionPtr region,
-		    char *dst,
-		    unsigned flags)
+sna_get_image_inplace(DrawablePtr drawable,
+		      RegionPtr region,
+		      char *dst,
+		      unsigned flags)
 {
 	PixmapPtr pixmap = get_drawable_pixmap(drawable);
 	struct sna_pixmap *priv = sna_pixmap(pixmap);
 	struct sna *sna = to_sna_from_pixmap(pixmap);
 	char *src;
 
-	if (!sna->kgem.memcpy_from_tiled_x)
-		return false;
-
-	if (flags & MOVE_INPLACE_HINT)
-		return false;
-
 	if (priv == NULL || priv->gpu_bo == NULL)
 		return false;
 
-	if (priv->gpu_bo->tiling != I915_TILING_X)
+	switch (priv->gpu_bo->tiling) {
+	case I915_TILING_Y:
 		return false;
+	case I915_TILING_X:
+		if (!sna->kgem.memcpy_from_tiled_x)
+			return false;
+	default:
+		break;
+	}
 
 	if (priv->gpu_bo->scanout)
 		return false;
@@ -14400,19 +14401,32 @@ sna_get_image_tiled(DrawablePtr drawable,
 	if (src == NULL)
 		return false;
 
-	DBG(("%s: download through a tiled CPU map\n", __FUNCTION__));
-
 	kgem_bo_sync__cpu_full(&sna->kgem, priv->gpu_bo, FORCE_FULL_SYNC);
 
-	memcpy_from_tiled_x(&sna->kgem, src, dst,
-			    pixmap->drawable.bitsPerPixel,
-			    priv->gpu_bo->pitch,
-			    PixmapBytePad(region->extents.x2 - region->extents.x1,
-					  drawable->depth),
-			    region->extents.x1, region->extents.y1,
-			    0, 0,
-			    region->extents.x2 - region->extents.x1,
-			    region->extents.y2 - region->extents.y1);
+
+	if (priv->gpu_bo->tiling) {
+		DBG(("%s: download through a tiled CPU map\n", __FUNCTION__));
+		memcpy_from_tiled_x(&sna->kgem, src, dst,
+				    pixmap->drawable.bitsPerPixel,
+				    priv->gpu_bo->pitch,
+				    PixmapBytePad(region->extents.x2 - region->extents.x1,
+						  drawable->depth),
+				    region->extents.x1, region->extents.y1,
+				    0, 0,
+				    region->extents.x2 - region->extents.x1,
+				    region->extents.y2 - region->extents.y1);
+	} else {
+		DBG(("%s: download through a linear CPU map\n", __FUNCTION__));
+		memcpy_blt(src, dst,
+			   pixmap->drawable.bitsPerPixel,
+			   priv->gpu_bo->pitch,
+			   PixmapBytePad(region->extents.x2 - region->extents.x1,
+					 drawable->depth),
+			   region->extents.x1, region->extents.y1,
+			   0, 0,
+			   region->extents.x2 - region->extents.x1,
+			   region->extents.y2 - region->extents.y1);
+	}
 
 	return true;
 }
@@ -14456,7 +14470,7 @@ sna_get_image(DrawablePtr drawable,
 	if (can_blt && sna_get_image_blt(drawable, &region, dst, flags))
 		return;
 
-	if (can_blt && sna_get_image_tiled(drawable, &region, dst, flags))
+	if (can_blt && sna_get_image_inplace(drawable, &region, dst, flags))
 		return;
 
 	if (!sna_drawable_move_region_to_cpu(drawable, &region, flags))
