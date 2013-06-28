@@ -77,6 +77,7 @@
 #define ACCEL_FILL_SPANS 1
 #define ACCEL_SET_SPANS 1
 #define ACCEL_PUT_IMAGE 1
+#define ACCEL_GET_IMAGE 1
 #define ACCEL_COPY_AREA 1
 #define ACCEL_COPY_PLANE 1
 #define ACCEL_COPY_WINDOW 1
@@ -14429,7 +14430,10 @@ sna_get_image(DrawablePtr drawable,
 	if (!fbDrawableEnabled(drawable))
 		return;
 
-	DBG(("%s (%d, %d)x(%d, %d)\n", __FUNCTION__, x, y, w, h));
+	DBG(("%s: pixmap=%ld (%d, %d)x(%d, %d), format=%d, mask=%lx, depth=%d\n",
+	     __FUNCTION__,
+	     (long)get_drawable_pixmap(drawable)->drawable.serialNumber,
+	     x, y, w, h, format, mask, drawable->depth));
 
 	region.extents.x1 = x + drawable->x;
 	region.extents.y1 = y + drawable->y;
@@ -14437,9 +14441,11 @@ sna_get_image(DrawablePtr drawable,
 	region.extents.y2 = region.extents.y1 + h;
 	region.data = NULL;
 
-	can_blt = format == ZPixmap &&
-		drawable->bitsPerPixel >= 8 &&
-		PM_IS_SOLID(drawable, mask);
+	can_blt = (ACCEL_GET_IMAGE &&
+		   !FORCE_FALLBACK &&
+		   format == ZPixmap &&
+		   drawable->bitsPerPixel >= 8 &&
+		   PM_IS_SOLID(drawable, mask));
 
 	flags = MOVE_READ;
 	if ((w | h) == 1)
