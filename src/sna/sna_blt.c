@@ -1917,9 +1917,6 @@ prepare_blt_put(struct sna *sna,
 {
 	DBG(("%s\n", __FUNCTION__));
 
-	assert(src->devKind);
-	assert(src->devPrivate.ptr);
-
 	if (op->dst.bo) {
 		assert(op->dst.bo == sna_pixmap(op->dst.pixmap)->gpu_bo);
 		if (alpha_fixup) {
