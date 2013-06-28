@@ -2006,7 +2006,7 @@ skip_inplace_map:
 
 		if (priv->clear_color == 0 ||
 		    pixmap->drawable.bitsPerPixel == 8 ||
-		    priv->clear_color == (1 << pixmap->drawable.bitsPerPixel) - 1) {
+		    priv->clear_color == (1 << pixmap->drawable.depth) - 1) {
 			memset(pixmap->devPrivate.ptr, priv->clear_color,
 			       pixmap->devKind * pixmap->drawable.height);
 		} else {
@@ -2254,6 +2254,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 			      pixmap->drawable.height)) {
 		DBG(("%s: pixmap=%ld all damaged on CPU\n",
 		     __FUNCTION__, pixmap->drawable.serialNumber));
+		assert(!priv->clear);
 
 		sna_damage_destroy(&priv->gpu_damage);
 
@@ -2312,6 +2313,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 			pixmap->devKind = priv->gpu_bo->pitch;
 			if (flags & MOVE_WRITE) {
 				if (!DAMAGE_IS_ALL(priv->gpu_damage)) {
+					assert(!priv->clear);
 					sna_damage_add(&priv->gpu_damage, region);
 					if (sna_damage_is_all(&priv->gpu_damage,
 							      pixmap->drawable.width,
@@ -2372,6 +2374,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 			priv->mapped = true;
 			if (flags & MOVE_WRITE) {
 				if (!DAMAGE_IS_ALL(priv->gpu_damage)) {
+					assert(!priv->clear);
 					sna_damage_add(&priv->gpu_damage, region);
 					if (sna_damage_is_all(&priv->gpu_damage,
 							      pixmap->drawable.width,
@@ -2431,6 +2434,8 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 	if (priv->clear) {
 		int n = RegionNumRects(region);
 		BoxPtr box = RegionRects(region);
+
+		assert(DAMAGE_IS_ALL(priv->gpu_damage));
 
 		DBG(("%s: pending clear, doing partial fill\n", __FUNCTION__));
 		if (priv->cpu_bo) {
@@ -2704,6 +2709,7 @@ out:
 		assert(priv->gpu_bo == NULL || priv->gpu_bo->proxy == NULL);
 		assert(priv->gpu_bo || priv->gpu_damage == NULL);
 		assert(!priv->flush || !list_is_empty(&priv->flush_list));
+		assert(!priv->clear);
 	}
 	if ((flags & MOVE_ASYNC_HINT) == 0 && priv->cpu_bo) {
 		DBG(("%s: syncing cpu bo\n", __FUNCTION__));
@@ -4067,6 +4073,7 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 	} while (--n);
 
 	if (!DAMAGE_IS_ALL(priv->gpu_damage)) {
+		assert(!priv->clear);
 		if (replaces) {
 			sna_damage_all(&priv->gpu_damage,
 					pixmap->drawable.width,
@@ -4756,6 +4763,7 @@ sna_self_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 		}
 
 		if (!DAMAGE_IS_ALL(priv->gpu_damage)) {
+			assert(!priv->clear);
 			RegionTranslate(region, tx, ty);
 			sna_damage_add(&priv->gpu_damage, region);
 		}
@@ -4993,7 +5001,7 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 					 &region->extents, &damage);
 	if (bo) {
 		if (src_priv && src_priv->clear) {
-			DBG(("%s: applying src clear[%08x] to dst\n",
+			DBG(("%s: applying src clear [%08x] to dst\n",
 			     __FUNCTION__, src_priv->clear_color));
 			if (n == 1) {
 				if (replaces)
@@ -5011,6 +5019,10 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 				}
 
 				if (replaces && bo == dst_priv->gpu_bo) {
+					DBG(("%s: marking dst handle=%d as all clear [%08x]\n",
+					     __FUNCTION__,
+					     dst_priv->gpu_bo->handle,
+					     src_priv->clear_color));
 					dst_priv->clear = true;
 					dst_priv->clear_color = src_priv->clear_color;
 					sna_damage_all(&dst_priv->gpu_damage,
@@ -5308,8 +5320,10 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 			assert(dst_priv->clear == false);
 			dst_priv->cpu = false;
 			if (damage) {
+				assert(!dst_priv->clear);
 				assert(dst_priv->gpu_bo);
 				assert(dst_priv->gpu_bo->proxy == NULL);
+				assert(*damage == dst_priv->gpu_damage);
 				if (replaces) {
 					sna_damage_destroy(&dst_priv->cpu_damage);
 					sna_damage_all(&dst_priv->gpu_damage,
@@ -14294,10 +14308,17 @@ sna_get_image_blt(DrawablePtr drawable,
 		int w = region->extents.x2 - region->extents.x1;
 		int h = region->extents.y2 - region->extents.y1;
 
+		DBG(("%s: applying clear [%08x]\n",
+		     __FUNCTION__, priv->clear_color));
+		assert(DAMAGE_IS_ALL(priv->gpu_damage));
+		assert(priv->cpu_damage == NULL);
+
 		pitch = PixmapBytePad(w, pixmap->drawable.depth);
 		if (priv->clear_color == 0 ||
 		    pixmap->drawable.bitsPerPixel == 8 ||
-		    priv->clear_color == (1U << pixmap->drawable.bitsPerPixel) - 1) {
+		    priv->clear_color == (1U << pixmap->drawable.depth) - 1) {
+			DBG(("%s: memset clear [%02x]\n",
+			     __FUNCTION__, priv->clear_color & 0xff));
 			memset(dst, priv->clear_color, pitch * h);
 		} else {
 			pixman_fill((uint32_t *)dst,
