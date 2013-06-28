@@ -34,6 +34,19 @@
 
 #define xFixedToDouble(f) pixman_fixed_to_double(f)
 
+bool
+sna_gradient_is_opaque(const PictGradient *gradient)
+{
+	int n;
+
+	for (n = 0; n < gradient->nstops; n++) {
+		 if (gradient->stops[n].color.alpha < 0xff00)
+			 return false;
+	}
+
+	return true;
+}
+
 static int
 sna_gradient_sample_width(PictGradient *gradient)
 {

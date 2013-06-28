@@ -1480,8 +1480,13 @@ sna_render_picture_approximate_gradient(struct sna *sna,
 		return -1;
 	}
 
+	channel->is_opaque = sna_gradient_is_opaque(picture->pSourcePict);
+	channel->pict_format =
+		channel->is_opaque ? PIXMAN_x8r8g8b8 : PIXMAN_a8r8g8b8;
+	DBG(("%s: gradient is opaque? %d, selecting format %08x\n",
+	     __FUNCTION__, channel->is_opaque, channel->pict_format));
 	assert(channel->card_format == -1);
-	channel->pict_format = PIXMAN_a8r8g8b8;
+
 	channel->bo = kgem_create_buffer_2d(&sna->kgem,
 					    w2, h2, 32,
 					    KGEM_BUFFER_WRITE_INPLACE,
@@ -1492,7 +1497,7 @@ sna_render_picture_approximate_gradient(struct sna *sna,
 		return 0;
 	}
 
-	dst = pixman_image_create_bits(PIXMAN_a8r8g8b8,
+	dst = pixman_image_create_bits(channel->pict_format,
 				       w2, h2, ptr, channel->bo->pitch);
 	if (!dst) {
 		kgem_bo_destroy(&sna->kgem, channel->bo);
