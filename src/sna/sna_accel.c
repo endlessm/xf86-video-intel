@@ -1578,7 +1578,6 @@ sna_pixmap_undo_cow(struct sna *sna, struct sna_pixmap *priv, unsigned flags)
 	     flags));
 
 	assert(priv->gpu_bo == cow->bo);
-	assert(!priv->mapped);
 	assert(cow->refcnt);
 
 	list_del(&priv->cow_list);
@@ -1670,6 +1669,10 @@ sna_pixmap_undo_cow(struct sna *sna, struct sna_pixmap *priv, unsigned flags)
 		assert(priv->gpu_bo);
 		kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
 		priv->gpu_bo = bo;
+		if (priv->gpu_bo == NULL && priv->mapped) {
+			priv->pixmap->devPrivate.ptr = NULL;
+			priv->mapped = false;
+		}
 	}
 
 	priv->cow = NULL;
@@ -2953,11 +2956,11 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 							    box, n, 0);
 			}
 			if (!ok) {
-				assert(!priv->mapped);
-				if (pixmap->devPrivate.ptr == NULL) {
+				if (priv->mapped || pixmap->devPrivate.ptr == NULL) {
 					assert(priv->ptr && priv->stride);
 					pixmap->devPrivate.ptr = PTR(priv->ptr);
 					pixmap->devKind = priv->stride;
+					priv->mapped = false;
 				}
 				if (n == 1 && !priv->pinned &&
 				    box->x1 <= 0 && box->y1 <= 0 &&
@@ -2992,11 +2995,11 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 						    box, 1, 0);
 		}
 		if (!ok) {
-			assert(!priv->mapped);
-			if (pixmap->devPrivate.ptr == NULL) {
+			if (priv->mapped || pixmap->devPrivate.ptr == NULL) {
 				assert(priv->ptr && priv->stride);
 				pixmap->devPrivate.ptr = PTR(priv->ptr);
 				pixmap->devKind = priv->stride;
+				priv->mapped = false;
 			}
 			ok = sna_write_boxes(sna, pixmap,
 					     priv->gpu_bo, 0, 0,
@@ -3023,11 +3026,11 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 						    box, n, 0);
 		}
 		if (!ok) {
-			assert(!priv->mapped);
-			if (pixmap->devPrivate.ptr == NULL) {
+			if (priv->mapped || pixmap->devPrivate.ptr == NULL) {
 				assert(priv->ptr && priv->stride);
 				pixmap->devPrivate.ptr = PTR(priv->ptr);
 				pixmap->devKind = priv->stride;
+				priv->mapped = false;
 			}
 			ok = sna_write_boxes(sna, pixmap,
 					     priv->gpu_bo, 0, 0,
