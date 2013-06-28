@@ -1611,7 +1611,7 @@ try_blt(struct sna *sna,
 }
 
 static bool
-is_gradient(PicturePtr picture)
+is_gradient(PicturePtr picture, bool precise)
 {
 	if (picture->pDrawable)
 		return false;
@@ -1621,7 +1621,7 @@ is_gradient(PicturePtr picture)
 	case SourcePictTypeLinear:
 		return false;
 	default:
-		return true;
+		return precise;
 	}
 }
 
@@ -1658,12 +1658,12 @@ source_is_busy(PixmapPtr pixmap)
 }
 
 static bool
-source_fallback(struct sna *sna, PicturePtr p, PixmapPtr pixmap)
+source_fallback(struct sna *sna, PicturePtr p, PixmapPtr pixmap, bool precise)
 {
 	if (sna_picture_is_solid(p, NULL))
 		return false;
 
-	if (is_gradient(p) ||
+	if (is_gradient(p, precise) ||
 	    !gen5_check_repeat(p) ||
 	    !gen5_check_format(p->format))
 		return true;
@@ -1694,11 +1694,13 @@ gen5_composite_fallback(struct sna *sna,
 	dst_pixmap = get_drawable_pixmap(dst->pDrawable);
 
 	src_pixmap = src->pDrawable ? get_drawable_pixmap(src->pDrawable) : NULL;
-	src_fallback = source_fallback(sna, src, src_pixmap);
+	src_fallback = source_fallback(sna, src, src_pixmap,
+				       dst->polyMode == PolyModePrecise);
 
 	if (mask) {
 		mask_pixmap = mask->pDrawable ? get_drawable_pixmap(mask->pDrawable) : NULL;
-		mask_fallback = source_fallback(sna, mask, mask_pixmap);
+		mask_fallback = source_fallback(sna, mask, mask_pixmap,
+						dst->polyMode == PolyModePrecise);
 	} else {
 		mask_pixmap = NULL;
 		mask_fallback = false;
