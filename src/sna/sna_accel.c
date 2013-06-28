@@ -2356,7 +2356,8 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 	    (priv->gpu_bo->domain == DOMAIN_CPU || sna->kgem.has_llc) &&
 	    ((flags & (MOVE_WRITE | MOVE_ASYNC_HINT)) == 0 ||
 	     !__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo))) {
-		DBG(("%s: try to operate inplace (CPU)\n", __FUNCTION__));
+		DBG(("%s: try to operate inplace (CPU), read? %d, write? %d\n",
+		     __FUNCTION__, !!(flags & MOVE_READ), !!(flags & MOVE_WRITE)));
 		assert(priv->cow == NULL || (flags & MOVE_WRITE) == 0);
 
 		assert(!priv->mapped);
