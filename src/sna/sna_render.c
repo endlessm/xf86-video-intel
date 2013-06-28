@@ -332,7 +332,7 @@ use_cpu_bo(struct sna *sna, PixmapPtr pixmap, const BoxRec *box, bool blt)
 		return NULL;
 	}
 
-	if (priv->cpu_bo->snoop && priv->source_count > SOURCE_BIAS) {
+	if (!blt && priv->cpu_bo->snoop && priv->source_count > SOURCE_BIAS) {
 		DBG(("%s: promoting snooped CPU bo due to reuse\n",
 		     __FUNCTION__));
 		return NULL;
