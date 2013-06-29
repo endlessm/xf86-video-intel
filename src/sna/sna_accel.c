@@ -423,6 +423,9 @@ sna_copy_init_blt(struct sna_copy_op *copy,
 static void sna_pixmap_free_gpu(struct sna *sna, struct sna_pixmap *priv)
 {
 	assert(priv->gpu_damage == NULL || priv->gpu_bo);
+
+	if (priv->cow)
+		sna_pixmap_undo_cow(sna, priv, 0);
 	assert(priv->cow == NULL);
 
 	sna_damage_destroy(&priv->gpu_damage);
@@ -2069,8 +2072,6 @@ mark_damage:
 			       pixmap->drawable.width,
 			       pixmap->drawable.height);
 		assert(priv->gpu_damage == NULL);
-		if (priv->cow)
-			sna_pixmap_undo_cow(sna, priv, 0);
 		sna_pixmap_free_gpu(sna, priv);
 
 		if (priv->flush) {
@@ -2083,14 +2084,14 @@ done:
 	if (flags & MOVE_WRITE) {
 		assert(DAMAGE_IS_ALL(priv->cpu_damage));
 		assert(priv->gpu_damage == NULL);
+		assert(priv->gpu_bo == NULL || priv->gpu_bo->proxy == NULL);
 		if (priv->cow)
 			sna_pixmap_undo_cow(sna, priv, 0);
-		priv->source_count = SOURCE_BIAS;
-		assert(priv->gpu_bo == NULL || priv->gpu_bo->proxy == NULL);
-		if (priv->gpu_bo && priv->gpu_bo->domain != DOMAIN_GPU) {
-			DBG(("%s: discarding inactive GPU bo\n", __FUNCTION__));
+		if (priv->gpu_bo && priv->gpu_bo->rq == NULL) {
+			DBG(("%s: discarding idle GPU bo\n", __FUNCTION__));
 			sna_pixmap_free_gpu(sna, priv);
 		}
+		priv->source_count = SOURCE_BIAS;
 	}
 
 	if (priv->cpu_bo) {
@@ -2101,10 +2102,6 @@ done:
 					       FORCE_FULL_SYNC || flags & MOVE_WRITE);
 			assert(pixmap->devPrivate.ptr == (void *)((unsigned long)priv->cpu_bo->map & ~3));
 			assert((flags & MOVE_WRITE) == 0 || !kgem_bo_is_busy(priv->cpu_bo));
-		}
-		if (flags & MOVE_WRITE) {
-			DBG(("%s: discarding GPU bo in favour of CPU bo\n", __FUNCTION__));
-			sna_pixmap_free_gpu(sna, priv);
 		}
 	}
 	priv->cpu =
@@ -2691,11 +2688,8 @@ done:
 				      pixmap->drawable.width,
 				      pixmap->drawable.height);
 		if (DAMAGE_IS_ALL(priv->cpu_damage)) {
-			if (priv->gpu_bo) {
-				DBG(("%s: replaced entire pixmap\n",
-				     __FUNCTION__));
-				sna_pixmap_free_gpu(sna, priv);
-			}
+			DBG(("%s: replaced entire pixmap\n", __FUNCTION__));
+			sna_pixmap_free_gpu(sna, priv);
 		}
 		if (priv->flush) {
 			assert(!priv->shm);
@@ -4032,8 +4026,6 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 
 	if (priv->gpu_bo && (replaces || priv->gpu_bo->proxy)) {
 		DBG(("%s: discarding cached upload proxy\n", __FUNCTION__));
-		if (priv->cow)
-			sna_pixmap_undo_cow(sna, priv, 0);
 		sna_pixmap_free_gpu(sna, priv);
 	}
 
