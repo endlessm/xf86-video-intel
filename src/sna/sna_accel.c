@@ -14279,12 +14279,11 @@ static int sna_create_gc(GCPtr gc)
 }
 
 static bool
-sna_get_image_blt(DrawablePtr drawable,
+sna_get_image_blt(PixmapPtr pixmap,
 		  RegionPtr region,
 		  char *dst,
 		  unsigned flags)
 {
-	PixmapPtr pixmap = get_drawable_pixmap(drawable);
 	struct sna_pixmap *priv = sna_pixmap(pixmap);
 	struct sna *sna = to_sna_from_pixmap(pixmap);
 	struct kgem_bo *dst_bo;
@@ -14343,21 +14342,17 @@ sna_get_image_blt(DrawablePtr drawable,
 	DBG(("%s: download through a temporary map\n", __FUNCTION__));
 
 	pitch = PixmapBytePad(region->extents.x2 - region->extents.x1,
-			      drawable->depth);
+			      pixmap->drawable.depth);
 	dst_bo = kgem_create_map(&sna->kgem, dst,
 				 pitch * (region->extents.y2 - region->extents.y1),
 				 false);
 	if (dst_bo) {
-		int16_t dx, dy;
-
 		dst_bo->flush = true;
 		dst_bo->pitch = pitch;
 		kgem_bo_mark_unreusable(dst_bo);
 
-		get_drawable_deltas(drawable, pixmap, &dx, &dy);
-
 		ok = sna->render.copy_boxes(sna, GXcopy,
-					    pixmap, priv->gpu_bo, dx, dy,
+					    pixmap, priv->gpu_bo, 0, 0,
 					    pixmap, dst_bo,
 					    -region->extents.x1,
 					    -region->extents.y1,
@@ -14373,12 +14368,11 @@ sna_get_image_blt(DrawablePtr drawable,
 }
 
 static bool
-sna_get_image_inplace(DrawablePtr drawable,
+sna_get_image_inplace(PixmapPtr pixmap,
 		      RegionPtr region,
 		      char *dst,
 		      unsigned flags)
 {
-	PixmapPtr pixmap = get_drawable_pixmap(drawable);
 	struct sna_pixmap *priv = sna_pixmap(pixmap);
 	struct sna *sna = to_sna_from_pixmap(pixmap);
 	char *src;
@@ -14411,14 +14405,13 @@ sna_get_image_inplace(DrawablePtr drawable,
 
 	kgem_bo_sync__cpu_full(&sna->kgem, priv->gpu_bo, FORCE_FULL_SYNC);
 
-
 	if (priv->gpu_bo->tiling) {
 		DBG(("%s: download through a tiled CPU map\n", __FUNCTION__));
 		memcpy_from_tiled_x(&sna->kgem, src, dst,
 				    pixmap->drawable.bitsPerPixel,
 				    priv->gpu_bo->pitch,
 				    PixmapBytePad(region->extents.x2 - region->extents.x1,
-						  drawable->depth),
+						  pixmap->drawable.depth),
 				    region->extents.x1, region->extents.y1,
 				    0, 0,
 				    region->extents.x2 - region->extents.x1,
@@ -14429,7 +14422,7 @@ sna_get_image_inplace(DrawablePtr drawable,
 			   pixmap->drawable.bitsPerPixel,
 			   priv->gpu_bo->pitch,
 			   PixmapBytePad(region->extents.x2 - region->extents.x1,
-					 drawable->depth),
+					 pixmap->drawable.depth),
 			   region->extents.x1, region->extents.y1,
 			   0, 0,
 			   region->extents.x2 - region->extents.x1,
@@ -14447,7 +14440,6 @@ sna_get_image(DrawablePtr drawable,
 {
 	RegionRec region;
 	unsigned int flags;
-	bool can_blt;
 
 	if (!fbDrawableEnabled(drawable))
 		return;
@@ -14457,50 +14449,55 @@ sna_get_image(DrawablePtr drawable,
 	     (long)get_drawable_pixmap(drawable)->drawable.serialNumber,
 	     x, y, w, h, format, mask, drawable->depth));
 
-	region.extents.x1 = x + drawable->x;
-	region.extents.y1 = y + drawable->y;
-	region.extents.x2 = region.extents.x1 + w;
-	region.extents.y2 = region.extents.y1 + h;
-	region.data = NULL;
-
-	can_blt = (ACCEL_GET_IMAGE &&
-		   !FORCE_FALLBACK &&
-		   format == ZPixmap &&
-		   drawable->bitsPerPixel >= 8 &&
-		   PM_IS_SOLID(drawable, mask));
-
 	flags = MOVE_READ;
 	if ((w | h) == 1)
 		flags |= MOVE_INPLACE_HINT;
 	if (w == drawable->width)
 		flags |= MOVE_WHOLE_HINT;
 
-	if (can_blt && sna_get_image_blt(drawable, &region, dst, flags))
-		return;
-
-	if (can_blt && sna_get_image_inplace(drawable, &region, dst, flags))
-		return;
-
-	if (!sna_drawable_move_region_to_cpu(drawable, &region, flags))
-		return;
-
-	if (can_blt) {
+	if (ACCEL_GET_IMAGE &&
+	    !FORCE_FALLBACK &&
+	    format == ZPixmap &&
+	    drawable->bitsPerPixel >= 8 &&
+	    PM_IS_SOLID(drawable, mask)) {
 		PixmapPtr pixmap = get_drawable_pixmap(drawable);
 		int16_t dx, dy;
+
+		get_drawable_deltas(drawable, pixmap, &dx, &dy);
+		region.extents.x1 = x + drawable->x + dx;
+		region.extents.y1 = y + drawable->y + dy;
+		region.extents.x2 = region.extents.x1 + w;
+		region.extents.y2 = region.extents.y1 + h;
+		region.data = NULL;
+
+		if (sna_get_image_blt(pixmap, &region, dst, flags))
+			return;
+
+		if (sna_get_image_inplace(pixmap, &region, dst, flags))
+			return;
+
+		if (!sna_drawable_move_region_to_cpu(&pixmap->drawable,
+						     &region, flags))
+			return;
 
 		DBG(("%s: copy box (%d, %d), (%d, %d)\n",
 		     __FUNCTION__,
 		     region.extents.x1, region.extents.y1,
 		     region.extents.x2, region.extents.y2));
-		get_drawable_deltas(drawable, pixmap, &dx, &dy);
 		assert(has_coherent_ptr(sna_pixmap(pixmap)));
 		memcpy_blt(pixmap->devPrivate.ptr, dst, drawable->bitsPerPixel,
 			   pixmap->devKind, PixmapBytePad(w, drawable->depth),
-			   region.extents.x1 + dx,
-			   region.extents.y1 + dy,
-			   0, 0, w, h);
-	} else
-		fbGetImage(drawable, x, y, w, h, format, mask, dst);
+			   region.extents.x1, region.extents.y1, 0, 0, w, h);
+	} else {
+		region.extents.x1 = x + drawable->x;
+		region.extents.y1 = y + drawable->y;
+		region.extents.x2 = region.extents.x1 + w;
+		region.extents.y2 = region.extents.y1 + h;
+		region.data = NULL;
+
+		if (sna_drawable_move_region_to_cpu(drawable, &region, flags))
+			fbGetImage(drawable, x, y, w, h, format, mask, dst);
+	}
 }
 
 static void
