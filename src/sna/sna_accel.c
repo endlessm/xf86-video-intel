@@ -1403,7 +1403,8 @@ void sna_pixmap_destroy(PixmapPtr pixmap)
 }
 
 static inline bool has_coherent_map(struct sna *sna,
-				    struct kgem_bo *bo)
+				    struct kgem_bo *bo,
+				    unsigned flags)
 {
 	assert(bo->map);
 
@@ -1413,7 +1414,7 @@ static inline bool has_coherent_map(struct sna *sna,
 	if (bo->tiling != I915_TILING_NONE)
 		return false;
 
-	return bo->domain == DOMAIN_CPU || sna->kgem.has_llc;
+	return kgem_bo_can_map__cpu(&sna->kgem, bo, flags & MOVE_WRITE);
 }
 
 static inline bool has_coherent_ptr(struct sna_pixmap *priv)
@@ -1437,7 +1438,7 @@ static inline bool has_coherent_ptr(struct sna_pixmap *priv)
 static inline bool pixmap_inplace(struct sna *sna,
 				  PixmapPtr pixmap,
 				  struct sna_pixmap *priv,
-				  bool write_only)
+				  unsigned flags)
 {
 	if (FORCE_INPLACE)
 		return FORCE_INPLACE > 0;
@@ -1446,9 +1447,9 @@ static inline bool pixmap_inplace(struct sna *sna,
 		return false;
 
 	if (priv->mapped)
-		return has_coherent_map(sna, priv->gpu_bo);
+		return has_coherent_map(sna, priv->gpu_bo, flags);
 
-	if (!write_only && priv->cpu_damage)
+	if (flags & MOVE_READ && priv->cpu_damage)
 		return false;
 
 	return (pixmap->devKind * pixmap->drawable.height >> 12) >
@@ -1858,7 +1859,7 @@ _sna_pixmap_move_to_cpu(PixmapPtr pixmap, unsigned int flags)
 			if (!priv->mapped)
 				goto skip_inplace_map;
 
-			assert(has_coherent_map(sna, priv->gpu_bo));
+			assert(has_coherent_map(sna, priv->gpu_bo, flags));
 			pixmap->devKind = priv->gpu_bo->pitch;
 
 			assert(priv->gpu_bo->proxy == NULL);
@@ -1906,7 +1907,7 @@ skip_inplace_map:
 	assert(priv->gpu_bo == NULL || priv->gpu_bo->proxy == NULL);
 
 	if (operate_inplace(priv, flags) &&
-	    pixmap_inplace(sna, pixmap, priv, (flags & MOVE_READ) == 0) &&
+	    pixmap_inplace(sna, pixmap, priv, flags) &&
 	     sna_pixmap_create_mappable_gpu(pixmap, (flags & MOVE_READ) == 0)) {
 		DBG(("%s: try to operate inplace (GTT)\n", __FUNCTION__));
 		assert(priv->cow == NULL || (flags & MOVE_WRITE) == 0);
@@ -1918,7 +1919,7 @@ skip_inplace_map:
 		pixmap->devPrivate.ptr = kgem_bo_map(&sna->kgem, priv->gpu_bo);
 		priv->mapped = pixmap->devPrivate.ptr != NULL;
 		if (priv->mapped) {
-			assert(has_coherent_map(sna, priv->gpu_bo));
+			assert(has_coherent_map(sna, priv->gpu_bo, flags));
 			pixmap->devKind = priv->gpu_bo->pitch;
 			if (flags & MOVE_WRITE) {
 				assert(priv->gpu_bo->proxy == NULL);
@@ -1946,7 +1947,7 @@ skip_inplace_map:
 	}
 
 	if (priv->gpu_damage && priv->cpu_damage == NULL && !priv->cow &&
-	    (flags & MOVE_READ || priv->gpu_bo->domain == DOMAIN_CPU || sna->kgem.has_llc) &&
+	    (flags & MOVE_READ || kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, flags & MOVE_WRITE)) &&
 	    priv->gpu_bo->tiling == I915_TILING_NONE &&
 	    ((flags & (MOVE_WRITE | MOVE_ASYNC_HINT)) == 0 ||
 	     !__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo))) {
@@ -2161,7 +2162,7 @@ static inline bool region_inplace(struct sna *sna,
 				  PixmapPtr pixmap,
 				  RegionPtr region,
 				  struct sna_pixmap *priv,
-				  bool write_only)
+				  unsigned flags)
 {
 	assert_pixmap_damage(pixmap);
 
@@ -2171,7 +2172,7 @@ static inline bool region_inplace(struct sna *sna,
 	if (wedged(sna) && !priv->pinned)
 		return false;
 
-	if ((priv->cpu || !write_only) &&
+	if ((priv->cpu || flags & MOVE_READ) &&
 	    region_overlaps_damage(region, priv->cpu_damage, 0, 0)) {
 		DBG(("%s: no, uncovered CPU damage pending\n", __FUNCTION__));
 		return false;
@@ -2184,7 +2185,7 @@ static inline bool region_inplace(struct sna *sna,
 
 	if (priv->mapped) {
 		DBG(("%s: yes, already mapped, continuiung\n", __FUNCTION__));
-		return has_coherent_map(sna, priv->gpu_bo);
+		return has_coherent_map(sna, priv->gpu_bo, flags);
 	}
 
 	if (priv->flush) {
@@ -2301,7 +2302,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 	}
 
 	if (operate_inplace(priv, flags) &&
-	    region_inplace(sna, pixmap, region, priv, (flags & MOVE_READ) == 0) &&
+	    region_inplace(sna, pixmap, region, priv, flags) &&
 	     sna_pixmap_create_mappable_gpu(pixmap, false)) {
 		DBG(("%s: try to operate inplace\n", __FUNCTION__));
 		assert(priv->cow == NULL || (flags & MOVE_WRITE) == 0);
@@ -2312,7 +2313,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 		pixmap->devPrivate.ptr = kgem_bo_map(&sna->kgem, priv->gpu_bo);
 		priv->mapped = pixmap->devPrivate.ptr != NULL;
 		if (priv->mapped) {
-			assert(has_coherent_map(sna, priv->gpu_bo));
+			assert(has_coherent_map(sna, priv->gpu_bo, flags));
 			pixmap->devKind = priv->gpu_bo->pitch;
 			if (flags & MOVE_WRITE) {
 				if (!DAMAGE_IS_ALL(priv->gpu_damage)) {
@@ -2359,7 +2360,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 	     sna_damage_contains_box__no_reduce(priv->gpu_damage,
 						&region->extents)) &&
 	    priv->gpu_bo->tiling == I915_TILING_NONE &&
-	    (priv->gpu_bo->domain == DOMAIN_CPU || sna->kgem.has_llc) &&
+	    kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, flags & MOVE_WRITE) &&
 	    ((flags & (MOVE_WRITE | MOVE_ASYNC_HINT)) == 0 ||
 	     !__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo))) {
 		DBG(("%s: try to operate inplace (CPU), read? %d, write? %d\n",
@@ -2370,7 +2371,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 		pixmap->devPrivate.ptr =
 			kgem_bo_map__cpu(&sna->kgem, priv->gpu_bo);
 		if (pixmap->devPrivate.ptr != NULL) {
-			assert(has_coherent_map(sna, priv->gpu_bo));
+			assert(has_coherent_map(sna, priv->gpu_bo, flags));
 			assert(IS_CPU_MAP(priv->gpu_bo->map));
 			pixmap->devKind = priv->gpu_bo->pitch;
 			priv->cpu = true;
@@ -3966,13 +3967,7 @@ static bool can_upload_tiled_x(struct kgem *kgem, struct sna_pixmap *priv)
 		return false;
 	}
 
-	if (bo->scanout) {
-		DBG(("%s: no, is scanout\n", __FUNCTION__, bo->scanout));
-		return false;
-	}
-
-	DBG(("%s? domain=%d, has_llc=%d\n", __FUNCTION__, bo->domain, kgem->has_llc));
-	return bo->domain == DOMAIN_CPU || kgem->has_llc;
+	return kgem_bo_can_map__cpu(kgem, bo, true);
 }
 
 static bool
@@ -4972,7 +4967,7 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 
 	hint = source_prefer_gpu(sna, src_priv, region, src_dx, src_dy) ?:
 		region_inplace(sna, dst_pixmap, region,
-			       dst_priv, alu_overwrites(alu));
+			       dst_priv, alu_overwrites(alu) ? MOVE_WRITE : MOVE_READ | MOVE_WRITE);
 	if (dst_priv->cpu_damage && alu_overwrites(alu)) {
 		DBG(("%s: overwritting CPU damage\n", __FUNCTION__));
 		if (region_subsumes_damage(region, dst_priv->cpu_damage)) {
@@ -14409,10 +14404,7 @@ sna_get_image_inplace(DrawablePtr drawable,
 		break;
 	}
 
-	if (priv->gpu_bo->scanout)
-		return false;
-
-	if (!sna->kgem.has_llc && priv->gpu_bo->domain != DOMAIN_CPU)
+	if (!kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, false))
 		return false;
 
 	if (priv->gpu_damage == NULL ||

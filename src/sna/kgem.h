@@ -564,6 +564,22 @@ static inline bool kgem_bo_can_map(struct kgem *kgem, struct kgem_bo *bo)
 	return kgem_bo_size(bo) <= kgem->aperture_mappable / 4;
 }
 
+static inline bool kgem_bo_can_map__cpu(struct kgem *kgem,
+					struct kgem_bo *bo,
+					bool write)
+{
+	if (bo->scanout)
+		return false;
+
+	if (kgem->has_llc)
+		return true;
+
+	if (bo->domain != DOMAIN_CPU)
+		return false;
+
+	return !write || bo->exec == NULL;
+}
+
 static inline bool kgem_bo_is_snoop(struct kgem_bo *bo)
 {
 	assert(bo->refcnt);

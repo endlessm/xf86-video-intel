@@ -53,15 +53,12 @@ static inline bool must_tile(struct sna *sna, int width, int height)
 		upload_too_large(sna, width, height));
 }
 
-static bool bo_inplace_tiled(struct kgem *kgem, struct kgem_bo *bo)
+static bool bo_inplace_tiled(struct kgem *kgem, struct kgem_bo *bo, bool write)
 {
 	if (bo->tiling != I915_TILING_X)
 		return false;
 
-	if (bo->scanout)
-		return false;
-
-	return bo->domain == DOMAIN_CPU || kgem->has_llc;
+	return kgem_bo_can_map__cpu(kgem, bo, write);
 }
 
 static bool download_inplace__tiled(struct kgem *kgem, struct kgem_bo *bo)
@@ -69,7 +66,7 @@ static bool download_inplace__tiled(struct kgem *kgem, struct kgem_bo *bo)
 	if (!kgem->memcpy_from_tiled_x)
 		return false;
 
-	return bo_inplace_tiled(kgem, bo);
+	return bo_inplace_tiled(kgem, bo, false);
 }
 
 static bool
@@ -537,7 +534,7 @@ static bool upload_inplace__tiled(struct kgem *kgem, struct kgem_bo *bo)
 	if (!kgem->memcpy_to_tiled_x)
 		return false;
 
-	return bo_inplace_tiled(kgem, bo);
+	return bo_inplace_tiled(kgem, bo, true);
 }
 
 static bool
