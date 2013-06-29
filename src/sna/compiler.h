@@ -66,7 +66,7 @@
 #endif
 
 #if HAS_GCC(4, 5) && defined(__OPTIMIZE__)
-#define fast_memcpy __attribute__((target("inline-all-stringops")))
+#define fast_memcpy __attribute__((optimize("Ofast"))) __attribute__((target("inline-all-stringops")))
 #else
 #define fast_memcpy
 #endif
