@@ -98,7 +98,7 @@ static int __intel_open_device(const struct pci_device *pci, char **path)
 			if (xf86LoadKernelModule("i915"))
 				ret = drmCheckModesettingSupported(id);
 			if (ret)
-				return FALSE;
+				return -1;
 			/* Be nice to the user and load fbcon too */
 			(void)xf86LoadKernelModule("fbcon");
 		}
