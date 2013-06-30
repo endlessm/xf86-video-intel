@@ -293,7 +293,6 @@ struct sna {
 
 	bool dri_available;
 	bool dri_open;
-	char *deviceName;
 
 	/* Broken-out options. */
 	OptionInfoPtr Options;

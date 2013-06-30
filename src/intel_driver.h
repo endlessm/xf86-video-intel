@@ -313,6 +313,7 @@ void intel_detect_chipset(ScrnInfoPtr scrn,
 
 int intel_open_device(int entity_num, const struct pci_device *pci, const char *path);
 int intel_get_device(ScrnInfoPtr scrn);
+const char *intel_get_device_name(ScrnInfoPtr scrn);
 int intel_get_master(ScrnInfoPtr scrn);
 int intel_put_master(ScrnInfoPtr scrn);
 void intel_put_device(ScrnInfoPtr scrn);

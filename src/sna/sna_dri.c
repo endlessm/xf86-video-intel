@@ -2445,11 +2445,10 @@ bool sna_dri_open(struct sna *sna, ScreenPtr screen)
 		return false;
 	}
 
-	sna->deviceName = drmGetDeviceNameFromFd(sna->kgem.fd);
 	memset(&info, '\0', sizeof(info));
 	info.fd = sna->kgem.fd;
 	info.driverName = dri_driver_name(sna);
-	info.deviceName = sna->deviceName;
+	info.deviceName = intel_get_device_name(sna->scrn);
 
 	DBG(("%s: loading dri driver '%s' [gen=%d] for device '%s'\n",
 	     __FUNCTION__, info.driverName, sna->kgem.gen, info.deviceName));
@@ -2487,5 +2486,4 @@ void sna_dri_close(struct sna *sna, ScreenPtr screen)
 {
 	DBG(("%s()\n", __FUNCTION__));
 	DRI2CloseScreen(screen);
-	drmFree(sna->deviceName);
 }

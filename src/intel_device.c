@@ -42,6 +42,7 @@
 #include "intel_driver.h"
 
 struct intel_device {
+	char *path;
 	int fd;
 	int open_count;
 	int master_count;
@@ -80,11 +81,11 @@ static int fd_set_cloexec(int fd)
 	return fd;
 }
 
-static int __intel_open_device(const struct pci_device *pci, const char *path)
+static int __intel_open_device(const struct pci_device *pci, char **path)
 {
 	int fd;
 
-	if (path == NULL) {
+	if (*path == NULL) {
 		char id[20];
 		int ret;
 
@@ -103,14 +104,21 @@ static int __intel_open_device(const struct pci_device *pci, const char *path)
 		}
 
 		fd = drmOpen(NULL, id);
+		if (fd != -1) {
+			*path = drmGetDeviceNameFromFd(fd);
+			if (*path == NULL) {
+				close(fd);
+				fd = -1;
+			}
+		}
 	} else {
 #ifdef O_CLOEXEC
-		fd = open(path, O_RDWR | O_CLOEXEC);
+		fd = open(*path, O_RDWR | O_CLOEXEC);
 #else
 		fd = -1;
 #endif
 		if (fd == -1)
-			fd = fd_set_cloexec(open(path, O_RDWR));
+			fd = fd_set_cloexec(open(*path, O_RDWR));
 	}
 
 	return fd;
@@ -121,6 +129,7 @@ int intel_open_device(int entity_num,
 		      const char *path)
 {
 	struct intel_device *dev;
+	char *local_path;
 	int fd;
 
 	if (intel_device_key == -1)
@@ -132,16 +141,20 @@ int intel_open_device(int entity_num,
 	if (dev)
 		return dev->fd;
 
-	fd = __intel_open_device(pci, path);
+	local_path = path ? strdup(path) : NULL;
+
+	fd = __intel_open_device(pci, &local_path);
 	if (fd == -1)
 		return -1;
 
 	dev = malloc(sizeof(*dev));
 	if (dev == NULL) {
+		free(local_path);
 		close(fd);
 		return -1;
 	}
 
+	dev->path = local_path;
 	dev->fd = fd;
 	dev->open_count = 0;
 	dev->master_count = 0;
@@ -190,6 +203,13 @@ int intel_get_device(ScrnInfoPtr scrn)
 	return dev->fd;
 }
 
+const char *intel_get_device_name(ScrnInfoPtr scrn)
+{
+	struct intel_device *dev = intel_device(scrn);
+	assert(dev && dev->path);
+	return dev->path;
+}
+
 int intel_get_master(ScrnInfoPtr scrn)
 {
 	struct intel_device *dev = intel_device(scrn);
@@ -236,6 +256,7 @@ void __intel_uxa_release_device(ScrnInfoPtr scrn)
 		intel_set_device(scrn, NULL);
 
 		drmClose(dev->fd);
+		free(dev->path);
 		free(dev);
 	}
 }
@@ -253,5 +274,6 @@ void intel_put_device(ScrnInfoPtr scrn)
 	intel_set_device(scrn, NULL);
 
 	drmClose(dev->fd);
+	free(dev->path);
 	free(dev);
 }
