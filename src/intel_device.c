@@ -222,7 +222,7 @@ int intel_get_master(ScrnInfoPtr scrn)
 		int retry = 2000;
 
 		do {
-			ret = ioctl(dev->fd, DRM_IOCTL_SET_MASTER);
+			ret = drmSetMaster(dev->fd);
 			if (ret == 0)
 				break;
 			usleep(1000);
@@ -242,8 +242,8 @@ int intel_put_master(ScrnInfoPtr scrn)
 	ret = 0;
 	assert(dev->master_count);
 	if (--dev->master_count == 0) {
-		assert(ioctl(dev->fd, DRM_IOCTL_SET_MASTER) == 0);
-		ret = ioctl(dev->fd, DRM_IOCTL_DROP_MASTER);
+		assert(drmSetMaster(dev->fd) == 0);
+		ret = drmDropMaster(dev->fd);
 	}
 
 	return ret;
