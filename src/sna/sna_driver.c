@@ -734,6 +734,8 @@ static Bool sna_early_close_screen(CLOSE_SCREEN_ARGS_DECL)
 
 	DBG(("%s\n", __FUNCTION__));
 
+	/* XXX Note that we will leak kernel resources if !vtSema */
+
 	xf86_hide_cursors(scrn);
 	sna_uevent_fini(scrn);
 
@@ -749,8 +751,10 @@ static Bool sna_early_close_screen(CLOSE_SCREEN_ARGS_DECL)
 		sna->front = NULL;
 	}
 
-	drmDropMaster(sna->kgem.fd);
-	scrn->vtSema = FALSE;
+	if (scrn->vtSema) {
+		intel_put_master(scrn);
+		scrn->vtSema = FALSE;
+	}
 
 	xf86_cursors_fini(screen);
 
@@ -773,7 +777,6 @@ static Bool sna_late_close_screen(CLOSE_SCREEN_ARGS_DECL)
 	free(depths);
 
 	free(screen->visuals);
-	intel_put_master(xf86ScreenToScrn(screen));
 
 	return TRUE;
 }
