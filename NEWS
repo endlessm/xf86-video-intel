@@ -1,3 +1,55 @@
+Release 2.21.11 (2013-06-30)
+============================
+An eventful week. What started with a regression with some builds of
+firefox on some machines lead ultimately to the discovery of an older
+kernel bug. Aside from the work to fix the image bug and a few other
+older bugs that were reported and resolved this week, there is also a
+(hopefully) subtle change to the initial configuration of displays. In
+the absence of user overrides in xorg.conf, the DDX will try to preserve
+the same display configuration as used by the kernel, which hopefully
+will be the same configuration as setup by the BIOS. The result should
+be a boot sequence that does not resize at all (aka fastboot) - until
+the display manager takes over and loads a completely different
+configuration!
+
+ * Add reference counting of drmMaster for ZaphodHeads
+   https://bugs.freedesktop.org/show_bug.cgi?id=66041
+
+ * Add a GPU flush before changing blend modes on Ironlake
+   https://bugs.freedesktop.org/show_bug.cgi?id=51422
+
+ * Fix occasional missing images for inplace uploads
+   [regression from 2.21.10]
+   https://bugs.freedesktop.org/show_bug.cgi?id=66059
+
+ * Add missing utility files to the tarball and remove a few unused ones
+
+ * Initialise PolyPoint operand state before calling miWideDash
+   https://bugs.freedesktop.org/show_bug.cgi?id=66104
+
+ * Fix redirection handling for rendering into large surfaces
+   https://bugs.freedesktop.org/show_bug.cgi?id=66168
+   https://bugs.freedesktop.org/show_bug.cgi?id=66249
+
+ * Fix compilation of UXA with xorg-xserver < 1.10
+   [regression from 2.20.0]
+
+ * Fix consideration of gradients for deciding when to migrate render
+   operations
+   [performance regression from 2.21.10, the bug itself is older]
+   https://bugs.freedesktop.org/show_bug.cgi?id=66297
+
+Also fixed this week was:
+
+commit 22fd5ca947b58901927d100d2b1aa0f1672b3435
+Author: Chris Wilson <chris@chris-wilson.co.uk>
+Date:   Fri Jun 28 16:54:08 2013 +0100
+
+    drm/i915: Only clear write-domains after a successful wait-seqno
+
+which affects kernels 3.7 - 3.10, coming to a stable kernel near you soon.
+
+
 Release 2.21.10 (2013-06-22)
 ============================
 Fixes missing support for Xv (with the textured video adaptor) on
