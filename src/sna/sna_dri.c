@@ -243,7 +243,7 @@ sna_dri_create_buffer(DrawablePtr draw,
 	struct sna_dri_private *private;
 	PixmapPtr pixmap;
 	struct kgem_bo *bo;
-	unsigned flags = CREATE_EXACT;
+	unsigned flags = 0;
 	uint32_t size;
 	int bpp;
 
@@ -1612,7 +1612,7 @@ sna_dri_flip_get_back(struct sna *sna, struct sna_dri_frame_event *info)
 				    info->draw->height,
 				    info->draw->bitsPerPixel,
 				    get_private(info->front)->bo->tiling,
-				    CREATE_SCANOUT | CREATE_EXACT);
+				    CREATE_SCANOUT);
 		if (bo == NULL)
 			return;
 

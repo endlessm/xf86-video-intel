@@ -1492,7 +1492,7 @@ sna_pixmap_create_mappable_gpu(PixmapPtr pixmap,
 
 	create = CREATE_GTT_MAP | CREATE_INACTIVE;
 	if (pixmap->usage_hint == SNA_CREATE_FB)
-		create |= CREATE_EXACT | CREATE_SCANOUT;
+		create |= CREATE_SCANOUT;
 
 	priv->gpu_bo =
 		kgem_create_2d(&sna->kgem,
@@ -2899,7 +2899,7 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 
 			create = CREATE_INACTIVE;
 			if (pixmap->usage_hint == SNA_CREATE_FB)
-				create |= CREATE_EXACT | CREATE_SCANOUT;
+				create |= CREATE_SCANOUT;
 
 			tiling = (flags & MOVE_SOURCE_HINT) ? I915_TILING_Y : DEFAULT_TILING;
 			tiling = sna_pixmap_choose_tiling(pixmap, tiling);
@@ -3621,7 +3621,7 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 			if (flags & MOVE_INPLACE_HINT || (priv->cpu_damage && priv->cpu_bo == NULL))
 				create = CREATE_GTT_MAP | CREATE_INACTIVE;
 			if (pixmap->usage_hint == SNA_CREATE_FB)
-				create |= CREATE_EXACT | CREATE_SCANOUT;
+				create |= CREATE_SCANOUT;
 
 			priv->gpu_bo =
 				kgem_create_2d(&sna->kgem,
@@ -3987,7 +3987,7 @@ create_upload_tiled_x(struct kgem *kgem,
 	assert(priv->gpu_bo == NULL);
 	assert(priv->gpu_damage == NULL);
 
-	create = CREATE_CPU_MAP | CREATE_INACTIVE | CREATE_EXACT;
+	create = CREATE_CPU_MAP | CREATE_INACTIVE;
 	if (pixmap->usage_hint == SNA_CREATE_FB)
 		create |= CREATE_SCANOUT;
 	if (!kgem->has_llc)
@@ -3998,7 +3998,7 @@ create_upload_tiled_x(struct kgem *kgem,
 			       pixmap->drawable.width,
 			       pixmap->drawable.height,
 			       pixmap->drawable.bitsPerPixel,
-			       I915_TILING_X, create);
+			       -I915_TILING_X, create);
 	return priv->gpu_bo != NULL;
 }
 

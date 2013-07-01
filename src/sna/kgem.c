@@ -3693,13 +3693,14 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 	uint32_t pitch, tiled_height, size;
 	uint32_t handle;
 	int i, bucket, retry;
+	bool exact = flags & (CREATE_EXACT | CREATE_SCANOUT);
 
 	if (tiling < 0)
-		tiling = -tiling, flags |= CREATE_EXACT;
+		exact = true, tiling = -tiling;
+
 
 	DBG(("%s(%dx%d, bpp=%d, tiling=%d, exact=%d, inactive=%d, cpu-mapping=%d, gtt-mapping=%d, scanout?=%d, prime?=%d, temp?=%d)\n", __FUNCTION__,
-	     width, height, bpp, tiling,
-	     !!(flags & CREATE_EXACT),
+	     width, height, bpp, tiling, exact,
 	     !!(flags & CREATE_INACTIVE),
 	     !!(flags & CREATE_CPU_MAP),
 	     !!(flags & CREATE_GTT_MAP),
@@ -3998,7 +3999,7 @@ search_again:
 		}
 	}
 
-	if (--retry && flags & CREATE_EXACT) {
+	if (--retry && exact) {
 		if (kgem->gen >= 040) {
 			for (i = I915_TILING_NONE; i <= I915_TILING_Y; i++) {
 				if (i == tiling)
@@ -4041,7 +4042,7 @@ search_again:
 		goto search_again;
 	}
 
-	if ((flags & CREATE_EXACT) == 0) { /* allow an active near-miss? */
+	if (!exact) { /* allow an active near-miss? */
 		i = tiling;
 		while (--i >= 0) {
 			tiled_height = kgem_surface_size(kgem, kgem->has_relaxed_fencing, flags,

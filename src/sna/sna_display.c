@@ -1250,7 +1250,7 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 		bo = kgem_create_2d(&sna->kgem,
 				    crtc->mode.HDisplay, crtc->mode.VDisplay,
 				    scrn->bitsPerPixel,
-				    tiling, CREATE_EXACT | CREATE_SCANOUT);
+				    tiling, CREATE_SCANOUT);
 		if (bo == NULL)
 			return NULL;
 
