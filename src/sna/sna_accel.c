@@ -138,10 +138,7 @@ static void __sna_fallback_flush(DrawablePtr d)
 					   0);
 
 	DBG(("%s: comparing with direct read...\n", __FUNCTION__));
-	sna_read_boxes(sna,
-		       priv->gpu_bo, 0, 0,
-		       tmp, 0, 0,
-		       &box, 1);
+	sna_read_boxes(sna, tmp, priv->gpu_bo, &box, 1);
 
 	src = pixmap->devPrivate.ptr;
 	dst = tmp->devPrivate.ptr;
@@ -2054,9 +2051,7 @@ skip_inplace_map:
 			}
 			if (!ok) {
 				assert(has_coherent_ptr(sna_pixmap(pixmap)));
-				sna_read_boxes(sna,
-					       priv->gpu_bo, 0, 0,
-					       pixmap, 0, 0,
+				sna_read_boxes(sna, pixmap, priv->gpu_bo,
 					       box, n);
 			}
 		}
@@ -2491,9 +2486,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 			}
 			if (!ok) {
 				assert(has_coherent_ptr(sna_pixmap(pixmap)));
-				sna_read_boxes(sna,
-					       priv->gpu_bo, 0, 0,
-					       pixmap, 0, 0,
+				sna_read_boxes(sna, pixmap, priv->gpu_bo,
 					       box, n);
 			}
 		}
@@ -2515,9 +2508,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 			    region->extents.y2 - region->extents.y1 == 1) {
 				/*  Often associated with synchronisation, KISS */
 				DBG(("%s: single pixel read\n", __FUNCTION__));
-				sna_read_boxes(sna,
-					       priv->gpu_bo, 0, 0,
-					       pixmap, 0, 0,
+				sna_read_boxes(sna, pixmap, priv->gpu_bo,
 					       &region->extents, 1);
 				goto done;
 			}
@@ -2542,9 +2533,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 			if ((flags & MOVE_WRITE) == 0 &&
 			    region->extents.x2 - region->extents.x1 == 1 &&
 			    region->extents.y2 - region->extents.y1 == 1) {
-				sna_read_boxes(sna,
-					       priv->gpu_bo, 0, 0,
-					       pixmap, 0, 0,
+				sna_read_boxes(sna, pixmap, priv->gpu_bo,
 					       &region->extents, 1);
 				goto done;
 			}
@@ -2608,9 +2597,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 
 					if (!ok) {
 						assert(has_coherent_ptr(sna_pixmap(pixmap)));
-						sna_read_boxes(sna,
-							       priv->gpu_bo, 0, 0,
-							       pixmap, 0, 0,
+						sna_read_boxes(sna, pixmap, priv->gpu_bo,
 							       box, n);
 					}
 				}
@@ -2635,9 +2622,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 				}
 				if (!ok) {
 					assert(has_coherent_ptr(sna_pixmap(pixmap)));
-					sna_read_boxes(sna,
-						       priv->gpu_bo, 0, 0,
-						       pixmap, 0, 0,
+					sna_read_boxes(sna, pixmap, priv->gpu_bo,
 						       box, n);
 				}
 
@@ -2663,9 +2648,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 					}
 					if (!ok) {
 						assert(has_coherent_ptr(sna_pixmap(pixmap)));
-						sna_read_boxes(sna,
-							       priv->gpu_bo, 0, 0,
-							       pixmap, 0, 0,
+						sna_read_boxes(sna, pixmap, priv->gpu_bo,
 							       box, n);
 					}
 

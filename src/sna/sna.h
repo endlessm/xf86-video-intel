@@ -802,9 +802,7 @@ void sna_glyphs__shared(CARD8 op,
 void sna_glyph_unrealize(ScreenPtr screen, GlyphPtr glyph);
 void sna_glyphs_close(struct sna *sna);
 
-void sna_read_boxes(struct sna *sna,
-		    struct kgem_bo *src_bo, int16_t src_dx, int16_t src_dy,
-		    PixmapPtr dst, int16_t dst_dx, int16_t dst_dy,
+void sna_read_boxes(struct sna *sna, PixmapPtr dst, struct kgem_bo *src_bo,
 		    const BoxRec *box, int n);
 bool sna_write_boxes(struct sna *sna, PixmapPtr dst,
 		     struct kgem_bo *dst_bo, int16_t dst_dx, int16_t dst_dy,
