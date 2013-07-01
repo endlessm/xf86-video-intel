@@ -1345,7 +1345,7 @@ bool _sna_damage_contains_box__no_reduce(const struct sna_damage *damage,
 	int ret;
 
 	assert(damage && damage->mode != DAMAGE_ALL);
-	if (!sna_damage_overlaps_box(damage, box))
+	if (!box_contains(&damage->extents, box))
 		return false;
 
 	ret = pixman_region_contains_rectangle(&damage->region, (BoxPtr)box);
