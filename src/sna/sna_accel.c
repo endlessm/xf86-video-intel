@@ -14437,6 +14437,13 @@ sna_get_image_inplace(PixmapPtr pixmap,
 			   region->extents.y2 - region->extents.y1);
 	}
 
+	if (!priv->shm) {
+		pixmap->devPrivate.ptr = src;
+		pixmap->devKind = priv->gpu_bo->pitch;
+		priv->mapped = true;
+		priv->cpu = true;
+	}
+
 	return true;
 }
 
