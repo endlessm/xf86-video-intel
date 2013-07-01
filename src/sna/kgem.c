@@ -2833,6 +2833,32 @@ void _kgem_submit(struct kgem *kgem)
 	assert(kgem->next_request != NULL);
 }
 
+static void find_hang_state(struct kgem *kgem, char *path, int maxlen)
+{
+	int i;
+
+	/* Search for our hang state in a few canonical locations.
+	 * In the unlikely event of having multiple devices, we
+	 * will need to check which minor actually corresponds to ours.
+	 */
+
+	for (i = 0; i < DRM_MAX_MINOR; i++) {
+		snprintf(path, maxlen, "/sys/class/drm/card%d/error", i);
+		if (access(path, R_OK) == 0)
+			return;
+
+		snprintf(path, maxlen, "/sys/kernel/debug/dri%d/i915_error_state", i);
+		if (access(path, R_OK) == 0)
+			return;
+
+		snprintf(path, maxlen, "/debug/dri%d/i915_error_state", i);
+		if (access(path, R_OK) == 0)
+			return;
+	}
+
+	path[0] = '\0';
+}
+
 void kgem_throttle(struct kgem *kgem)
 {
 	kgem->need_throttle = 0;
@@ -2841,10 +2867,16 @@ void kgem_throttle(struct kgem *kgem)
 
 	kgem->wedged = __kgem_throttle(kgem);
 	if (kgem->wedged) {
+		char path[128];
+
+		find_hang_state(kgem, path, sizeof(path));
+
 		xf86DrvMsg(kgem_get_screen_index(kgem), X_ERROR,
 			   "Detected a hung GPU, disabling acceleration.\n");
-		xf86DrvMsg(kgem_get_screen_index(kgem), X_ERROR,
-			   "When reporting this, please include i915_error_state from debugfs and the full dmesg.\n");
+		if (*path != '\0')
+			xf86DrvMsg(kgem_get_screen_index(kgem), X_ERROR,
+				   "When reporting this, please include %s and the full dmesg.\n",
+				   path);
 	}
 }
 
