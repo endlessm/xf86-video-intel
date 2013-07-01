@@ -1906,7 +1906,8 @@ skip_inplace_map:
 
 	assert(priv->gpu_bo == NULL || priv->gpu_bo->proxy == NULL);
 
-	if (operate_inplace(priv, flags) &&
+	if (USE_INPLACE &&
+	    operate_inplace(priv, flags) &&
 	    pixmap_inplace(sna, pixmap, priv, flags) &&
 	     sna_pixmap_create_mappable_gpu(pixmap, (flags & MOVE_READ) == 0)) {
 		DBG(("%s: try to operate inplace (GTT)\n", __FUNCTION__));
@@ -1946,7 +1947,8 @@ skip_inplace_map:
 		priv->mapped = false;
 	}
 
-	if (priv->gpu_damage && priv->cpu_damage == NULL && !priv->cow &&
+	if (USE_INPLACE &&
+	    priv->gpu_damage && priv->cpu_damage == NULL && !priv->cow &&
 	    (flags & MOVE_READ || kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, flags & MOVE_WRITE)) &&
 	    priv->gpu_bo->tiling == I915_TILING_NONE &&
 	    ((flags & (MOVE_WRITE | MOVE_ASYNC_HINT)) == 0 ||
@@ -2293,7 +2295,8 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 		return _sna_pixmap_move_to_cpu(pixmap, flags);
 	}
 
-	if (operate_inplace(priv, flags) &&
+	if (USE_INPLACE &&
+	    operate_inplace(priv, flags) &&
 	    region_inplace(sna, pixmap, region, priv, flags) &&
 	     sna_pixmap_create_mappable_gpu(pixmap, false)) {
 		DBG(("%s: try to operate inplace\n", __FUNCTION__));
@@ -2347,7 +2350,8 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 		priv->mapped = false;
 	}
 
-	if (priv->gpu_damage &&
+	if (USE_INPLACE &&
+	    priv->gpu_damage &&
 	    (DAMAGE_IS_ALL(priv->gpu_damage) ||
 	     sna_damage_contains_box__no_reduce(priv->gpu_damage,
 						&region->extents)) &&
@@ -14381,6 +14385,9 @@ sna_get_image_inplace(PixmapPtr pixmap,
 	struct sna_pixmap *priv = sna_pixmap(pixmap);
 	struct sna *sna = to_sna_from_pixmap(pixmap);
 	char *src;
+
+	if (!USE_INPLACE)
+		return false;
 
 	if (priv == NULL || priv->gpu_bo == NULL)
 		return false;
