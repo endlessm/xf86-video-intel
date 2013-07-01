@@ -1341,46 +1341,44 @@ static bool box_overlaps(const BoxRec *a, const BoxRec *b)
 bool _sna_damage_contains_box__no_reduce(const struct sna_damage *damage,
 					 const BoxRec *box)
 {
-	struct sna_damage_box *iter;
-	int ret;
+	int n, count;
+	BoxPtr b;
 
 	assert(damage && damage->mode != DAMAGE_ALL);
 	if (!box_contains(&damage->extents, box))
 		return false;
 
-	ret = pixman_region_contains_rectangle(&damage->region, (BoxPtr)box);
+	n = pixman_region_contains_rectangle(&damage->region, (BoxPtr)box);
 	if (!damage->dirty)
-		return ret == PIXMAN_REGION_IN;
+		return n == PIXMAN_REGION_IN;
 
 	if (damage->mode == DAMAGE_ADD) {
-		if (ret == PIXMAN_REGION_IN)
+		if (n == PIXMAN_REGION_IN)
 			return true;
 
-		list_for_each_entry(iter, &damage->embedded_box.list, list) {
-			BoxPtr b;
-			int n;
+		count = damage->embedded_box.size;
+		if (list_is_empty(&damage->embedded_box.list))
+			count -= damage->remain;
 
-			b = (BoxPtr)(iter + 1);
-			for (n = 0; n < iter->size; n++) {
-				if (box_contains(&b[n], box))
-					return true;
-			}
+		b = damage->embedded_box.box;
+		for (n = 0; n < count; n++) {
+			if (box_contains(&b[n], box))
+				return true;
 		}
 
 		return false;
 	} else {
-		if (ret != PIXMAN_REGION_IN)
+		if (n != PIXMAN_REGION_IN)
 			return false;
 
-		list_for_each_entry(iter, &damage->embedded_box.list, list) {
-			BoxPtr b;
-			int n;
+		if (!list_is_empty(&damage->embedded_box.list))
+			return false;
 
-			b = (BoxPtr)(iter + 1);
-			for (n = 0; n < iter->size; n++) {
-				if (box_overlaps(&b[n], box))
-					return false;
-			}
+		count = damage->embedded_box.size - damage->remain;
+		b = damage->embedded_box.box;
+		for (n = 0; n < count; n++) {
+			if (box_overlaps(&b[n], box))
+				return false;
 		}
 
 		return true;
