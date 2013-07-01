@@ -76,6 +76,8 @@ search_snoop_cache(struct kgem *kgem, unsigned int num_pages, unsigned flags);
 #define DBG_NO_HANDLE_LUT 0
 #define DBG_DUMP 0
 
+#define FORCE_MMAP_SYNC 0 /* ((1 << DOMAIN_CPU) | (1 << DOMAIN_GTT)) */
+
 #ifndef DEBUG_SYNC
 #define DEBUG_SYNC 0
 #endif
@@ -4768,7 +4770,7 @@ void *kgem_bo_map(struct kgem *kgem, struct kgem_bo *bo)
 		DBG(("%s: caching GTT vma for %d\n", __FUNCTION__, bo->handle));
 	}
 
-	if (bo->domain != DOMAIN_GTT) {
+	if (bo->domain != DOMAIN_GTT || FORCE_MMAP_SYNC & (1 << DOMAIN_GTT)) {
 		struct drm_i915_gem_set_domain set_domain;
 
 		DBG(("%s: sync: needs_flush? %d, domain? %d, busy? %d\n", __FUNCTION__,
@@ -5039,7 +5041,7 @@ void kgem_bo_sync__cpu(struct kgem *kgem, struct kgem_bo *bo)
 	while (bo->proxy)
 		bo = bo->proxy;
 
-	if (bo->domain != DOMAIN_CPU) {
+	if (bo->domain != DOMAIN_CPU || FORCE_MMAP_SYNC & (1 << DOMAIN_CPU)) {
 		struct drm_i915_gem_set_domain set_domain;
 
 		DBG(("%s: SYNC: handle=%d, needs_flush? %d, domain? %d, busy? %d\n",
@@ -5070,7 +5072,7 @@ void kgem_bo_sync__cpu_full(struct kgem *kgem, struct kgem_bo *bo, bool write)
 	while (bo->proxy)
 		bo = bo->proxy;
 
-	if (bo->domain != DOMAIN_CPU) {
+	if (bo->domain != DOMAIN_CPU || FORCE_MMAP_SYNC & (1 << DOMAIN_CPU)) {
 		struct drm_i915_gem_set_domain set_domain;
 
 		DBG(("%s: SYNC: handle=%d, needs_flush? %d, domain? %d, busy? %d\n",
@@ -5097,7 +5099,7 @@ void kgem_bo_sync__gtt(struct kgem *kgem, struct kgem_bo *bo)
 	assert(bo->proxy == NULL);
 	kgem_bo_submit(kgem, bo);
 
-	if (bo->domain != DOMAIN_GTT) {
+	if (bo->domain != DOMAIN_GTT || FORCE_MMAP_SYNC & (1 << DOMAIN_GTT)) {
 		struct drm_i915_gem_set_domain set_domain;
 
 		DBG(("%s: SYNC: handle=%d, needs_flush? %d, domain? %d, busy? %d\n",
