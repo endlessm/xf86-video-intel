@@ -14324,6 +14324,9 @@ sna_get_image_blt(PixmapPtr pixmap,
 	if (!sna->kgem.has_userptr || !USE_USERPTR_DOWNLOADS)
 		return false;
 
+	if (!sna->kgem.can_blt_cpu)
+		return false;
+
 	if (flags & (MOVE_WHOLE_HINT | MOVE_INPLACE_HINT))
 		return false;
 
