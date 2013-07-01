@@ -116,7 +116,7 @@ static const char *_debug_describe_region(char *buf, int max,
 }
 
 static const char *_debug_describe_damage(char *buf, int max,
-					  struct sna_damage *damage)
+					  const struct sna_damage *damage)
 {
 	char damage_str[500], region_str[500];
 	int str_max;

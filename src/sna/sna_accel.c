@@ -2352,10 +2352,10 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 
 	if (USE_INPLACE &&
 	    priv->gpu_damage &&
+	    priv->gpu_bo->tiling == I915_TILING_NONE &&
 	    (DAMAGE_IS_ALL(priv->gpu_damage) ||
 	     sna_damage_contains_box__no_reduce(priv->gpu_damage,
 						&region->extents)) &&
-	    priv->gpu_bo->tiling == I915_TILING_NONE &&
 	    kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, flags & MOVE_WRITE) &&
 	    ((flags & (MOVE_WRITE | MOVE_ASYNC_HINT)) == 0 ||
 	     !__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo))) {

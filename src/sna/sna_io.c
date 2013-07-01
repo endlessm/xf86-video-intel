@@ -223,7 +223,7 @@ void sna_read_boxes(struct sna *sna, PixmapPtr dst, struct kgem_bo *src_bo,
 	bool can_blt;
 
 	DBG(("%s x %d, src=(handle=%d), dst=(size=(%d, %d)\n",
-	     __FUNCTION__, nbox, src_bo->handle, src_dy,
+	     __FUNCTION__, nbox, src_bo->handle,
 	     dst->drawable.width, dst->drawable.height));
 
 #ifndef NDEBUG
