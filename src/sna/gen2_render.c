@@ -3073,6 +3073,8 @@ gen2_render_copy_setup_source(struct sna_composite_channel *channel,
 			      PixmapPtr pixmap,
 			      struct kgem_bo *bo)
 {
+	assert(pixmap->drawable.width && pixmap->drawable.height);
+
 	channel->filter = PictFilterNearest;
 	channel->repeat = RepeatNone;
 	channel->width  = pixmap->drawable.width;
@@ -3084,6 +3086,11 @@ gen2_render_copy_setup_source(struct sna_composite_channel *channel,
 	channel->pict_format = sna_format_for_depth(pixmap->drawable.depth);
 	channel->bo = bo;
 	channel->is_affine = 1;
+
+	DBG(("%s: source=%d, (%dx%d), format=%08x\n",
+	     __FUNCTION__, bo->handle,
+	     channel->width, channel->height,
+	     channel->pict_format));
 }
 
 static void
@@ -3209,6 +3216,8 @@ fallback:
 			goto fallback;
 	}
 
+	assert(dst_bo->pitch >= 8);
+
 	memset(&tmp, 0, sizeof(tmp));
 	tmp.op = alu;
 
@@ -3219,6 +3228,12 @@ fallback:
 	tmp.dst.bo = dst_bo;
 	tmp.dst.x = tmp.dst.y = 0;
 	tmp.damage = NULL;
+
+	DBG(("%s: target=%d, format=%08x, size=%dx%d\n",
+	     __FUNCTION__, dst_bo->handle,
+	     (unsigned)tmp.dst.format,
+	     tmp.dst.width,
+	     tmp.dst.height));
 
 	sna_render_composite_redirect_init(&tmp);
 	if (too_large(tmp.dst.width, tmp.dst.height) ||

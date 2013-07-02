@@ -2273,6 +2273,8 @@ put:
 			if (!sna_drawable_move_region_to_cpu(dst->pDrawable,
 							     &region, hint))
 				return false;
+
+			assert(tmp->damage == NULL);
 		}
 
 		region.extents = src_box;
