@@ -2597,11 +2597,17 @@ sna_output_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 	output->possible_clones = enc.possible_clones;
 	output->interlaceAllowed = TRUE;
 
-	DBG(("%s: created output '%s' %d [%d]  (possible crtc:%x, possible clones:%x), edid=%d, dpms=%d\n",
+	/* stash the active CRTC id for our probe function */
+	output->crtc = NULL;
+	if (conn.connection == DRM_MODE_CONNECTED)
+		output->crtc = (void *)(uintptr_t)enc.crtc_id;
+
+	DBG(("%s: created output '%s' %d [%d]  (possible crtc:%x, possible clones:%x), edid=%d, dpms=%d, crtc=%d\n",
 	     __FUNCTION__, name, num, sna_output->id,
 	     (uint32_t)output->possible_crtcs,
 	     (uint32_t)output->possible_clones,
-	     sna_output->edid_idx, sna_output->dpms_id));
+	     sna_output->edid_idx, sna_output->dpms_id,
+	     (uintptr_t)output->crtc));
 
 	return true;
 
@@ -3060,27 +3066,20 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 	/* Reconstruct outputs pointing to active CRTC */
 	for (i = 0; i < config->num_output; i++) {
 		xf86OutputPtr output = config->output[i];
-		struct sna_output *sna_output = to_sna_output(output);
-		struct drm_mode_get_encoder enc;
+		uint32_t crtc_id;
 		Bool disable;
 
+		crtc_id = (uintptr_t)output->crtc;
 		output->crtc = NULL;
+
 		if (xf86GetOptValBool(output->options,
 				      8 /* OPTION_DISABLE */,
 				      &disable) && disable)
 			continue;
 
-		VG_CLEAR(enc);
-		enc.encoder_id = sna->mode.kmode->encoders[sna_output->encoder_idx];
-		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETENCODER, &enc))
-			continue;
-
-		if (enc.crtc_id == 0)
-			continue;
-
 		for (j = 0; j < config->num_crtc; j++) {
 			xf86CrtcPtr crtc = config->crtc[j];
-			if (to_sna_crtc(crtc)->id == enc.crtc_id) {
+			if (to_sna_crtc(crtc)->id == crtc_id) {
 				if (crtc->desiredMode.status == MODE_OK) {
 					DisplayModePtr M;
 
