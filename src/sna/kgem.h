@@ -520,6 +520,9 @@ static inline bool __kgem_bo_is_mappable(struct kgem *kgem,
 	    bo->presumed_offset & (kgem_bo_fenced_size(kgem, bo) - 1))
 		return false;
 
+	if (kgem->gen == 021 && bo->tiling == I915_TILING_Y)
+		return false;
+
 	if (kgem->has_llc && bo->tiling == I915_TILING_NONE)
 		return true;
 
