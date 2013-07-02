@@ -257,7 +257,9 @@ static Bool sna_create_screen_resources(ScreenPtr screen)
 
 	screen->SetScreenPixmap(sna->front);
 
-	sna_copy_fbcon(sna);
+	/* Only preserve the fbcon, not any subsequent server regens */
+	if (serverGeneration == 1)
+		sna_copy_fbcon(sna);
 
 	if (!sna_become_master(sna)) {
 		xf86DrvMsg(screen->myNum, X_ERROR,
