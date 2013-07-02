@@ -3105,7 +3105,7 @@ gen2_emit_copy_pipeline(struct sna *sna, const struct sna_composite_op *op)
 	blend = TB0C_LAST_STAGE | TB0C_RESULT_SCALE_1X | TB0C_OP_ARG1 |
 		TB0C_OUTPUT_WRITE_CURRENT;
 	if (op->dst.format == PICT_a8)
-		blend |= TB0C_ARG1_REPLICATE_ALPHA;
+		blend |= TB0C_ARG1_REPLICATE_ALPHA | TB0C_ARG1_SEL_TEXEL0;
 	else if (PICT_FORMAT_RGB(op->src.pict_format) != 0)
 		blend |= TB0C_ARG1_SEL_TEXEL0;
 	else
