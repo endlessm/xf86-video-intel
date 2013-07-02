@@ -38,6 +38,7 @@
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 #include <xf86_OSproc.h>
+#include <i915_drm.h>
 
 #include "intel_driver.h"
 
@@ -61,6 +62,45 @@ static inline struct intel_device *intel_device(ScrnInfoPtr scrn)
 static inline void intel_set_device(ScrnInfoPtr scrn, struct intel_device *dev)
 {
 	xf86GetEntityPrivate(scrn->entityList[0], intel_device_key)->ptr = dev;
+}
+
+static Bool is_i915_device(int fd)
+{
+	drm_version_t version;
+	char name[5] = "";
+
+	memset(&version, 0, sizeof(version));
+	version.name_len = 4;
+	version.name = name;
+
+	if (drmIoctl(fd, DRM_IOCTL_VERSION, &version))
+		return FALSE;
+
+	return strcmp("i915", name) == 0;
+}
+
+static int __intel_check_device(int fd)
+{
+	int ret;
+
+	/* Confirm that this is a i915.ko device with GEM/KMS enabled */
+	ret = is_i915_device(fd);
+	if (ret) {
+		struct drm_i915_getparam gp;
+		gp.param = I915_PARAM_HAS_GEM;
+		gp.value = &ret;
+		if (drmIoctl(fd, DRM_IOCTL_I915_GETPARAM, &gp))
+			ret = FALSE;
+	}
+	if (ret) {
+		struct drm_mode_card_res res;
+
+		memset(&res, 0, sizeof(res));
+		if (drmIoctl(fd, DRM_IOCTL_MODE_GETRESOURCES, &res))
+			ret = FALSE;
+	}
+
+	return ret;
 }
 
 static int fd_set_cloexec(int fd)
@@ -145,14 +185,14 @@ int intel_open_device(int entity_num,
 
 	fd = __intel_open_device(pci, &local_path);
 	if (fd == -1)
-		return -1;
+		goto err_path;
+
+	if (!__intel_check_device(fd))
+		goto err_close;
 
 	dev = malloc(sizeof(*dev));
-	if (dev == NULL) {
-		free(local_path);
-		close(fd);
-		return -1;
-	}
+	if (dev == NULL)
+		goto err_close;
 
 	dev->path = local_path;
 	dev->fd = fd;
@@ -162,6 +202,12 @@ int intel_open_device(int entity_num,
 	xf86GetEntityPrivate(entity_num, intel_device_key)->ptr = dev;
 
 	return fd;
+
+err_close:
+	close(fd);
+err_path:
+	free(local_path);
+	return -1;
 }
 
 int intel_get_device(ScrnInfoPtr scrn)

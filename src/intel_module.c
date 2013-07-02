@@ -28,12 +28,7 @@
 #include "config.h"
 #endif
 
-#include <unistd.h>
 #include <xf86Parser.h>
-#include <xf86drm.h>
-#include <xf86drmMode.h>
-#include <i915_drm.h>
-
 #include <xorgVersion.h>
 
 #if XORG_VERSION_CURRENT < XORG_VERSION_NUMERIC(1,6,99,0,0)
@@ -434,51 +429,6 @@ static Bool intel_driver_func(ScrnInfoPtr pScrn,
 	}
 }
 
-static Bool is_i915_device(int fd)
-{
-	drm_version_t version;
-	char name[5] = "";
-
-	memset(&version, 0, sizeof(version));
-	version.name_len = 4;
-	version.name = name;
-
-	if (drmIoctl(fd, DRM_IOCTL_VERSION, &version))
-		return FALSE;
-
-	return strcmp("i915", name) == 0;
-}
-
-static Bool has_kernel_mode_setting(int entity_num,
-				    const struct pci_device *dev,
-				    const char *path)
-{
-	int ret, fd;
-
-	fd = intel_open_device(entity_num, dev, path);
-	if (fd == -1)
-		return FALSE;
-
-	/* Confirm that this is a i915.ko device with GEM/KMS enabled */
-	ret = is_i915_device(fd);
-	if (ret) {
-		struct drm_i915_getparam gp;
-		gp.param = I915_PARAM_HAS_GEM;
-		gp.value = &ret;
-		if (drmIoctl(fd, DRM_IOCTL_I915_GETPARAM, &gp))
-			ret = FALSE;
-	}
-	if (ret) {
-		struct drm_mode_card_res res;
-
-		memset(&res, 0, sizeof(res));
-		if (drmIoctl(fd, DRM_IOCTL_MODE_GETRESOURCES, &res))
-			ret = FALSE;
-	}
-
-	return ret;
-}
-
 #if !UMS_ONLY
 extern XF86ConfigPtr xf86configptr;
 
@@ -574,7 +524,7 @@ static Bool intel_pci_probe(DriverPtr		driver,
 			    struct pci_device	*device,
 			    intptr_t		match_data)
 {
-	if (!has_kernel_mode_setting(entity_num, device, NULL)) {
+	if (intel_open_device(entity_num, device, NULL) == -1) {
 #if KMS_ONLY
 		return FALSE;
 #else
@@ -605,8 +555,8 @@ intel_platform_probe(DriverPtr driver,
 	if (!dev->pdev)
 		return FALSE;
 
-	if (!has_kernel_mode_setting(entity_num, dev->pdev,
-				     xf86_get_platform_device_attrib(dev, ODEV_ATTRIB_PATH)))
+	if (intel_open_device(entity_num, dev->pdev,
+			      xf86_get_platform_device_attrib(dev, ODEV_ATTRIB_PATH)) == -1)
 		return FALSE;
 
 	/* Allow ourselves to act as a slaved output if not primary */
