@@ -2213,7 +2213,8 @@ fill:
 
 		if (src_pixmap->drawable.width  <= sna->render.max_3d_size &&
 		    src_pixmap->drawable.height <= sna->render.max_3d_size &&
-		    bo->pitch <= sna->render.max_3d_pitch)
+		    bo->pitch <= sna->render.max_3d_pitch &&
+		    !fallback)
 		{
 			return false;
 		}
@@ -2237,7 +2238,7 @@ fill:
 		if (!tmp->dst.bo) {
 			DBG(("%s: fallback -- unaccelerated read back\n",
 			     __FUNCTION__));
-			if (!kgem_bo_is_busy(bo))
+			if (fallback || !kgem_bo_is_busy(bo))
 				goto put;
 		} else if (bo->snoop && tmp->dst.bo->snoop) {
 			DBG(("%s: fallback -- can not copy between snooped bo\n",
@@ -2246,8 +2247,7 @@ fill:
 		} else if (!kgem_bo_can_blt(&sna->kgem, tmp->dst.bo)) {
 			DBG(("%s: fallback -- unaccelerated upload\n",
 			     __FUNCTION__));
-			if (!kgem_bo_is_busy(tmp->dst.bo) &&
-			    !kgem_bo_is_busy(bo))
+			if (fallback || !kgem_bo_is_busy(bo))
 				goto put;
 		} else {
 			ret = prepare_blt_copy(sna, tmp, bo, alpha_fixup);
