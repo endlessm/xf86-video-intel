@@ -781,14 +781,6 @@ static Bool sna_late_close_screen(CLOSE_SCREEN_ARGS_DECL)
 	return TRUE;
 }
 
-static void sna_mode_set(ScrnInfoPtr scrn)
-{
-	struct sna *sna = to_sna(scrn);
-
-	DBG(("%s\n", __FUNCTION__));
-	sna_mode_update(sna);
-}
-
 static Bool
 sna_register_all_privates(void)
 {
@@ -1128,10 +1120,6 @@ Bool sna_init_scrn(ScrnInfoPtr scrn, int entity_num)
 	scrn->FreeScreen = sna_free_screen;
 	scrn->ValidMode = sna_valid_mode;
 	scrn->PMEvent = sna_pm_event;
-
-#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,9,99,901,0)
-	scrn->ModeSet = sna_mode_set;
-#endif
 
 	xf86SetEntitySharable(entity_num);
 	xf86SetEntityInstanceForScreen(scrn, entity_num,

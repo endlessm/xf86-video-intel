@@ -3142,6 +3142,13 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 	return scrn->modes != NULL;
 }
 
+static void
+sna_crtc_config_notify(ScreenPtr screen)
+{
+	DBG(("%s\n", __FUNCTION__));
+	sna_mode_update(to_sna_from_screen(screen));
+}
+
 bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 {
 	struct sna_mode *mode = &sna->mode;
@@ -3150,6 +3157,7 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 	mode->kmode = drmModeGetResources(sna->kgem.fd);
 	if (mode->kmode) {
 		xf86CrtcConfigInit(scrn, &sna_mode_funcs);
+		XF86_CRTC_CONFIG_PTR(sna->scrn)->xf86_crtc_notify = sna_crtc_config_notify;
 
 		for (i = 0; i < mode->kmode->count_crtcs; i++)
 			if (!sna_crtc_init(scrn, mode, i))
