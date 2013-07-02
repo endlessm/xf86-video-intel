@@ -206,7 +206,7 @@ static Bool sna_become_master(struct sna *sna)
 		sna_set_fallback_mode(scrn);
 	}
 
-	sna_mode_disable_unused(sna);
+	sna_mode_update(sna);
 	return TRUE;
 }
 
@@ -998,7 +998,6 @@ static Bool sna_enter_vt(VT_FUNC_ARGS_DECL)
 		return FALSE;
 
 	if (sna->flags & SNA_REPROBE) {
-		sna_mode_update(sna);
 		RRGetInfo(xf86ScrnToScreen(scrn), TRUE);
 		sna->flags &= ~SNA_REPROBE;
 	}

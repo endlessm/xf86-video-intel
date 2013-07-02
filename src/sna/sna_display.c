@@ -726,24 +726,6 @@ mode_to_kmode(struct drm_mode_modeinfo *kmode, DisplayModePtr mode)
 	kmode->name[DRM_DISPLAY_MODE_LEN-1] = 0;
 }
 
-static bool sna_crtc_is_bound(struct sna *sna, xf86CrtcPtr crtc)
-{
-	struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
-	struct drm_mode_crtc mode;
-
-	if (!sna_crtc->bo)
-		return false;
-
-	VG_CLEAR(mode);
-	mode.crtc_id = sna_crtc->id;
-	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETCRTC, &mode))
-		return false;
-
-	DBG(("%s: crtc=%d, mode valid?=%d, fb attached?=%d\n", __FUNCTION__,
-	     mode.crtc_id, mode.mode_valid, fb_id(sna_crtc->bo) == mode.fb_id));
-	return mode.mode_valid && fb_id(sna_crtc->bo) == mode.fb_id;
-}
-
 static void
 sna_crtc_force_outputs_on(xf86CrtcPtr crtc)
 {
@@ -971,22 +953,6 @@ static void update_flush_interval(struct sna *sna)
 
 	DBG(("max_vrefresh=%d, vblank_interval=%d ms\n",
 	       max_vrefresh, sna->vblank_interval));
-}
-
-void sna_mode_disable_unused(struct sna *sna)
-{
-	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(sna->scrn);
-	int i;
-
-	DBG(("%s\n", __FUNCTION__));
-
-	/* Force consistency between kernel and ourselves */
-	for (i = 0; i < xf86_config->num_crtc; i++) {
-		if (!xf86_config->crtc[i]->enabled)
-			sna_crtc_disable(xf86_config->crtc[i]);
-	}
-
-	sna_mode_update(sna);
 }
 
 static struct kgem_bo *sna_create_bo_for_fbcon(struct sna *sna,
@@ -1507,6 +1473,9 @@ sna_crtc_dpms(xf86CrtcPtr crtc, int mode)
 
 	DBG(("%s(pipe %d, dpms mode -> %d):= active=%d\n",
 	     __FUNCTION__, priv->pipe, mode, mode == DPMSModeOn));
+	if (priv->dpms_mode == mode)
+		return;
+
 	if (mode == DPMSModeOn) {
 		if (priv->bo == NULL &&
 		    !sna_crtc_set_mode_major(crtc,
@@ -3157,7 +3126,7 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 	mode->kmode = drmModeGetResources(sna->kgem.fd);
 	if (mode->kmode) {
 		xf86CrtcConfigInit(scrn, &sna_mode_funcs);
-		XF86_CRTC_CONFIG_PTR(sna->scrn)->xf86_crtc_notify = sna_crtc_config_notify;
+		XF86_CRTC_CONFIG_PTR(scrn)->xf86_crtc_notify = sna_crtc_config_notify;
 
 		for (i = 0; i < mode->kmode->count_crtcs; i++)
 			if (!sna_crtc_init(scrn, mode, i))
@@ -3570,13 +3539,30 @@ void sna_mode_update(struct sna *sna)
 	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(sna->scrn);
 	int i;
 
-	/* Validate CRTC attachments */
+	/* Validate CRTC attachments and force consistency upon the kernel */
 	for (i = 0; i < xf86_config->num_crtc; i++) {
 		xf86CrtcPtr crtc = xf86_config->crtc[i];
-		if (to_sna_crtc(crtc) == NULL)
+		struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
+		struct drm_mode_crtc mode;
+		uint32_t expected;
+
+		if (sna_crtc == NULL)
 			continue;
 
-		if (!crtc->active || !sna_crtc_is_bound(sna, crtc))
+		assert(sna_crtc->bo == NULL || crtc->active);
+		expected = sna_crtc->bo ? fb_id(sna_crtc->bo) : 0;
+
+		VG_CLEAR(mode);
+		mode.crtc_id = sna_crtc->id;
+		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETCRTC, &mode))
+			continue;
+
+		DBG(("%s: crtc=%d, valid?=%d, fb attached?=%d, expected=%d\n",
+		     __FUNCTION__,
+		     mode.crtc_id, mode.mode_valid,
+		     mode.fb_id, fb_id, expected));
+
+		if (mode.fb_id != expected)
 			sna_crtc_disable(crtc);
 	}
 
