@@ -2924,20 +2924,39 @@ static void set_size_range(struct sna *sna)
 	xf86CrtcSetSizeRange(sna->scrn, 320, 200, INT16_MAX, INT16_MAX);
 }
 
+enum { /* XXX copied from hw/xfree86/modes/xf86Crtc.c */
+	OPTION_PREFERRED_MODE,
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,14,99,1,0)
+	OPTION_ZOOM_MODES,
+#endif
+	OPTION_POSITION,
+	OPTION_BELOW,
+	OPTION_RIGHT_OF,
+	OPTION_ABOVE,
+	OPTION_LEFT_OF,
+	OPTION_ENABLE,
+	OPTION_DISABLE,
+	OPTION_MIN_CLOCK,
+	OPTION_MAX_CLOCK,
+	OPTION_IGNORE,
+	OPTION_ROTATE,
+	OPTION_PANNING,
+	OPTION_PRIMARY,
+	OPTION_DEFAULT_MODES,
+};
+
 static bool sna_probe_initial_configuration(struct sna *sna)
 {
 	ScrnInfoPtr scrn = sna->scrn;
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(scrn);
-	const int user_overrides[] = { /* XXX fugly! */
-#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,14,99,1,0)
-		2, 3, 4, 5, 6, /* position */
-		11, /* rotate */
-		12, /* panning */
-#else
-		1, 2, 3, 4, 5, /* position */
-		10, /* rotate */
-		11, /* panning */
-#endif
+	const int user_overrides[] = {
+		OPTION_POSITION,
+		OPTION_BELOW,
+		OPTION_RIGHT_OF,
+		OPTION_ABOVE,
+		OPTION_LEFT_OF,
+		OPTION_ROTATE,
+		OPTION_PANNING,
 	};
 	int width, height;
 	int i, j;
@@ -3045,14 +3064,11 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 	for (i = 0; i < config->num_output; i++) {
 		xf86OutputPtr output = config->output[i];
 		uint32_t crtc_id;
-		Bool disable;
 
 		crtc_id = (uintptr_t)output->crtc;
 		output->crtc = NULL;
 
-		if (xf86GetOptValBool(output->options,
-				      8 /* OPTION_DISABLE */,
-				      &disable) && disable)
+		if (xf86ReturnOptValBool(output->options, OPTION_DISABLE, 0))
 			continue;
 
 		for (j = 0; j < config->num_crtc; j++) {
