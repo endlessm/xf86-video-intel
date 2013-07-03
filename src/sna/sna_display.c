@@ -3001,32 +3001,7 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 		crtc->enabled = FALSE;
 		crtc->desiredMode.status = MODE_NOMODE;
 
-		VG_CLEAR(mode);
-		mode.crtc_id = sna_crtc->id;
-		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETCRTC, &mode))
-			continue;
-
-		if (!mode.mode_valid)
-			continue;
-
-		memset(&crtc->desiredMode, 0, sizeof(crtc->desiredMode));
-		mode_from_kmode(scrn, &mode.mode, &crtc->desiredMode);
-		crtc->desiredRotation = RR_Rotate_0;
-		crtc->desiredX = mode.x;
-		crtc->desiredY = mode.y;
-		crtc->desiredTransformPresent = FALSE;
-
-		crtc->mode = crtc->desiredMode;
-		crtc->mode.name = NULL;
-		crtc->x = mode.x;
-		crtc->y = mode.y;
-		crtc->rotation = RR_Rotate_0;
-		crtc->transformPresent = FALSE;
-
-		memset(&crtc->panningTotalArea, 0, sizeof(BoxRec));
-		memset(&crtc->panningTrackingArea, 0, sizeof(BoxRec));
-		memset(crtc->panningBorder, 0, 4 * sizeof(INT16));
-
+		/* Initialize the gamma ramps */
 		gamma = malloc(3 * mode.gamma_size * sizeof(uint16_t));
 		if (gamma) {
 			struct drm_mode_crtc_lut lut;
@@ -3058,6 +3033,33 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 			crtc->gamma_green = gamma + mode.gamma_size;
 			crtc->gamma_blue = gamma + 2*mode.gamma_size;
 		}
+
+		/* Retrieve the current mode */
+		VG_CLEAR(mode);
+		mode.crtc_id = sna_crtc->id;
+		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETCRTC, &mode))
+			continue;
+
+		if (!mode.mode_valid)
+			continue;
+
+		memset(&crtc->desiredMode, 0, sizeof(crtc->desiredMode));
+		mode_from_kmode(scrn, &mode.mode, &crtc->desiredMode);
+		crtc->desiredRotation = RR_Rotate_0;
+		crtc->desiredX = mode.x;
+		crtc->desiredY = mode.y;
+		crtc->desiredTransformPresent = FALSE;
+
+		crtc->mode = crtc->desiredMode;
+		crtc->mode.name = NULL;
+		crtc->x = mode.x;
+		crtc->y = mode.y;
+		crtc->rotation = RR_Rotate_0;
+		crtc->transformPresent = FALSE;
+
+		memset(&crtc->panningTotalArea, 0, sizeof(BoxRec));
+		memset(&crtc->panningTrackingArea, 0, sizeof(BoxRec));
+		memset(crtc->panningBorder, 0, 4 * sizeof(INT16));
 	}
 
 	/* Reconstruct outputs pointing to active CRTC */
