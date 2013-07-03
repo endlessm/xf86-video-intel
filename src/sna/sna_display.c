@@ -2928,10 +2928,16 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 {
 	ScrnInfoPtr scrn = sna->scrn;
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(scrn);
-	const int user_overrides[] = {
+	const int user_overrides[] = { /* XXX fugly! */
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,14,99,1,0)
 		2, 3, 4, 5, 6, /* position */
 		11, /* rotate */
 		12, /* panning */
+#else
+		1, 2, 3, 4, 5, /* position */
+		10, /* rotate */
+		11, /* panning */
+#endif
 	};
 	int width, height;
 	int i, j;
