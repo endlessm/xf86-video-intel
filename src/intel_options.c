@@ -17,6 +17,7 @@ const OptionInfoRec intel_options[] = {
 	{OPTION_TRIPLE_BUFFER,	"TripleBuffer", OPTV_BOOLEAN,	{0},	1},
 	{OPTION_PREFER_OVERLAY, "XvPreferOverlay", OPTV_BOOLEAN, {0}, 0},
 	{OPTION_HOTPLUG,	"HotPlug",	OPTV_BOOLEAN,	{0},	1},
+	{OPTION_REPROBE,	"ReprobeOutputs", OPTV_BOOLEAN,	{0},	0},
 #ifdef INTEL_XVMC
 	{OPTION_XVMC,	"XvMC",		OPTV_BOOLEAN,	{0},	1},
 #endif

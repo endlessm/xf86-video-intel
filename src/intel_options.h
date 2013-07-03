@@ -23,6 +23,7 @@ enum intel_options {
 	OPTION_TRIPLE_BUFFER,
 	OPTION_PREFER_OVERLAY,
 	OPTION_HOTPLUG,
+	OPTION_REPROBE,
 #if defined(XvMCExtension) && defined(ENABLE_XVMC)
 	OPTION_XVMC,
 #define INTEL_XVMC 1

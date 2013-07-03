@@ -134,6 +134,19 @@ disable render acceleration and only use the BLT engine.
 .IP
 Default: use UXA (render acceleration)
 .TP
+.BI "Option \*qReprobeOutputs\*q \*q" boolean \*q
+Disable or enable rediscovery of connected displays during server startup.
+As the kernel driver loads it scans for connected displays and configures a
+console spanning those outputs. When the X server starts, we then take the
+list of connected displays and framebuffer layout and use that for the
+initial configuration. Sometimes, not all displays are correctly detected by
+the kernel and so it is useful in a few circumstances for X to force the
+kernel to reprobe all displays when it starts. To make the X server recheck
+the status of connected displays, set the \*qReprobeOutputs\*q option to true.
+Please do file a bug for any circumstances which require this workaround.
+.IP
+Default: reprobing is disabled for a faster startup.
+.TP
 .BI "Option \*qVideoKey\*q \*q" integer \*q
 This is the same as the
 .B \*qColorKey\*q

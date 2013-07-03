@@ -2936,6 +2936,9 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 	int width, height;
 	int i, j;
 
+	if (xf86ReturnOptValBool(sna->Options, OPTION_REPROBE, FALSE))
+		return false;
+
 	/* First scan through all outputs and look for user overrides */
 	for (i = 0; i < config->num_output; i++) {
 		xf86OutputPtr output = config->output[i];
