@@ -483,15 +483,6 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 		sna->kgem.wedged = true;
 	}
 
-	if (!xf86ReturnOptValBool(sna->Options,
-				  OPTION_RELAXED_FENCING,
-				  sna->kgem.has_relaxed_fencing)) {
-		xf86DrvMsg(scrn->scrnIndex,
-			   sna->kgem.has_relaxed_fencing ? X_CONFIG : X_PROBED,
-			   "Disabling use of relaxed fencing\n");
-		sna->kgem.has_relaxed_fencing = 0;
-	}
-
 	/* Enable tiling by default */
 	sna->tiling = SNA_TILING_ALL;
 

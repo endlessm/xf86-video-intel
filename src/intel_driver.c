@@ -585,10 +585,7 @@ static Bool I830PreInit(ScrnInfoPtr scrn, int flags)
 
 	intel->has_prime_vmap_flush = has_prime_vmap_flush(intel);
 
-	intel->has_relaxed_fencing =
-		xf86ReturnOptValBool(intel->Options,
-				     OPTION_RELAXED_FENCING,
-				     INTEL_INFO(intel)->gen >= 033);
+	intel->has_relaxed_fencing = INTEL_INFO(intel)->gen >= 033;
 	/* And override the user if there is no kernel support */
 	if (intel->has_relaxed_fencing)
 		intel->has_relaxed_fencing = has_relaxed_fencing(intel);
