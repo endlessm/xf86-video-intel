@@ -3171,8 +3171,10 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 			height = h;
 	}
 
-	if (!width || !height)
-		return false;
+	if (!width || !height) {
+		width = 1024;
+		height = 768;
+	}
 
 	scrn->display->frameX0 = 0;
 	scrn->display->frameY0 = 0;
