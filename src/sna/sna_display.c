@@ -2945,6 +2945,41 @@ enum { /* XXX copied from hw/xfree86/modes/xf86Crtc.c */
 	OPTION_DEFAULT_MODES,
 };
 
+static void set_gamma(uint16_t *curve, int size, double value)
+{
+	int i;
+
+	value = 1/value;
+	for (i = 0; i < size; i++)
+		curve[i] = 256*(size-1)*pow(i/(double)(size-1), value);
+}
+
+static void set_initial_gamma(xf86OutputPtr output, xf86CrtcPtr crtc)
+{
+	XF86ConfMonitorPtr mon = output->conf_monitor;
+
+	if (!mon)
+		return;
+
+	if (mon->mon_gamma_red >= GAMMA_MIN &&
+	    mon->mon_gamma_red <= GAMMA_MAX &&
+	    mon->mon_gamma_red != 1.0)
+		set_gamma(crtc->gamma_red, crtc->gamma_size,
+			  mon->mon_gamma_red);
+
+	if (mon->mon_gamma_green >= GAMMA_MIN &&
+	    mon->mon_gamma_green <= GAMMA_MAX &&
+	    mon->mon_gamma_green != 1.0)
+		set_gamma(crtc->gamma_green, crtc->gamma_size,
+			  mon->mon_gamma_green);
+
+	if (mon->mon_gamma_blue >= GAMMA_MIN &&
+	    mon->mon_gamma_blue <= GAMMA_MAX &&
+	    mon->mon_gamma_blue != 1.0)
+		set_gamma(crtc->gamma_blue, crtc->gamma_size,
+			  mon->mon_gamma_blue);
+}
+
 static bool sna_probe_initial_configuration(struct sna *sna)
 {
 	ScrnInfoPtr scrn = sna->scrn;
@@ -3093,6 +3128,8 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 						output->mm_height = (crtc->desiredMode.VDisplay * 254) / (10*DEFAULT_DPI);
 						output->mm_width = (crtc->desiredMode.HDisplay * 254) / (10*DEFAULT_DPI);
 					}
+
+					set_initial_gamma(output, crtc);
 
 					M = calloc(1, sizeof(DisplayModeRec));
 					if (M) {
