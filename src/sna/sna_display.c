@@ -987,7 +987,7 @@ void sna_copy_fbcon(struct sna *sna)
 {
 	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(sna->scrn);
 	struct drm_mode_fb_cmd fbcon;
-	PixmapPtr scratch;
+	PixmapRec scratch;
 	struct sna_pixmap *priv;
 	struct kgem_bo *bo;
 	BoxRec box;
@@ -1041,26 +1041,21 @@ void sna_copy_fbcon(struct sna *sna)
 	DBG(("%s: found fbcon, size=%dx%d, depth=%d, bpp=%d\n",
 	     __FUNCTION__, fbcon.width, fbcon.height, fbcon.depth, fbcon.bpp));
 
-	/* Wrap the fbcon in a pixmap so that we select the right formats
-	 * in the render copy in case we need to preserve the fbcon
-	 * across a depth change upon starting X.
-	 */
-	scratch = GetScratchPixmapHeader(sna->scrn->pScreen,
-					fbcon.width, fbcon.height,
-					fbcon.depth, fbcon.bpp,
-					0, NULL);
-	if (scratch == NullPixmap)
+	bo = sna_create_bo_for_fbcon(sna, &fbcon);
+	if (bo == NULL)
 		return;
+
+	DBG(("%s: fbcon handle=%d\n", __FUNCTION__, bo->handle));
+
+	scratch.drawable.width = fbcon.width;
+	scratch.drawable.height = fbcon.height;
+	scratch.drawable.depth = fbcon.depth;
+	scratch.drawable.bitsPerPixel = fbcon.bpp;
+	scratch.devPrivate.ptr = NULL;
 
 	box.x1 = box.y1 = 0;
 	box.x2 = min(fbcon.width, sna->front->drawable.width);
 	box.y2 = min(fbcon.height, sna->front->drawable.height);
-
-	bo = sna_create_bo_for_fbcon(sna, &fbcon);
-	if (bo == NULL)
-		goto cleanup_scratch;
-
-	DBG(("%s: fbcon handle=%d\n", __FUNCTION__, bo->handle));
 
 	sx = dx = 0;
 	if (box.x2 < (uint16_t)fbcon.width)
@@ -1075,7 +1070,7 @@ void sna_copy_fbcon(struct sna *sna)
 		dy = (sna->front->drawable.height - box.y2) / 2;
 
 	ok = sna->render.copy_boxes(sna, GXcopy,
-				    scratch, bo, sx, sy,
+				    &scratch, bo, sx, sy,
 				    sna->front, priv->gpu_bo, dx, dy,
 				    &box, 1, 0);
 	if (!DAMAGE_IS_ALL(priv->gpu_damage))
@@ -1086,9 +1081,6 @@ void sna_copy_fbcon(struct sna *sna)
 #if ABI_VIDEODRV_VERSION >= SET_ABI_VERSION(10, 0)
 	sna->scrn->pScreen->canDoBGNoneRoot = ok;
 #endif
-
-cleanup_scratch:
-	FreeScratchPixmapHeader(scratch);
 }
 
 static bool use_shadow(struct sna *sna, xf86CrtcPtr crtc)
