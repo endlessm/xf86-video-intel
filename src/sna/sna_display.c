@@ -2961,18 +2961,21 @@ static void set_initial_gamma(xf86OutputPtr output, xf86CrtcPtr crtc)
 	if (!mon)
 		return;
 
+	DBG(("%s: red=%f\n", __FUNCTION__, mon->mon_gamma_red));
 	if (mon->mon_gamma_red >= GAMMA_MIN &&
 	    mon->mon_gamma_red <= GAMMA_MAX &&
 	    mon->mon_gamma_red != 1.0)
 		set_gamma(crtc->gamma_red, crtc->gamma_size,
 			  mon->mon_gamma_red);
 
+	DBG(("%s: green=%f\n", __FUNCTION__, mon->mon_gamma_green));
 	if (mon->mon_gamma_green >= GAMMA_MIN &&
 	    mon->mon_gamma_green <= GAMMA_MAX &&
 	    mon->mon_gamma_green != 1.0)
 		set_gamma(crtc->gamma_green, crtc->gamma_size,
 			  mon->mon_gamma_green);
 
+	DBG(("%s: blue=%f\n", __FUNCTION__, mon->mon_gamma_blue));
 	if (mon->mon_gamma_blue >= GAMMA_MIN &&
 	    mon->mon_gamma_blue <= GAMMA_MAX &&
 	    mon->mon_gamma_blue != 1.0)
@@ -3037,36 +3040,44 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 		crtc->desiredMode.status = MODE_NOMODE;
 
 		/* Initialize the gamma ramps */
-		gamma = malloc(3 * mode.gamma_size * sizeof(uint16_t));
+		gamma = NULL;
+		if (crtc->gamma_size == 256)
+			gamma = crtc->gamma_red;
+		if (gamma == NULL)
+			gamma = malloc(3 * 256 * sizeof(uint16_t));
 		if (gamma) {
 			struct drm_mode_crtc_lut lut;
 			bool gamma_set = false;
 
-			lut.crtc_id = mode.crtc_id;
-			lut.gamma_size = mode.gamma_size;
+			lut.crtc_id = sna_crtc->id;
+			lut.gamma_size = 256;
 			lut.red = (uintptr_t)(gamma);
-			lut.green = (uintptr_t)(gamma + mode.gamma_size);
-			lut.blue = (uintptr_t)(gamma + 2 * mode.gamma_size);
+			lut.green = (uintptr_t)(gamma + 256);
+			lut.blue = (uintptr_t)(gamma + 2 * 256);
 			if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETGAMMA, &lut) == 0) {
 				gamma_set =
-					gamma[mode.gamma_size - 1] &&
-					gamma[2*mode.gamma_size - 1] &&
-					gamma[3*mode.gamma_size - 1];
+					gamma[256 - 1] &&
+					gamma[2*256 - 1] &&
+					gamma[3*256 - 1];
 			}
 
+			DBG(("%s: CRTC:%d, pipe=%d: gamma set?=%d\n",
+			     __FUNCTION__, sna_crtc->id, sna_crtc->pipe,
+			     gamma_set));
 			if (!gamma_set) {
-				for (j = 0; j < mode.gamma_size; j++) {
+				for (j = 0; j < 256; j++) {
 					gamma[j] = j << 8;
-					gamma[mode.gamma_size + j] = j << 8;
-					gamma[2* mode.gamma_size + j] = j << 8;
+					gamma[256 + j] = j << 8;
+					gamma[2*256 + j] = j << 8;
 				}
 			}
 
-			free(crtc->gamma_red);
-			crtc->gamma_size = mode.gamma_size;
-			crtc->gamma_red = gamma;
-			crtc->gamma_green = gamma + mode.gamma_size;
-			crtc->gamma_blue = gamma + 2*mode.gamma_size;
+			if (gamma != crtc->gamma_red) {
+				free(crtc->gamma_red);
+				crtc->gamma_red = gamma;
+				crtc->gamma_green = gamma + 256;
+				crtc->gamma_blue = gamma + 2*256;
+			}
 		}
 
 		/* Retrieve the current mode */
