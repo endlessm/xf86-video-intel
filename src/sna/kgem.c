@@ -61,6 +61,7 @@ search_snoop_cache(struct kgem *kgem, unsigned int num_pages, unsigned flags);
 #define DBG_NO_CACHE 0
 #define DBG_NO_CACHE_LEVEL 0
 #define DBG_NO_CPU 0
+#define DBG_NO_CREATE2 0
 #define DBG_NO_USERPTR 0
 #define DBG_NO_UNSYNCHRONIZED_USERPTR 0
 #define DBG_NO_LLC 0
@@ -126,7 +127,21 @@ search_snoop_cache(struct kgem *kgem, unsigned int num_pages, unsigned flags);
 #define LOCAL_I915_EXEC_NO_RELOC		(1<<11)
 #define LOCAL_I915_EXEC_HANDLE_LUT		(1<<12)
 
-#define LOCAL_I915_GEM_USERPTR       0x32
+#define LOCAL_I915_GEM_CREATE2       0x32
+#define LOCAL_IOCTL_I915_GEM_CREATE2 DRM_IOWR (DRM_COMMAND_BASE + LOCAL_I915_GEM_CREATE2, struct local_i915_gem_create2)
+struct local_i915_gem_create2 {
+	uint64_t size;
+	uint32_t domain;
+#define LOCAL_I915_CREATE_DOMAIN_SYSTEM 0
+#define LOCAL_I915_CREATE_DOMAIN_STOLEN 1
+	uint32_t caching;
+	uint32_t tiling_mode;
+	uint32_t stride;
+	uint32_t flags;
+	uint32_t handle;
+};
+
+#define LOCAL_I915_GEM_USERPTR       0x33
 #define LOCAL_IOCTL_I915_GEM_USERPTR DRM_IOWR (DRM_COMMAND_BASE + LOCAL_I915_GEM_USERPTR, struct local_i915_gem_userptr)
 struct local_i915_gem_userptr {
 	uint64_t user_ptr;
@@ -890,6 +905,31 @@ static bool test_has_userptr(struct kgem *kgem)
 #endif
 }
 
+static bool test_has_create2(struct kgem *kgem)
+{
+#if defined(USE_CREATE2)
+	struct local_i915_gem_create2 args;
+
+	if (DBG_NO_CREATE2)
+		return false;
+
+	VG_CLEAR(args);
+	args.size = PAGE_SIZE;
+	args.domain = LOCAL_I915_CREATE_DOMAIN_SYSTEM;
+	args.caching = UNCACHED;
+	args.tiling_mode = I915_TILING_NONE;
+	args.stride = 0;
+	args.flags = 0;
+	args.handle = 0;
+	if (drmIoctl(kgem->fd, LOCAL_IOCTL_I915_GEM_CREATE2, &args) == 0)
+		gem_close(kgem->fd, args.handle);
+
+	return args.handle != 0;
+#else
+	return false;
+#endif
+}
+
 static bool test_has_secure_batches(struct kgem *kgem)
 {
 	if (DBG_NO_SECURE_BATCHES)
@@ -1070,6 +1110,10 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 	kgem->has_userptr = test_has_userptr(kgem);
 	DBG(("%s: has userptr? %d\n", __FUNCTION__,
 	     kgem->has_userptr));
+
+	kgem->has_create2 = test_has_create2(kgem);
+	DBG(("%s: has create2? %d\n", __FUNCTION__,
+	     kgem->has_create2));
 
 	kgem->has_no_reloc = test_has_no_reloc(kgem);
 	DBG(("%s: has no-reloc? %d\n", __FUNCTION__,
@@ -1846,7 +1890,7 @@ static void __kgem_bo_destroy(struct kgem *kgem, struct kgem_bo *bo)
 
 	assert(list_is_empty(&bo->list));
 	assert(bo->refcnt == 0);
-	assert(!bo->purged);
+	assert(!bo->purged || !bo->reusable);
 	assert(bo->proxy == NULL);
 	assert_tiling(kgem, bo);
 
@@ -2196,7 +2240,6 @@ static void kgem_commit(struct kgem *kgem)
 		     bo->gpu_dirty, bo->needs_flush, bo->snoop,
 		     (unsigned)bo->exec->offset));
 
-		assert(!bo->purged);
 		assert(bo->exec);
 		assert(bo->proxy == NULL || bo->exec == &_kgem_dummy_exec);
 		assert(RQ(bo->rq) == rq || (RQ(bo->proxy->rq) == rq));
@@ -2912,8 +2955,11 @@ void kgem_clean_scanout_cache(struct kgem *kgem)
 			break;
 
 		list_del(&bo->list);
-		kgem_bo_clear_scanout(kgem, bo);
-		__kgem_bo_destroy(kgem, bo);
+		if (!bo->purged) {
+			kgem_bo_clear_scanout(kgem, bo);
+			__kgem_bo_destroy(kgem, bo);
+		} else
+			kgem_bo_free(kgem, bo);
 	}
 }
 
@@ -3683,6 +3729,45 @@ inline int kgem_bo_fenced_size(struct kgem *kgem, struct kgem_bo *bo)
 	return size;
 }
 
+static struct kgem_bo *
+__kgem_bo_create_from_stolen(struct kgem *kgem, int size, int tiling, int pitch)
+
+{
+	struct local_i915_gem_create2 args;
+	struct kgem_bo *bo;
+
+	if (!kgem->has_create2)
+		return NULL;
+
+	VG_CLEAR(args);
+	args.size = size * PAGE_SIZE;
+	args.domain = LOCAL_I915_CREATE_DOMAIN_STOLEN;
+	args.caching = UNCACHED;
+	args.tiling_mode = tiling;
+	args.stride = pitch;
+	args.flags = 0;
+
+	if (drmIoctl(kgem->fd, LOCAL_IOCTL_I915_GEM_CREATE2, &args))
+		return NULL;
+
+	bo = __kgem_bo_alloc(args.handle, size);
+	if (bo == NULL) {
+		gem_close(kgem->fd, args.handle);
+		return NULL;
+	}
+
+	bo->unique_id = kgem_get_unique_id(kgem);
+	bo->tiling = tiling;
+	bo->pitch = pitch;
+	bo->purged = true; /* for asserts against CPU access */
+	bo->reusable = false; /* so that unclaimed scanouts are freed */
+
+	assert_tiling(kgem, bo);
+	debug_alloc__bo(kgem, bo);
+
+	return bo;
+}
+
 struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 			       int width,
 			       int height,
@@ -3720,7 +3805,6 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 		list_for_each_entry_reverse(bo, &kgem->scanout, list) {
 			assert(bo->scanout);
 			assert(bo->delta);
-			assert(!bo->purged);
 			assert(!bo->flush);
 			assert_tiling(kgem, bo);
 
@@ -3750,6 +3834,10 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 			bo->refcnt = 1;
 			return bo;
 		}
+
+		bo = __kgem_bo_create_from_stolen(kgem, size, tiling, pitch);
+		if (bo)
+			return bo;
 	}
 
 	if (bucket >= NUM_CACHE_BUCKETS) {
@@ -4420,8 +4508,11 @@ bool kgem_check_bo_fenced(struct kgem *kgem, struct kgem_bo *bo)
 {
 	uint32_t size;
 
+	assert(bo->refcnt);
 	while (bo->proxy)
 		bo = bo->proxy;
+	assert(bo->refcnt);
+
 	if (bo->exec) {
 		if (kgem->gen < 040 &&
 		    bo->tiling != I915_TILING_NONE &&
@@ -4488,8 +4579,10 @@ bool kgem_check_many_bo_fenced(struct kgem *kgem, ...)
 
 	va_start(ap, kgem);
 	while ((bo = va_arg(ap, struct kgem_bo *))) {
+		assert(bo->refcnt);
 		while (bo->proxy)
 			bo = bo->proxy;
+		assert(bo->refcnt);
 		if (bo->exec) {
 			if (kgem->gen >= 040 || bo->tiling == I915_TILING_NONE)
 				continue;
@@ -4565,8 +4658,6 @@ uint32_t kgem_add_reloc(struct kgem *kgem,
 	kgem->reloc[index].offset = pos * sizeof(kgem->batch[0]);
 	if (bo) {
 		assert(bo->refcnt);
-		assert(!bo->purged);
-
 		while (bo->proxy) {
 			DBG(("%s: adding proxy [delta=%d] for handle=%d\n",
 			     __FUNCTION__, bo->delta, bo->handle));
@@ -4586,8 +4677,8 @@ uint32_t kgem_add_reloc(struct kgem *kgem,
 
 			bo = bo->proxy;
 			assert(bo->refcnt);
-			assert(!bo->purged);
 		}
+		assert(bo->refcnt);
 
 		if (bo->exec == NULL)
 			kgem_add_bo(kgem, bo);
@@ -4689,7 +4780,6 @@ void *kgem_bo_map__async(struct kgem *kgem, struct kgem_bo *bo)
 	DBG(("%s: handle=%d, offset=%d, tiling=%d, map=%p, domain=%d\n", __FUNCTION__,
 	     bo->handle, bo->presumed_offset, bo->tiling, bo->map, bo->domain));
 
-	assert(!bo->purged);
 	assert(bo->proxy == NULL);
 	assert(list_is_empty(&bo->list));
 	assert(!IS_USER_MAP(bo->map));
@@ -4733,7 +4823,6 @@ void *kgem_bo_map(struct kgem *kgem, struct kgem_bo *bo)
 	DBG(("%s: handle=%d, offset=%d, tiling=%d, map=%p, domain=%d\n", __FUNCTION__,
 	     bo->handle, bo->presumed_offset, bo->tiling, bo->map, bo->domain));
 
-	assert(!bo->purged);
 	assert(bo->proxy == NULL);
 	assert(list_is_empty(&bo->list));
 	assert(!IS_USER_MAP(bo->map));
@@ -4802,7 +4891,6 @@ void *kgem_bo_map__gtt(struct kgem *kgem, struct kgem_bo *bo)
 	DBG(("%s: handle=%d, offset=%d, tiling=%d, map=%p, domain=%d\n", __FUNCTION__,
 	     bo->handle, bo->presumed_offset, bo->tiling, bo->map, bo->domain));
 
-	assert(!bo->purged);
 	assert(bo->exec == NULL);
 	assert(list_is_empty(&bo->list));
 	assert(!IS_USER_MAP(bo->map));
@@ -5041,8 +5129,12 @@ void kgem_bo_sync__cpu(struct kgem *kgem, struct kgem_bo *bo)
 	kgem_bo_submit(kgem, bo);
 
 	/* SHM pixmaps use proxies for subpage offsets */
+	assert(!bo->purged);
+	assert(bo->refcnt);
 	while (bo->proxy)
 		bo = bo->proxy;
+	assert(bo->refcnt);
+	assert(!bo->purged);
 
 	if (bo->domain != DOMAIN_CPU || FORCE_MMAP_SYNC & (1 << DOMAIN_CPU)) {
 		struct drm_i915_gem_set_domain set_domain;
@@ -5072,8 +5164,12 @@ void kgem_bo_sync__cpu_full(struct kgem *kgem, struct kgem_bo *bo, bool write)
 		kgem_bo_submit(kgem, bo);
 
 	/* SHM pixmaps use proxies for subpage offsets */
+	assert(!bo->purged);
+	assert(bo->refcnt);
 	while (bo->proxy)
 		bo = bo->proxy;
+	assert(bo->refcnt);
+	assert(!bo->purged);
 
 	if (bo->domain != DOMAIN_CPU || FORCE_MMAP_SYNC & (1 << DOMAIN_CPU)) {
 		struct drm_i915_gem_set_domain set_domain;
@@ -5099,7 +5195,9 @@ void kgem_bo_sync__cpu_full(struct kgem *kgem, struct kgem_bo *bo, bool write)
 void kgem_bo_sync__gtt(struct kgem *kgem, struct kgem_bo *bo)
 {
 	DBG(("%s: handle=%d\n", __FUNCTION__, bo->handle));
+	assert(bo->refcnt);
 	assert(bo->proxy == NULL);
+
 	kgem_bo_submit(kgem, bo);
 
 	if (bo->domain != DOMAIN_GTT || FORCE_MMAP_SYNC & (1 << DOMAIN_GTT)) {

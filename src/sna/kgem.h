@@ -169,6 +169,7 @@ struct kgem {
 	uint32_t scanout_busy:1;
 	uint32_t busy:1;
 
+	uint32_t has_create2 :1;
 	uint32_t has_userptr :1;
 	uint32_t has_blt :1;
 	uint32_t has_relaxed_fencing :1;
