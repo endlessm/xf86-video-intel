@@ -51,6 +51,7 @@
  */
 #define FORCE_SPANS 0
 #define FORCE_NONRECTILINEAR_SPANS -1
+#define FORCE_FLUSH 1 /* https://bugs.freedesktop.org/show_bug.cgi?id=55500 */
 
 #define NO_COMPOSITE 0
 #define NO_COMPOSITE_SPANS 0
@@ -596,6 +597,7 @@ static bool gen4_rectangle_begin(struct sna *sna,
 	ndwords = op->need_magic_ca_pass? 20 : 6;
 	if ((sna->render.vb_id & id) == 0)
 		ndwords += 5;
+	ndwords += 2*FORCE_FLUSH;
 
 	if (!kgem_check_batch(&sna->kgem, ndwords))
 		return false;
@@ -618,7 +620,8 @@ static int gen4_get_rectangles__flush(struct sna *sna,
 			return rem;
 	}
 
-	if (!kgem_check_batch(&sna->kgem, op->need_magic_ca_pass ? 25 : 6))
+	if (!kgem_check_batch(&sna->kgem,
+			      2*FORCE_FLUSH + (op->need_magic_ca_pass ? 25 : 6)))
 		return 0;
 	if (!kgem_check_reloc_and_exec(&sna->kgem, 2))
 		return 0;
@@ -644,6 +647,22 @@ inline static int gen4_get_rectangles(struct sna *sna,
 	int rem;
 
 	assert(want);
+#if FORCE_FLUSH
+	if (sna->render.vertex_offset) {
+		rem = 16 - (sna->render.vertex_index - sna->render.vertex_start) / 3;
+		if (rem <= 0) {
+			gen4_vertex_flush(sna);
+			if (gen4_magic_ca_pass(sna, op))
+				gen4_emit_pipelined_pointers(sna, op, op->op,
+							     op->u.gen4.wm_kernel);
+			OUT_BATCH(MI_FLUSH | MI_INHIBIT_RENDER_CACHE_FLUSH);
+			rem = 16;
+		}
+	} else
+		rem = 16;
+	if (want > rem)
+		want = rem;
+#endif
 
 start:
 	rem = vertex_space(sna);
@@ -783,7 +802,7 @@ gen4_get_batch(struct sna *sna, const struct sna_composite_op *op)
 {
 	kgem_set_mode(&sna->kgem, KGEM_RENDER, op->dst.bo);
 
-	if (!kgem_check_batch_with_surfaces(&sna->kgem, 150, 4)) {
+	if (!kgem_check_batch_with_surfaces(&sna->kgem, 150 + 50*FORCE_FLUSH, 4)) {
 		DBG(("%s: flushing batch: %d < %d+%d\n",
 		     __FUNCTION__, sna->kgem.surface - sna->kgem.nbatch,
 		     150, 4*8));
@@ -1423,7 +1442,6 @@ gen4_render_video(struct sna *sna,
 			}
 			box++;
 		} while (--n);
-
 		gen4_vertex_flush(sna);
 		if (!nbox)
 			break;
@@ -1974,7 +1992,9 @@ gen4_render_composite(struct sna *sna,
 	tmp->boxes = gen4_render_composite_boxes__blt;
 	if (tmp->emit_boxes) {
 		tmp->boxes = gen4_render_composite_boxes;
+#if !FORCE_FLUSH
 		tmp->thread_boxes = gen4_render_composite_boxes__thread;
+#endif
 	}
 	tmp->done  = gen4_render_composite_done;
 
@@ -2435,7 +2455,8 @@ fallback_blt:
 		box++;
 	} while (--n);
 
-	gen4_vertex_flush(sna);
+	if (!FORCE_FLUSH || sna->render.vertex_offset)
+		gen4_vertex_flush(sna);
 	sna_render_composite_redirect_done(sna, &tmp);
 	kgem_bo_destroy(&sna->kgem, tmp.src.bo);
 	return true;
@@ -2673,7 +2694,8 @@ gen4_render_fill_boxes(struct sna *sna,
 		box++;
 	} while (--n);
 
-	gen4_vertex_flush(sna);
+	if (!FORCE_FLUSH || sna->render.vertex_offset)
+		gen4_vertex_flush(sna);
 	kgem_bo_destroy(&sna->kgem, tmp.src.bo);
 	return true;
 }
@@ -2856,7 +2878,8 @@ gen4_render_fill_one(struct sna *sna, PixmapPtr dst, struct kgem_bo *bo,
 
 	gen4_render_fill_rectangle(sna, &tmp, x1, y1, x2 - x1, y2 - y1);
 
-	gen4_vertex_flush(sna);
+	if (!FORCE_FLUSH || sna->render.vertex_offset)
+		gen4_vertex_flush(sna);
 	kgem_bo_destroy(&sna->kgem, tmp.src.bo);
 
 	return true;

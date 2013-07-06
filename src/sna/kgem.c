@@ -1467,6 +1467,7 @@ static void kgem_fixup_self_relocs(struct kgem *kgem, struct kgem_bo *bo)
 {
 	int n;
 
+	assert(kgem->nreloc__self <= 256);
 	if (kgem->nreloc__self == 0)
 		return;
 
