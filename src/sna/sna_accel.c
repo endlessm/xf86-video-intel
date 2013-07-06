@@ -1729,13 +1729,7 @@ sna_pixmap_make_cow(struct sna *sna,
 
 		src_priv->cow = MAKE_COW_OWNER(cow);
 		list_init(&src_priv->cow_list);
-
-		if (src_priv->mapped) {
-			src_priv->pixmap->devPrivate.ptr = NULL;
-			src_priv->mapped = false;
-		}
 	}
-	assert(!src_priv->mapped);
 
 	if (cow == COW(dst_priv->cow)) {
 		assert(dst_priv->gpu_bo == cow->bo);
