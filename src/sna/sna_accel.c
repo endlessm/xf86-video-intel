@@ -1446,10 +1446,16 @@ static inline bool pixmap_inplace(struct sna *sna,
 	if (wedged(sna) && !priv->pinned)
 		return false;
 
+	if (priv->gpu_damage &&
+	    (priv->clear || (flags & MOVE_READ) == 0) &&
+	    kgem_bo_is_busy(priv->gpu_bo))
+		return false;
+
 	if (priv->mapped)
 		return has_coherent_map(sna, priv->gpu_bo, flags);
 
-	if (flags & MOVE_READ && priv->cpu_damage)
+	if (flags & MOVE_READ &&
+	    (priv->cpu || priv->cpu_damage || priv->gpu_damage == NULL))
 		return false;
 
 	return (pixmap->devKind * pixmap->drawable.height >> 12) >
@@ -2160,14 +2166,14 @@ static inline bool region_inplace(struct sna *sna,
 	if (wedged(sna) && !priv->pinned)
 		return false;
 
-	if ((priv->cpu || flags & MOVE_READ) &&
-	    region_overlaps_damage(region, priv->cpu_damage, 0, 0)) {
-		DBG(("%s: no, uncovered CPU damage pending\n", __FUNCTION__));
+	if (priv->gpu_damage &&
+	    (priv->clear || (flags & MOVE_READ) == 0) &&
+	    kgem_bo_is_busy(priv->gpu_bo))
 		return false;
-	}
 
-	if (priv->cpu) {
-		DBG(("%s: no, preferring last action of CPU\n", __FUNCTION__));
+	if (flags & MOVE_READ &&
+	    (priv->cpu || region_overlaps_damage(region, priv->cpu_damage, 0, 0))) {
+		DBG(("%s: no, uncovered CPU damage pending\n", __FUNCTION__));
 		return false;
 	}
 
