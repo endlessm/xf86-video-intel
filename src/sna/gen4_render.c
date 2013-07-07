@@ -648,13 +648,18 @@ inline static int gen4_get_rectangles(struct sna *sna,
 
 	assert(want);
 #if FORCE_FLUSH
-	if (sna->render.vertex_offset) {
+	rem = sna->render.vertex_offset;
+	if (sna->kgem.nbatch == sna->render_state.gen4.last_primitive)
+		rem = sna->kgem.nbatch - 5;
+	if (rem) {
 		rem = 16 - (sna->render.vertex_index - sna->render.vertex_start) / 3;
 		if (rem <= 0) {
-			gen4_vertex_flush(sna);
-			if (gen4_magic_ca_pass(sna, op))
-				gen4_emit_pipelined_pointers(sna, op, op->op,
-							     op->u.gen4.wm_kernel);
+			if (sna->render.vertex_offset) {
+				gen4_vertex_flush(sna);
+				if (gen4_magic_ca_pass(sna, op))
+					gen4_emit_pipelined_pointers(sna, op, op->op,
+								     op->u.gen4.wm_kernel);
+			}
 			OUT_BATCH(MI_FLUSH | MI_INHIBIT_RENDER_CACHE_FLUSH);
 			rem = 16;
 		}
@@ -2455,8 +2460,7 @@ fallback_blt:
 		box++;
 	} while (--n);
 
-	if (!FORCE_FLUSH || sna->render.vertex_offset)
-		gen4_vertex_flush(sna);
+	gen4_vertex_flush(sna);
 	sna_render_composite_redirect_done(sna, &tmp);
 	kgem_bo_destroy(&sna->kgem, tmp.src.bo);
 	return true;
@@ -2694,8 +2698,7 @@ gen4_render_fill_boxes(struct sna *sna,
 		box++;
 	} while (--n);
 
-	if (!FORCE_FLUSH || sna->render.vertex_offset)
-		gen4_vertex_flush(sna);
+	gen4_vertex_flush(sna);
 	kgem_bo_destroy(&sna->kgem, tmp.src.bo);
 	return true;
 }
@@ -2878,8 +2881,7 @@ gen4_render_fill_one(struct sna *sna, PixmapPtr dst, struct kgem_bo *bo,
 
 	gen4_render_fill_rectangle(sna, &tmp, x1, y1, x2 - x1, y2 - y1);
 
-	if (!FORCE_FLUSH || sna->render.vertex_offset)
-		gen4_vertex_flush(sna);
+	gen4_vertex_flush(sna);
 	kgem_bo_destroy(&sna->kgem, tmp.src.bo);
 
 	return true;
