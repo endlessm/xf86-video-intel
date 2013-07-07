@@ -62,6 +62,8 @@
 #define NO_FILL_BOXES 0
 #define NO_VIDEO 0
 
+#define MAX_FLUSH_VERTICES 6
+
 #define GEN4_GRF_BLOCKS(nreg)    ((nreg + 15) / 16 - 1)
 
 /* Set up a default static partitioning of the URB, which is supposed to
@@ -652,7 +654,7 @@ inline static int gen4_get_rectangles(struct sna *sna,
 	if (sna->kgem.nbatch == sna->render_state.gen4.last_primitive)
 		rem = sna->kgem.nbatch - 5;
 	if (rem) {
-		rem = 16 - (sna->render.vertex_index - sna->render.vertex_start) / 3;
+		rem = MAX_FLUSH_VERTICES - (sna->render.vertex_index - sna->render.vertex_start) / 3;
 		if (rem <= 0) {
 			if (sna->render.vertex_offset) {
 				gen4_vertex_flush(sna);
@@ -661,10 +663,10 @@ inline static int gen4_get_rectangles(struct sna *sna,
 								     op->u.gen4.wm_kernel);
 			}
 			OUT_BATCH(MI_FLUSH | MI_INHIBIT_RENDER_CACHE_FLUSH);
-			rem = 16;
+			rem = MAX_FLUSH_VERTICES;
 		}
 	} else
-		rem = 16;
+		rem = MAX_FLUSH_VERTICES;
 	if (want > rem)
 		want = rem;
 #endif

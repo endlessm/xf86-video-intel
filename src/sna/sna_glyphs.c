@@ -1130,8 +1130,7 @@ next_image:
 					     __FUNCTION__,
 					     (int)this_atlas->format,
 					     (int)(format->depth << 24 | format->format)));
-					if (this_atlas->format == (format->depth << 24 | format->format) &&
-					    (sna->kgem.gen >> 3) != 4) { /* XXX cache corruption? how? */
+					if (this_atlas->format == (format->depth << 24 | format->format)) {
 						ok = sna->render.composite(sna, PictOpAdd,
 									   this_atlas, NULL, mask,
 									   0, 0, 0, 0, 0, 0,
