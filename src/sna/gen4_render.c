@@ -1418,7 +1418,7 @@ gen4_render_video(struct sna *sna,
 	do {
 		int n;
 
-		n = gen4_get_rectangles(sna, &tmp, min(nbox, 16),
+		n = gen4_get_rectangles(sna, &tmp, nbox,
 					gen4_video_bind_surfaces);
 		assert(n);
 		nbox -= n;
@@ -1449,13 +1449,8 @@ gen4_render_video(struct sna *sna,
 			}
 			box++;
 		} while (--n);
-		gen4_vertex_flush(sna);
-		if (!nbox)
-			break;
-
-		/* VUE corruption strikes again */
-		OUT_BATCH(MI_FLUSH | MI_INHIBIT_RENDER_CACHE_FLUSH);
-	} while (1);
+	} while (nbox);
+	gen4_vertex_flush(sna);
 
 	return true;
 }
