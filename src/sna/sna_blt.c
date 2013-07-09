@@ -2301,12 +2301,18 @@ static void convert_done(struct sna *sna, const struct sna_composite_op *op)
 	struct kgem *kgem = &sna->kgem;
 
 	assert(kgem->nbatch <= KGEM_BATCH_SIZE(kgem));
-	if (kgem->nreloc && __kgem_ring_empty(kgem)) {
+	if (kgem->nreloc && __kgem_ring_empty(kgem))
 		_kgem_submit(kgem);
-		return;
-	}
 
-	if (kgem->gen >= 060 && op->src.bo == op->dst.bo && kgem_check_batch(kgem, 3)) {
+	kgem_bo_destroy(kgem, op->src.bo);
+	sna_render_composite_redirect_done(sna, op);
+}
+
+static void gen6_convert_done(struct sna *sna, const struct sna_composite_op *op)
+{
+	struct kgem *kgem = &sna->kgem;
+
+	if (kgem_check_batch(kgem, 3)) {
 		uint32_t *b = kgem->batch + kgem->nbatch;
 		b[0] = XY_SETUP_CLIP;
 		b[1] = b[2] = 0;
@@ -2314,8 +2320,7 @@ static void convert_done(struct sna *sna, const struct sna_composite_op *op)
 		assert(kgem->nbatch < kgem->surface);
 	}
 
-	kgem_bo_destroy(kgem, op->src.bo);
-	sna_render_composite_redirect_done(sna, op);
+	convert_done(sna, op);
 }
 
 bool
@@ -2446,6 +2451,9 @@ sna_blt_composite__convert(struct sna *sna,
 	}
 
 	tmp->done = convert_done;
+	if (sna->kgem.gen >= 060 && tmp->src.bo == tmp->dst.bo)
+		tmp->done = gen6_convert_done;
+
 	return true;
 }
 
