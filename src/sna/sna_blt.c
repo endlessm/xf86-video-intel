@@ -85,7 +85,7 @@ static const uint8_t fill_ROP[] = {
 static void nop_done(struct sna *sna, const struct sna_composite_op *op)
 {
 	assert(sna->kgem.nbatch <= KGEM_BATCH_SIZE(&sna->kgem));
-	if (sna->kgem.nreloc && __kgem_ring_empty(&sna->kgem))
+	if (sna->kgem.nexec > 1 && __kgem_ring_empty(&sna->kgem))
 		_kgem_submit(&sna->kgem);
 	(void)op;
 }
@@ -95,7 +95,7 @@ static void gen6_blt_copy_done(struct sna *sna, const struct sna_composite_op *o
 	struct kgem *kgem = &sna->kgem;
 
 	assert(kgem->nbatch <= KGEM_BATCH_SIZE(kgem));
-	if (kgem->nreloc && __kgem_ring_empty(kgem)) {
+	if (kgem->nexec > 1 && __kgem_ring_empty(kgem)) {
 		_kgem_submit(kgem);
 		return;
 	}
@@ -2301,7 +2301,7 @@ static void convert_done(struct sna *sna, const struct sna_composite_op *op)
 	struct kgem *kgem = &sna->kgem;
 
 	assert(kgem->nbatch <= KGEM_BATCH_SIZE(kgem));
-	if (kgem->nreloc && __kgem_ring_empty(kgem))
+	if (kgem->nexec > 1 && __kgem_ring_empty(kgem))
 		_kgem_submit(kgem);
 
 	kgem_bo_destroy(kgem, op->src.bo);
@@ -2800,7 +2800,7 @@ bool sna_blt_fill_boxes(struct sna *sna, uint8_t alu,
 		}
 	} while (nbox);
 
-	if (kgem->nreloc && __kgem_ring_empty(kgem))
+	if (kgem->nexec > 1 && __kgem_ring_empty(kgem))
 		_kgem_submit(kgem);
 
 	return true;
@@ -2989,7 +2989,7 @@ bool sna_blt_copy_boxes(struct sna *sna, uint8_t alu,
 		} while (1);
 	}
 
-	if (kgem->nreloc && __kgem_ring_empty(kgem)) {
+	if (kgem->nexec > 1 && __kgem_ring_empty(kgem)) {
 		_kgem_submit(kgem);
 	} else if (kgem->gen >= 060 && kgem_check_batch(kgem, 3)) {
 		uint32_t *b = kgem->batch + kgem->nbatch;
