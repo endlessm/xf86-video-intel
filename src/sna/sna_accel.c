@@ -2319,7 +2319,6 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 							      pixmap->drawable.height)) {
 						DBG(("%s: replaced entire pixmap, destroying CPU shadow\n",
 						     __FUNCTION__));
-						assert(priv->cpu == false || (priv->mapped && IS_CPU_MAP(priv->gpu_bo->map)));
 						sna_damage_destroy(&priv->cpu_damage);
 						list_del(&priv->flush_list);
 					} else
@@ -2383,7 +2382,6 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 							      pixmap->drawable.height)) {
 						DBG(("%s: replaced entire pixmap, destroying CPU shadow\n",
 						     __FUNCTION__));
-						assert(priv->cpu == false || (priv->mapped && IS_CPU_MAP(priv->gpu_bo->map)));
 						sna_damage_destroy(&priv->cpu_damage);
 						list_del(&priv->flush_list);
 					} else
