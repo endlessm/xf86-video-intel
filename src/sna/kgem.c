@@ -38,6 +38,7 @@
 #include <time.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <cpuid.h>
 
 #include <xf86drm.h>
 
@@ -696,29 +697,47 @@ total_ram_size(void)
 	return 0;
 }
 
-static size_t
+static unsigned
 cpu_cache_size(void)
 {
-	FILE *file = fopen("/proc/cpuinfo", "r");
-	size_t size = -1;
-	if (file) {
-		size_t len = 0;
-		char *line = NULL;
-		while (getline(&line, &len, file) != -1) {
-			int mb;
-			if (sscanf(line, "cache size : %d KB", &mb) == 1) {
-				/* Paranoid check against gargantuan caches */
-				if (mb <= 1<<20)
-					size = mb * 1024;
-				break;
-			}
-		}
-		free(line);
-		fclose(file);
-	}
-	if (size == -1)
-		ErrorF("Unknown CPU cache size\n");
-	return size;
+	/* Deterministic Cache Parmaeters (Function 04h)":
+	 *    When EAX is initialized to a value of 4, the CPUID instruction
+	 *    returns deterministic cache information in the EAX, EBX, ECX
+	 *    and EDX registers.  This function requires ECX be initialized
+	 *    with an index which indicates which cache to return information
+	 *    about. The OS is expected to call this function (CPUID.4) with
+	 *    ECX = 0, 1, 2, until EAX[4:0] == 0, indicating no more caches.
+	 *    The order in which the caches are returned is not specified
+	 *    and may change at Intel's discretion.
+	 *
+	 * Calculating the Cache Size in bytes:
+	 *          = (Ways +1) * (Partitions +1) * (Line Size +1) * (Sets +1)
+	 */
+
+	 unsigned int eax, ebx, ecx, edx;
+	 unsigned int llc_size = 0;
+	 int cnt = 0;
+
+	 if (__get_cpuid_max(false, 0) < 4)
+		 return 0;
+
+	 do {
+		 unsigned associativity, line_partitions, line_size, sets;
+
+		 __cpuid_count(4, cnt++, eax, ebx, ecx, edx);
+
+		 if ((eax & 0x1f) == 0)
+			 break;
+
+		 associativity = ((ebx >> 22) & 0x3ff) + 1;
+		 line_partitions = ((ebx >> 12) & 0x3ff) + 1;
+		 line_size = (ebx & 0xfff) + 1;
+		 sets = ecx + 1;
+
+		 llc_size = associativity * line_partitions * line_size * sets;
+	 } while (1);
+
+	 return llc_size;
 }
 
 static int gem_param(struct kgem *kgem, int name)
@@ -1177,8 +1196,8 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 		kgem->min_alignment = 64;
 
 	kgem->half_cpu_cache_pages = cpu_cache_size() >> 13;
-	DBG(("%s: half cpu cache %d pages\n", __FUNCTION__,
-	     kgem->half_cpu_cache_pages));
+	DBG(("%s: last-level cache size: %d bytes, threshold in pages: %d\n",
+	     __FUNCTION__, cpu_cache_size(), kgem->half_cpu_cache_pages));
 
 	kgem->next_request = __kgem_request_alloc(kgem);
 
