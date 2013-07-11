@@ -5458,7 +5458,7 @@ sna_do_copy(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	    int dx, int dy,
 	    sna_copy_func copy, Pixel bitPlane, void *closure)
 {
-	RegionPtr clip, free_clip = NULL;
+	RegionPtr clip;
 	RegionRec region;
 	bool expose;
 
@@ -5510,14 +5510,37 @@ sna_do_copy(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	} else if (src->type == DRAWABLE_PIXMAP) {
 		DBG(("%s: pixmap -- no source clipping\n", __FUNCTION__));
 	} else if (gc->subWindowMode == IncludeInferiors) {
+		WindowPtr w = (WindowPtr)src;
+
+		DBG(("%s: include inferiors (is-clipped? %d)\n",
+		     __FUNCTION__, w->parent || RegionNil(&w->borderClip)));
+
 		/*
 		 * XFree86 DDX empties the border clip when the
 		 * VT is inactive, make sure the region isn't empty
 		 */
-		if (((WindowPtr)src)->parent ||
-		    RegionNil(&((WindowPtr)src)->borderClip)) {
-			DBG(("%s: include inferiors\n", __FUNCTION__));
-			free_clip = clip = NotClippedByChildren((WindowPtr)src);
+		if (w->parent || RegionNil(&w->borderClip)) {
+			int16_t v;
+
+			v = max(w->borderClip.extents.x1,
+				w->winSize.extents.x1);
+			if (region.extents.x1 < v)
+				region.extents.x1 = v;
+
+			v = max(w->borderClip.extents.y1,
+				w->winSize.extents.y1);
+			if (region.extents.y1 < v)
+				region.extents.y1 = v;
+
+			v = min(w->borderClip.extents.x2,
+				w->winSize.extents.x2);
+			if (region.extents.x2 > v)
+				region.extents.x2 = v;
+
+			v = min(w->borderClip.extents.y2,
+				w->winSize.extents.y2);
+			if (region.extents.y2 > v)
+				region.extents.y2 = v;
 		}
 	} else {
 		DBG(("%s: window clip\n", __FUNCTION__));
@@ -5547,8 +5570,6 @@ sna_do_copy(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	} else {
 		expose = false;
 		RegionIntersect(&region, &region, clip);
-		if (free_clip)
-			RegionDestroy(free_clip);
 	}
 	DBG(("%s: src extents (%d, %d), (%d, %d) x %ld\n", __FUNCTION__,
 	     region.extents.x1, region.extents.y1,
