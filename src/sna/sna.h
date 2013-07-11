@@ -149,7 +149,7 @@ struct sna_glyph {
 	uint16_t size, pos;
 };
 
-static inline WindowPtr root(ScreenPtr screen)
+static inline WindowPtr get_root_window(ScreenPtr screen)
 {
 #if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,10,0,0,0)
 	return screen->root;

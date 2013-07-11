@@ -186,7 +186,7 @@ sna_set_fallback_mode(ScrnInfoPtr scrn)
 
 	xf86DisableUnusedFunctions(scrn);
 #ifdef RANDR_12_INTERFACE
-	if (root(scrn->pScreen))
+	if (get_root_window(scrn->pScreen))
 		xf86RandR12TellChanged(scrn->pScreen);
 #endif
 }

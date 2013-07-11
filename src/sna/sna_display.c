@@ -2610,24 +2610,6 @@ sna_mode_compute_possible_clones(ScrnInfoPtr scrn)
 	}
 }
 
-struct sna_visit_set_pixmap_window {
-	PixmapPtr old, new;
-};
-
-static int
-sna_visit_set_window_pixmap(WindowPtr window, pointer data)
-{
-    struct sna_visit_set_pixmap_window *visit = data;
-    ScreenPtr screen = window->drawable.pScreen;
-
-    if (screen->GetWindowPixmap(window) == visit->old) {
-	    screen->SetWindowPixmap(window, visit->new);
-	    return WT_WALKCHILDREN;
-    }
-
-    return WT_DONTWALKCHILDREN;
-}
-
 static void copy_front(struct sna *sna, PixmapPtr old, PixmapPtr new)
 {
 	struct sna_pixmap *old_priv, *new_priv;
@@ -2695,36 +2677,6 @@ static void copy_front(struct sna *sna, PixmapPtr old, PixmapPtr new)
 			       new->drawable.height);
 }
 
-static void
-migrate_dirty_tracking(struct sna *sna, PixmapPtr old_front)
-{
-#if HAS_PIXMAP_SHARING
-	ScreenPtr screen = sna->scrn->pScreen;
-	PixmapDirtyUpdatePtr dirty, safe;
-
-	xorg_list_for_each_entry_safe(dirty, safe, &screen->pixmap_dirty_list, ent) {
-		assert(dirty->src == old_front);
-		if (dirty->src != old_front)
-			continue;
-
-		DamageUnregister(&dirty->src->drawable, dirty->damage);
-		DamageDestroy(dirty->damage);
-
-		dirty->damage = DamageCreate(NULL, NULL,
-					     DamageReportNone,
-					     TRUE, screen, screen);
-		if (!dirty->damage) {
-			xorg_list_del(&dirty->ent);
-			free(dirty);
-			continue;
-		}
-
-		DamageRegister(&sna->front->drawable, dirty->damage);
-		dirty->src = sna->front;
-	}
-#endif
-}
-
 static Bool
 sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 {
@@ -2783,17 +2735,6 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 			sna_crtc_disable(crtc);
 	}
 
-	/* Open-coded screen->SetScreenPixmap */
-	migrate_dirty_tracking(sna, old_front);
-
-	if (root(screen)) {
-		struct sna_visit_set_pixmap_window visit;
-
-		visit.old = old_front;
-		visit.new = sna->front;
-		TraverseTree(root(screen), sna_visit_set_window_pixmap, &visit);
-		assert(screen->GetWindowPixmap(root(screen)) == sna->front);
-	}
 	screen->SetScreenPixmap(sna->front);
 	assert(screen->GetScreenPixmap(screen) == sna->front);
 

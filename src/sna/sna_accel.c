@@ -15062,6 +15062,77 @@ sna_set_window_pixmap(WindowPtr window, PixmapPtr pixmap)
 	*(PixmapPtr *)__get_private(window, sna_window_key) = pixmap;
 }
 
+struct sna_visit_set_pixmap_window {
+	PixmapPtr old, new;
+};
+
+static int
+sna_visit_set_window_pixmap(WindowPtr window, pointer data)
+{
+    struct sna_visit_set_pixmap_window *visit = data;
+
+    if (fbGetWindowPixmap(window) == visit->old) {
+	    window->drawable.pScreen->SetWindowPixmap(window, visit->new);
+	    return WT_WALKCHILDREN;
+    }
+
+    return WT_DONTWALKCHILDREN;
+}
+
+static void
+migrate_dirty_tracking(PixmapPtr old_front, PixmapPtr new_front)
+{
+#if HAS_PIXMAP_SHARING
+	ScreenPtr screen = old_front->drawable.pScreen;
+	PixmapDirtyUpdatePtr dirty, safe;
+
+	xorg_list_for_each_entry_safe(dirty, safe, &screen->pixmap_dirty_list, ent) {
+		assert(dirty->src == old_front);
+		if (dirty->src != old_front)
+			continue;
+
+		DamageUnregister(&dirty->src->drawable, dirty->damage);
+		DamageDestroy(dirty->damage);
+
+		dirty->damage = DamageCreate(NULL, NULL,
+					     DamageReportNone,
+					     TRUE, screen, screen);
+		if (!dirty->damage) {
+			xorg_list_del(&dirty->ent);
+			free(dirty);
+			continue;
+		}
+
+		DamageRegister(&new_front->drawable, dirty->damage);
+		dirty->src = new_front;
+	}
+#endif
+}
+
+static void
+sna_set_screen_pixmap(PixmapPtr pixmap)
+{
+	PixmapPtr old_front = pixmap->drawable.pScreen->devPrivate;
+	WindowPtr root;
+
+	assert(pixmap == to_sna_from_pixmap(pixmap)->front);
+
+	if (old_front)
+		migrate_dirty_tracking(old_front, pixmap);
+
+	root = get_root_window(pixmap->drawable.pScreen);
+	if (root) {
+		struct sna_visit_set_pixmap_window visit;
+
+		visit.old = old_front;
+		visit.new = pixmap;
+		TraverseTree(root, sna_visit_set_window_pixmap, &visit);
+		assert(fbGetWindowPixmap(root) == pixmap);
+	}
+
+	pixmap->drawable.pScreen->devPrivate = pixmap;
+}
+
 static Bool
 sna_create_window(WindowPtr win)
 {
@@ -15235,6 +15306,8 @@ bool sna_accel_init(ScreenPtr screen, struct sna *sna)
 	screen->GetWindowPixmap = sna_get_window_pixmap;
 	assert(screen->SetWindowPixmap == NULL);
 	screen->SetWindowPixmap = sna_set_window_pixmap;
+
+	screen->SetScreenPixmap = sna_set_screen_pixmap;
 
 	if (sna->kgem.has_userptr)
 		ShmRegisterFuncs(screen, &shm_funcs);
