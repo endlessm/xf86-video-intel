@@ -2247,6 +2247,13 @@ gen5_render_copy_boxes(struct sna *sna, uint8_t alu,
 {
 	struct sna_composite_op tmp;
 
+	DBG(("%s alu=%d, src=%d:handle=%d, dst=%d:handle=%d boxes=%d x [((%d, %d), (%d, %d))...], flags=%x\n",
+	     __FUNCTION__, alu,
+	     src->drawable.serialNumber, src_bo->handle,
+	     dst->drawable.serialNumber, dst_bo->handle,
+	     n, box->x1, box->y1, box->x2, box->y2,
+	     flags));
+
 	if (sna_blt_compare_depth(&src->drawable, &dst->drawable) &&
 	    sna_blt_copy_boxes(sna, alu,
 			       src_bo, src_dx, src_dy,
@@ -2359,8 +2366,10 @@ fallback_blt:
 
 	if (!kgem_check_bo(&sna->kgem, dst_bo, src_bo, NULL)) {
 		kgem_submit(&sna->kgem);
-		if (!kgem_check_bo(&sna->kgem, dst_bo, src_bo, NULL))
+		if (!kgem_check_bo(&sna->kgem, dst_bo, src_bo, NULL)) {
+			DBG(("%s: aperture check failed\n", __FUNCTION__));
 			goto fallback_tiled_src;
+		}
 	}
 
 	dst_dx += tmp.dst.x;
@@ -2420,6 +2429,7 @@ fallback_tiled:
 			       box, n))
 		return true;
 
+	DBG(("%s: tiled fallback\n", __FUNCTION__));
 	return sna_tiling_copy_boxes(sna, alu,
 				     src, src_bo, src_dx, src_dy,
 				     dst, dst_bo, dst_dx, dst_dy,

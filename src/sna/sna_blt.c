@@ -2667,7 +2667,7 @@ bool sna_blt_fill_boxes(struct sna *sna, uint8_t alu,
 	     __FUNCTION__, bpp, pixel, alu, nbox));
 
 	if (!kgem_bo_can_blt(kgem, bo)) {
-		DBG(("%s: fallback -- dst uses Y-tiling\n", __FUNCTION__));
+		DBG(("%s: fallback -- cannot blt to dst\n", __FUNCTION__));
 		return false;
 	}
 
