@@ -607,18 +607,19 @@ sna_tiling_fill_boxes(struct sna *sna,
 	for (tile.extents.y1 = tile.extents.y2 = region.extents.y1;
 	     tile.extents.y2 < region.extents.y2;
 	     tile.extents.y1 = tile.extents.y2) {
-		tile.extents.y2 = tile.extents.y1 + step;
-		if (tile.extents.y2 > region.extents.y2)
-			tile.extents.y2 = region.extents.y2;
+		int y2 = tile.extents.y1 + step;
+		if (y2 > region.extents.y2)
+			y2 = region.extents.y2;
+		tile.extents.y2 = y2;
 
 		for (tile.extents.x1 = tile.extents.x2 = region.extents.x1;
 		     tile.extents.x2 < region.extents.x2;
 		     tile.extents.x1 = tile.extents.x2) {
 			PixmapRec tmp;
-
-			tile.extents.x2 = tile.extents.x1 + step;
-			if (tile.extents.x2 > region.extents.x2)
-				tile.extents.x2 = region.extents.x2;
+			int x2 = tile.extents.x1 + step;
+			if (x2 > region.extents.x2)
+				x2 = region.extents.x2;
+			tile.extents.x2 = x2;
 
 			tile.data = NULL;
 
@@ -733,18 +734,19 @@ bool sna_tiling_blt_copy_boxes(struct sna *sna, uint8_t alu,
 	for (tile.extents.y1 = tile.extents.y2 = region.extents.y1;
 	     tile.extents.y2 < region.extents.y2;
 	     tile.extents.y1 = tile.extents.y2) {
-		tile.extents.y2 = tile.extents.y1 + step;
-		if (tile.extents.y2 > region.extents.y2)
-			tile.extents.y2 = region.extents.y2;
+		int y2 = tile.extents.y1 + step;
+		if (y2 > region.extents.y2)
+			y2 = region.extents.y2;
+		tile.extents.y2 = y2;
 
 		for (tile.extents.x1 = tile.extents.x2 = region.extents.x1;
 		     tile.extents.x2 < region.extents.x2;
 		     tile.extents.x1 = tile.extents.x2) {
 			int w, h;
-
-			tile.extents.x2 = tile.extents.x1 + step;
-			if (tile.extents.x2 > region.extents.x2)
-				tile.extents.x2 = region.extents.x2;
+			int x2 = tile.extents.x1 + step;
+			if (x2 > region.extents.x2)
+				x2 = region.extents.x2;
+			tile.extents.x2 = x2;
 
 			tile.data = NULL;
 
@@ -851,16 +853,17 @@ sna_tiling_copy_boxes(struct sna *sna, uint8_t alu,
 	p.devPrivate.ptr = NULL;
 
 	for (tile.y1 = extents.y1; tile.y1 < extents.y2; tile.y1 = tile.y2) {
-		tile.y2 = tile.y1 + step;
-		if (tile.y2 > extents.y2)
-			tile.y2 = extents.y2;
+		int y2 = tile.y1 + step;
+		if (y2 > extents.y2)
+			y2 = extents.y2;
+		tile.y2 = y2;
 
 		for (tile.x1 = extents.x1; tile.x1 < extents.x2; tile.x1 = tile.x2) {
 			struct kgem_bo *tmp_bo;
-
-			tile.x2 = tile.x1 + step;
-			if (tile.x2 > extents.x2)
-				tile.x2 = extents.x2;
+			int x2 = tile.x1 + step;
+			if (x2 > extents.x2)
+				x2 = extents.x2;
+			tile.x2 = x2;
 
 			c = clipped;
 			for (i = 0; i < n; i++) {

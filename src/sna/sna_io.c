@@ -309,14 +309,16 @@ fallback:
 			     __FUNCTION__, step, step));
 
 			for (tile.y1 = extents.y1; tile.y1 < extents.y2; tile.y1 = tile.y2) {
-				tile.y2 = tile.y1 + step;
-				if (tile.y2 > extents.y2)
-					tile.y2 = extents.y2;
+				int y2 = tile.y1 + step;
+				if (y2 > extents.y2)
+					y2 = extents.y2;
+				tile.y2 = y2;
 
 				for (tile.x1 = extents.x1; tile.x1 < extents.x2; tile.x1 = tile.x2) {
-					tile.x2 = tile.x1 + step;
-					if (tile.x2 > extents.x2)
-						tile.x2 = extents.x2;
+					int x2 = tile.x1 + step;
+					if (x2 > extents.x2)
+						x2 = extents.x2;
+					tile.x2 = x2;
 
 					tmp.drawable.width  = tile.x2 - tile.x1;
 					tmp.drawable.height = tile.y2 - tile.y1;
@@ -767,14 +769,16 @@ tile:
 				clipped = stack;
 
 			for (tile.y1 = extents.y1; tile.y1 < extents.y2; tile.y1 = tile.y2) {
-				tile.y2 = tile.y1 + step;
-				if (tile.y2 > extents.y2)
-					tile.y2 = extents.y2;
+				int y2 = tile.y1 + step;
+				if (y2 > extents.y2)
+					y2 = extents.y2;
+				tile.y2 = y2;
 
 				for (tile.x1 = extents.x1; tile.x1 < extents.x2; tile.x1 = tile.x2) {
-					tile.x2 = tile.x1 + step;
-					if (tile.x2 > extents.x2)
-						tile.x2 = extents.x2;
+					int x2 = tile.x1 + step;
+					if (x2 > extents.x2)
+						x2 = extents.x2;
+					tile.x2 = x2;
 
 					tmp.drawable.width  = tile.x2 - tile.x1;
 					tmp.drawable.height = tile.y2 - tile.y1;
@@ -1136,14 +1140,16 @@ tile:
 				clipped = stack;
 
 			for (tile.y1 = extents.y1; tile.y1 < extents.y2; tile.y1 = tile.y2) {
-				tile.y2 = tile.y1 + step;
-				if (tile.y2 > extents.y2)
-					tile.y2 = extents.y2;
+				int y2 = tile.y1 + step;
+				if (y2 > extents.y2)
+					y2 = extents.y2;
+				tile.y2 = y2;
 
 				for (tile.x1 = extents.x1; tile.x1 < extents.x2; tile.x1 = tile.x2) {
-					tile.x2 = tile.x1 + step;
-					if (tile.x2 > extents.x2)
-						tile.x2 = extents.x2;
+					int x2 = tile.x1 + step;
+					if (x2 > extents.x2)
+						x2 = extents.x2;
+					tile.x2 = x2;
 
 					tmp.drawable.width  = tile.x2 - tile.x1;
 					tmp.drawable.height = tile.y2 - tile.y1;
