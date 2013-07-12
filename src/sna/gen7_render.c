@@ -2029,7 +2029,8 @@ static bool
 gen7_composite_set_target(struct sna *sna,
 			  struct sna_composite_op *op,
 			  PicturePtr dst,
-			  int x, int y, int w, int h)
+			  int x, int y, int w, int h,
+			  bool partial)
 {
 	BoxRec box;
 
@@ -2067,7 +2068,7 @@ gen7_composite_set_target(struct sna *sna,
 	assert(op->dst.bo->proxy == NULL);
 
 	if (too_large(op->dst.width, op->dst.height) &&
-	    !sna_render_composite_redirect(sna, op, x, y, w, h))
+	    !sna_render_composite_redirect(sna, op, x, y, w, h, partial))
 		return false;
 
 	return true;
@@ -2403,7 +2404,8 @@ gen7_render_composite(struct sna *sna,
 		op = PictOpSrc;
 	tmp->op = op;
 	if (!gen7_composite_set_target(sna, tmp, dst,
-				       dst_x, dst_y, width, height))
+				       dst_x, dst_y, width, height,
+				       op > PictOpSrc || dst->pCompositeClip->data))
 		return false;
 
 	switch (gen7_composite_picture(sna, src, &tmp->src,
@@ -2677,7 +2679,7 @@ gen7_render_composite_spans(struct sna *sna,
 
 	tmp->base.op = op;
 	if (!gen7_composite_set_target(sna, &tmp->base, dst,
-				       dst_x, dst_y, width, height))
+				       dst_x, dst_y, width, height, true))
 		return false;
 
 	switch (gen7_composite_picture(sna, src, &tmp->base.src,
@@ -2928,7 +2930,8 @@ fallback_blt:
 						   extents.x1 + dst_dx,
 						   extents.y1 + dst_dy,
 						   extents.x2 - extents.x1,
-						   extents.y2 - extents.y1))
+						   extents.y2 - extents.y1,
+						   n > 1))
 			goto fallback_tiled;
 
 		dst_dx += tmp.dst.x;
@@ -3273,7 +3276,8 @@ gen7_render_fill_boxes(struct sna *sna,
 		if (!sna_render_composite_redirect(sna, &tmp,
 						   extents.x1, extents.y1,
 						   extents.x2 - extents.x1,
-						   extents.y2 - extents.y1))
+						   extents.y2 - extents.y1,
+						   n > 1))
 			return sna_tiling_fill_boxes(sna, op, format, color,
 						     dst, dst_bo, box, n);
 	}

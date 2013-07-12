@@ -1883,7 +1883,8 @@ sna_render_picture_convert(struct sna *sna,
 bool
 sna_render_composite_redirect(struct sna *sna,
 			      struct sna_composite_op *op,
-			      int x, int y, int width, int height)
+			      int x, int y, int width, int height,
+			      bool partial)
 {
 	struct sna_composite_redirect *t = &op->redirect;
 	int bpp = op->dst.pixmap->drawable.bitsPerPixel;
@@ -2026,7 +2027,8 @@ sna_render_composite_redirect(struct sna *sna,
 	DBG(("%s: original box (%d, %d), (%d, %d)\n",
 	     __FUNCTION__, t->box.x1, t->box.y1, t->box.x2, t->box.y2));
 
-	if (!sna_blt_copy_boxes(sna, GXcopy,
+	if (partial &&
+	    !sna_blt_copy_boxes(sna, GXcopy,
 				op->dst.bo, 0, 0,
 				bo, -t->box.x1, -t->box.y1,
 				bpp, &t->box, 1)) {

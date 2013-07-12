@@ -3550,7 +3550,8 @@ gen3_render_composite(struct sna *sna,
 	if (too_large(tmp->dst.width, tmp->dst.height) ||
 	    !gen3_check_pitch_3d(tmp->dst.bo)) {
 		if (!sna_render_composite_redirect(sna, tmp,
-						   dst_x, dst_y, width, height))
+						   dst_x, dst_y, width, height,
+						   op > PictOpSrc || dst->pCompositeClip->data))
 			return false;
 	}
 
@@ -4895,7 +4896,8 @@ gen3_render_composite_spans(struct sna *sna,
 	if (too_large(tmp->base.dst.width, tmp->base.dst.height) ||
 	    !gen3_check_pitch_3d(tmp->base.dst.bo)) {
 		if (!sna_render_composite_redirect(sna, &tmp->base,
-						   dst_x, dst_y, width, height))
+						   dst_x, dst_y, width, height,
+						   true))
 			return false;
 	}
 
@@ -5675,7 +5677,8 @@ fallback_blt:
 						   extents.x1 + dst_dx,
 						   extents.y1 + dst_dy,
 						   extents.x2 - extents.x1,
-						   extents.y2 - extents.y1))
+						   extents.y2 - extents.y1,
+						   n > 1))
 			goto fallback_tiled;
 	}
 

@@ -727,7 +727,8 @@ inline static void sna_render_composite_redirect_init(struct sna_composite_op *o
 bool
 sna_render_composite_redirect(struct sna *sna,
 			      struct sna_composite_op *op,
-			      int x, int y, int width, int height);
+			      int x, int y, int width, int height,
+			      bool partial);
 
 void
 sna_render_composite_redirect_done(struct sna *sna,
