@@ -1,3 +1,54 @@
+Release 2.21.12 (2013-07-14)
+============================
+In this release, we clear up the teething troubles from preserving the KMS
+configuration, notably external connections on Haswell and plugging in new
+outputs after startup were broken. Besides these regression fixes, there
+are a couple of fixes for some long standing issues, such as incorrect
+rendering on gen2, an infinite loop with very, very large pixmaps and a
+slight improvement to the tempermental gen4.
+
+ * Allow untiled scanouts again (required for large extended desktops on
+   gen2 and gen3).
+   [Regression from 2.21.11]
+
+ * Use the correct count of the number of dirty damage boxes for the quick
+   check on whether the existing damage contains the requested area.
+   The danger is that we may get a false result and skip migration and so
+   cause pixmap corruption (in the unlikely event that the application
+   frequently causes fallbacks).
+   [Regression from 2.21.11]
+   https://bugs.freedesktop.org/show_bug.cgi?id=66430
+
+ * Fix initial connection probing for multi-function encoders, such as the
+   external connections on Haswell.
+   [Regression from 2.21.11, initial connection probing]
+   https://bugs.freedesktop.org/show_bug.cgi?id=66488
+
+ * Fix gen2 rendercopy into a8 surfaces, for example, glyph uploads into
+   the glyph cache.
+
+ * Fix detection of user overrides for initial connection configuration.
+   The code used the xorg-server-1.15 values, having missed the
+   introduction of ZoomModes into that release.
+   [Regression from 2.21.11, initial connection probing]
+
+ * Always initialise the gamma ramp, even on unconnected CRTCs.
+   https://bugs.freedesktop.org/show_bug.cgi?id=66563
+   [Regression from 2.21.11, initial connection probing]
+
+ * Some more tuning of the gen4 vertex corruption workaround. The root
+   cause behind the GPU using incorrect texture coordinates is still
+   not solved, but by reducing the maximum number or rectangles in
+   flight through the GPU we reduce the likelihood of corruption.
+
+ * Fix compilation with gcc-4.5
+   [Regression from 2.21.11]
+
+ * Avoid integer overflow when performing tiled uploads and operations
+   on very large (>28k pixels wide or tall pixmaps)
+   https://bugs.launchpad.net/ubuntu/+source/xserver-xorg-video-intel/+bug/1200766
+
+
 Release 2.21.11 (2013-06-30)
 ============================
 An eventful week. What started with a regression with some builds of
