@@ -3058,7 +3058,7 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 				if (crtc->desiredMode.status == MODE_OK) {
 					DisplayModePtr M;
 
-					xf86DrvMsg(scrn->scrnIndex, X_INFO,
+					xf86DrvMsg(scrn->scrnIndex, X_PROBED,
 						   "Output %s using initial mode %s on pipe %d\n",
 						   output->name,
 						   crtc->desiredMode.name,
