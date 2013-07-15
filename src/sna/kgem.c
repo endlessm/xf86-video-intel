@@ -3569,10 +3569,6 @@ int kgem_choose_tiling(struct kgem *kgem, int tiling, int width, int height, int
 			goto done;
 		}
 	} else {
-		/* XXX rendering to I915_TILING_Y seems broken? */
-		if (kgem->gen < 050 && tiling == I915_TILING_Y)
-			tiling = I915_TILING_X;
-
 		if (width*bpp > (MAXSHORT-512) * 8) {
 			if (tiling > 0)
 				tiling = -tiling;
