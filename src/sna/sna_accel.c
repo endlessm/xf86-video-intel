@@ -5523,32 +5523,46 @@ sna_do_copy(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 		 * XFree86 DDX empties the border clip when the
 		 * VT is inactive, make sure the region isn't empty
 		 */
-		if (w->parent || RegionNil(&w->borderClip)) {
-			int16_t v;
+		assert(!w->winSize.data);
 
-			v = max(w->borderClip.extents.x1,
-				w->winSize.extents.x1);
-			if (region.extents.x1 < v)
-				region.extents.x1 = v;
+		if (region.extents.x1 < w->winSize.extents.x1)
+			region.extents.x1 = w->winSize.extents.x1;
+		if (region.extents.y1 < w->winSize.extents.y1)
+			region.extents.y1 = w->winSize.extents.y1;
 
-			v = max(w->borderClip.extents.y1,
-				w->winSize.extents.y1);
-			if (region.extents.y1 < v)
-				region.extents.y1 = v;
+		if (region.extents.x2 > w->winSize.extents.x2)
+			region.extents.x2 = w->winSize.extents.x2;
+		if (region.extents.y2 > w->winSize.extents.y1)
+			region.extents.y2 = w->winSize.extents.y2;
 
-			v = min(w->borderClip.extents.x2,
-				w->winSize.extents.x2);
-			if (region.extents.x2 > v)
-				region.extents.x2 = v;
+		if (w->borderClip.data == NULL) {
+			if (region.extents.x1 < w->borderClip.extents.x1)
+				region.extents.x1 = w->borderClip.extents.x1;
+			if (region.extents.y1 < w->borderClip.extents.y1)
+				region.extents.y1 = w->borderClip.extents.y1;
 
-			v = min(w->borderClip.extents.y2,
-				w->winSize.extents.y2);
-			if (region.extents.y2 > v)
-				region.extents.y2 = v;
-		}
+			if (region.extents.x2 > w->borderClip.extents.x2)
+				region.extents.x2 = w->borderClip.extents.x2;
+			if (region.extents.y2 > w->borderClip.extents.y1)
+				region.extents.y2 = w->borderClip.extents.y2;
+		} else
+			clip = &w->borderClip;
 	} else {
+		WindowPtr w = (WindowPtr)src;
+
 		DBG(("%s: window clip\n", __FUNCTION__));
-		clip = &((WindowPtr)src)->clipList;
+		if (w->clipList.data == NULL) {
+			if (region.extents.x1 < w->clipList.extents.x1)
+				region.extents.x1 = w->clipList.extents.x1;
+			if (region.extents.y1 < w->clipList.extents.y1)
+				region.extents.y1 = w->clipList.extents.y1;
+
+			if (region.extents.x2 > w->clipList.extents.x2)
+				region.extents.x2 = w->clipList.extents.x2;
+			if (region.extents.y2 > w->clipList.extents.y1)
+				region.extents.y2 = w->clipList.extents.y2;
+		} else
+			clip = &w->clipList;
 	}
 	if (clip == NULL) {
 		DBG(("%s: fast source clip against extents\n", __FUNCTION__));
