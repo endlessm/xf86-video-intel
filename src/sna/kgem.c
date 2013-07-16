@@ -1395,6 +1395,7 @@ static uint32_t kgem_surface_size(struct kgem *kgem,
 
 	assert(width <= MAXSHORT);
 	assert(height <= MAXSHORT);
+	assert(bpp >= 8);
 
 	if (kgem->gen <= 030) {
 		if (tiling) {
