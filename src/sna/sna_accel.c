@@ -3449,13 +3449,16 @@ sna_pixmap_create_upload(ScreenPtr screen,
 	struct sna *sna = to_sna_from_screen(screen);
 	PixmapPtr pixmap;
 	struct sna_pixmap *priv;
-	int bpp = bits_per_pixel(depth);
 	void *ptr;
 
 	DBG(("%s(%d, %d, %d, flags=%x)\n", __FUNCTION__,
 	     width, height, depth, flags));
 	assert(width);
 	assert(height);
+
+	if (depth == 1)
+		return create_pixmap(sna, screen, width, height, depth,
+				     CREATE_PIXMAP_USAGE_SCRATCH);
 
 	if (sna->freed_pixmap) {
 		pixmap = sna->freed_pixmap;
@@ -3477,11 +3480,17 @@ sna_pixmap_create_upload(ScreenPtr screen,
 		sna_set_pixmap(pixmap, priv);
 	}
 
+	pixmap->drawable.width = width;
+	pixmap->drawable.height = height;
+	pixmap->drawable.depth = depth;
+	pixmap->drawable.bitsPerPixel = bits_per_pixel(depth);
+
 	priv = _sna_pixmap_reset(pixmap);
 	priv->header = true;
 
 	priv->gpu_bo = kgem_create_buffer_2d(&sna->kgem,
-					     width, height, bpp,
+					     width, height,
+					     pixmap->drawable.bitsPerPixel,
 					     flags, &ptr);
 	if (!priv->gpu_bo) {
 		free(priv);
@@ -3497,11 +3506,6 @@ sna_pixmap_create_upload(ScreenPtr screen,
 	sna_damage_all(&priv->gpu_damage, width, height);
 	sna_damage_all(&priv->cpu_damage, width, height);
 
-	pixmap->drawable.width = width;
-	pixmap->drawable.height = height;
-	pixmap->drawable.depth = depth;
-	pixmap->drawable.bitsPerPixel = bpp;
-	pixmap->drawable.serialNumber = NEXT_SERIAL_NUMBER;
 	pixmap->devKind = priv->gpu_bo->pitch;
 	pixmap->devPrivate.ptr = ptr;
 
