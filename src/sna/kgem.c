@@ -38,7 +38,6 @@
 #include <time.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <cpuid.h>
 
 #include <xf86drm.h>
 
@@ -697,6 +696,9 @@ total_ram_size(void)
 	return 0;
 }
 
+#if HAS_GCC(4, 4) /* for __cpuid_count() */
+#include <cpuid.h>
+
 static unsigned
 cpu_cache_size__cpuid4(void)
 {
@@ -739,6 +741,14 @@ cpu_cache_size__cpuid4(void)
 
 	 return llc_size;
 }
+
+#else
+static unsigned
+cpu_cache_size__cpuid4(void)
+{
+	return 0;
+}
+#endif
 
 static unsigned
 cpu_cache_size(void)
