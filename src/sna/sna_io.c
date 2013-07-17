@@ -307,6 +307,7 @@ fallback:
 
 			DBG(("%s: tiling download, using %dx%d tiles\n",
 			     __FUNCTION__, step, step));
+			assert(step);
 
 			for (tile.y1 = extents.y1; tile.y1 < extents.y2; tile.y1 = tile.y2) {
 				int y2 = tile.y1 + step;
@@ -757,6 +758,7 @@ tile:
 
 			if (step * cpp > 4096)
 				step = 4096 / cpp;
+			assert(step);
 
 			DBG(("%s: tiling upload, using %dx%d tiles\n",
 			     __FUNCTION__, step, step));
@@ -1131,6 +1133,7 @@ tile:
 
 			DBG(("%s: tiling upload, using %dx%d tiles\n",
 			     __FUNCTION__, step, step));
+			assert(step);
 
 			if (n > ARRAY_SIZE(stack)) {
 				clipped = malloc(sizeof(BoxRec) * n);

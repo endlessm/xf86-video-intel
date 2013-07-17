@@ -1277,6 +1277,8 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 		kgem->max_upload_tile_size = kgem->aperture_high/2;
 	if (kgem->max_upload_tile_size > kgem->aperture_low)
 		kgem->max_upload_tile_size = kgem->aperture_low;
+	if (kgem->max_upload_tile_size < 16*PAGE_SIZE)
+		kgem->max_upload_tile_size = 16*PAGE_SIZE;
 
 	kgem->large_object_size = MAX_CACHE_SIZE;
 	if (kgem->large_object_size > half_gpu_max)
@@ -1285,6 +1287,8 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 		kgem->max_copy_tile_size = kgem->aperture_high/2;
 	if (kgem->max_copy_tile_size > kgem->aperture_low)
 		kgem->max_copy_tile_size = kgem->aperture_low;
+	if (kgem->max_copy_tile_size < 16*PAGE_SIZE)
+		kgem->max_copy_tile_size = 16*PAGE_SIZE;
 
 	if (kgem->has_llc | kgem->has_cacheing | kgem->has_userptr) {
 		if (kgem->large_object_size > kgem->max_cpu_size)
@@ -3201,6 +3205,8 @@ search_linear_cache(struct kgem *kgem, unsigned int num_pages, unsigned flags)
 	     num_pages >= MAX_CACHE_SIZE / PAGE_SIZE,
 	     MAX_CACHE_SIZE / PAGE_SIZE));
 
+	assert(num_pages);
+
 	if (num_pages >= MAX_CACHE_SIZE / PAGE_SIZE) {
 		DBG(("%s: searching large buffers\n", __FUNCTION__));
 retry_large:
@@ -3524,13 +3530,14 @@ struct kgem_bo *kgem_create_linear(struct kgem *kgem, int size, unsigned flags)
 	uint32_t handle;
 
 	DBG(("%s(%d)\n", __FUNCTION__, size));
+	assert(size);
 
 	if (flags & CREATE_GTT_MAP && kgem->has_llc) {
 		flags &= ~CREATE_GTT_MAP;
 		flags |= CREATE_CPU_MAP;
 	}
 
-	size = (size + PAGE_SIZE - 1) / PAGE_SIZE;
+	size = NUM_PAGES(size);
 	bo = search_linear_cache(kgem, size, CREATE_INACTIVE | flags);
 	if (bo) {
 		assert(bo->domain != DOMAIN_GPU);
