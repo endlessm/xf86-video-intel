@@ -5524,44 +5524,18 @@ sna_do_copy(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 		 * VT is inactive, make sure the region isn't empty
 		 */
 		assert(!w->winSize.data);
-
-		if (region.extents.x1 < w->winSize.extents.x1)
-			region.extents.x1 = w->winSize.extents.x1;
-		if (region.extents.y1 < w->winSize.extents.y1)
-			region.extents.y1 = w->winSize.extents.y1;
-
-		if (region.extents.x2 > w->winSize.extents.x2)
-			region.extents.x2 = w->winSize.extents.x2;
-		if (region.extents.y2 > w->winSize.extents.y1)
-			region.extents.y2 = w->winSize.extents.y2;
-
-		if (w->borderClip.data == NULL) {
-			if (region.extents.x1 < w->borderClip.extents.x1)
-				region.extents.x1 = w->borderClip.extents.x1;
-			if (region.extents.y1 < w->borderClip.extents.y1)
-				region.extents.y1 = w->borderClip.extents.y1;
-
-			if (region.extents.x2 > w->borderClip.extents.x2)
-				region.extents.x2 = w->borderClip.extents.x2;
-			if (region.extents.y2 > w->borderClip.extents.y1)
-				region.extents.y2 = w->borderClip.extents.y2;
-		} else
+		box_intersect(&region.extents, &w->winSize.extents);
+		if (w->borderClip.data == NULL)
+			box_intersect(&region.extents, &w->borderClip.extents);
+		else
 			clip = &w->borderClip;
 	} else {
 		WindowPtr w = (WindowPtr)src;
 
 		DBG(("%s: window clip\n", __FUNCTION__));
-		if (w->clipList.data == NULL) {
-			if (region.extents.x1 < w->clipList.extents.x1)
-				region.extents.x1 = w->clipList.extents.x1;
-			if (region.extents.y1 < w->clipList.extents.y1)
-				region.extents.y1 = w->clipList.extents.y1;
-
-			if (region.extents.x2 > w->clipList.extents.x2)
-				region.extents.x2 = w->clipList.extents.x2;
-			if (region.extents.y2 > w->clipList.extents.y1)
-				region.extents.y2 = w->clipList.extents.y2;
-		} else
+		if (w->clipList.data == NULL)
+			box_intersect(&region.extents, &w->clipList.extents);
+		else
 			clip = &w->clipList;
 	}
 	if (clip == NULL) {
