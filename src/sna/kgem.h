@@ -564,7 +564,7 @@ static inline bool kgem_bo_can_map(struct kgem *kgem, struct kgem_bo *bo)
 	if (kgem_bo_mapped(kgem, bo))
 		return true;
 
-	if (!bo->tiling && kgem->has_llc)
+	if (!bo->tiling && (kgem->has_llc || bo->domain == DOMAIN_CPU))
 		return true;
 
 	if (kgem->gen == 021 && bo->tiling == I915_TILING_Y)
