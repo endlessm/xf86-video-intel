@@ -30,14 +30,7 @@
 #endif
 
 #include "sna.h"
-
-#if HAS_GCC(4, 4)
-
-#include <cpuid.h>
-
-#ifndef bit_AVX2
-#define bit_AVX2 (1<<5)
-#endif
+#include "sna_cpuid.h"
 
 #define xgetbv(index,eax,edx)                                   \
 	__asm__ ("xgetbv" : "=a"(eax), "=d"(edx) : "c" (index))
@@ -46,7 +39,7 @@
 
 unsigned sna_cpu_detect(void)
 {
-	unsigned max = __get_cpuid_max(false, 0);
+	unsigned max = __get_cpuid_max(BASIC_CPUID, NULL);
 	unsigned int eax, ebx, ecx, edx;
 	unsigned features = 0;
 	unsigned extra = 0;
@@ -93,15 +86,6 @@ unsigned sna_cpu_detect(void)
 
 	return features;
 }
-
-#else
-
-unsigned sna_cpu_detect(void)
-{
-	return 0;
-}
-
-#endif
 
 char *sna_cpu_features_to_string(unsigned features, char *line)
 {

@@ -50,6 +50,8 @@
 #include <sys/sysinfo.h>
 #endif
 
+#include "sna_cpuid.h"
+
 static struct kgem_bo *
 search_linear_cache(struct kgem *kgem, unsigned int num_pages, unsigned flags);
 
@@ -696,9 +698,6 @@ total_ram_size(void)
 	return 0;
 }
 
-#if HAS_GCC(4, 4) /* for __cpuid_count() */
-#include <cpuid.h>
-
 static unsigned
 cpu_cache_size__cpuid4(void)
 {
@@ -720,7 +719,7 @@ cpu_cache_size__cpuid4(void)
 	 unsigned int llc_size = 0;
 	 int cnt = 0;
 
-	 if (__get_cpuid_max(false, 0) < 4)
+	 if (__get_cpuid_max(BASIC_CPUID, NULL) < 4)
 		 return 0;
 
 	 do {
@@ -741,14 +740,6 @@ cpu_cache_size__cpuid4(void)
 
 	 return llc_size;
 }
-
-#else
-static unsigned
-cpu_cache_size__cpuid4(void)
-{
-	return 0;
-}
-#endif
 
 static unsigned
 cpu_cache_size(void)

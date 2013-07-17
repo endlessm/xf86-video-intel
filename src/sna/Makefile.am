@@ -49,6 +49,7 @@ libsna_la_SOURCES = \
 	sna_blt.c \
 	sna_composite.c \
 	sna_cpu.c \
+	sna_cpuid.h \
 	sna_damage.c \
 	sna_damage.h \
 	sna_display.c \
