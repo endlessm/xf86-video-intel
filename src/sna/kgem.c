@@ -1273,6 +1273,7 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 		kgem->buffer_size *= 2;
 	if (kgem->buffer_size >> 12 > kgem->half_cpu_cache_pages)
 		kgem->buffer_size = kgem->half_cpu_cache_pages << 12;
+	kgem->buffer_size = 1 << __fls(kgem->buffer_size);
 	DBG(("%s: buffer size=%d [%d KiB]\n", __FUNCTION__,
 	     kgem->buffer_size, kgem->buffer_size / 1024));
 	assert(kgem->buffer_size);
