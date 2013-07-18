@@ -553,8 +553,11 @@ static struct kgem_bo *upload(struct sna *sna,
 		    pixmap->usage_hint == 0 &&
 		    channel->width  == pixmap->drawable.width &&
 		    channel->height == pixmap->drawable.height) {
+			DBG(("%s: adding upload cache to pixmap=%ld\n",
+			     __FUNCTION__, pixmap->drawable.serialNumber));
 			assert(priv->gpu_damage == NULL);
 			assert(priv->gpu_bo == NULL);
+			assert(bo->proxy != NULL);
 			kgem_proxy_bo_attach(bo, &priv->gpu_bo);
 		}
 	}
@@ -1210,8 +1213,11 @@ sna_render_picture_extract(struct sna *sna,
 			if (priv != NULL && bo != NULL &&
 			    box.x2 - box.x1 == pixmap->drawable.width &&
 			    box.y2 - box.y1 == pixmap->drawable.height) {
+				DBG(("%s: adding upload cache to pixmap=%ld\n",
+				     __FUNCTION__, pixmap->drawable.serialNumber));
 				assert(priv->gpu_damage == NULL);
 				assert(priv->gpu_bo == NULL);
+				assert(bo->proxy != NULL);
 				kgem_proxy_bo_attach(bo, &priv->gpu_bo);
 			}
 		}

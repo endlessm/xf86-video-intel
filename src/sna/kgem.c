@@ -2631,6 +2631,7 @@ void kgem_reset(struct kgem *kgem)
 			bo->gpu_dirty = false;
 
 			if (bo->needs_flush && __kgem_busy(kgem, bo->handle)) {
+				assert(bo->domain == DOMAIN_GPU || bo->domain == DOMAIN_NONE);
 				list_add(&bo->request, &kgem->flushing);
 				bo->rq = (void *)kgem;
 			} else

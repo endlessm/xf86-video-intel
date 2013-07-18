@@ -3570,7 +3570,7 @@ void sna_mode_update(struct sna *sna)
 		DBG(("%s: crtc=%d, valid?=%d, fb attached?=%d, expected=%d\n",
 		     __FUNCTION__,
 		     mode.crtc_id, mode.mode_valid,
-		     mode.fb_id, fb_id, expected));
+		     mode.fb_id, expected));
 
 		if (mode.fb_id != expected)
 			sna_crtc_disable(crtc);
@@ -3779,7 +3779,7 @@ sna_crtc_redisplay(xf86CrtcPtr crtc, RegionPtr region)
 	     __FUNCTION__, sna_crtc->id, sna_crtc->pipe,
 	     region->extents.x1, region->extents.y1,
 	     region->extents.x2, region->extents.y2,
-	     REGION_NUM_RECTS(region)));
+	     (long)RegionNumRects(region)));
 
 	assert(!wedged(sna));
 

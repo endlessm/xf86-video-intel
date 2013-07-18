@@ -216,10 +216,13 @@ sna_compute_composite_region(RegionPtr region,
 			pixman_region_fini (region);
 			return FALSE;
 		}
-		DBG(("%s: clip against src: (%d, %d), (%d, %d)\n",
-		     __FUNCTION__,
-		     region->extents.x1, region->extents.y1,
-		     region->extents.x2, region->extents.y2));
+		DBG(("%s: clip against src (%dx%d clip=%d): (%d, %d), (%d, %d)\n",
+		       __FUNCTION__,
+		       src->pDrawable ? src->pDrawable->width : 0,
+		       src->pDrawable ? src->pDrawable->height : 0,
+		       src->clientClipType,
+		       region->extents.x1, region->extents.y1,
+		       region->extents.x2, region->extents.y2));
 
 		if (src->alphaMap) {
 			if (!clip_to_src(region, src->alphaMap,

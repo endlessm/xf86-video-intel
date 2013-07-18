@@ -2289,7 +2289,14 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 		RegionTranslate(region, dx, dy);
 
 	if (region_subsumes_drawable(region, &pixmap->drawable)) {
-		DBG(("%s: region subsumes drawable\n", __FUNCTION__));
+		DBG(("%s: region (%d, %d), (%d, %d) subsumes pixmap (%dx%d)\n",
+		       __FUNCTION__,
+		       region->extents.x1,
+		       region->extents.y1,
+		       region->extents.x2,
+		       region->extents.y2,
+		       pixmap->drawable.width,
+		       pixmap->drawable.height));
 		if (dx | dy)
 			RegionTranslate(region, -dx, -dy);
 		return _sna_pixmap_move_to_cpu(pixmap, flags);
