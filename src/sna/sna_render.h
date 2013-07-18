@@ -775,4 +775,11 @@ static inline bool sna_vertex_wait__locked(struct sna_render *r)
 	return was_active;
 }
 
+#define alphaless(format) PICT_FORMAT(PICT_FORMAT_BPP(format),		\
+				      PICT_FORMAT_TYPE(format),		\
+				      0,				\
+				      PICT_FORMAT_R(format),		\
+				      PICT_FORMAT_G(format),		\
+				      PICT_FORMAT_B(format))
+
 #endif /* SNA_RENDER_H */

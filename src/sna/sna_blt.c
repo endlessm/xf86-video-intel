@@ -1953,13 +1953,6 @@ prepare_blt_put(struct sna *sna,
 	return true;
 }
 
-#define alphaless(format) PICT_FORMAT(PICT_FORMAT_BPP(format),		\
-				      PICT_FORMAT_TYPE(format),		\
-				      0,				\
-				      PICT_FORMAT_R(format),		\
-				      PICT_FORMAT_G(format),		\
-				      PICT_FORMAT_B(format))
-
 static bool
 is_clear(PixmapPtr pixmap)
 {

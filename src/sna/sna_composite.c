@@ -470,6 +470,7 @@ sna_composite_fb(CARD8 op,
 	int src_xoff, src_yoff;
 	int msk_xoff, msk_yoff;
 	int dst_xoff, dst_yoff;
+	int16_t tx, ty;
 	unsigned flags;
 
 	DBG(("%s -- op=%d, fallback dst=(%d, %d)+(%d, %d), size=(%d, %d): region=((%d,%d), (%d, %d))\n",
@@ -518,6 +519,44 @@ sna_composite_fb(CARD8 op,
 	validate_source(src);
 	if (mask)
 		validate_source(mask);
+
+	if (mask == NULL &&
+	    src->pDrawable &&
+	    src->filter != PictFilterConvolution &&
+	    (op == PictOpSrc || (op == PictOpOver && !PICT_FORMAT_A(src->format))) &&
+	    (dst->format == src->format || dst->format == alphaless(src->format)) &&
+	    sna_transform_is_integer_translation(src->transform, &tx, &ty) &&
+	    region->extents.x1 + src_x + tx >= 0 &&
+	    region->extents.y1 + src_y + ty >= 0 &&
+	    region->extents.x2 + src_x + tx <= src->pDrawable->width &&
+	    region->extents.x2 + src_y + ty <= src->pDrawable->height) {
+		PixmapPtr dst_pixmap = get_drawable_pixmap(dst->pDrawable);
+		PixmapPtr src_pixmap = get_drawable_pixmap(src->pDrawable);
+		int nbox = RegionNumRects(region);
+		BoxPtr box = RegionRects(region);
+
+		src_x += tx; src_y += ty;
+
+		get_drawable_deltas(src->pDrawable, src_pixmap, &tx, &ty);
+		src_x += tx; src_y += ty;
+
+		get_drawable_deltas(dst->pDrawable, dst_pixmap, &tx, &ty);
+		dst_x += tx; dst_y += ty;
+
+		do {
+			memcpy_blt(src_pixmap->devPrivate.ptr,
+				   dst_pixmap->devPrivate.ptr,
+				   dst_pixmap->drawable.bitsPerPixel,
+				   src_pixmap->devKind,
+				   dst_pixmap->devKind,
+				   box->x1 + src_x, box->y1 + src_y,
+				   box->x1 + dst_x, box->y1 + dst_y,
+				   box->x2 - box->x1, box->y2 - box->y1);
+			box++;
+		} while (--nbox);
+
+		return;
+	}
 
 	src_image = image_from_pict(src, FALSE, &src_xoff, &src_yoff);
 	mask_image = image_from_pict(mask, FALSE, &msk_xoff, &msk_yoff);
