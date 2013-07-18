@@ -5464,7 +5464,7 @@ sna_do_copy(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 {
 	RegionPtr clip;
 	RegionRec region;
-	bool expose;
+	BoxRec src_extents;
 
 	DBG(("%s: src=(%d, %d), dst=(%d, %d), size=(%dx%d)\n",
 	     __FUNCTION__, sx, sy, dx, dy, width, height));
@@ -5506,6 +5506,8 @@ sna_do_copy(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	region.extents.y1 = clamp(region.extents.y1, sy - dy);
 	region.extents.y2 = clamp(region.extents.y2, sy - dy);
 
+	src_extents = region.extents;
+
 	/* Compute source clip region */
 	clip = NULL;
 	if (src == dst && gc->clientClipType == CT_NONE) {
@@ -5540,33 +5542,24 @@ sna_do_copy(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	}
 	if (clip == NULL) {
 		DBG(("%s: fast source clip against extents\n", __FUNCTION__));
-		expose = true;
-		if (region.extents.x1 < src->x) {
+		if (region.extents.x1 < src->x)
 			region.extents.x1 = src->x;
-			expose = false;
-		}
-		if (region.extents.y1 < src->y) {
+		if (region.extents.y1 < src->y)
 			region.extents.y1 = src->y;
-			expose = false;
-		}
-		if (region.extents.x2 > src->x + (int) src->width) {
+		if (region.extents.x2 > src->x + (int) src->width)
 			region.extents.x2 = src->x + (int) src->width;
-			expose = false;
-		}
-		if (region.extents.y2 > src->y + (int) src->height) {
+		if (region.extents.y2 > src->y + (int) src->height)
 			region.extents.y2 = src->y + (int) src->height;
-			expose = false;
-		}
-		if (box_empty(&region.extents))
-			return NULL;
-	} else {
-		expose = false;
+	} else
 		RegionIntersect(&region, &region, clip);
-	}
 	DBG(("%s: src extents (%d, %d), (%d, %d) x %ld\n", __FUNCTION__,
 	     region.extents.x1, region.extents.y1,
 	     region.extents.x2, region.extents.y2,
 	     (long)RegionNumRects(&region)));
+	if ((clip == NULL || clip->data == NULL) &&
+	    *(uint64_t *)&src_extents == *(uint64_t *)&region.extents)
+		*(uint64_t *)&src_extents = 0;
+
 	RegionTranslate(&region, dx-sx, dy-sy);
 	if (gc->pCompositeClip->data)
 		RegionIntersect(&region, &region, gc->pCompositeClip);
@@ -5581,7 +5574,7 @@ sna_do_copy(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 
 	/* Pixmap sources generate a NoExposed (we return NULL to do this) */
 	clip = NULL;
-	if (!expose && gc->fExpose)
+	if (gc->fExpose && *(uint64_t *)&src_extents != 0)
 		clip = miHandleExposures(src, dst, gc,
 					 sx - src->x, sy - src->y,
 					 width, height,
