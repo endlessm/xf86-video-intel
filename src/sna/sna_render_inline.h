@@ -105,7 +105,7 @@ static inline bool
 unattached(DrawablePtr drawable)
 {
 	struct sna_pixmap *priv = sna_pixmap_from_drawable(drawable);
-	return priv == NULL || (priv->gpu_damage == NULL && priv->cpu_damage);
+	return priv == NULL || (priv->gpu_damage == NULL && priv->cpu_damage && !priv->cpu_bo);
 }
 
 static inline bool
