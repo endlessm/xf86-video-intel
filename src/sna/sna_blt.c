@@ -2031,8 +2031,12 @@ clear:
 		hint = 0;
 		if (can_render(sna)) {
 			hint |= PREFER_GPU;
-			if (dst->pCompositeClip->data == NULL && (width | height))
+			if (dst->pCompositeClip->data == NULL && (width | height)) {
 				hint |= IGNORE_CPU;
+				if (width == tmp->dst.pixmap->drawable.width &&
+				    height == tmp->dst.pixmap->drawable.height)
+					hint |= REPLACES;
+			}
 		}
 		tmp->dst.bo = sna_drawable_use_bo(dst->pDrawable, hint,
 						  &dst_box, &tmp->damage);
@@ -2051,7 +2055,9 @@ clear:
 			if (!sna_drawable_move_region_to_cpu(dst->pDrawable, &region,
 							     MOVE_INPLACE_HINT | MOVE_WRITE))
 				return false;
-		}
+		} else if (hint & REPLACES)
+			kgem_bo_undo(&sna->kgem, tmp->dst.bo);
+
 		return prepare_blt_clear(sna, tmp);
 	}
 
@@ -2081,6 +2087,9 @@ fill:
 			hint |= PREFER_GPU;
 			if (dst->pCompositeClip->data == NULL && (width | height))
 				hint |= IGNORE_CPU;
+				if (width == tmp->dst.pixmap->drawable.width &&
+				    height == tmp->dst.pixmap->drawable.height)
+					hint |= REPLACES;
 		}
 		tmp->dst.bo = sna_drawable_use_bo(dst->pDrawable, hint,
 						  &dst_box, &tmp->damage);
@@ -2099,7 +2108,8 @@ fill:
 			if (!sna_drawable_move_region_to_cpu(dst->pDrawable, &region,
 							MOVE_INPLACE_HINT | MOVE_WRITE))
 				return false;
-		}
+		} else if (hint & REPLACES)
+			kgem_bo_undo(&sna->kgem, tmp->dst.bo);
 
 		return prepare_blt_fill(sna, tmp, color);
 	}
@@ -2228,13 +2238,20 @@ fill:
 	hint = 0;
 	if (bo || can_render(sna)) {
 		hint |= PREFER_GPU;
-		if (dst->pCompositeClip->data == NULL && (width | height))
+		if (dst->pCompositeClip->data == NULL && (width | height)) {
 			hint |= IGNORE_CPU;
+			if (width == tmp->dst.pixmap->drawable.width &&
+			    height == tmp->dst.pixmap->drawable.height)
+				hint |= REPLACES;
+		}
 		if (bo)
 			hint |= FORCE_GPU;
 	}
 	tmp->dst.bo = sna_drawable_use_bo(dst->pDrawable, hint,
 					  &dst_box, &tmp->damage);
+
+	if (hint & REPLACES)
+		kgem_bo_undo(&sna->kgem, tmp->dst.bo);
 
 	ret = false;
 	if (bo) {
