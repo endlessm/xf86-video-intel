@@ -69,6 +69,7 @@
 #define USE_USERPTR_UPLOADS 1
 #define USE_USERPTR_DOWNLOADS 1
 #define USE_COW 1
+#define UNDO 1
 
 #define MIGRATE_ALL 0
 #define DBG_NO_CPU_UPLOAD 0
@@ -1833,7 +1834,7 @@ _sna_pixmap_move_to_cpu(PixmapPtr pixmap, unsigned int flags)
 
 	assert(priv->gpu_damage == NULL || priv->gpu_bo);
 
-	if ((flags & MOVE_READ) == 0) {
+	if ((flags & MOVE_READ) == 0 && UNDO) {
 		if (priv->gpu_bo)
 			kgem_bo_undo(&sna->kgem, priv->gpu_bo);
 		if (priv->cpu_bo)
@@ -1923,6 +1924,7 @@ skip_inplace_map:
 		if (priv->mapped) {
 			assert(has_coherent_map(sna, priv->gpu_bo, flags));
 			pixmap->devKind = priv->gpu_bo->pitch;
+
 			if (flags & MOVE_WRITE) {
 				assert(priv->gpu_bo->proxy == NULL);
 				sna_damage_all(&priv->gpu_damage,
@@ -2173,7 +2175,9 @@ static inline bool region_inplace(struct sna *sna,
 		return false;
 
 	if (flags & MOVE_READ &&
-	    (priv->cpu || region_overlaps_damage(region, priv->cpu_damage, 0, 0))) {
+	    (priv->cpu ||
+	     priv->gpu_damage == NULL ||
+	     region_overlaps_damage(region, priv->cpu_damage, 0, 0))) {
 		DBG(("%s: no, uncovered CPU damage pending\n", __FUNCTION__));
 		return false;
 	}
@@ -3568,7 +3572,7 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 
 	assert(priv->gpu_damage == NULL || priv->gpu_bo);
 
-	if ((flags & MOVE_READ) == 0) {
+	if ((flags & MOVE_READ) == 0 && UNDO) {
 		if (priv->gpu_bo)
 			kgem_bo_undo(&sna->kgem, priv->gpu_bo);
 		if (priv->cpu_bo)
@@ -5007,7 +5011,7 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 			DBG(("%s: applying src clear [%08x] to dst\n",
 			     __FUNCTION__, src_priv->clear_color));
 			if (n == 1) {
-				if (replaces)
+				if (replaces && UNDO)
 					kgem_bo_undo(&sna->kgem, bo);
 
 				if (!sna->render.fill_one(sna,
@@ -5060,7 +5064,7 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 		    sna_pixmap_move_to_gpu(src_pixmap, MOVE_READ | MOVE_ASYNC_HINT)) {
 			DBG(("%s: move whole src_pixmap to GPU and copy\n",
 			     __FUNCTION__));
-			if (replaces)
+			if (replaces && UNDO)
 				kgem_bo_undo(&sna->kgem, bo);
 
 			if (replaces &&
@@ -5112,7 +5116,7 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 							 MOVE_READ | MOVE_ASYNC_HINT))
 				goto fallback;
 
-			if (replaces)
+			if (replaces && UNDO)
 				kgem_bo_undo(&sna->kgem, bo);
 
 			if (!sna->render.copy_boxes(sna, alu,
@@ -5148,7 +5152,7 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 			if (!ret)
 				goto fallback;
 
-			if (replaces)
+			if (replaces && UNDO)
 				kgem_bo_undo(&sna->kgem, bo);
 
 			if (src_priv->shm) {
@@ -12666,7 +12670,7 @@ sna_poly_fill_rect(DrawablePtr draw, GCPtr gc, int n, xRectangle *rect)
 		DBG(("%s: not using GPU, hint=%x\n", __FUNCTION__, hint));
 		goto fallback;
 	}
-	if (hint & REPLACES && (flags & 2) == 0)
+	if (hint & REPLACES && (flags & 2) == 0 && UNDO)
 		kgem_bo_undo(&sna->kgem, bo);
 
 	if (gc_is_solid(gc, &color)) {
