@@ -1471,10 +1471,10 @@ sna_pixmap_create_mappable_gpu(PixmapPtr pixmap,
 	unsigned create;
 
 	if (wedged(sna))
-		return false;
+		goto done;
 
 	if ((priv->create & KGEM_CAN_CREATE_GTT) == 0)
-		return false;
+		goto done;
 
 	assert_pixmap_damage(pixmap);
 
@@ -1482,7 +1482,7 @@ sna_pixmap_create_mappable_gpu(PixmapPtr pixmap,
 	    (!kgem_bo_is_mappable(&sna->kgem, priv->gpu_bo) ||
 	     __kgem_bo_is_busy(&sna->kgem, priv->gpu_bo))) {
 		if (priv->pinned)
-			return false;
+			goto done;
 
 		DBG(("%s: discard busy GPU bo\n", __FUNCTION__));
 		sna_pixmap_free_gpu(sna, priv);
@@ -1508,6 +1508,7 @@ sna_pixmap_create_mappable_gpu(PixmapPtr pixmap,
 			       sna_pixmap_choose_tiling(pixmap, DEFAULT_TILING),
 			       create);
 
+done:
 	return priv->gpu_bo && kgem_bo_is_mappable(&sna->kgem, priv->gpu_bo);
 }
 
@@ -1909,7 +1910,7 @@ skip_inplace_map:
 	if (USE_INPLACE &&
 	    operate_inplace(priv, flags) &&
 	    pixmap_inplace(sna, pixmap, priv, flags) &&
-	     sna_pixmap_create_mappable_gpu(pixmap, (flags & MOVE_READ) == 0)) {
+	    sna_pixmap_create_mappable_gpu(pixmap, (flags & MOVE_READ) == 0)) {
 		DBG(("%s: try to operate inplace (GTT)\n", __FUNCTION__));
 		assert(priv->cow == NULL || (flags & MOVE_WRITE) == 0);
 		assert((flags & MOVE_READ) == 0 || priv->cpu_damage == NULL);
@@ -2305,7 +2306,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 	if (USE_INPLACE &&
 	    operate_inplace(priv, flags) &&
 	    region_inplace(sna, pixmap, region, priv, flags) &&
-	     sna_pixmap_create_mappable_gpu(pixmap, false)) {
+	    sna_pixmap_create_mappable_gpu(pixmap, false)) {
 		DBG(("%s: try to operate inplace\n", __FUNCTION__));
 		assert(priv->cow == NULL || (flags & MOVE_WRITE) == 0);
 		/* XXX only sync for writes? */
