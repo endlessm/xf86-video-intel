@@ -2031,9 +2031,7 @@ clear:
 		hint = 0;
 		if (can_render(sna)) {
 			hint |= PREFER_GPU;
-			if (sna_pixmap(tmp->dst.pixmap)->gpu_bo)
-				hint |= FORCE_GPU;
-			if (dst->pCompositeClip->data == NULL)
+			if (dst->pCompositeClip->data == NULL && (width | height))
 				hint |= IGNORE_CPU;
 		}
 		tmp->dst.bo = sna_drawable_use_bo(dst->pDrawable, hint,
@@ -2081,9 +2079,7 @@ fill:
 		hint = 0;
 		if (can_render(sna)) {
 			hint |= PREFER_GPU;
-			if (sna_pixmap(tmp->dst.pixmap)->gpu_bo)
-				hint |= FORCE_GPU;
-			if (dst->pCompositeClip->data == NULL)
+			if (dst->pCompositeClip->data == NULL && (width | height))
 				hint |= IGNORE_CPU;
 		}
 		tmp->dst.bo = sna_drawable_use_bo(dst->pDrawable, hint,
@@ -2232,7 +2228,7 @@ fill:
 	hint = 0;
 	if (bo || can_render(sna)) {
 		hint |= PREFER_GPU;
-		if (dst->pCompositeClip->data == NULL)
+		if (dst->pCompositeClip->data == NULL && (width | height))
 			hint |= IGNORE_CPU;
 		if (bo)
 			hint |= FORCE_GPU;
