@@ -5402,10 +5402,10 @@ trapezoid_span_mono_inplace(struct sna *sna,
 
 unbounded_pass:
 		pixmap = get_drawable_pixmap(dst->pDrawable);
-		get_drawable_deltas(dst->pDrawable, pixmap, &dx, &dy);
 
 		ptr = pixmap->devPrivate.ptr;
-		ptr += dy * pixmap->devKind + dx * pixmap->drawable.bitsPerPixel / 8;
+		if (get_drawable_deltas(dst->pDrawable, pixmap, &dx, &dy))
+			ptr += dy * pixmap->devKind + dx * pixmap->drawable.bitsPerPixel / 8;
 		inplace.fill.data = (uint32_t *)ptr;
 		inplace.fill.stride = pixmap->devKind / sizeof(uint32_t);
 		inplace.fill.bpp = pixmap->drawable.bitsPerPixel;
@@ -5633,10 +5633,10 @@ static void inplace_x8r8g8b8_thread(void *arg)
 		PixmapPtr pixmap;
 
 		pixmap = get_drawable_pixmap(thread->dst->pDrawable);
-		get_drawable_deltas(thread->dst->pDrawable, pixmap, &dst_x, &dst_y);
 
 		inplace.ptr = pixmap->devPrivate.ptr;
-		inplace.ptr += dst_y * pixmap->devKind + dst_x * 4;
+		if (get_drawable_deltas(thread->dst->pDrawable, pixmap, &dst_x, &dst_y))
+			inplace.ptr += dst_y * pixmap->devKind + dst_x * 4;
 		inplace.stride = pixmap->devKind;
 		inplace.color = thread->color;
 
@@ -5824,10 +5824,10 @@ trapezoid_span_inplace__x8r8g8b8(CARD8 op,
 			int16_t dst_x, dst_y;
 
 			pixmap = get_drawable_pixmap(dst->pDrawable);
-			get_drawable_deltas(dst->pDrawable, pixmap, &dst_x, &dst_y);
 
 			inplace.ptr = pixmap->devPrivate.ptr;
-			inplace.ptr += dst_y * pixmap->devKind + dst_x * 4;
+			if (get_drawable_deltas(dst->pDrawable, pixmap, &dst_x, &dst_y))
+				inplace.ptr += dst_y * pixmap->devKind + dst_x * 4;
 			inplace.stride = pixmap->devKind;
 			inplace.color = color;
 
@@ -6151,10 +6151,10 @@ trapezoid_span_inplace(struct sna *sna,
 	dx = dst->pDrawable->x * FAST_SAMPLES_X;
 	dy = dst->pDrawable->y * FAST_SAMPLES_Y;
 
-	get_drawable_deltas(dst->pDrawable, pixmap, &dst_x, &dst_y);
 
 	inplace.ptr = pixmap->devPrivate.ptr;
-	inplace.ptr += dst_y * pixmap->devKind + dst_x;
+	if (get_drawable_deltas(dst->pDrawable, pixmap, &dst_x, &dst_y))
+		inplace.ptr += dst_y * pixmap->devKind + dst_x;
 	inplace.stride = pixmap->devKind;
 	inplace.opacity = color >> 24;
 

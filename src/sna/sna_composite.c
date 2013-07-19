@@ -537,11 +537,11 @@ sna_composite_fb(CARD8 op,
 
 		src_x += tx; src_y += ty;
 
-		get_drawable_deltas(src->pDrawable, src_pixmap, &tx, &ty);
-		src_x += tx; src_y += ty;
+		if (get_drawable_deltas(src->pDrawable, src_pixmap, &tx, &ty))
+			src_x += tx, src_y += ty;
 
-		get_drawable_deltas(dst->pDrawable, dst_pixmap, &tx, &ty);
-		dst_x += tx; dst_y += ty;
+		if (get_drawable_deltas(dst->pDrawable, dst_pixmap, &tx, &ty))
+			dst_x += tx, dst_y += ty;
 
 		do {
 			memcpy_blt(src_pixmap->devPrivate.ptr,
@@ -666,8 +666,7 @@ sna_composite(CARD8 op,
 	if (op <= PictOpSrc && priv->cpu_damage) {
 		int16_t x, y;
 
-		get_drawable_deltas(dst->pDrawable, pixmap, &x, &y);
-		if (x|y)
+		if (get_drawable_deltas(dst->pDrawable, pixmap, &x, &y))
 			pixman_region_translate(&region, x, y);
 
 		sna_damage_subtract(&priv->cpu_damage, &region);
@@ -888,8 +887,8 @@ sna_composite_rectangles(CARD8		 op,
 	     (long)RegionNumRects(&region)));
 
 	pixmap = get_drawable_pixmap(dst->pDrawable);
-	get_drawable_deltas(dst->pDrawable, pixmap, &dst_x, &dst_y);
-	pixman_region_translate(&region, dst_x, dst_y);
+	if (get_drawable_deltas(dst->pDrawable, pixmap, &dst_x, &dst_y))
+		pixman_region_translate(&region, dst_x, dst_y);
 
 	DBG(("%s: pixmap +(%d, %d) extents (%d, %d),(%d, %d)\n",
 	     __FUNCTION__, dst_x, dst_y,

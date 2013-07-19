@@ -2288,10 +2288,10 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 	    flags & MOVE_WRITE)
 		return _sna_pixmap_move_to_cpu(pixmap, flags);
 
-	get_drawable_deltas(drawable, pixmap, &dx, &dy);
-	DBG(("%s: delta=(%d, %d)\n", __FUNCTION__, dx, dy));
-	if (dx | dy)
+	if (get_drawable_deltas(drawable, pixmap, &dx, &dy)) {
+		DBG(("%s: delta=(%d, %d)\n", __FUNCTION__, dx, dy));
 		RegionTranslate(region, dx, dy);
+	}
 
 	if (region_subsumes_drawable(region, &pixmap->drawable)) {
 		DBG(("%s: region (%d, %d), (%d, %d) subsumes pixmap (%dx%d)\n",
@@ -3107,13 +3107,13 @@ sna_drawable_use_bo(DrawablePtr drawable, unsigned flags, const BoxRec *box,
 
 		if (flags & IGNORE_CPU) {
 			if (priv->gpu_damage) {
-				get_drawable_deltas(drawable, pixmap, &dx, &dy);
-
 				region.extents = *box;
-				region.extents.x1 += dx;
-				region.extents.x2 += dx;
-				region.extents.y1 += dy;
-				region.extents.y2 += dy;
+				if (get_drawable_deltas(drawable, pixmap, &dx, &dy)) {
+					region.extents.x1 += dx;
+					region.extents.x2 += dx;
+					region.extents.y1 += dy;
+					region.extents.y2 += dy;
+				}
 				region.data = NULL;
 				if (region_subsumes_damage(&region,
 							   priv->gpu_damage))
@@ -3223,13 +3223,13 @@ sna_drawable_use_bo(DrawablePtr drawable, unsigned flags, const BoxRec *box,
 				}
 			}
 		} else if (priv->cpu_damage) {
-			get_drawable_deltas(drawable, pixmap, &dx, &dy);
-
 			region.extents = *box;
-			region.extents.x1 += dx;
-			region.extents.x2 += dx;
-			region.extents.y1 += dy;
-			region.extents.y2 += dy;
+			if (get_drawable_deltas(drawable, pixmap, &dx, &dy)) {
+				region.extents.x1 += dx;
+				region.extents.x2 += dx;
+				region.extents.y1 += dy;
+				region.extents.y2 += dy;
+			}
 			region.data = NULL;
 
 			sna_damage_subtract(&priv->cpu_damage, &region);
@@ -3250,13 +3250,15 @@ create_gpu_bo:
 		goto done;
 	}
 
-	get_drawable_deltas(drawable, pixmap, &dx, &dy);
 
 	region.extents = *box;
-	region.extents.x1 += dx;
-	region.extents.x2 += dx;
-	region.extents.y1 += dy;
-	region.extents.y2 += dy;
+	if (get_drawable_deltas(drawable, pixmap, &dx, &dy)) {
+		region.extents.x1 += dx;
+		region.extents.x2 += dx;
+		region.extents.y1 += dy;
+		region.extents.y2 += dy;
+	}
+	region.data = NULL;
 
 	DBG(("%s extents (%d, %d), (%d, %d)\n", __FUNCTION__,
 	     region.extents.x1, region.extents.y1,
@@ -3357,13 +3359,13 @@ use_cpu_bo:
 	if (!USE_CPU_BO || priv->cpu_bo == NULL) {
 cpu_fail:
 		if ((flags & FORCE_GPU) && priv->gpu_bo) {
-			get_drawable_deltas(drawable, pixmap, &dx, &dy);
-
 			region.extents = *box;
-			region.extents.x1 += dx;
-			region.extents.x2 += dx;
-			region.extents.y1 += dy;
-			region.extents.y2 += dy;
+			if (get_drawable_deltas(drawable, pixmap, &dx, &dy)) {
+				region.extents.x1 += dx;
+				region.extents.x2 += dx;
+				region.extents.y1 += dy;
+				region.extents.y2 += dy;
+			}
 			region.data = NULL;
 
 			goto move_to_gpu;
@@ -3382,13 +3384,14 @@ cpu_fail:
 		return NULL;
 	}
 
-	get_drawable_deltas(drawable, pixmap, &dx, &dy);
 
 	region.extents = *box;
-	region.extents.x1 += dx;
-	region.extents.x2 += dx;
-	region.extents.y1 += dy;
-	region.extents.y2 += dy;
+	if (get_drawable_deltas(drawable, pixmap, &dx, &dy)) {
+		region.extents.x1 += dx;
+		region.extents.x2 += dx;
+		region.extents.y1 += dy;
+		region.extents.y2 += dy;
+	}
 	region.data = NULL;
 
 	/* Both CPU and GPU are busy, prefer to use the GPU */
@@ -4738,9 +4741,8 @@ sna_self_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	     dx, dy, alu,
 	     pixmap->drawable.width, pixmap->drawable.height));
 
-	get_drawable_deltas(src, pixmap, &tx, &ty);
-	dx += tx;
-	dy += ty;
+	if (get_drawable_deltas(src, pixmap, &tx, &ty))
+		dx += tx, dy += ty;
 	if (dst != src)
 		get_drawable_deltas(dst, pixmap, &tx, &ty);
 
@@ -4943,8 +4945,8 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 
 	bpp = dst_pixmap->drawable.bitsPerPixel;
 
-	get_drawable_deltas(dst, dst_pixmap, &dst_dx, &dst_dy);
-	RegionTranslate(region, dst_dx, dst_dy);
+	if (get_drawable_deltas(dst, dst_pixmap, &dst_dx, &dst_dy))
+		RegionTranslate(region, dst_dx, dst_dy);
 	get_drawable_deltas(src, src_pixmap, &src_dx, &src_dy);
 	src_dx += dx - dst_dx;
 	src_dy += dy - dst_dy;
@@ -6902,9 +6904,8 @@ sna_copy_plane_blt(DrawablePtr source, DrawablePtr drawable, GCPtr gc,
 	if (n == 0)
 		return;
 
-	get_drawable_deltas(source, src_pixmap, &dx, &dy);
-	sx += dx;
-	sy += dy;
+	if (get_drawable_deltas(source, src_pixmap, &dx, &dy))
+		sx += dx, sy += dy;
 
 	get_drawable_deltas(drawable, dst_pixmap, &dx, &dy);
 	assert_pixmap_contains_boxes(dst_pixmap, box, n, dx, dy);
@@ -10146,9 +10147,10 @@ sna_poly_fill_rect_blt(DrawablePtr drawable,
 		r.x2 = bound(r.x1, rect->width);
 		r.y2 = bound(r.y1, rect->height);
 		if (box_intersect(&r, &gc->pCompositeClip->extents)) {
-			get_drawable_deltas(drawable, pixmap, &dx, &dy);
-			r.x1 += dx; r.y1 += dy;
-			r.x2 += dx; r.y2 += dy;
+			if (get_drawable_deltas(drawable, pixmap, &dx, &dy)) {
+				r.x1 += dx; r.y1 += dy;
+				r.x2 += dx; r.y2 += dy;
+			}
 			if (sna->render.fill_one(sna, pixmap, bo, pixel,
 						 r.x1, r.y1, r.x2, r.y2,
 						 gc->alu)) {
@@ -12619,10 +12621,10 @@ sna_poly_fill_rect(DrawablePtr draw, GCPtr gc, int n, xRectangle *rect)
 
 		region.data = NULL;
 
-		get_drawable_deltas(draw, pixmap, &dx, &dy);
-		DBG(("%s: delta=(%d, %d)\n", __FUNCTION__, dx, dy));
-		if (dx | dy)
+		if (get_drawable_deltas(draw, pixmap, &dx, &dy)) {
+			DBG(("%s: delta=(%d, %d)\n", __FUNCTION__, dx, dy));
 			RegionTranslate(&region, dx, dy);
+		}
 
 		if (priv->cpu_damage && (flags & 2) == 0) {
 			if (region_subsumes_damage(&region, priv->cpu_damage)) {
@@ -14024,8 +14026,8 @@ sna_push_pixels_solid_blt(GCPtr gc,
 		}
 	}
 
-	get_drawable_deltas(drawable, pixmap, &dx, &dy);
-	RegionTranslate(region, dx, dy);
+	if (get_drawable_deltas(drawable, pixmap, &dx, &dy))
+		RegionTranslate(region, dx, dy);
 
 	assert_pixmap_contains_box(pixmap, RegionExtents(region));
 	if (damage)
