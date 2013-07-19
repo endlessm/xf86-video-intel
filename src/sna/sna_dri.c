@@ -996,6 +996,8 @@ sna_dri_copy_region(DrawablePtr draw,
 		copy = (void *)sna_dri_copy_to_front;
 #ifndef STRICT_BLIT
 		dst = sna_pixmap_get_bo(pixmap);
+		if (dst == NULL)
+			return;
 #endif
 	}
 
@@ -1011,6 +1013,8 @@ sna_dri_copy_region(DrawablePtr draw,
 		copy = sna_dri_copy_from_front;
 #ifndef STRICT_BLIT
 		src = sna_pixmap_get_bo(pixmap);
+		if (src == NULL)
+			return;
 #endif
 	}
 
