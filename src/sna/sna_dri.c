@@ -60,6 +60,8 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #define COLOR_PREFER_TILING_Y 0
 
+#define STRICT_BLIT 1
+
 enum frame_event_type {
 	DRI2_SWAP,
 	DRI2_SWAP_WAIT,
@@ -252,8 +254,10 @@ sna_dri_create_buffer(DrawablePtr draw,
 	uint32_t size;
 	int bpp;
 
-	DBG(("%s(attachment=%d, format=%d, drawable=%dx%d)\n",
-	     __FUNCTION__, attachment, format, draw->width, draw->height));
+	DBG(("%s pixmap=%ld, (attachment=%d, format=%d, drawable=%dx%d)\n",
+	     __FUNCTION__,
+	     get_drawable_pixmap(draw)->drawable.serialNumber,
+	     attachment, format, draw->width, draw->height));
 
 	pixmap = NULL;
 	size = (uint32_t)draw->height << 16 | draw->width;
@@ -907,7 +911,7 @@ can_blit(struct sna *sna,
 	if (draw->type == DRAWABLE_PIXMAP)
 		return true;
 
-#if 0
+#ifdef STRICT_BLIT
 	if (get_private(dst)->pixmap != get_drawable_pixmap(draw)) {
 		DBG(("%s: reject as dst pixmap=%ld, but expecting pixmap=%ld\n",
 		     __FUNCTION__,
@@ -987,11 +991,13 @@ sna_dri_copy_region(DrawablePtr draw,
 	if (!can_blit(sna, draw, dst_buffer, src_buffer))
 		return;
 
+	dst = get_private(dst_buffer)->bo;
 	if (dst_buffer->attachment == DRI2BufferFrontLeft) {
-		dst = sna_pixmap_get_bo(pixmap);
 		copy = (void *)sna_dri_copy_to_front;
-	} else
-		dst = get_private(dst_buffer)->bo;
+#ifndef STRICT_BLIT
+		dst = sna_pixmap_get_bo(pixmap);
+#endif
+	}
 
 	DBG(("%s: dst -- attachment=%d, name=%d, handle=%d [screen=%d]\n",
 	     __FUNCTION__,
@@ -999,12 +1005,14 @@ sna_dri_copy_region(DrawablePtr draw,
 	     sna_pixmap_get_bo(sna->front)->handle));
 	assert(dst != NULL);
 
+	src = get_private(src_buffer)->bo;
 	if (src_buffer->attachment == DRI2BufferFrontLeft) {
-		src = sna_pixmap_get_bo(pixmap);
 		assert(copy == sna_dri_copy);
 		copy = sna_dri_copy_from_front;
-	} else
-		src = get_private(src_buffer)->bo;
+#ifndef STRICT_BLIT
+		src = sna_pixmap_get_bo(pixmap);
+#endif
+	}
 
 	DBG(("%s: src -- attachment=%d, name=%d, handle=%d\n",
 	     __FUNCTION__,
