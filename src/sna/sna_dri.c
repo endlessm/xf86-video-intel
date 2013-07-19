@@ -924,8 +924,13 @@ can_blit(struct sna *sna,
 	clip = &((WindowPtr)draw)->clipList;
 	w = clip->extents.x2 - draw->x;
 	h = clip->extents.y2 - draw->y;
-	if ((w|h) < 0)
+	if ((w|h) <= 0) {
+		DBG(("%s: reject, outside clip (%d, %d), (%d, %d)\n",
+		     __func__,
+		     clip->extents.x1, clip->extents.y1,
+		     clip->extents.x2, clip->extents.y2));
 		return false;
+	}
 
 	s = get_private(dst)->size;
 	if ((s>>16) < h || (s&0xffff) < w) {
@@ -956,17 +961,19 @@ sna_dri_copy_region(DrawablePtr draw,
 	void (*copy)(struct sna *, DrawablePtr, RegionPtr,
 		     struct kgem_bo *, struct kgem_bo *, bool) = sna_dri_copy;
 
-	DBG(("%s: pixmap=%ld, src=%u (refs=%d/%d, flush=%d) , dst=%u (refs=%d/%d, flush=%d)\n",
+	DBG(("%s: pixmap=%ld, src=%u (refs=%d/%d, flush=%d, attach=%d) , dst=%u (refs=%d/%d, flush=%d, attach=%d)\n",
 	     __FUNCTION__,
 	     pixmap->drawable.serialNumber,
 	     get_private(src_buffer)->bo->handle,
 	     get_private(src_buffer)->refcnt,
 	     get_private(src_buffer)->bo->refcnt,
 	     get_private(src_buffer)->bo->flush,
+	     src_buffer->attachment,
 	     get_private(dst_buffer)->bo->handle,
 	     get_private(dst_buffer)->refcnt,
 	     get_private(dst_buffer)->bo->refcnt,
-	     get_private(dst_buffer)->bo->flush));
+	     get_private(dst_buffer)->bo->flush,
+	     dst_buffer->attachment));
 
 	assert(get_private(src_buffer)->refcnt);
 	assert(get_private(dst_buffer)->refcnt);
@@ -986,6 +993,12 @@ sna_dri_copy_region(DrawablePtr draw,
 	} else
 		dst = get_private(dst_buffer)->bo;
 
+	DBG(("%s: dst -- attachment=%d, name=%d, handle=%d [screen=%d]\n",
+	     __FUNCTION__,
+	     dst_buffer->attachment, dst_buffer->name, dst ? dst->handle : 0,
+	     sna_pixmap_get_bo(sna->front)->handle));
+	assert(dst != NULL);
+
 	if (src_buffer->attachment == DRI2BufferFrontLeft) {
 		src = sna_pixmap_get_bo(pixmap);
 		assert(copy == sna_dri_copy);
@@ -993,16 +1006,11 @@ sna_dri_copy_region(DrawablePtr draw,
 	} else
 		src = get_private(src_buffer)->bo;
 
-	assert(dst != NULL);
-	assert(src != NULL);
-
-	DBG(("%s: dst -- attachment=%d, name=%d, handle=%d [screen=%d]\n",
-	     __FUNCTION__,
-	     dst_buffer->attachment, dst_buffer->name, dst->handle,
-	     sna_pixmap_get_bo(sna->front)->handle));
 	DBG(("%s: src -- attachment=%d, name=%d, handle=%d\n",
 	     __FUNCTION__,
-	     src_buffer->attachment, src_buffer->name, src->handle));
+	     src_buffer->attachment, src_buffer->name, src ? src->handle : 0));
+	assert(src != NULL);
+
 	DBG(("%s: region (%d, %d), (%d, %d) x %d\n",
 	     __FUNCTION__,
 	     region->extents.x1, region->extents.y1,
