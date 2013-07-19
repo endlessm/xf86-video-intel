@@ -911,17 +911,18 @@ can_blit(struct sna *sna,
 	if (draw->type == DRAWABLE_PIXMAP)
 		return true;
 
-#ifdef STRICT_BLIT
-	if (get_private(dst)->pixmap != get_drawable_pixmap(draw)) {
-		DBG(("%s: reject as dst pixmap=%ld, but expecting pixmap=%ld\n",
-		     __FUNCTION__,
-		     get_private(dst)->pixmap ? get_private(dst)->pixmap->drawable.serialNumber : 0,
-		     get_drawable_pixmap(draw)->drawable.serialNumber));
-		return false;
+	if (STRICT_BLIT && dst->attachment == DRI2BufferFrontLeft) {
+		if (get_private(dst)->pixmap != get_drawable_pixmap(draw)) {
+			DBG(("%s: reject as dst pixmap=%ld, but expecting pixmap=%ld\n",
+						__FUNCTION__,
+						get_private(dst)->pixmap ? get_private(dst)->pixmap->drawable.serialNumber : 0,
+						get_drawable_pixmap(draw)->drawable.serialNumber));
+			return false;
+		}
+
+		assert(sna_pixmap(get_private(dst)->pixmap)->flush);
 	}
 
-	assert(sna_pixmap(get_private(dst)->pixmap)->flush);
-#endif
 	assert(get_private(dst)->bo->flush);
 	assert(get_private(src)->bo->flush);
 
@@ -994,11 +995,11 @@ sna_dri_copy_region(DrawablePtr draw,
 	dst = get_private(dst_buffer)->bo;
 	if (dst_buffer->attachment == DRI2BufferFrontLeft) {
 		copy = (void *)sna_dri_copy_to_front;
-#ifndef STRICT_BLIT
-		dst = sna_pixmap_get_bo(pixmap);
-		if (dst == NULL)
-			return;
-#endif
+		if (!STRICT_BLIT) {
+			dst = sna_pixmap_get_bo(pixmap);
+			if (dst == NULL)
+				return;
+		}
 	}
 
 	DBG(("%s: dst -- attachment=%d, name=%d, handle=%d [screen=%d]\n",
@@ -1011,11 +1012,11 @@ sna_dri_copy_region(DrawablePtr draw,
 	if (src_buffer->attachment == DRI2BufferFrontLeft) {
 		assert(copy == sna_dri_copy);
 		copy = sna_dri_copy_from_front;
-#ifndef STRICT_BLIT
-		src = sna_pixmap_get_bo(pixmap);
-		if (src == NULL)
-			return;
-#endif
+		if (!STRICT_BLIT) {
+			src = sna_pixmap_get_bo(pixmap);
+			if (src == NULL)
+				return;
+		}
 	}
 
 	DBG(("%s: src -- attachment=%d, name=%d, handle=%d\n",
