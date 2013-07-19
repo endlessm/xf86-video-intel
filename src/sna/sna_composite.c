@@ -522,6 +522,7 @@ sna_composite_fb(CARD8 op,
 
 	if (mask == NULL &&
 	    src->pDrawable &&
+	    dst->pDrawable->bitsPerPixel >= 8 &&
 	    src->filter != PictFilterConvolution &&
 	    (op == PictOpSrc || (op == PictOpOver && !PICT_FORMAT_A(src->format))) &&
 	    (dst->format == src->format || dst->format == alphaless(src->format)) &&
