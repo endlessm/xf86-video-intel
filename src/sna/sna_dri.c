@@ -215,6 +215,11 @@ sna_dri_pixmap_update_bo(struct sna *sna, PixmapPtr pixmap)
 	if (buffer == NULL)
 		return;
 
+	DBG(("%s: pixmap=%ld, old handle=%d, new handle=%d\n", __FUNCTION__,
+	     pixmap->drawable.serialNumber,
+	     get_private(buffer)->bo->handle,
+	     sna_pixmap(pixmap)->gpu_bo->handle));
+
 	private = get_private(buffer);
 	assert(private->pixmap == pixmap);
 
@@ -951,11 +956,17 @@ sna_dri_copy_region(DrawablePtr draw,
 	void (*copy)(struct sna *, DrawablePtr, RegionPtr,
 		     struct kgem_bo *, struct kgem_bo *, bool) = sna_dri_copy;
 
-	DBG(("%s: pixmap=%ld, src=%u, dst=%u\n",
+	DBG(("%s: pixmap=%ld, src=%u (refs=%d/%d, flush=%d) , dst=%u (refs=%d/%d, flush=%d)\n",
 	     __FUNCTION__,
 	     pixmap->drawable.serialNumber,
 	     get_private(src_buffer)->bo->handle,
-	     get_private(dst_buffer)->bo->handle));
+	     get_private(src_buffer)->refcnt,
+	     get_private(src_buffer)->bo->refcnt,
+	     get_private(src_buffer)->bo->flush,
+	     get_private(dst_buffer)->bo->handle,
+	     get_private(dst_buffer)->refcnt,
+	     get_private(dst_buffer)->bo->refcnt,
+	     get_private(dst_buffer)->bo->flush));
 
 	assert(get_private(src_buffer)->refcnt);
 	assert(get_private(dst_buffer)->refcnt);
@@ -2050,6 +2061,18 @@ sna_dri_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 	struct sna_dri_frame_event *info = NULL;
 	enum frame_event_type swap_type = DRI2_SWAP;
 	CARD64 current_msc;
+
+	DBG(("%s: pixmap=%ld, back=%u (refs=%d/%d, flush=%d) , fron=%u (refs=%d/%d, flush=%d)\n",
+	     __FUNCTION__,
+	     get_drawable_pixmap(draw)->drawable.serialNumber,
+	     get_private(back)->bo->handle,
+	     get_private(back)->refcnt,
+	     get_private(back)->bo->refcnt,
+	     get_private(back)->bo->flush,
+	     get_private(front)->bo->handle,
+	     get_private(front)->refcnt,
+	     get_private(front)->bo->refcnt,
+	     get_private(front)->bo->flush));
 
 	DBG(("%s(target_msc=%llu, divisor=%llu, remainder=%llu)\n",
 	     __FUNCTION__,
