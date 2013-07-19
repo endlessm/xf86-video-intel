@@ -5582,7 +5582,7 @@ sna_do_copy(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	     region.extents.x2, region.extents.y2,
 	     (long)RegionNumRects(&region)));
 
-	if (RegionNotEmpty(&region))
+	if (!box_empty(&region.extents))
 		copy(src, dst, gc, &region, sx-dx, sy-dy, bitPlane, closure);
 	RegionUninit(&region);
 
