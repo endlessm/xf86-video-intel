@@ -5190,10 +5190,8 @@ void kgem_bo_sync__cpu(struct kgem *kgem, struct kgem_bo *bo)
 
 	/* SHM pixmaps use proxies for subpage offsets */
 	assert(!bo->purged);
-	assert(bo->refcnt);
 	while (bo->proxy)
 		bo = bo->proxy;
-	assert(bo->refcnt);
 	assert(!bo->purged);
 
 	if (bo->domain != DOMAIN_CPU || FORCE_MMAP_SYNC & (1 << DOMAIN_CPU)) {
