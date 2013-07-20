@@ -530,7 +530,7 @@ sna_composite_fb(CARD8 op,
 	    region->extents.x1 + src_x + tx >= 0 &&
 	    region->extents.y1 + src_y + ty >= 0 &&
 	    region->extents.x2 + src_x + tx <= src->pDrawable->width &&
-	    region->extents.x2 + src_y + ty <= src->pDrawable->height) {
+	    region->extents.y2 + src_y + ty <= src->pDrawable->height) {
 		PixmapPtr dst_pixmap = get_drawable_pixmap(dst->pDrawable);
 		PixmapPtr src_pixmap = get_drawable_pixmap(src->pDrawable);
 		int nbox = RegionNumRects(region);
@@ -545,6 +545,18 @@ sna_composite_fb(CARD8 op,
 			dst_x += tx, dst_y += ty;
 
 		do {
+			assert(box->x1 + src_x >= 0);
+			assert(box->x2 + src_x <= src_pixmap->drawable.width);
+			assert(box->y1 + src_y >= 0);
+			assert(box->y2 + src_y <= src_pixmap->drawable.height);
+
+			assert(box->x1 + dst_x >= 0);
+			assert(box->x2 + dst_x <= dst_pixmap->drawable.width);
+			assert(box->y1 + dst_y >= 0);
+			assert(box->y2 + dst_y <= dst_pixmap->drawable.height);
+
+			assert(box->x2 > box->x1 && box->y2 > box->y1);
+
 			memcpy_blt(src_pixmap->devPrivate.ptr,
 				   dst_pixmap->devPrivate.ptr,
 				   dst_pixmap->drawable.bitsPerPixel,
