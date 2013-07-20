@@ -5469,6 +5469,11 @@ typedef void (*sna_copy_func)(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 			      RegionPtr region, int dx, int dy,
 			      Pixel bitPlane, void *closure);
 
+static inline bool box_equal(const BoxRec *a, const BoxRec *b)
+{
+	return *(uint64_t *)a == *(uint64_t *)b;
+}
+
 static RegionPtr
 sna_do_copy(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	    int sx, int sy,
@@ -5479,6 +5484,7 @@ sna_do_copy(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	RegionPtr clip;
 	RegionRec region;
 	BoxRec src_extents;
+	bool expose;
 
 	DBG(("%s: src=(%d, %d), dst=(%d, %d), size=(%dx%d)\n",
 	     __FUNCTION__, sx, sy, dx, dy, width, height));
@@ -5521,58 +5527,52 @@ sna_do_copy(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	region.extents.y2 = clamp(region.extents.y2, sy - dy);
 
 	src_extents = region.extents;
+	expose = gc->fExpose;
+
+	if (region.extents.x1 < src->x)
+		region.extents.x1 = src->x;
+	if (region.extents.y1 < src->y)
+		region.extents.y1 = src->y;
+	if (region.extents.x2 > src->x + (int) src->width)
+		region.extents.x2 = src->x + (int) src->width;
+	if (region.extents.y2 > src->y + (int) src->height)
+		region.extents.y2 = src->y + (int) src->height;
 
 	/* Compute source clip region */
-	clip = NULL;
-	if (src == dst && gc->clientClipType == CT_NONE) {
-		DBG(("%s: using gc clip for src\n", __FUNCTION__));
-		clip = gc->pCompositeClip;
-	} else if (src->type == DRAWABLE_PIXMAP) {
-		DBG(("%s: pixmap -- no source clipping\n", __FUNCTION__));
-	} else if (gc->subWindowMode == IncludeInferiors) {
-		WindowPtr w = (WindowPtr)src;
-
-		DBG(("%s: include inferiors (is-clipped? %d)\n",
-		     __FUNCTION__, w->parent || RegionNil(&w->borderClip)));
-
-		/*
-		 * XFree86 DDX empties the border clip when the
-		 * VT is inactive, make sure the region isn't empty
-		 */
-		assert(!w->winSize.data);
-		box_intersect(&region.extents, &w->winSize.extents);
-		if (w->borderClip.data == NULL)
-			box_intersect(&region.extents, &w->borderClip.extents);
-		else
-			clip = &w->borderClip;
+	if (src->type == DRAWABLE_PIXMAP) {
+		if (src == dst && gc->clientClipType == CT_NONE) {
+			DBG(("%s: pixmap -- using gc clip\n", __FUNCTION__));
+			clip = gc->pCompositeClip;
+		} else {
+			DBG(("%s: pixmap -- no source clipping\n", __FUNCTION__));
+			expose = false;
+			clip = NULL;
+		}
 	} else {
 		WindowPtr w = (WindowPtr)src;
+		if (gc->subWindowMode == IncludeInferiors) {
+			DBG(("%s: window -- include inferiors\n", __FUNCTION__));
 
-		DBG(("%s: window clip\n", __FUNCTION__));
-		if (w->clipList.data == NULL)
-			box_intersect(&region.extents, &w->clipList.extents);
-		else
+			assert(!w->winSize.data);
+			box_intersect(&region.extents, &w->winSize.extents);
+			clip = &w->borderClip;
+		} else {
+			DBG(("%s: window -- clip by children\n", __FUNCTION__));
 			clip = &w->clipList;
+		}
 	}
-	if (clip == NULL) {
-		DBG(("%s: fast source clip against extents\n", __FUNCTION__));
-		if (region.extents.x1 < src->x)
-			region.extents.x1 = src->x;
-		if (region.extents.y1 < src->y)
-			region.extents.y1 = src->y;
-		if (region.extents.x2 > src->x + (int) src->width)
-			region.extents.x2 = src->x + (int) src->width;
-		if (region.extents.y2 > src->y + (int) src->height)
-			region.extents.y2 = src->y + (int) src->height;
-	} else
-		RegionIntersect(&region, &region, clip);
+	if (clip != NULL) {
+		if (clip->data == NULL) {
+			box_intersect(&region.extents, &clip->extents);
+			if (box_equal(&src_extents, &region.extents))
+				expose = false;
+		} else
+			RegionIntersect(&region, &region, clip);
+	}
 	DBG(("%s: src extents (%d, %d), (%d, %d) x %ld\n", __FUNCTION__,
 	     region.extents.x1, region.extents.y1,
 	     region.extents.x2, region.extents.y2,
 	     (long)RegionNumRects(&region)));
-	if ((clip == NULL || clip->data == NULL) &&
-	    *(uint64_t *)&src_extents == *(uint64_t *)&region.extents)
-		*(uint64_t *)&src_extents = 0;
 
 	RegionTranslate(&region, dx-sx, dy-sy);
 	if (gc->pCompositeClip->data)
@@ -5588,7 +5588,7 @@ sna_do_copy(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 
 	/* Pixmap sources generate a NoExposed (we return NULL to do this) */
 	clip = NULL;
-	if (gc->fExpose && *(uint64_t *)&src_extents != 0)
+	if (expose)
 		clip = miHandleExposures(src, dst, gc,
 					 sx - src->x, sy - src->y,
 					 width, height,
