@@ -3817,6 +3817,10 @@ static void set_bo(PixmapPtr pixmap, struct kgem_bo *bo)
 	struct sna_pixmap *priv = sna_pixmap(pixmap);
 
 	assert((priv->pinned & PIN_PRIME) == 0);
+	assert(bo != priv->gpu_bo);
+
+	if (priv->cow)
+		sna_pixmap_undo_cow(to_sna_from_pixmap(pixmap), priv, 0);
 
 	if (priv->mapped) {
 		assert(!priv->shm && priv->stride);
