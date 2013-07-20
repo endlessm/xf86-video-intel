@@ -749,6 +749,9 @@ sna_crtc_force_outputs_on(xf86CrtcPtr crtc)
 	}
 
 	to_sna_crtc(crtc)->dpms_mode = DPMSModeOn;
+#if XF86_CRTC_VERSION >= 3
+	crtc->active = TRUE;
+#endif
 }
 
 static bool
