@@ -4473,8 +4473,6 @@ sna_put_image(DrawablePtr drawable, GCPtr gc, int depth,
 	if (w == 0 || h == 0)
 		return;
 
-	get_drawable_deltas(drawable, pixmap, &dx, &dy);
-
 	region.extents.x1 = x + drawable->x;
 	region.extents.y1 = y + drawable->y;
 	region.extents.x2 = region.extents.x1 + w;
@@ -4491,13 +4489,14 @@ sna_put_image(DrawablePtr drawable, GCPtr gc, int depth,
 			return;
 	}
 
+	if (get_drawable_deltas(drawable, pixmap, &dx, &dy))
+		RegionTranslate(&region, dx, dy);
+
 	if (priv == NULL) {
 		DBG(("%s: fallback -- unattached(%d, %d, %d, %d)\n",
 		     __FUNCTION__, x, y, w, h));
 		goto fallback;
 	}
-
-	RegionTranslate(&region, dx, dy);
 
 	if (FORCE_FALLBACK)
 		goto fallback;
