@@ -3980,7 +3980,7 @@ create_upload_tiled_x(struct kgem *kgem,
 		return false;
 
 	tiling = sna_pixmap_choose_tiling(pixmap, I915_TILING_X);
-	assert(tiling != I915_TILING && tiling != -I915_TILING_Y);
+	assert(tiling != I915_TILING_Y && tiling != -I915_TILING_Y);
 
 	assert(priv->gpu_bo == NULL);
 	assert(priv->gpu_damage == NULL);
