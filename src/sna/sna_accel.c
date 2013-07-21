@@ -3966,24 +3966,6 @@ static inline void box32_add_rect(Box32Rec *box, const xRectangle *r)
 		box->y2 = v;
 }
 
-static bool can_upload_tiled_x(struct kgem *kgem, struct sna_pixmap *priv)
-{
-	struct kgem_bo *bo = priv->gpu_bo;
-	assert(bo);
-
-	if (priv->cow) {
-		DBG(("%s: no, has COW\n", __FUNCTION__));
-		return false;
-	}
-
-	if (bo->tiling != I915_TILING_X) {
-		DBG(("%s: no, uses %d tiling\n", __FUNCTION__, bo->tiling));
-		return false;
-	}
-
-	return kgem_bo_can_map__cpu(kgem, bo, true);
-}
-
 static bool
 create_upload_tiled_x(struct kgem *kgem,
 		      PixmapPtr pixmap,
@@ -3998,8 +3980,7 @@ create_upload_tiled_x(struct kgem *kgem,
 		return false;
 
 	tiling = sna_pixmap_choose_tiling(pixmap, I915_TILING_X);
-	if (!(tiling == I915_TILING_X || tiling == -I915_TILING_X))
-		return false;
+	assert(tiling != I915_TILING && tiling != -I915_TILING_Y);
 
 	assert(priv->gpu_bo == NULL);
 	assert(priv->gpu_damage == NULL);
@@ -4015,7 +3996,7 @@ create_upload_tiled_x(struct kgem *kgem,
 			       pixmap->drawable.width,
 			       pixmap->drawable.height,
 			       pixmap->drawable.bitsPerPixel,
-			       -I915_TILING_X, create);
+			       tiling, create);
 	return priv->gpu_bo != NULL;
 }
 
@@ -4030,15 +4011,12 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 	uint8_t *dst;
 	int n;
 
-	if (!sna->kgem.memcpy_to_tiled_x)
-		return false;
-
 	if (wedged(sna))
 		return false;
 
-	DBG(("%s: bo? %d, can tile? %d\n", __FUNCTION__,
+	DBG(("%s: bo? %d, can map? %d\n", __FUNCTION__,
 	     priv->gpu_bo != NULL,
-	     priv->gpu_bo ? can_upload_tiled_x(&sna->kgem, priv) : 0));
+	     priv->gpu_bo ? kgem_bo_can_map__cpu(kgem, priv->gpu_bo, true) : 0));
 
 	replaces = region->data == NULL &&
 		w >= pixmap->drawable.width &&
@@ -4049,14 +4027,32 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 		sna_pixmap_free_gpu(sna, priv);
 	}
 
+	if (priv->cow) {
+		DBG(("%s: no, has COW\n", __FUNCTION__));
+		return false;
+	}
+
 	if (priv->gpu_bo == NULL &&
 	    !create_upload_tiled_x(&sna->kgem, pixmap, priv))
 		return false;
 
-	if (!can_upload_tiled_x(&sna->kgem, priv))
+	DBG(("%s: tiling=%d\n", __FUNCTION__, priv->gpu_bo->tiling));
+	switch (priv->gpu_bo->tiling) {
+	case I915_TILING_Y:
 		return false;
+	case I915_TILING_X:
+		if (!sna->kgem.memcpy_to_tiled_x)
+			return false;
+	default:
+		break;
+	}
 
-	assert(priv->gpu_bo->tiling == I915_TILING_X);
+	if (!kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo,
+				  (priv->create & KGEM_CAN_CREATE_LARGE) == 0)) {
+		DBG(("%s: no, cannot map through the CPU\n", __FUNCTION__));
+		return false;
+	}
+
 	if ((priv->create & KGEM_CAN_CREATE_LARGE) == 0 &&
 	    __kgem_bo_is_busy(&sna->kgem, priv->gpu_bo))
 		return false;
@@ -4072,15 +4068,27 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 
 	DBG(("%s: upload(%d, %d, %d, %d) x %d\n", __FUNCTION__, x, y, w, h, n));
 
-	do {
-		memcpy_to_tiled_x(&sna->kgem, bits, dst,
-				  pixmap->drawable.bitsPerPixel,
-				  stride, priv->gpu_bo->pitch,
-				  box->x1 - x, box->y1 - y,
-				  box->x1, box->y1,
-				  box->x2 - box->x1, box->y2 - box->y1);
-		box++;
-	} while (--n);
+	if (priv->gpu_bo->tiling) {
+		do {
+			memcpy_to_tiled_x(&sna->kgem, bits, dst,
+					  pixmap->drawable.bitsPerPixel,
+					  stride, priv->gpu_bo->pitch,
+					  box->x1 - x, box->y1 - y,
+					  box->x1, box->y1,
+					  box->x2 - box->x1, box->y2 - box->y1);
+			box++;
+		} while (--n);
+	} else {
+		do {
+			memcpy_blt(bits, dst,
+				   pixmap->drawable.bitsPerPixel,
+				   stride, priv->gpu_bo->pitch,
+				   box->x1 - x, box->y1 - y,
+				   box->x1, box->y1,
+				   box->x2 - box->x1, box->y2 - box->y1);
+			box++;
+		} while (--n);
+	}
 
 	if (!DAMAGE_IS_ALL(priv->gpu_damage)) {
 		assert(!priv->clear);
@@ -5194,8 +5202,8 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 		if (USE_USERPTR_UPLOADS &&
 		    sna->kgem.has_userptr &&
 		    (alu != GXcopy ||
-		     (box_inplace(src_pixmap, &region->extents)) &&
-		     __kgem_bo_is_busy(&sna->kgem, bo))) {
+		     (box_inplace(src_pixmap, &region->extents) &&
+		      __kgem_bo_is_busy(&sna->kgem, bo)))) {
 			struct kgem_bo *src_bo;
 			bool ok = false;
 
@@ -5470,7 +5478,7 @@ typedef void (*sna_copy_func)(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 
 static inline bool box_equal(const BoxRec *a, const BoxRec *b)
 {
-	return *(uint64_t *)a == *(uint64_t *)b;
+	return *(const uint64_t *)a == *(const uint64_t *)b;
 }
 
 static RegionPtr
