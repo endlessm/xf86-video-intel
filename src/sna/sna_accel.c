@@ -10657,11 +10657,15 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 		} while (1);
 	} else {
 		RegionRec clip;
+		uint16_t unwind_batch, unwind_reloc;
 
 		region_set(&clip, extents);
 		region_maybe_clip(&clip, gc->pCompositeClip);
 		if (RegionNil(&clip))
 			goto done;
+
+		unwind_batch = sna->kgem.nbatch;
+		unwind_reloc = sna->kgem.nreloc;
 
 		b = sna->kgem.batch + sna->kgem.nbatch;
 		b[0] = XY_SETUP_BLT | 3 << 20;
@@ -10696,6 +10700,10 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 					if (!kgem_check_batch(&sna->kgem, 3)) {
 						_kgem_submit(&sna->kgem);
 						_kgem_set_mode(&sna->kgem, KGEM_BLT);
+
+						unwind_batch = sna->kgem.nbatch;
+						unwind_reloc = sna->kgem.nreloc;
+
 						b = sna->kgem.batch + sna->kgem.nbatch;
 						b[0] = XY_SETUP_BLT | 3 << 20;
 						b[1] = br13;
@@ -10763,6 +10771,10 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 						if (!kgem_check_batch(&sna->kgem, 3)) {
 							_kgem_submit(&sna->kgem);
 							_kgem_set_mode(&sna->kgem, KGEM_BLT);
+
+							unwind_batch = sna->kgem.nbatch;
+							unwind_reloc = sna->kgem.nreloc;
+
 							b = sna->kgem.batch + sna->kgem.nbatch;
 							b[0] = XY_SETUP_BLT | 3 << 20;
 							b[1] = br13;
@@ -10803,6 +10815,11 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 					}
 				}
 			} while (--n);
+		}
+
+		if (sna->kgem.nbatch == unwind_batch + 8) {
+			sna->kgem.nbatch = unwind_batch;
+			sna->kgem.nreloc = unwind_reloc;
 		}
 	}
 done:
@@ -12969,6 +12986,7 @@ sna_glyph_blt(DrawablePtr drawable, GCPtr gc,
 	uint32_t *b;
 	int16_t dx, dy;
 	uint32_t br00;
+	uint16_t unwind_batch, unwind_reloc;
 
 	uint8_t rop = transparent ? copy_ROP[gc->alu] : ROP_S;
 
@@ -13022,6 +13040,9 @@ sna_glyph_blt(DrawablePtr drawable, GCPtr gc,
 	     __FUNCTION__,
 	     extents->x1, extents->y1,
 	     extents->x2, extents->y2));
+
+	unwind_batch = sna->kgem.nbatch;
+	unwind_reloc = sna->kgem.nreloc;
 
 	b = sna->kgem.batch + sna->kgem.nbatch;
 	b[0] = XY_SETUP_BLT | 3 << 20;
@@ -13085,6 +13106,9 @@ sna_glyph_blt(DrawablePtr drawable, GCPtr gc,
 				     __FUNCTION__,
 				     extents->x1, extents->y1,
 				     extents->x2, extents->y2));
+
+				unwind_batch = sna->kgem.nbatch;
+				unwind_reloc = sna->kgem.nreloc;
 
 				b = sna->kgem.batch + sna->kgem.nbatch;
 				b[0] = XY_SETUP_BLT | 3 << 20;
@@ -13155,6 +13179,11 @@ skip:
 			b[2] = extents->y2 << 16 | extents->x2;
 		}
 	} while (1);
+
+	if (sna->kgem.nbatch == unwind_batch + 8) {
+		sna->kgem.nbatch = unwind_batch;
+		sna->kgem.nreloc = unwind_reloc;
+	}
 
 	assert_pixmap_damage(pixmap);
 	sna->blt_state.fill_bo = 0;
@@ -13630,6 +13659,7 @@ sna_reversed_glyph_blt(DrawablePtr drawable, GCPtr gc,
 	uint32_t *b;
 	int16_t dx, dy;
 	uint8_t rop = transparent ? copy_ROP[gc->alu] : ROP_S;
+	uint16_t unwind_batch, unwind_reloc;
 
 	if (bo->tiling == I915_TILING_Y) {
 		DBG(("%s: converting bo from Y-tiling\n", __FUNCTION__));
@@ -13664,6 +13694,9 @@ sna_reversed_glyph_blt(DrawablePtr drawable, GCPtr gc,
 			return false;
 		_kgem_set_mode(&sna->kgem, KGEM_BLT);
 	}
+
+	unwind_batch = sna->kgem.nbatch;
+	unwind_reloc = sna->kgem.nreloc;
 
 	DBG(("%s: glyph clip box (%d, %d), (%d, %d)\n",
 	     __FUNCTION__,
@@ -13745,6 +13778,9 @@ sna_reversed_glyph_blt(DrawablePtr drawable, GCPtr gc,
 				_kgem_submit(&sna->kgem);
 				_kgem_set_mode(&sna->kgem, KGEM_BLT);
 
+				unwind_batch = sna->kgem.nbatch;
+				unwind_reloc = sna->kgem.nreloc;
+
 				DBG(("%s: new batch, glyph clip box (%d, %d), (%d, %d)\n",
 				     __FUNCTION__,
 				     extents->x1, extents->y1,
@@ -13825,6 +13861,11 @@ skip:
 			b[2] = extents->y2 << 16 | extents->x2;
 		}
 	} while (1);
+
+	if (sna->kgem.nbatch == unwind_batch + 8) {
+		sna->kgem.nbatch = unwind_batch;
+		sna->kgem.nreloc = unwind_reloc;
+	}
 
 	assert_pixmap_damage(pixmap);
 	sna->blt_state.fill_bo = 0;
