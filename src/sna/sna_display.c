@@ -3022,6 +3022,8 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETCRTC, &mode))
 			continue;
 
+		DBG(("%s: CRTC:%d, pipe=%d: has mode?=%d\n", __FUNCTION__,
+		     sna_crtc->id, sna_crtc->pipe, mode.mode_valid));
 		if (!mode.mode_valid)
 			continue;
 
@@ -3051,6 +3053,9 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 
 		crtc_id = (uintptr_t)output->crtc;
 		output->crtc = NULL;
+
+		if (crtc_id == 0)
+			continue;
 
 		if (xf86ReturnOptValBool(output->options, OPTION_DISABLE, 0))
 			continue;
@@ -3088,6 +3093,11 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 				}
 				break;
 			}
+		}
+
+		if (output->crtc == NULL) {
+			/* Can not find the earlier associated CRTC, bail */
+			return false;
 		}
 	}
 
