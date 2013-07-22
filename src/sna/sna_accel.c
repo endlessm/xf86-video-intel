@@ -1794,7 +1794,7 @@ static inline bool operate_inplace(struct sna_pixmap *priv, unsigned flags)
 
 	if (priv->create & KGEM_CAN_CREATE_LARGE) {
 		DBG(("%s: large object, has GPU? %d\n",
-		     __FUNCTION__, priv->gpu_bo));
+		     __FUNCTION__, priv->gpu_bo ? priv->gpu_bo->handle : 0));
 		return priv->gpu_bo != NULL;
 	}
 
@@ -4016,7 +4016,7 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 
 	DBG(("%s: bo? %d, can map? %d\n", __FUNCTION__,
 	     priv->gpu_bo != NULL,
-	     priv->gpu_bo ? kgem_bo_can_map__cpu(kgem, priv->gpu_bo, true) : 0));
+	     priv->gpu_bo ? kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, true) : 0));
 
 	replaces = region->data == NULL &&
 		w >= pixmap->drawable.width &&

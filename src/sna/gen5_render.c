@@ -2263,7 +2263,7 @@ gen5_render_copy_boxes(struct sna *sna, uint8_t alu,
 {
 	struct sna_composite_op tmp;
 
-	DBG(("%s alu=%d, src=%d:handle=%d, dst=%d:handle=%d boxes=%d x [((%d, %d), (%d, %d))...], flags=%x\n",
+	DBG(("%s alu=%d, src=%ld:handle=%d, dst=%ld:handle=%d boxes=%d x [((%d, %d), (%d, %d))...], flags=%x\n",
 	     __FUNCTION__, alu,
 	     src->drawable.serialNumber, src_bo->handle,
 	     dst->drawable.serialNumber, dst_bo->handle,

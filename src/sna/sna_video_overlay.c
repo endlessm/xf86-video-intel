@@ -494,7 +494,7 @@ sna_video_overlay_put_image(ClientPtr client,
 	     format->id, width, height, sync));
 
 	DBG(("%s: region %ld:(%d, %d), (%d, %d)\n", __FUNCTION__,
-	     RegionNumRects(&clip),
+	     (long)RegionNumRects(&clip),
 	     clip.extents.x1, clip.extents.y1,
 	     clip.extents.x2, clip.extents.y2));
 

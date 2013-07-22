@@ -102,7 +102,7 @@ static void apply_damage(struct sna_composite_op *op, RegionPtr region)
 {
 	DBG(("%s: damage=%p, region=%ldx[(%d, %d), (%d, %d)]\n",
 	     __FUNCTION__, op->damage,
-	     REGION_NUM_RECTS(region),
+	     (long)REGION_NUM_RECTS(region),
 	     region->extents.x1, region->extents.y1,
 	     region->extents.x2, region->extents.y2));
 
