@@ -858,8 +858,9 @@ gen5_emit_pipelined_pointers(struct sna *sna,
 	OUT_BATCH(sna->render_state.gen5.wm + sp);
 	OUT_BATCH(sna->render_state.gen5.cc + bp);
 
+	bp = (sna->render_state.gen5.last_pipelined_pointers & 0x7fff0000) != (bp << 16);
 	sna->render_state.gen5.last_pipelined_pointers = key;
-	return true;
+	return bp;
 }
 
 static bool
@@ -1005,6 +1006,15 @@ gen5_emit_vertex_elements(struct sna *sna,
 	}
 }
 
+inline static void
+gen5_emit_pipe_flush(struct sna *sna)
+{
+	OUT_BATCH(GEN5_PIPE_CONTROL | (4 - 2));
+	OUT_BATCH(GEN5_PIPE_CONTROL_WC_FLUSH);
+	OUT_BATCH(0);
+	OUT_BATCH(0);
+}
+
 static void
 gen5_emit_state(struct sna *sna,
 		const struct sna_composite_op *op,
@@ -1024,14 +1034,17 @@ gen5_emit_state(struct sna *sna,
 	}
 	gen5_emit_vertex_elements(sna, op);
 
-	if (flush || kgem_bo_is_dirty(op->src.bo) || kgem_bo_is_dirty(op->mask.bo)) {
+	if (kgem_bo_is_dirty(op->src.bo) || kgem_bo_is_dirty(op->mask.bo)) {
 		DBG(("%s: flushing dirty (%d, %d)\n", __FUNCTION__,
 		     kgem_bo_is_dirty(op->src.bo),
 		     kgem_bo_is_dirty(op->mask.bo)));
 		OUT_BATCH(MI_FLUSH);
 		kgem_clear_dirty(&sna->kgem);
 		kgem_bo_mark_dirty(op->dst.bo);
+		flush = false;
 	}
+	if (flush)
+		gen5_emit_pipe_flush(sna);
 }
 
 static void gen5_bind_surfaces(struct sna *sna,
