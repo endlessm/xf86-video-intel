@@ -169,8 +169,6 @@ AC_ARG_WITH(xorg-module-dir,
 
 AC_ARG_ENABLE(dri, AS_HELP_STRING([--disable-dri],
                                   [Disable DRI support [[default=auto]]]))
-dridriverdir=`$PKG_CONFIG --variable=dridriverdir dri`
-AC_DEFINE_DIR(DRI_DRIVER_PATH, dridriverdir, [Default DRI driver path])
 
 AC_ARG_ENABLE(xvmc, AS_HELP_STRING([--disable-xvmc],
                                   [Disable XvMC support [[default=yes]]]),
@@ -377,8 +375,6 @@ XORG_DRIVER_CHECK_EXT(DPMSExtension, xextproto)
 
 # Obtain compiler/linker options for the driver dependencies
 PKG_CHECK_MODULES(DRM, [libdrm >= 2.4.20]) # libdrm_intel is checked separately
-PKG_CHECK_MODULES(DRI, [xf86driproto], , DRI=no)
-PKG_CHECK_MODULES(DRI2, [dri2proto >= 2.6],, DRI2=no)
 PKG_CHECK_MODULES(PCIACCESS, [pciaccess >= 0.10])
 
 LIBS=""
@@ -388,6 +384,7 @@ AC_SUBST(CLOCK_GETTIME_LIBS)
 sdkdir=`$PKG_CONFIG --variable=sdkdir xorg-server`
 
 if test "x$enable_dri" != "xno"; then
+	PKG_CHECK_MODULES(DRI, [xf86driproto], , DRI=no)
         save_CFLAGS="$CFLAGS"
         save_CPPFLAGS="$CPPFLAGS"
         CFLAGS="$CFLAGS $XORG_CFLAGS $DRI_CFLAGS $DRM_CFLAGS"
@@ -425,11 +422,21 @@ else
         fi
 fi
 
-if test "x$DRI2" != "xno"; then
-	save_CFLAGS=$CFLAGS
-	CFLAGS="$XORG_CFLAGS $DRM_CFLAGS $DRI_CFLAGS $DRI2_CFLAGS"
-	AC_CHECK_HEADERS([dri2.h], DRI2=yes, DRI2=no, [#include <dixstruct.h>])
-	CFLAGS=$save_CFLAGS
+DRI2=no
+if test "x$enable_dri" != "xno"; then
+	PKG_CHECK_MODULES(DRI2, [dri2proto >= 2.6],, DRI2=no)
+	dridriverdir=`$PKG_CONFIG --variable=dridriverdir dri`
+	if test "x$dridriverdir" != "x"; then
+		AC_DEFINE_DIR(DRI_DRIVER_PATH, dridriverdir, [Default DRI driver path])
+	else
+		DRI2=no
+	fi
+	if test "x$DRI2" != "xno"; then
+		save_CFLAGS=$CFLAGS
+		CFLAGS="$XORG_CFLAGS $DRM_CFLAGS $DRI_CFLAGS $DRI2_CFLAGS"
+		AC_CHECK_HEADERS([dri2.h], DRI2=yes, DRI2=no, [#include <dixstruct.h>])
+		CFLAGS=$save_CFLAGS
+	fi
 fi
 AC_MSG_CHECKING([whether to include DRI2 support])
 AM_CONDITIONAL(DRI2, test "x$DRI2" = xyes)
