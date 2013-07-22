@@ -424,7 +424,7 @@ fi
 
 DRI2=no
 if test "x$enable_dri" != "xno"; then
-	PKG_CHECK_MODULES(DRI2, [dri2proto >= 2.6],, DRI2=no)
+	PKG_CHECK_MODULES(DRI2, [dri2proto >= 2.6], DRI2=yes, DRI2=no)
 	dridriverdir=`$PKG_CONFIG --variable=dridriverdir dri`
 	if test "x$dridriverdir" != "x"; then
 		AC_DEFINE_DIR(DRI_DRIVER_PATH, dridriverdir, [Default DRI driver path])
