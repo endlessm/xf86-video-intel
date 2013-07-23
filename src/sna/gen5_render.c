@@ -844,11 +844,14 @@ gen5_emit_pipelined_pointers(struct sna *sna,
 			    kernel);
 	bp = gen5_get_blend(blend, op->has_component_alpha, op->dst.format);
 
-	DBG(("%s: sp=%d, bp=%d\n", __FUNCTION__, sp, bp));
 	key = sp | (uint32_t)bp << 16 | (op->mask.bo != NULL) << 31;
+	DBG(("%s: sp=%d, bp=%d, key=%08x (current sp=%d, bp=%d, key=%08x)\n",
+	     __FUNCTION__, sp, bp, key,
+	     sna->render_state.gen5.last_pipelined_pointers & 0xffff,
+	     (sna->render_state.gen5.last_pipelined_pointers >> 16) & 0x7fff,
+	     sna->render_state.gen5.last_pipelined_pointers));
 	if (key == sna->render_state.gen5.last_pipelined_pointers)
 		return false;
-
 
 	OUT_BATCH(GEN5_3DSTATE_PIPELINED_POINTERS | 5);
 	OUT_BATCH(sna->render_state.gen5.vs);
@@ -858,8 +861,11 @@ gen5_emit_pipelined_pointers(struct sna *sna,
 	OUT_BATCH(sna->render_state.gen5.wm + sp);
 	OUT_BATCH(sna->render_state.gen5.cc + bp);
 
-	bp = (sna->render_state.gen5.last_pipelined_pointers & 0x7fff0000) != (bp << 16);
+	bp = (sna->render_state.gen5.last_pipelined_pointers & 0x7fff0000) != ((uint32_t)bp << 16);
 	sna->render_state.gen5.last_pipelined_pointers = key;
+
+	gen5_emit_urb(sna);
+
 	return bp;
 }
 
@@ -1029,7 +1035,8 @@ gen5_emit_state(struct sna *sna,
 		offset &= ~1;
 	gen5_emit_binding_table(sna, offset & ~1);
 	if (gen5_emit_pipelined_pointers(sna, op, op->op, op->u.gen5.wm_kernel)){
-		gen5_emit_urb(sna);
+		DBG(("%s: changed blend state, flush required? %d\n",
+		     __FUNCTION__, (offset & 1) && op->op > PictOpSrc));
 		flush = (offset & 1) && op->op > PictOpSrc;
 	}
 	gen5_emit_vertex_elements(sna, op);
@@ -1043,8 +1050,10 @@ gen5_emit_state(struct sna *sna,
 		kgem_bo_mark_dirty(op->dst.bo);
 		flush = false;
 	}
-	if (flush)
+	if (flush) {
+		DBG(("%s: forcing flush\n", __FUNCTION__));
 		gen5_emit_pipe_flush(sna);
+	}
 }
 
 static void gen5_bind_surfaces(struct sna *sna,

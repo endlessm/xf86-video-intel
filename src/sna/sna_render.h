@@ -391,10 +391,10 @@ struct gen5_render_state {
 	int ve_id;
 	uint32_t drawrect_offset;
 	uint32_t drawrect_limit;
+	uint32_t last_pipelined_pointers;
 	uint16_t last_primitive;
 	int16_t floats_per_vertex;
 	uint16_t surface_table;
-	uint16_t last_pipelined_pointers;
 
 	bool needs_invariant;
 };
