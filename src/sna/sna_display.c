@@ -3977,7 +3977,7 @@ sna_wait_for_scanline(struct sna *sna,
 	DBG(("%s: pipe=%d, y1=%d, y2=%d, full_height?=%d\n",
 	     __FUNCTION__, pipe, y1, y2, full_height));
 
-	if (sna->kgem.gen >= 0100)
+	if (sna->kgem.gen >= 0110)
 		ret = false;
 	else if (sna->kgem.gen >= 075)
 		ret = sna_emit_wait_for_scanline_hsw(sna, crtc, pipe, y1, y2, full_height);
