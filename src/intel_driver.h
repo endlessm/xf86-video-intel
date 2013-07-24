@@ -1,6 +1,8 @@
 #ifndef INTEL_DRIVER_H
 #define INTEL_DRIVER_H
 
+#include "intel_xmir.h"
+
 #define INTEL_VERSION 4000
 #define INTEL_NAME "intel"
 #define INTEL_DRIVER_NAME "intel"
@@ -129,6 +131,6 @@ void intel_put_device(ScrnInfoPtr scrn);
 
 void __intel_uxa_release_device(ScrnInfoPtr scrn);
 
-#define hosted() (0)
+#define hosted() (xorgMir)
 
 #endif /* INTEL_DRIVER_H */

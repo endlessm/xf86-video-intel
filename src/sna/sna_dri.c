@@ -2249,6 +2249,13 @@ out_complete:
 }
 #endif
 
+#if DRI2INFOREC_VERSION >= 8 && XMIR
+static int sna_dri_auth_magic2(ScreenPtr screen, uint32_t magic)
+{
+	return xmir_auth_drm_magic(to_sna_from_screen(screen)->xmir, magic);
+}
+#endif
+
 static bool has_i830_dri(void)
 {
 	return access(DRI_DRIVER_PATH "/i830_dri.so", R_OK) == 0;
@@ -2322,6 +2329,13 @@ bool sna_dri_open(struct sna *sna, ScreenPtr screen)
 	info.version = 6;
 	info.SwapLimitValidate = NULL;
 	info.ReuseBufferNotify = NULL;
+#endif
+
+#if DRI2INFOREC_VERSION >= 8 && XMIR
+	if (sna->xmir) {
+		info.version = 8;
+		info.AuthMagic2 = sna_dri_auth_magic2;
+	}
 #endif
 
 #if USE_ASYNC_SWAP
