@@ -978,9 +978,6 @@ static void sna_free_screen(FREE_SCREEN_ARGS_DECL)
 	intel_put_device(scrn);
 }
 
-/*
- * This gets called when gaining control of the VT, and from ScreenInit().
- */
 static Bool sna_enter_vt(VT_FUNC_ARGS_DECL)
 {
 	SCRN_INFO_PTR(arg);
