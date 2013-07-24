@@ -968,12 +968,13 @@ static void sna_free_screen(FREE_SCREEN_ARGS_DECL)
 	struct sna *sna = to_sna(scrn);
 
 	DBG(("%s\n", __FUNCTION__));
+	if ((uintptr_t)sna & 1)
+		return;
 
-	if (sna && ((intptr_t)sna & 1) == 0) {
-		sna_mode_fini(sna);
-		free(sna);
-	}
-	scrn->driverPrivate = NULL;
+	scrn->driverPrivate = (void *)((uintptr_t)sna->info | 1);
+
+	sna_mode_fini(sna);
+	free(sna);
 
 	intel_put_device(scrn);
 }
