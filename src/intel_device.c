@@ -175,9 +175,33 @@ static int fd_set_nonblock(int fd)
 	return fd;
 }
 
+static int __intel_open_xmir(const struct pci_device *pci,
+			     char **path)
+{
+	char id[20];
+	int fd;
+
+	snprintf(id, sizeof(id),
+		 "pci:%04x:%02x:%02x.%d",
+		 pci->domain, pci->bus, pci->dev, pci->func);
+	fd = xmir_get_drm_fd(id);
+	if (fd == -1)
+		return -1;
+
+	if (*path == NULL) /* XXX Fix Xmir - it knows both the fd and path */
+		*path = drmGetDeviceNameFromFd(fd);
+	if (*path == NULL)
+		fd = -1;
+
+	return fd;
+}
+
 static int __intel_open_device(const struct pci_device *pci, char **path)
 {
 	int fd;
+
+	if (xorgMir)
+		return __intel_open_xmir(pci, path);
 
 	if (*path == NULL) {
 		char id[20];

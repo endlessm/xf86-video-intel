@@ -81,6 +81,7 @@ libsna_la_SOURCES = \
 	sna_video_overlay.c \
 	sna_video_sprite.c \
 	sna_video_textured.c \
+	sna_xmir.c \
 	gen2_render.c \
 	gen2_render.h \
 	gen3_render.c \

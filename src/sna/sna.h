@@ -289,6 +289,7 @@ struct sna {
 
 	EntityInfoPtr pEnt;
 	const struct intel_device_info *info;
+	xmir_screen *xmir;
 
 	ScreenBlockHandlerProcPtr BlockHandler;
 	ScreenWakeupHandlerProcPtr WakeupHandler;
@@ -986,5 +987,19 @@ static inline void sigtrap_put(void)
 	--sigtrap;
 	sigtrap_assert();
 }
+
+/* sna_xmir.c */
+
+#if XMIR
+bool sna_xmir_create(struct sna *sna);
+bool sna_xmir_pre_init(struct sna *sna);
+void sna_xmir_init(struct sna *sna, ScreenPtr screen);
+void sna_xmir_post_damage(struct sna *sna);
+#else
+inline static bool sna_xmir_create(struct sna *sna) { return true; }
+inline static bool sna_xmir_pre_init(struct sna *sna) { return true; }
+inline static void sna_xmir_init(struct sna *sna, ScreenPtr screen) { }
+inline static void sna_xmir_post_damage(struct sna *sna) { }
+#endif
 
 #endif /* _SNA_H */

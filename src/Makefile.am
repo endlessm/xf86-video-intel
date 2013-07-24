@@ -59,6 +59,7 @@ intel_drv_la_SOURCES = \
 	intel_driver.h \
 	intel_options.c \
 	intel_module.c \
+	intel_xmir.h \
 	compat-api.h \
 	$(NULL)
 
