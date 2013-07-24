@@ -905,14 +905,15 @@ can_blit(struct sna *sna,
 	 DRI2BufferPtr src)
 {
 	RegionPtr clip;
-	int w, h;
 	uint32_t s;
+	BoxRec extents;
+	int16_t dx, dy;
 
 	if (draw->type == DRAWABLE_PIXMAP)
 		return true;
 
 	if (STRICT_BLIT && dst->attachment == DRI2BufferFrontLeft) {
-		if (get_private(dst)->pixmap != get_drawable_pixmap(draw)) {
+		if (unlikely(get_private(dst)->pixmap != get_drawable_pixmap(draw))) {
 			DBG(("%s: reject as dst pixmap=%ld, but expecting pixmap=%ld\n",
 						__FUNCTION__,
 						get_private(dst)->pixmap ? get_private(dst)->pixmap->drawable.serialNumber : 0,
@@ -927,9 +928,8 @@ can_blit(struct sna *sna,
 	assert(get_private(src)->bo->flush);
 
 	clip = &((WindowPtr)draw)->clipList;
-	w = clip->extents.x2 - draw->x;
-	h = clip->extents.y2 - draw->y;
-	if ((w|h) <= 0) {
+	if (clip->extents.x1 >= clip->extents.x2 ||
+	    clip->extents.y1 >= clip->extents.y2) {
 		DBG(("%s: reject, outside clip (%d, %d), (%d, %d)\n",
 		     __func__,
 		     clip->extents.x1, clip->extents.y1,
@@ -937,17 +937,34 @@ can_blit(struct sna *sna,
 		return false;
 	}
 
+	/* Check the read/write extents against the size of the attachments */
+	extents = clip->extents;
+	if (get_drawable_deltas(draw, get_drawable_pixmap(draw), &dx, &dy)) {
+		extents.x1 += dx; extents.x2 += dx;
+		extents.y1 += dy; extents.y2 += dy;
+	}
+
+	/* This should never happen as the Drawable->Pixmap is local! */
+	if (unlikely(extents.x1 < 0 || extents.y1 < 0)) {
+		DBG(("%s: reject as read/write extents is out of bounds\n",
+		     __FUNCTION__));
+		return false;
+	}
+
+	/* But the dst/src bo may be stale (older than the Drawable) and be
+	 * too small for the blit.
+	 */
 	s = get_private(dst)->size;
-	if ((s>>16) < h || (s&0xffff) < w) {
-		DBG(("%s: reject front size (%dx%d) < (%dx%d)\n", __func__,
-		       s&0xffff, s>>16, w, h));
+	if (unlikely((s>>16) < extents.y2 || (s&0xffff) < extents.x2)) {
+		DBG(("%s: reject as read/write extents is out of bounds\n",
+		     __FUNCTION__));
 		return false;
 	}
 
 	s = get_private(src)->size;
-	if ((s>>16) < h || (s&0xffff) < w) {
-		DBG(("%s:reject back size (%dx%d) < (%dx%d)\n", __func__,
-		     s&0xffff, s>>16, w, h));
+	if (unlikely((s>>16) < extents.y2 || (s&0xffff) < extents.x2)) {
+		DBG(("%s: reject as read/write extents is out of bounds\n",
+		     __FUNCTION__));
 		return false;
 	}
 
