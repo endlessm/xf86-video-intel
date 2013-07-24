@@ -915,9 +915,9 @@ can_blit(struct sna *sna,
 	if (STRICT_BLIT && dst->attachment == DRI2BufferFrontLeft) {
 		if (unlikely(get_private(dst)->pixmap != get_drawable_pixmap(draw))) {
 			DBG(("%s: reject as dst pixmap=%ld, but expecting pixmap=%ld\n",
-						__FUNCTION__,
-						get_private(dst)->pixmap ? get_private(dst)->pixmap->drawable.serialNumber : 0,
-						get_drawable_pixmap(draw)->drawable.serialNumber));
+			     __FUNCTION__,
+			     get_private(dst)->pixmap ? get_private(dst)->pixmap->drawable.serialNumber : 0,
+			     get_drawable_pixmap(draw)->drawable.serialNumber));
 			return false;
 		}
 
@@ -946,25 +946,32 @@ can_blit(struct sna *sna,
 
 	/* This should never happen as the Drawable->Pixmap is local! */
 	if (unlikely(extents.x1 < 0 || extents.y1 < 0)) {
-		DBG(("%s: reject as read/write extents is out of bounds\n",
-		     __FUNCTION__));
+		DBG(("%s: reject as read/write extents, origin=(%d, %d), is out of bounds\n",
+		     __FUNCTION__, extents.x1, extents.y1));
 		return false;
 	}
 
 	/* But the dst/src bo may be stale (older than the Drawable) and be
 	 * too small for the blit.
 	 */
+	extents.x1 -= draw->x; extents.x2 -= draw->x;
+	extents.y1 -= draw->y; extents.y2 -= draw->y;
+
 	s = get_private(dst)->size;
 	if (unlikely((s>>16) < extents.y2 || (s&0xffff) < extents.x2)) {
-		DBG(("%s: reject as read/write extents is out of bounds\n",
-		     __FUNCTION__));
+		DBG(("%s: reject as write extents (bottom-right=(%d, %d), size=(%d, %d)) is out of bounds\n",
+		     __FUNCTION__,
+		     extents.x2, extents.y2,
+		     s&0xffff, s>>16));
 		return false;
 	}
 
 	s = get_private(src)->size;
 	if (unlikely((s>>16) < extents.y2 || (s&0xffff) < extents.x2)) {
-		DBG(("%s: reject as read/write extents is out of bounds\n",
-		     __FUNCTION__));
+		DBG(("%s: reject as src read extents (bottom-right=(%d, %d), size=(%d, %d)) is out of bounds\n",
+		     __FUNCTION__,
+		     extents.x2, extents.y2,
+		     s&0xffff, s>>16));
 		return false;
 	}
 
