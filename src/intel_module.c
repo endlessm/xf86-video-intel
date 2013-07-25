@@ -293,7 +293,23 @@ intel_detect_chipset(ScrnInfoPtr scrn,
 		}
 	}
 	if (name == NULL) {
-		xf86DrvMsg(scrn->scrnIndex, X_WARNING, "unknown chipset\n");
+		int gen = 0;
+
+		for (i = 0; intel_device_match[i].device_id != 0; i++) {
+			if (DEVICE_ID(pci) == intel_device_match[i].device_id) {
+				const struct intel_device_info *info = (void *)intel_device_match[i].match_data;
+				gen = info->gen >> 3;
+				break;
+			}
+		}
+
+		if(gen) {
+			xf86DrvMsg(scrn->scrnIndex, from,
+				   "gen%d engineering sample\n", gen);
+		} else {
+			xf86DrvMsg(scrn->scrnIndex, X_WARNING,
+				   "Unknown chipset\n");
+		}
 		name = "unknown";
 	} else {
 		xf86DrvMsg(scrn->scrnIndex, from,
