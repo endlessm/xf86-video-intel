@@ -312,9 +312,59 @@ intel_detect_chipset(ScrnInfoPtr scrn,
  */
 static void intel_identify(int flags)
 {
-	xf86PrintChipsets(INTEL_NAME,
-			  "Driver for Intel Integrated Graphics Chipsets",
-			  intel_chipsets);
+	const SymTabRec *chipset;
+	const char *stack[64], **unique;
+	int i, j, size, len;
+
+	unique = stack;
+	size = sizeof(stack)/sizeof(stack[0]);
+	i = 0;
+
+	xf86Msg(X_INFO, INTEL_NAME ": Driver for Intel(R) Integrated Graphics Chipsets:\n\t");
+	len = 8;
+
+	for (chipset = intel_chipsets; chipset->name; chipset++) {
+		for (j = i; --j >= 0;)
+			if (strcmp(unique[j], chipset->name) == 0)
+				break;
+		if (j < 0) {
+			int name_len = strlen(chipset->name);
+			if (i != 0) {
+				xf86ErrorF(",");
+				len++;
+				if (len + 2 + name_len < 78) {
+					xf86ErrorF(" ");
+					len++;
+				} else {
+					xf86ErrorF("\n\t");
+					len = 8;
+				}
+			}
+			xf86ErrorF("%s", chipset->name);
+			len += name_len;
+
+			if (i == size) {
+				const char **new_unique;
+
+				if (unique == stack)
+					new_unique = malloc(2*sizeof(*unique)*size);
+				else
+					new_unique = realloc(unique, 2*sizeof(*unique)*size);
+				if (new_unique != NULL) {
+					if (unique == stack)
+						memcpy(new_unique, stack,
+						       sizeof(stack));
+					unique = new_unique;
+					size *= 2;
+				}
+			}
+			if (i < size)
+				unique[i++] = chipset->name;
+		}
+	}
+	xf86ErrorF("\n");
+	if (unique != stack)
+		free(unique);
 }
 
 static Bool intel_driver_func(ScrnInfoPtr pScrn,
