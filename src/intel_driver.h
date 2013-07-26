@@ -9,7 +9,6 @@
 #define INTEL_VERSION_MINOR PACKAGE_VERSION_MINOR
 #define INTEL_VERSION_PATCH PACKAGE_VERSION_PATCHLEVEL
 
-#ifndef PCI_CHIP_I810
 #define PCI_CHIP_I810              0x7121
 #define PCI_CHIP_I810_DC100        0x7123
 #define PCI_CHIP_I810_E            0x7125
@@ -18,162 +17,100 @@
 #define PCI_CHIP_I810_DC100_BRIDGE 0x7122
 #define PCI_CHIP_I810_E_BRIDGE     0x7124
 #define PCI_CHIP_I815_BRIDGE       0x1130
-#endif
 
-#ifndef PCI_CHIP_I830_M
 #define PCI_CHIP_I830_M            0x3577
 #define PCI_CHIP_I830_M_BRIDGE     0x3575
-#endif
 
-#ifndef PCI_CHIP_845_G
 #define PCI_CHIP_845_G		   0x2562
 #define PCI_CHIP_845_G_BRIDGE	   0x2560
-#endif
 
-#ifndef PCI_CHIP_I854
 #define PCI_CHIP_I854		   0x358E
 #define PCI_CHIP_I854_BRIDGE	   0x358C
-#endif
 
-#ifndef PCI_CHIP_I855_GM
 #define PCI_CHIP_I855_GM	   0x3582
 #define PCI_CHIP_I855_GM_BRIDGE	   0x3580
-#endif
 
-#ifndef PCI_CHIP_I865_G
 #define PCI_CHIP_I865_G		   0x2572
 #define PCI_CHIP_I865_G_BRIDGE	   0x2570
-#endif
 
-#ifndef PCI_CHIP_I915_G
 #define PCI_CHIP_I915_G		   0x2582
 #define PCI_CHIP_I915_G_BRIDGE	   0x2580
-#endif
 
-#ifndef PCI_CHIP_I915_GM
 #define PCI_CHIP_I915_GM	   0x2592
 #define PCI_CHIP_I915_GM_BRIDGE	   0x2590
-#endif
 
-#ifndef PCI_CHIP_E7221_G
 #define PCI_CHIP_E7221_G	   0x258A
 /* Same as I915_G_BRIDGE */
 #define PCI_CHIP_E7221_G_BRIDGE	   0x2580
-#endif
 
-#ifndef PCI_CHIP_I945_G
 #define PCI_CHIP_I945_G        0x2772
 #define PCI_CHIP_I945_G_BRIDGE 0x2770
-#endif
 
-#ifndef PCI_CHIP_I945_GM
 #define PCI_CHIP_I945_GM        0x27A2
 #define PCI_CHIP_I945_GM_BRIDGE 0x27A0
-#endif
 
-#ifndef PCI_CHIP_I945_GME
 #define PCI_CHIP_I945_GME	 0x27AE
 #define PCI_CHIP_I945_GME_BRIDGE 0x27AC
-#endif
 
-#ifndef PCI_CHIP_PINEVIEW_M
 #define PCI_CHIP_PINEVIEW_M		0xA011
 #define PCI_CHIP_PINEVIEW_M_BRIDGE	0xA010
 #define PCI_CHIP_PINEVIEW_G		0xA001
 #define PCI_CHIP_PINEVIEW_G_BRIDGE	0xA000
-#endif
 
-#ifndef PCI_CHIP_G35_G
 #define PCI_CHIP_G35_G		0x2982
 #define PCI_CHIP_G35_G_BRIDGE 	0x2980
-#endif
 
-#ifndef PCI_CHIP_I965_Q
 #define PCI_CHIP_I965_Q		0x2992
 #define PCI_CHIP_I965_Q_BRIDGE 	0x2990
-#endif
 
-#ifndef PCI_CHIP_I965_G
 #define PCI_CHIP_I965_G		0x29A2
 #define PCI_CHIP_I965_G_BRIDGE 	0x29A0
-#endif
 
-#ifndef PCI_CHIP_I946_GZ
 #define PCI_CHIP_I946_GZ		0x2972
 #define PCI_CHIP_I946_GZ_BRIDGE 	0x2970
-#endif
 
-#ifndef PCI_CHIP_I965_GM
 #define PCI_CHIP_I965_GM        0x2A02
 #define PCI_CHIP_I965_GM_BRIDGE 0x2A00
-#endif
 
-#ifndef PCI_CHIP_I965_GME
 #define PCI_CHIP_I965_GME       0x2A12
 #define PCI_CHIP_I965_GME_BRIDGE 0x2A10
-#endif
 
-#ifndef PCI_CHIP_G33_G
 #define PCI_CHIP_G33_G		0x29C2
 #define PCI_CHIP_G33_G_BRIDGE 	0x29C0
-#endif
 
-#ifndef PCI_CHIP_Q35_G
 #define PCI_CHIP_Q35_G		0x29B2
 #define PCI_CHIP_Q35_G_BRIDGE 	0x29B0
-#endif
 
-#ifndef PCI_CHIP_Q33_G
 #define PCI_CHIP_Q33_G		0x29D2
 #define PCI_CHIP_Q33_G_BRIDGE 	0x29D0
-#endif
 
-#ifndef PCI_CHIP_GM45_GM
 #define PCI_CHIP_GM45_GM	0x2A42
 #define PCI_CHIP_GM45_BRIDGE    0x2A40
-#endif
 
-#ifndef PCI_CHIP_G45_E_G
 #define PCI_CHIP_G45_E_G	0x2E02
 #define PCI_CHIP_G45_E_G_BRIDGE 0x2E00
-#endif
 
-#ifndef PCI_CHIP_G45_G
 #define PCI_CHIP_G45_G		0x2E22
 #define PCI_CHIP_G45_G_BRIDGE	0x2E20
-#endif
 
-#ifndef PCI_CHIP_Q45_G
 #define PCI_CHIP_Q45_G		0x2E12
 #define PCI_CHIP_Q45_G_BRIDGE	0x2E10
-#endif
 
-#ifndef PCI_CHIP_G41_G
 #define PCI_CHIP_G41_G		0x2E32
 #define PCI_CHIP_G41_G_BRIDGE	0x2E30
-#endif
 
-#ifndef PCI_CHIP_B43_G
 #define PCI_CHIP_B43_G		0x2E42
 #define PCI_CHIP_B43_G_BRIDGE	0x2E40
-#endif
 
-#ifndef PCI_CHIP_B43_G1
 #define PCI_CHIP_B43_G1		0x2E92
 #define PCI_CHIP_B43_G1_BRIDGE	0x2E90
-#endif
 
-#ifndef PCI_CHIP_IRONLAKE_D_G
 #define PCI_CHIP_IRONLAKE_D_G		0x0042
 #define PCI_CHIP_IRONLAKE_D_G_BRIDGE	0x0040
-#endif
 
-#ifndef PCI_CHIP_IRONLAKE_M_G
 #define PCI_CHIP_IRONLAKE_M_G		0x0046
 #define PCI_CHIP_IRONLAKE_M_G_BRIDGE	0x0044
-#endif
 
-#ifndef PCI_CHIP_SANDYBRIDGE_BRIDGE
 #define PCI_CHIP_SANDYBRIDGE_BRIDGE	0x0100	/* Desktop */
 #define PCI_CHIP_SANDYBRIDGE_GT1	0x0102
 #define PCI_CHIP_SANDYBRIDGE_GT2	0x0112
@@ -260,8 +197,6 @@
 #define PCI_CHIP_VALLEYVIEW_1		0x0f31
 #define PCI_CHIP_VALLEYVIEW_2		0x0f32
 #define PCI_CHIP_VALLEYVIEW_3		0x0f33
-
-#endif
 
 struct intel_device_info {
 	int gen;
