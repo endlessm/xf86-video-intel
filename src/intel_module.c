@@ -268,11 +268,11 @@ intel_detect_chipset(ScrnInfoPtr scrn,
 		xf86DrvMsg(scrn->scrnIndex, from = X_CONFIG,
 			   "ChipID override: 0x%04X\n",
 			   ent->device->chipID);
-		DEVICE_ID(pci) = ent->device->chipID;
+		pci->device_id = ent->device->chipID;
 	}
 
 	for (i = 0; intel_chipsets[i].name != NULL; i++) {
-		if (DEVICE_ID(pci) == intel_chipsets[i].token) {
+		if (pci->device_id == intel_chipsets[i].token) {
 			name = intel_chipsets[i].name;
 			break;
 		}
@@ -281,7 +281,7 @@ intel_detect_chipset(ScrnInfoPtr scrn,
 		int gen = 0;
 
 		for (i = 0; intel_device_match[i].device_id != 0; i++) {
-			if (DEVICE_ID(pci) == intel_device_match[i].device_id) {
+			if (pci->device_id == intel_device_match[i].device_id) {
 				const struct intel_device_info *info = (void *)intel_device_match[i].match_data;
 				gen = info->gen >> 3;
 				break;
@@ -481,14 +481,14 @@ intel_scrn_create(DriverPtr		driver,
  */
 static Bool intel_pci_probe(DriverPtr		driver,
 			    int			entity_num,
-			    struct pci_device	*device,
+			    struct pci_device	*pci,
 			    intptr_t		match_data)
 {
-	if (intel_open_device(entity_num, device, NULL) == -1) {
+	if (intel_open_device(entity_num, pci, NULL) == -1) {
 #if KMS_ONLY
 		return FALSE;
 #else
-		switch (DEVICE_ID(device)) {
+		switch (pci->device_id) {
 		case PCI_CHIP_I810:
 		case PCI_CHIP_I810_DC100:
 		case PCI_CHIP_I810_E:

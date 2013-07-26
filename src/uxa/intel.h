@@ -364,14 +364,14 @@ typedef struct intel_screen_private {
 #define IS_HSW(intel) (INTEL_INFO(intel)->gen == 075)
 
 /* Some chips have specific errata (or limits) that we need to workaround. */
-#define IS_I830(intel) (DEVICE_ID((intel)->PciInfo) == PCI_CHIP_I830_M)
-#define IS_845G(intel) (DEVICE_ID((intel)->PciInfo) == PCI_CHIP_845_G)
-#define IS_I865G(intel) (DEVICE_ID((intel)->PciInfo) == PCI_CHIP_I865_G)
+#define IS_I830(intel) ((intel)->PciInfo->device_id == PCI_CHIP_I830_M)
+#define IS_845G(intel) ((intel)->PciInfo->device_id == PCI_CHIP_845_G)
+#define IS_I865G(intel) ((intel)->PciInfo->device_id == PCI_CHIP_I865_G)
 
-#define IS_I915G(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I915_G || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_E7221_G)
-#define IS_I915GM(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I915_GM)
+#define IS_I915G(pI810) ((intel)->PciInfo->device_id == PCI_CHIP_I915_G || (intel)->PciInfo->device_id == PCI_CHIP_E7221_G)
+#define IS_I915GM(pI810) ((intel)->PciInfo->device_id == PCI_CHIP_I915_GM)
 
-#define IS_965_Q(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I965_Q)
+#define IS_965_Q(pI810) ((intel)->PciInfo->device_id == PCI_CHIP_I965_Q)
 
 /* supports Y tiled surfaces (pre-965 Mesa isn't ready yet) */
 #define SUPPORTS_YTILING(pI810) (INTEL_INFO(intel)->gen >= 040)

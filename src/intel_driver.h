@@ -263,21 +263,6 @@
 
 #endif
 
-#define I85X_CAPID			0x44
-#define I85X_VARIANT_MASK			0x7
-#define I85X_VARIANT_SHIFT			5
-#define I855_GME				0x0
-#define I855_GM					0x4
-#define I852_GME				0x2
-#define I852_GM					0x5
-
-#define I810_MEMBASE(p,n) (p)->regions[(n)].base_addr
-#define VENDOR_ID(p)      (p)->vendor_id
-#define DEVICE_ID(p)      (p)->device_id
-#define SUBVENDOR_ID(p)	  (p)->subvendor_id
-#define SUBSYS_ID(p)      (p)->subdevice_id
-#define CHIP_REVISION(p)  (p)->revision
-
 struct intel_device_info {
 	int gen;
 };

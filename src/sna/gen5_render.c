@@ -3338,7 +3338,7 @@ const char *gen5_render_init(struct sna *sna, const char *backend)
 #if !NO_COMPOSITE_SPANS
 	sna->render.check_composite_spans = gen5_check_composite_spans;
 	sna->render.composite_spans = gen5_render_composite_spans;
-	if (DEVICE_ID(sna->PciInfo) == 0x0044)
+	if (sna->PciInfo->device_id == 0x0044)
 		sna->render.prefer_gpu |= PREFER_GPU_SPANS;
 #endif
 	sna->render.video = gen5_render_video;

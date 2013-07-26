@@ -3740,12 +3740,12 @@ static void gen7_render_fini(struct sna *sna)
 
 static bool is_gt2(struct sna *sna)
 {
-	return DEVICE_ID(sna->PciInfo) & (sna->kgem.gen == 075 ? 0x30 : 0x20);
+	return sna->PciInfo->device_id & (sna->kgem.gen == 075 ? 0x30 : 0x20);
 }
 
 static bool is_mobile(struct sna *sna)
 {
-	return (DEVICE_ID(sna->PciInfo) & 0xf) == 0x6;
+	return (sna->PciInfo->device_id & 0xf) == 0x6;
 }
 
 static bool gen7_render_setup(struct sna *sna)
@@ -3757,7 +3757,7 @@ static bool gen7_render_setup(struct sna *sna)
 
 	if (sna->kgem.gen == 070) {
 		state->info = &ivb_gt_info;
-		if (DEVICE_ID(sna->PciInfo) & 0xf) {
+		if (sna->PciInfo->device_id & 0xf) {
 			state->info = &ivb_gt1_info;
 			if (is_gt2(sna))
 				state->info = &ivb_gt2_info; /* XXX requires GT_MODE WiZ disabled */
@@ -3766,7 +3766,7 @@ static bool gen7_render_setup(struct sna *sna)
 		state->info = &vlv_gt_info;
 	} else if (sna->kgem.gen == 075) {
 		state->info = &hsw_gt_info;
-		if (DEVICE_ID(sna->PciInfo) & 0xf) {
+		if (sna->PciInfo->device_id & 0xf) {
 			state->info = &hsw_gt1_info;
 			if (is_gt2(sna))
 				state->info = &hsw_gt2_info;

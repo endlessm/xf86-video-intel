@@ -867,7 +867,7 @@ I810DRIScreenInit(ScreenPtr pScreen)
    xf86DrvMsg(pScrn->scrnIndex, X_INFO,
 	      "[drm] dma control initialized, using IRQ %d\n", pI810DRI->irq);
 
-   pI810DRI->deviceID = DEVICE_ID(pI810->PciInfo);
+   pI810DRI->deviceID = pI810->PciInfo->device_id;
    pI810DRI->width = pScrn->virtualX;
    pI810DRI->height = pScrn->virtualY;
    pI810DRI->mem = pScrn->videoRam * 1024;

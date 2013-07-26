@@ -86,7 +86,7 @@ static int create_context(XvPortPtr port, XvMCContextPtr ctx,
 		else
 			priv->type = XVMC_I965_MPEG2_MC;
 		priv->i965.is_g4x = sna->kgem.gen == 045;
-		priv->i965.is_965_q = DEVICE_ID(sna->PciInfo) == PCI_CHIP_I965_Q;
+		priv->i965.is_965_q = sna->PciInfo->device_id == PCI_CHIP_I965_Q;
 		priv->i965.is_igdng = sna->kgem.gen == 050;
 	} else
 		priv->type = XVMC_I915_MPEG2_MC;
