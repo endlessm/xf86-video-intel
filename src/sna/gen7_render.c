@@ -112,10 +112,11 @@ static const struct gt_info ivb_gt2_info = {
 
 static const struct gt_info vlv_gt_info = {
 	.name = "Valleyview (gen7)",
-	.max_vs_threads = 16,
-	.max_gs_threads = 16,
-	.max_wm_threads = (16-1) << IVB_PS_MAX_THREADS_SHIFT,
 	.urb = { 128, 64, 64 },
+	.max_vs_threads = 36,
+	.max_gs_threads = 36,
+	.max_wm_threads = (48-1) << IVB_PS_MAX_THREADS_SHIFT,
+	.urb = { 128, 512, 192 },
 };
 
 static const struct gt_info hsw_gt_info = {
