@@ -20,13 +20,8 @@
 
 ACLOCAL_AMFLAGS = ${ACLOCAL_FLAGS} -I m4
 
-SUBDIRS = man xvmc
+SUBDIRS = man xvmc src
 
-if UXA
-SUBDIRS += uxa
-endif
-
-SUBDIRS += src
 MAINTAINERCLEANFILES = ChangeLog INSTALL
 
 if HAVE_X11

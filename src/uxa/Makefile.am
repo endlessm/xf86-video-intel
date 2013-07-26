@@ -23,7 +23,7 @@ AM_CFLAGS += @UDEV_CFLAGS@ @DRM_CFLAGS@ @DRMINTEL_CFLAGS@
 AM_CFLAGS += -I$(top_srcdir)/uxa -I$(top_srcdir)/src -I$(top_srcdir)/src/render_program
 
 noinst_LTLIBRARIES = libuxa.la
-libuxa_la_LIBADD = @UDEV_LIBS@ @DRMINTEL_LIBS@ @DRM_LIBS@ $(top_builddir)/uxa/libuxa.la
+libuxa_la_LIBADD = @UDEV_LIBS@ @DRMINTEL_LIBS@ @DRM_LIBS@
 libuxa_la_SOURCES = \
 	brw_defines.h \
 	brw_structs.h \
@@ -51,6 +51,14 @@ libuxa_la_SOURCES = \
 	i965_video.c \
 	i965_render.c \
 	uxa_module.h \
+	uxa.c \
+	uxa.h \
+	uxa-accel.c \
+	uxa-glamor.h \
+	uxa-glyphs.c \
+	uxa-render.c \
+	uxa-priv.h \
+	uxa-unaccel.c
 	$(NULL)
 
 if GLAMOR

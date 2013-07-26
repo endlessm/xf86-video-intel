@@ -507,7 +507,6 @@ AC_SUBST([moduledir])
 AC_CONFIG_FILES([
                 Makefile
                 man/Makefile
-                uxa/Makefile
                 src/Makefile
                 src/legacy/Makefile
                 src/legacy/i810/Makefile
