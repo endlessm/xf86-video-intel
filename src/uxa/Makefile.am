@@ -18,47 +18,62 @@
 #  IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 #  CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-SUBDIRS = render_program legacy
-
-# this is obnoxious:
-# -module lets us name the module exactly how we want
-# -avoid-version prevents gratuitous .0.0.0 version numbers on the end
-# _ladir passes a dummy rpath to libtool so the thing will actually link
-# TODO: -nostdlib/-Bstatic/-lgcc platform magic, not installing the .a, etc.
-
 AM_CFLAGS = @CWARNFLAGS@ @XORG_CFLAGS@ @DRM_CFLAGS@ @PCIACCESS_CFLAGS@
+AM_CFLAGS += @UDEV_CFLAGS@ @DRM_CFLAGS@ @DRMINTEL_CFLAGS@
+AM_CFLAGS += -I$(top_srcdir)/uxa -I$(top_srcdir)/src -I$(top_srcdir)/src/render_program
 
-intel_drv_la_LTLIBRARIES = intel_drv.la
-intel_drv_la_LDFLAGS = -module -avoid-version
-intel_drv_ladir = @moduledir@/drivers
-intel_drv_la_LIBADD = legacy/liblegacy.la @PCIACCESS_LIBS@
-
-if SNA
-SUBDIRS += sna
-intel_drv_la_LIBADD += sna/libsna.la
-endif
-
-if UXA
-SUBDIRS += uxa
-intel_drv_la_LIBADD += uxa/libuxa.la
-endif
-
-NULL:=#
-
-intel_drv_la_SOURCES = \
-	i915_pciids.h \
-	intel_list.h \
-	intel_options.h \
-	intel_device.c \
-	intel_driver.h \
-	intel_options.c \
-	intel_module.c \
-	compat-api.h \
+noinst_LTLIBRARIES = libuxa.la
+libuxa_la_LIBADD = @UDEV_LIBS@ @DRMINTEL_LIBS@ @DRM_LIBS@ $(top_builddir)/uxa/libuxa.la
+libuxa_la_SOURCES = \
+	brw_defines.h \
+	brw_structs.h \
+	common.h \
+	intel.h \
+	intel_batchbuffer.c \
+	intel_batchbuffer.h \
+	intel_display.c \
+	intel_driver.c \
+	intel_glamor.h \
+	intel_memory.c \
+	intel_uxa.c \
+	intel_video.c \
+	intel_video.h \
+	i830_3d.c \
+	i830_render.c \
+	i830_reg.h \
+	i915_3d.h \
+	i915_reg.h \
+	i915_3d.c \
+	i915_render.c \
+	i915_video.c \
+	i965_reg.h \
+	i965_3d.c \
+	i965_video.c \
+	i965_render.c \
+	uxa_module.h \
 	$(NULL)
 
-EXTRA_DIST = \
-	scripts/clock.5c \
-	scripts/clock-graph.5c \
-	scripts/fix.5c \
-	scripts/tv.5c \
+if GLAMOR
+AM_CFLAGS += @LIBGLAMOR_CFLAGS@
+libuxa_la_LIBADD += @LIBGLAMOR_LIBS@
+libuxa_la_SOURCES += \
+	 intel_glamor.c \
+	 $(NULL)
+endif
+
+if DRI2
+libuxa_la_SOURCES += \
+	intel_dri.c \
 	$(NULL)
+libuxa_la_LIBADD += \
+	$(DRI_LIBS) \
+	@CLOCK_GETTIME_LIBS@ \
+	$(NULL)
+endif
+
+if XVMC
+AM_CFLAGS += -I$(top_srcdir)/xvmc
+libuxa_la_SOURCES += \
+	intel_hwmc.c \
+	$(NULL)
+endif

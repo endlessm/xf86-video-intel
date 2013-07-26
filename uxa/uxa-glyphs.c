@@ -66,7 +66,7 @@
 
 #include "uxa-priv.h"
 #include "uxa-glamor.h"
-#include "../src/common.h"
+#include "common.h"
 
 #include "mipict.h"
 

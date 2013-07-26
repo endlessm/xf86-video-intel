@@ -28,6 +28,7 @@
 #include "config.h"
 #endif
 
+#include <xf86.h>
 #include <xf86Parser.h>
 #include <xorgVersion.h>
 
@@ -35,11 +36,11 @@
 #include <xf86Resources.h>
 #endif
 
-#include "common.h"
 #include "intel_driver.h"
 #include "intel_options.h"
 #include "legacy/legacy.h"
 #include "sna/sna_module.h"
+#include "uxa/uxa_module.h"
 
 #include "i915_pciids.h" /* copied from (kernel) include/drm/i915_pciids.h */
 

@@ -24,13 +24,11 @@
  *    Zou Nan hai <nanhai.zou@intel.com>
  *
  */
-#include "intel_xvmc.h"
+#include "intel_xvmc_private.h"
 #include "i830_reg.h"
 #include "i965_reg.h"
 #include "brw_defines.h"
 #include "brw_structs.h"
-#include "intel_batchbuffer.h"
-#include "intel_hwmc.h"
 #define BATCH_STRUCT(x) intelBatchbufferData(&x, sizeof(x), 0)
 #define URB_SIZE     256	/* XXX */
 

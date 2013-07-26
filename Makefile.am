@@ -20,7 +20,7 @@
 
 ACLOCAL_AMFLAGS = ${ACLOCAL_FLAGS} -I m4
 
-SUBDIRS = man
+SUBDIRS = man xvmc
 
 if UXA
 SUBDIRS += uxa

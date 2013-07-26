@@ -506,20 +506,21 @@ AC_SUBST([moduledir])
 
 AC_CONFIG_FILES([
                 Makefile
+                man/Makefile
                 uxa/Makefile
                 src/Makefile
-                src/xvmc/Makefile
-                src/xvmc/shader/Makefile
-                src/xvmc/shader/mc/Makefile
-                src/xvmc/shader/vld/Makefile
                 src/legacy/Makefile
                 src/legacy/i810/Makefile
                 src/legacy/i810/xvmc/Makefile
+                src/render_program/Makefile
                 src/sna/Makefile
                 src/sna/brw/Makefile
                 src/sna/fb/Makefile
-                man/Makefile
-                src/render_program/Makefile
+                src/uxa/Makefile
+                xvmc/Makefile
+                xvmc/shader/Makefile
+                xvmc/shader/mc/Makefile
+                xvmc/shader/vld/Makefile
 		test/Makefile
 ])
 AC_OUTPUT

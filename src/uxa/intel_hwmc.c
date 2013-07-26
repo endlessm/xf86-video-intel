@@ -30,7 +30,7 @@
 
 #define _INTEL_XVMC_SERVER_
 #include "intel.h"
-#include "intel_hwmc.h"
+#include "intel_xvmc.h"
 
 #include <X11/extensions/Xv.h>
 #include <X11/extensions/XvMC.h>

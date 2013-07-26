@@ -55,8 +55,6 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define KB(x) ((x) * 1024)
 #define MB(x) ((x) * KB(1024))
 
-extern Bool intel_init_scrn(ScrnInfoPtr scrn);
-
 /**
  * Hints to CreatePixmap to tell the driver how the pixmap is going to be
  * used.

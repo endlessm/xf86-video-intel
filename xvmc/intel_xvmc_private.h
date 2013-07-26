@@ -41,7 +41,6 @@
 #include <stdint.h>
 
 #include <xf86drm.h>
-#include "intel_hwmc.h"
 #include <X11/X.h>
 #include <X11/Xlibint.h>
 #include <X11/Xutil.h>
@@ -52,9 +51,11 @@
 #include <X11/extensions/XvMClib.h>
 #include <X11/extensions/vldXvMC.h>
 #include <drm_sarea.h>
+
 #include "i915_drm.h"
 #include "intel_bufmgr.h"
 
+#include "intel_xvmc.h"
 #include "intel_batchbuffer.h"
 
 #define GTT_PAGE_SIZE 4*1024

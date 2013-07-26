@@ -24,7 +24,7 @@
  *    Zhenyu Wang <zhenyu.z.wang@intel.com>
  *
  */
-#include "intel_xvmc.h"
+#include "intel_xvmc_private.h"
 #include <xcb/xcb.h>
 #include <xcb/xcb_aux.h>
 #include <xcb/dri2.h>

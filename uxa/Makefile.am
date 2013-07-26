@@ -4,7 +4,7 @@ noinst_LTLIBRARIES = libuxa.la
 # built (in hw/xfree86/os-support/solaris) until after UXA is built
 SOLARIS_ASM_CFLAGS=""
 
-AM_CFLAGS = $(CWARNFLAGS) $(XORG_CFLAGS)
+AM_CFLAGS = $(CWARNFLAGS) $(XORG_CFLAGS) -I$(top_srcdir)/src/uxa
 
 if GLAMOR
 AM_CFLAGS += @LIBGLAMOR_CFLAGS@

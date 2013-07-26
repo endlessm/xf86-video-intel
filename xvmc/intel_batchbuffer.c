@@ -43,7 +43,7 @@
 #include <X11/extensions/XvMC.h>
 #include <X11/extensions/XvMClib.h>
 
-#include "intel_xvmc.h"
+#include "intel_xvmc_private.h"
 #include "intel_batchbuffer.h"
 #include "brw_defines.h"
 #include "brw_structs.h"

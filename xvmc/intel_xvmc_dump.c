@@ -24,7 +24,7 @@
  *    Zhenyu Wang <zhenyu.z.wang@intel.com>
  *
  */
-#include "intel_xvmc.h"
+#include "intel_xvmc_private.h"
 
 #define DUMPFILE "./intel_xvmc_dump"
 
