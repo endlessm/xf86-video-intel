@@ -110,8 +110,8 @@ static const struct gt_info ivb_gt2_info = {
 	.urb = { 256, 704, 320 },
 };
 
-static const struct gt_info vlv_gt_info = {
-	.name = "Valleyview (gen7)",
+static const struct gt_info byt_gt_info = {
+	.name = "Baytrail (gen7)",
 	.urb = { 128, 64, 64 },
 	.max_vs_threads = 36,
 	.max_gs_threads = 36,
@@ -3764,7 +3764,7 @@ static bool gen7_render_setup(struct sna *sna)
 				state->info = &ivb_gt2_info; /* XXX requires GT_MODE WiZ disabled */
 		}
 	} else if (sna->kgem.gen == 071) {
-		state->info = &vlv_gt_info;
+		state->info = &byt_gt_info;
 	} else if (sna->kgem.gen == 075) {
 		state->info = &hsw_gt_info;
 		if (sna->PciInfo->device_id & 0xf) {
