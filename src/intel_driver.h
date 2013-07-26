@@ -278,31 +278,6 @@
 #define SUBSYS_ID(p)      (p)->subdevice_id
 #define CHIP_REVISION(p)  (p)->revision
 
-#define INTEL_INFO(intel) ((intel)->info)
-#define IS_GENx(intel, X) (INTEL_INFO(intel)->gen >= 8*(X) && INTEL_INFO(intel)->gen < 8*((X)+1))
-#define IS_GEN1(intel) IS_GENx(intel, 1)
-#define IS_GEN2(intel) IS_GENx(intel, 2)
-#define IS_GEN3(intel) IS_GENx(intel, 3)
-#define IS_GEN4(intel) IS_GENx(intel, 4)
-#define IS_GEN5(intel) IS_GENx(intel, 5)
-#define IS_GEN6(intel) IS_GENx(intel, 6)
-#define IS_GEN7(intel) IS_GENx(intel, 7)
-#define IS_HSW(intel) (INTEL_INFO(intel)->gen == 075)
-
-/* Some chips have specific errata (or limits) that we need to workaround. */
-#define IS_I830(intel) (DEVICE_ID((intel)->PciInfo) == PCI_CHIP_I830_M)
-#define IS_845G(intel) (DEVICE_ID((intel)->PciInfo) == PCI_CHIP_845_G)
-#define IS_I865G(intel) (DEVICE_ID((intel)->PciInfo) == PCI_CHIP_I865_G)
-
-#define IS_I915G(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I915_G || DEVICE_ID(pI810->PciInfo) == PCI_CHIP_E7221_G)
-#define IS_I915GM(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I915_GM)
-
-#define IS_965_Q(pI810) (DEVICE_ID(pI810->PciInfo) == PCI_CHIP_I965_Q)
-
-/* supports Y tiled surfaces (pre-965 Mesa isn't ready yet) */
-#define SUPPORTS_YTILING(pI810) (INTEL_INFO(intel)->gen >= 040)
-#define HAS_BLT(pI810) (INTEL_INFO(intel)->gen >= 060)
-
 struct intel_device_info {
 	int gen;
 };
