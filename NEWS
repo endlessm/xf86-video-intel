@@ -1,3 +1,40 @@
+Release 2.21.13 (2013-07-27)
+============================
+A minor release to repair the build for non-Linux systems, and to undo a
+few more regressions.
+
+ * Avoid potential memory corruption with allocations of very small
+   depth 1 bitmaps.
+
+ * Fix source clipping whilst computing copy extents and exposures.
+   [Regression from 2.21.12]
+   https://bugs.freedesktop.org/show_bug.cgi?id=66970
+
+ * Use /proc/cpuinfo if cpuid4 is not available (old hardware or old
+   gcc), and repair the build on systems without cpuid.
+   [Regression from 2.21.12]
+
+ * Fix performance regression on Ironlake from inadvertently flushing
+   after every operation.
+   [Regression from 2.21.11]
+   https://bugs.freedesktop.org/show_bug.cgi?id=67157
+
+ * Fix conflict handling when probing initial KMS configuration for
+   ZaphodHeads.
+   [Regression from 2.21.11]
+   https://bugs.freedesktop.org/show_bug.cgi?id=67176
+
+ * Stop being overly restrictive and rejecting stale DRI2 buffers.
+   (DRI2 is inherently racy in that the client may have completed and
+   submitted rendering to buffers that are now invalid on the server.
+   This race is magnified by bugs within the Xserver where it forgets
+   to notify the DRI2 clients of certain invalidation events.)
+   https://bugs.freedesktop.org/show_bug.cgi?id=67210
+
+ * Handle a failure to use a GTT mmap for a pixmap upload and try
+   an alternative method before giving up.
+
+
 Release 2.21.12 (2013-07-14)
 ============================
 In this release, we clear up the teething troubles from preserving the KMS
