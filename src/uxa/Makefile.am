@@ -70,11 +70,12 @@ libuxa_la_SOURCES += \
 endif
 
 if DRI2
+AM_CFLAGS += @DRI2_CFLAGS@
 libuxa_la_SOURCES += \
 	intel_dri.c \
 	$(NULL)
 libuxa_la_LIBADD += \
-	$(DRI_LIBS) \
+	$(DRI2_LIBS) \
 	@CLOCK_GETTIME_LIBS@ \
 	$(NULL)
 endif
