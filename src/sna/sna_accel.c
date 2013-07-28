@@ -4001,6 +4001,87 @@ create_upload_tiled_x(struct kgem *kgem,
 }
 
 static bool
+try_upload_blt(PixmapPtr pixmap, RegionRec *region,
+		int x, int y, int w, int  h, char *bits, int stride)
+{
+	struct sna *sna = to_sna_from_pixmap(pixmap);
+	struct sna_pixmap *priv;
+	struct kgem_bo *src_bo;
+	bool ok;
+
+	if (!sna->kgem.has_userptr || !USE_USERPTR_UPLOADS)
+		return false;
+
+	priv = sna_pixmap(pixmap);
+	if (priv == NULL)
+		return false;
+
+	if (DAMAGE_IS_ALL(priv->cpu_damage) || priv->gpu_damage == NULL)
+		return false;
+
+	assert(priv->gpu_bo);
+	assert(priv->gpu_bo->proxy == NULL);
+
+	if (priv->cow || !__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo))
+		return false;
+
+	if (priv->cpu_damage &&
+	    sna_damage_contains_box__no_reduce(priv->cpu_damage,
+					       &region->extents) &&
+	    !box_inplace(pixmap, &region->extents))
+		return false;
+
+	src_bo = kgem_create_map(&sna->kgem, bits, stride * h, true);
+	if (src_bo == NULL)
+		return false;
+
+	src_bo->flush = true;
+	src_bo->pitch = stride;
+	kgem_bo_mark_unreusable(src_bo);
+
+	DBG(("%s: upload(%d, %d, %d, %d) x %d through a temporary map\n",
+	     __FUNCTION__, x, y, w, h,
+	     RegionNumRects(region)));
+
+	ok = sna->render.copy_boxes(sna, GXcopy,
+				    pixmap, src_bo, -x, -y,
+				    pixmap, priv->gpu_bo, 0, 0,
+				    RegionRects(region),
+				    RegionNumRects(region),
+				    COPY_LAST);
+
+	kgem_bo_sync__cpu(&sna->kgem, src_bo);
+	assert(src_bo->rq == NULL);
+	kgem_bo_destroy(&sna->kgem, src_bo);
+
+	if (!ok)
+		return false;
+
+	if (!DAMAGE_IS_ALL(priv->gpu_damage)) {
+		assert(!priv->clear);
+		if (region->data == NULL &&
+		    w >= pixmap->drawable.width &&
+		    h >= pixmap->drawable.height) {
+			sna_damage_all(&priv->gpu_damage,
+				       pixmap->drawable.width,
+				       pixmap->drawable.height);
+		} else {
+			sna_damage_add(&priv->gpu_damage, region);
+			sna_damage_reduce_all(&priv->gpu_damage,
+					      pixmap->drawable.width,
+					      pixmap->drawable.height);
+		}
+		if (DAMAGE_IS_ALL(priv->gpu_damage)) {
+			list_del(&priv->flush_list);
+			sna_damage_destroy(&priv->cpu_damage);
+			sna_pixmap_free_cpu(sna, priv);
+		}
+	}
+
+	return true;
+}
+
+static bool
 try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 		   int x, int y, int w, int  h, char *bits, int stride)
 {
@@ -4142,6 +4223,9 @@ sna_put_zpixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 	get_drawable_deltas(drawable, pixmap, &dx, &dy);
 	x += dx + drawable->x;
 	y += dy + drawable->y;
+
+	if (try_upload_blt(pixmap, region, x, y, w, h, bits, stride))
+		return true;
 
 	if (try_upload_tiled_x(pixmap, region, x, y, w, h, bits, stride))
 		return true;
