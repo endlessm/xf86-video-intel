@@ -804,7 +804,7 @@ __sna_dri_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 				       pixmap, dst_bo, dx, dy,
 				       boxes, n, flags);
 
-		DBG(("%s: flushing? %d\n", __FUNCTION__, flush));
+		DBG(("%s: flushing? %d\n", __FUNCTION__, sync));
 		if (sync) { /* STAT! */
 			struct kgem_request *rq = sna->kgem.next_request;
 			kgem_submit(&sna->kgem);
