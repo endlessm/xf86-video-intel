@@ -63,6 +63,7 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "shadow.h"
 #include "intel.h"
 #include "intel_video.h"
+#include "uxa_module.h"
 
 #ifdef INTEL_XVMC
 #define _INTEL_XVMC_SERVER_
