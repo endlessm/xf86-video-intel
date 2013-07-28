@@ -6863,6 +6863,7 @@ sna_copy_bitmap_blt(DrawablePtr _bitmap, DrawablePtr drawable, GCPtr gc,
 		src_stride = bstride*bh;
 		if (src_stride <= 128) {
 			src_stride = ALIGN(src_stride, 8) / 4;
+			assert(src_stride <= 32);
 			if (!kgem_check_batch(&sna->kgem, 7+src_stride) ||
 			    !kgem_check_bo_fenced(&sna->kgem, arg->bo) ||
 			    !kgem_check_reloc(&sna->kgem, 1)) {
@@ -11603,6 +11604,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 			src_stride = bstride*bh;
 			if (src_stride <= 128) {
 				src_stride = ALIGN(src_stride, 8) / 4;
+				assert(src_stride <= 32);
 				if (!kgem_check_batch(&sna->kgem, 7+src_stride) ||
 				    !kgem_check_bo_fenced(&sna->kgem, bo) ||
 				    !kgem_check_reloc(&sna->kgem, 1)) {
@@ -11749,6 +11751,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 				src_stride = bstride*bh;
 				if (src_stride <= 128) {
 					src_stride = ALIGN(src_stride, 8) / 4;
+					assert(src_stride <= 32);
 					if (!kgem_check_batch(&sna->kgem, 7+src_stride) ||
 					    !kgem_check_bo_fenced(&sna->kgem, bo) ||
 					    !kgem_check_reloc(&sna->kgem, 1)) {
@@ -11893,6 +11896,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 					src_stride = bstride*bh;
 					if (src_stride <= 128) {
 						src_stride = ALIGN(src_stride, 8) / 4;
+						assert(src_stride <= 32);
 						if (!kgem_check_batch(&sna->kgem, 7+src_stride) ||
 						    !kgem_check_bo_fenced(&sna->kgem, bo) ||
 						    !kgem_check_reloc(&sna->kgem, 1)) {
@@ -12046,6 +12050,7 @@ sna_poly_fill_rect_stippled_n_box__imm(struct sna *sna,
 
 			len = bw*bh;
 			len = ALIGN(len, 8) / 4;
+			assert(len <= 32);
 			if (!kgem_check_batch(&sna->kgem, 7+len) ||
 			    !kgem_check_bo_fenced(&sna->kgem, bo) ||
 			    !kgem_check_reloc(&sna->kgem, 1)) {
@@ -12163,7 +12168,7 @@ sna_poly_fill_rect_stippled_n_box(struct sna *sna,
 
 			b = sna->kgem.batch + sna->kgem.nbatch;
 
-			if (!use_tile && len <= 128) {
+			if (!use_tile && len <= 32) {
 				uint8_t *dst, *src;
 
 				b[0] = XY_MONO_SRC_COPY_IMM;
