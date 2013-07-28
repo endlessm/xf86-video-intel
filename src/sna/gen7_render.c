@@ -149,6 +149,21 @@ static const struct gt_info hsw_gt2_info = {
 	.urb = { 256, 1664, 640 },
 };
 
+inline static bool is_ivb(struct sna *sna)
+{
+	return sna->kgem.gen == 070;
+}
+
+inline static bool is_byt(struct sna *sna)
+{
+	return sna->kgem.gen == 071;
+}
+
+inline static bool is_hsw(struct sna *sna)
+{
+	return sna->kgem.gen == 075;
+}
+
 static const uint32_t ps_kernel_packed[][4] = {
 #include "exa_wm_src_affine.g7b"
 #include "exa_wm_src_sample_argb.g7b"
@@ -476,7 +491,7 @@ gen7_emit_state_base_address(struct sna *sna)
 {
 	uint32_t mocs;
 
-	mocs = sna->kgem.gen == 075 ?  5 << 8 : 3 << 8;
+	mocs = is_hsw(sna) ? 5 << 8 : 3 << 8;
 
 	OUT_BATCH(GEN7_STATE_BASE_ADDRESS | (10 - 2));
 	OUT_BATCH(0); /* general */
@@ -1237,10 +1252,10 @@ gen7_bind_bo(struct sna *sna,
 		 (height - 1) << GEN7_SURFACE_HEIGHT_SHIFT);
 	ss[3] = (bo->pitch - 1) << GEN7_SURFACE_PITCH_SHIFT;
 	ss[4] = 0;
-	ss[5] = is_scanout ? 0 : sna->kgem.gen == 075 ? 5 << 16 : 3 << 16;
+	ss[5] = is_scanout ? 0 : is_hsw(sna) ? 5 << 16 : 3 << 16;
 	ss[6] = 0;
 	ss[7] = 0;
-	if (sna->kgem.gen == 075)
+	if (is_hsw(sna))
 		ss[7] |= HSW_SURFACE_SWIZZLE(RED, GREEN, BLUE, ALPHA);
 
 	kgem_bo_set_binding(bo, format | is_dst << 30 | is_scanout << 31, offset);
@@ -1666,7 +1681,7 @@ static uint32_t gen7_bind_video_source(struct sna *sna,
 	ss[5] = 0;
 	ss[6] = 0;
 	ss[7] = 0;
-	if (sna->kgem.gen == 075)
+	if (is_hsw(sna))
 		ss[7] |= HSW_SURFACE_SWIZZLE(RED, GREEN, BLUE, ALPHA);
 
 	DBG(("[%x] bind bo(handle=%d, addr=%d), format=%d, width=%d, height=%d, pitch=%d, offset=%d\n",
@@ -3741,7 +3756,7 @@ static void gen7_render_fini(struct sna *sna)
 
 static bool is_gt2(struct sna *sna)
 {
-	return sna->PciInfo->device_id & (sna->kgem.gen == 075 ? 0x30 : 0x20);
+	return sna->PciInfo->device_id & (is_hsw(sna)? 0x30 : 0x20);
 }
 
 static bool is_mobile(struct sna *sna)
@@ -3756,16 +3771,16 @@ static bool gen7_render_setup(struct sna *sna)
 	struct gen7_sampler_state *ss;
 	int i, j, k, l, m;
 
-	if (sna->kgem.gen == 070) {
+	if (is_ivb(sna)) {
 		state->info = &ivb_gt_info;
 		if (sna->PciInfo->device_id & 0xf) {
 			state->info = &ivb_gt1_info;
 			if (is_gt2(sna))
 				state->info = &ivb_gt2_info; /* XXX requires GT_MODE WiZ disabled */
 		}
-	} else if (sna->kgem.gen == 071) {
+	} else if (is_byt(sna)) {
 		state->info = &byt_gt_info;
-	} else if (sna->kgem.gen == 075) {
+	} else if (is_hsw(sna)) {
 		state->info = &hsw_gt_info;
 		if (sna->PciInfo->device_id & 0xf) {
 			state->info = &hsw_gt1_info;
