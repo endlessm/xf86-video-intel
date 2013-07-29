@@ -529,7 +529,8 @@ sna_composite_fb(CARD8 op,
 	    sna_transform_is_integer_translation(src->transform, &tx, &ty)) {
 		PixmapPtr dst_pixmap = get_drawable_pixmap(dst->pDrawable);
 		PixmapPtr src_pixmap = get_drawable_pixmap(src->pDrawable);
-		int16_t sx = src_x + tx, sy = src_y + ty;
+		int16_t sx = src_x + tx - (dst->pDrawable->x - dst_x);
+		int16_t sy = src_y + ty - (dst->pDrawable->y - dst_y);
 		if (region->extents.x1 + sx >= 0 &&
 		    region->extents.y1 + sy >= 0 &&
 		    region->extents.x2 + sx <= src->pDrawable->width &&
@@ -547,8 +548,6 @@ sna_composite_fb(CARD8 op,
 			assert(region->extents.y1 + sy >= 0);
 			assert(region->extents.y2 + sy <= src_pixmap->drawable.height);
 
-			dst_x += dst->pDrawable->x;
-			dst_y += dst->pDrawable->y;
 			if (get_drawable_deltas(dst->pDrawable, dst_pixmap, &tx, &ty))
 				dst_x += tx, dst_y += ty;
 
