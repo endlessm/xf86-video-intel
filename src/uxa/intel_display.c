@@ -199,6 +199,7 @@ intel_output_backlight_init(xf86OutputPtr output)
  * List of available kernel interfaces in priority order
  */
 static const char *backlight_interfaces[] = {
+	"dell_backlight",
 	"gmux_backlight",
 	"asus-laptop",
 	"asus-nb-wmi",

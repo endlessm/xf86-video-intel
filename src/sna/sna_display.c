@@ -536,6 +536,7 @@ static char *
 has_backlight(xf86OutputPtr output, int *best_type)
 {
 	static const char *known_interfaces[] = {
+		"dell_backlight",
 		"gmux_backlight",
 		"asus-laptop",
 		"asus-nb-wmi",
