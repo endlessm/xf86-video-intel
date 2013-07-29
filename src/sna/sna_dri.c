@@ -672,19 +672,14 @@ __sna_dri_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 	 * the risk of copying around invalid data. So either you may not
 	 * see the results of the copy, or you may see the wrong pixels.
 	 * Either way you eventually lose.
+	 *
+	 * We also have to be careful in case that the stale buffers are
+	 * now attached to invalid (non-DRI) pixmaps.
 	 */
 
 	assert(dst->attachment == DRI2BufferFrontLeft ||
 	       src->attachment == DRI2BufferFrontLeft);
 	assert(dst->attachment != src->attachment);
-
-	src_bo = src_priv->bo;
-	if (src->attachment == DRI2BufferFrontLeft)
-		src_bo = sna_pixmap_get_bo(pixmap);
-
-	dst_bo = dst_priv->bo;
-	if (dst->attachment == DRI2BufferFrontLeft)
-		dst_bo = sna_pixmap_get_bo(pixmap);
 
 	/* Copy the minimum of the Drawable / src / dst extents */
 	w = draw->width;
@@ -717,16 +712,6 @@ __sna_dri_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		return NULL;
 	}
 
-	if (!wedged(sna)) {
-		if (dst->attachment != DRI2BufferFrontLeft)
-			sync = false;
-		if (sync)
-			sync = sna_pixmap_is_scanout(sna, pixmap);
-
-		sna_dri_select_mode(sna, dst_bo, src_bo, sync);
-	} else
-		sync = false;
-
 	sx = sy = dx = dy = 0;
 	if (dst->attachment == DRI2BufferFrontLeft) {
 		sx = -draw->x;
@@ -756,15 +741,6 @@ __sna_dri_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 			region = &clip;
 		}
 
-		if (sync) {
-			xf86CrtcPtr crtc;
-
-			crtc = sna_covering_crtc(sna->scrn, &clip.extents, NULL);
-			sync = crtc &&
-				sna_wait_for_scanline(sna, pixmap, crtc,
-						&clip.extents);
-		}
-
 		if (get_drawable_deltas(draw, pixmap, &tx, &ty)) {
 			if (dst->attachment == DRI2BufferFrontLeft) {
 				pixman_region_translate(region ?: &clip, tx, ty);
@@ -775,7 +751,50 @@ __sna_dri_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 				sy += ty;
 			}
 		}
+	} else
+		sync = false;
+
+	src_bo = src_priv->bo;
+	if (src->attachment == DRI2BufferFrontLeft) {
+		struct sna_pixmap *priv;
+
+		priv = sna_pixmap_move_to_gpu(pixmap, MOVE_READ);
+		if (priv)
+			src_bo = priv->gpu_bo;
 	}
+
+	dst_bo = dst_priv->bo;
+	if (dst->attachment == DRI2BufferFrontLeft) {
+		struct sna_pixmap *priv;
+		unsigned int flags;
+
+		flags = MOVE_WRITE;
+		if (clip.data ||
+		    clip.extents.x1 > 0 ||
+		    clip.extents.x2 < pixmap->drawable.width ||
+		    clip.extents.y1 > 0 ||
+		    clip.extents.y2 < pixmap->drawable.height)
+			flags |= MOVE_READ;
+
+		priv = sna_pixmap_move_to_gpu(pixmap, flags);
+		if (priv)
+			dst_bo = priv->gpu_bo;
+	} else
+		sync = false;
+
+	if (!wedged(sna)) {
+		xf86CrtcPtr crtc;
+
+		crtc = NULL;
+		if (sync && sna_pixmap_is_scanout(sna, pixmap))
+			crtc = sna_covering_crtc(sna->scrn, &clip.extents, NULL);
+		sna_dri_select_mode(sna, dst_bo, src_bo, crtc != NULL);
+
+		sync = (crtc != NULL&&
+			sna_wait_for_scanline(sna, pixmap, crtc,
+					      &clip.extents));
+	}
+
 	if (dst->attachment == DRI2BufferFrontLeft)
 		damage(pixmap, region);
 	if (region) {
