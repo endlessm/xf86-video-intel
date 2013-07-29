@@ -1721,6 +1721,7 @@ blt_put_composite(struct sna *sna,
 				     data, pitch, src_x, src_y,
 				     &box, 1);
 		assert(ok);
+		(void)ok;
 	}
 }
 
@@ -1757,6 +1758,7 @@ fastcall static void blt_put_composite_box(struct sna *sna,
 				     op->u.blt.sx, op->u.blt.sy,
 				     box, 1);
 		assert(ok);
+		(void)ok;
 	}
 }
 
@@ -1794,6 +1796,7 @@ static void blt_put_composite_boxes(struct sna *sna,
 				     op->u.blt.sx, op->u.blt.sy,
 				     box, n);
 		assert(ok);
+		(void)ok;
 	}
 }
 

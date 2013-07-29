@@ -1342,13 +1342,13 @@ bool _sna_damage_contains_box__no_reduce(const struct sna_damage *damage,
 					 const BoxRec *box)
 {
 	int n, count;
-	BoxPtr b;
+	const BoxRec *b;
 
 	assert(damage && damage->mode != DAMAGE_ALL);
 	if (!box_contains(&damage->extents, box))
 		return false;
 
-	n = pixman_region_contains_rectangle(&damage->region, (BoxPtr)box);
+	n = pixman_region_contains_rectangle((pixman_region16_t *)&damage->region, (BoxPtr)box);
 	if (!damage->dirty)
 		return n == PIXMAN_REGION_IN;
 

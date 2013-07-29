@@ -1486,7 +1486,7 @@ sna_render_picture_approximate_gradient(struct sna *sna,
 		return -1;
 	}
 
-	channel->is_opaque = sna_gradient_is_opaque(picture->pSourcePict);
+	channel->is_opaque = sna_gradient_is_opaque((PictGradient*)picture->pSourcePict);
 	channel->pict_format =
 		channel->is_opaque ? PIXMAN_x8r8g8b8 : PIXMAN_a8r8g8b8;
 	DBG(("%s: gradient is opaque? %d, selecting format %08x\n",
@@ -2077,6 +2077,7 @@ sna_render_composite_redirect_done(struct sna *sna,
 						op->dst.pixmap->drawable.bitsPerPixel,
 						&t->box, 1);
 			assert(ok);
+			(void)ok;
 		}
 		if (t->damage) {
 			DBG(("%s: combining damage (all? %d), offset=(%d, %d)\n",
