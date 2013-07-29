@@ -26,7 +26,13 @@ SUBDIRS = render_program legacy
 # _ladir passes a dummy rpath to libtool so the thing will actually link
 # TODO: -nostdlib/-Bstatic/-lgcc platform magic, not installing the .a, etc.
 
-AM_CFLAGS = @CWARNFLAGS@ @XORG_CFLAGS@ @DRM_CFLAGS@ @PCIACCESS_CFLAGS@
+AM_CFLAGS = \
+	@CWARNFLAGS@ \
+	@XORG_CFLAGS@ \
+	@DRM_CFLAGS@ \
+	@PCIACCESS_CFLAGS@ \
+	@NOWARNFLAGS@ \
+	$(NULL)
 
 intel_drv_la_LTLIBRARIES = intel_drv.la
 intel_drv_la_LDFLAGS = -module -avoid-version

@@ -43,6 +43,11 @@ m4_ifndef([XORG_MACROS_VERSION],
 XORG_MACROS_VERSION(1.8)
 XORG_DEFAULT_OPTIONS
 
+# And disable a few very noisy warnings
+XORG_TESTSET_CFLAG([NOWARNFLAGS], [-Wno-cast-qual])
+XORG_TESTSET_CFLAG([NOWARNFLAGS], [-Wno-redundant-decls])
+AC_SUBST(NOWARNFLAGS)
+
 # Require X.Org server macros (i.e. XORG_DRIVER_CHECK_EXT) to check for required modules 
 m4_ifndef([XORG_DRIVER_CHECK_EXT],
           [m4_fatal([must install xorg-server macros before running autoconf/autogen.
