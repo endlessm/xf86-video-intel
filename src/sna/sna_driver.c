@@ -276,15 +276,6 @@ cleanup_front:
 	return FALSE;
 }
 
-static void PreInitCleanup(ScrnInfoPtr scrn)
-{
-	if (!scrn || !scrn->driverPrivate)
-		return;
-
-	free(scrn->driverPrivate);
-	scrn->driverPrivate = NULL;
-}
-
 static void sna_selftest(void)
 {
 	sna_damage_selftest();
@@ -434,7 +425,7 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 	if (fd == -1) {
 		xf86DrvMsg(scrn->scrnIndex, X_ERROR,
 			   "Failed to become DRM master.\n");
-		return FALSE;
+		goto cleanup;
 	}
 
 	preferred_depth = sna->info->gen < 030 ? 15 : 24;
@@ -444,7 +435,7 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 	if (!xf86SetDepthBpp(scrn, preferred_depth, 0, 0,
 			     Support32bppFb |
 			     SupportConvert24to32 | PreferConvert24to32))
-		return FALSE;
+		goto cleanup;
 
 	switch (scrn->depth) {
 	case 8:
@@ -458,18 +449,18 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 		xf86DrvMsg(scrn->scrnIndex, X_ERROR,
 			   "Given depth (%d) is not supported by the Intel driver and this chipset.\n",
 			   scrn->depth);
-		return FALSE;
+		goto cleanup;
 	}
 	xf86PrintDepthBpp(scrn);
 
 	if (!xf86SetWeight(scrn, defaultWeight, defaultWeight))
-		return FALSE;
+		goto cleanup;
 	if (!xf86SetDefaultVisual(scrn, -1))
-		return FALSE;
+		goto cleanup;
 
 	sna->Options = intel_options_get(scrn);
 	if (sna->Options == NULL)
-		return FALSE;
+		goto cleanup;
 
 	sna_setup_capabilities(scrn, fd);
 
@@ -523,8 +514,7 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 	if (!sna_mode_pre_init(scrn, sna)) {
 		xf86DrvMsg(scrn->scrnIndex, X_ERROR,
 			   "No outputs and no modes.\n");
-		PreInitCleanup(scrn);
-		return FALSE;
+		goto cleanup;
 	}
 	scrn->currentMode = scrn->modes;
 
@@ -536,6 +526,11 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 		sna->dri_available = !!xf86LoadSubModule(scrn, "dri2");
 
 	return TRUE;
+
+cleanup:
+	scrn->driverPrivate = (void *)((uintptr_t)sna->info | 1);
+	free(sna);
+	return FALSE;
 }
 
 static void
