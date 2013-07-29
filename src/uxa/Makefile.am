@@ -20,7 +20,7 @@
 
 AM_CFLAGS = @CWARNFLAGS@ @XORG_CFLAGS@ @DRM_CFLAGS@ @PCIACCESS_CFLAGS@
 AM_CFLAGS += @UDEV_CFLAGS@ @DRM_CFLAGS@ @DRMINTEL_CFLAGS@
-AM_CFLAGS += -I$(top_srcdir)/uxa -I$(top_srcdir)/src -I$(top_srcdir)/src/render_program
+AM_CFLAGS += -I$(top_srcdir)/xvmc -I$(top_srcdir)/src -I$(top_srcdir)/src/render_program
 
 noinst_LTLIBRARIES = libuxa.la
 libuxa_la_LIBADD = @UDEV_LIBS@ @DRMINTEL_LIBS@ @DRM_LIBS@
