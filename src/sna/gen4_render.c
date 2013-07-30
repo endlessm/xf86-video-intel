@@ -1205,6 +1205,7 @@ gen4_render_composite_boxes(struct sna *sna,
 	} while (nbox);
 }
 
+#if !FORCE_FLUSH
 static void
 gen4_render_composite_boxes__thread(struct sna *sna,
 				    const struct sna_composite_op *op,
@@ -1236,6 +1237,7 @@ gen4_render_composite_boxes__thread(struct sna *sna,
 	} while (nbox);
 	sna_vertex_unlock(&sna->render);
 }
+#endif
 
 #ifndef MAX
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
