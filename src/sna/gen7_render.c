@@ -83,6 +83,7 @@ struct gt_info {
 		int size;
 		int max_vs_entries;
 		int max_gs_entries;
+		int push_ps_size; /* in 1KBs */
 	} urb;
 };
 
@@ -91,7 +92,7 @@ static const struct gt_info ivb_gt_info = {
 	.max_vs_threads = 16,
 	.max_gs_threads = 16,
 	.max_wm_threads = (16-1) << IVB_PS_MAX_THREADS_SHIFT,
-	.urb = { 128, 64, 64 },
+	.urb = { 128, 64, 64, 8 },
 };
 
 static const struct gt_info ivb_gt1_info = {
@@ -99,7 +100,7 @@ static const struct gt_info ivb_gt1_info = {
 	.max_vs_threads = 36,
 	.max_gs_threads = 36,
 	.max_wm_threads = (48-1) << IVB_PS_MAX_THREADS_SHIFT,
-	.urb = { 128, 512, 192 },
+	.urb = { 128, 512, 192, 8 },
 };
 
 static const struct gt_info ivb_gt2_info = {
@@ -107,7 +108,7 @@ static const struct gt_info ivb_gt2_info = {
 	.max_vs_threads = 128,
 	.max_gs_threads = 128,
 	.max_wm_threads = (172-1) << IVB_PS_MAX_THREADS_SHIFT,
-	.urb = { 256, 704, 320 },
+	.urb = { 256, 704, 320, 8 },
 };
 
 static const struct gt_info byt_gt_info = {
@@ -116,7 +117,7 @@ static const struct gt_info byt_gt_info = {
 	.max_vs_threads = 36,
 	.max_gs_threads = 36,
 	.max_wm_threads = (48-1) << IVB_PS_MAX_THREADS_SHIFT,
-	.urb = { 128, 512, 192 },
+	.urb = { 128, 512, 192, 8 },
 };
 
 static const struct gt_info hsw_gt_info = {
@@ -126,7 +127,7 @@ static const struct gt_info hsw_gt_info = {
 	.max_wm_threads =
 		(8 - 1) << HSW_PS_MAX_THREADS_SHIFT |
 		1 << HSW_PS_SAMPLE_MASK_SHIFT,
-	.urb = { 128, 64, 64 },
+	.urb = { 128, 64, 64, 8 },
 };
 
 static const struct gt_info hsw_gt1_info = {
@@ -136,7 +137,7 @@ static const struct gt_info hsw_gt1_info = {
 	.max_wm_threads =
 		(102 - 1) << HSW_PS_MAX_THREADS_SHIFT |
 		1 << HSW_PS_SAMPLE_MASK_SHIFT,
-	.urb = { 128, 640, 256 },
+	.urb = { 128, 640, 256, 8 },
 };
 
 static const struct gt_info hsw_gt2_info = {
@@ -146,7 +147,17 @@ static const struct gt_info hsw_gt2_info = {
 	.max_wm_threads =
 		(140 - 1) << HSW_PS_MAX_THREADS_SHIFT |
 		1 << HSW_PS_SAMPLE_MASK_SHIFT,
-	.urb = { 256, 1664, 640 },
+	.urb = { 256, 1664, 640, 8 },
+};
+
+static const struct gt_info hsw_gt3_info = {
+	.name = "Haswell (gen7.5, gt3)",
+	.max_vs_threads = 280,
+	.max_gs_threads = 280,
+	.max_wm_threads =
+		(280 - 1) << HSW_PS_MAX_THREADS_SHIFT |
+		1 << HSW_PS_SAMPLE_MASK_SHIFT,
+	.urb = { 512, 3328, 1280, 16 },
 };
 
 inline static bool is_ivb(struct sna *sna)
@@ -465,7 +476,7 @@ static void
 gen7_emit_urb(struct sna *sna)
 {
 	OUT_BATCH(GEN7_3DSTATE_PUSH_CONSTANT_ALLOC_PS | (2 - 2));
-	OUT_BATCH(8); /* in 1KBs */
+	OUT_BATCH(sna->render_state.gen7.info->urb.push_ps_size);
 
 	/* num of VS entries must be divisible by 8 if size < 9 */
 	OUT_BATCH(GEN7_3DSTATE_URB_VS | (2 - 2));
@@ -3754,6 +3765,12 @@ static void gen7_render_fini(struct sna *sna)
 	kgem_bo_destroy(&sna->kgem, sna->render_state.gen7.general_bo);
 }
 
+static bool is_gt3(struct sna *sna)
+{
+	assert(sna->kgem.gen == 075);
+	return sna->PciInfo->device_id & 0x20;
+}
+
 static bool is_gt2(struct sna *sna)
 {
 	return sna->PciInfo->device_id & (is_hsw(sna)? 0x30 : 0x20);
@@ -3783,9 +3800,12 @@ static bool gen7_render_setup(struct sna *sna)
 	} else if (is_hsw(sna)) {
 		state->info = &hsw_gt_info;
 		if (sna->PciInfo->device_id & 0xf) {
-			state->info = &hsw_gt1_info;
-			if (is_gt2(sna))
+			if (is_gt3(sna))
+				state->info = &hsw_gt3_info;
+			else if (is_gt2(sna))
 				state->info = &hsw_gt2_info;
+			else
+				state->info = &hsw_gt1_info;
 		}
 	} else
 		return false;
