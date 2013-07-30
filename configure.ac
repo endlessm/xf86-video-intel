@@ -46,6 +46,7 @@ XORG_DEFAULT_OPTIONS
 # And disable a few very noisy warnings
 XORG_TESTSET_CFLAG([NOWARNFLAGS], [-Wno-cast-qual])
 XORG_TESTSET_CFLAG([NOWARNFLAGS], [-Wno-redundant-decls])
+XORG_TESTSET_CFLAG([NOWARNFLAGS], [-Wno-maybe-uninitialized])
 AC_SUBST(NOWARNFLAGS)
 
 # Require X.Org server macros (i.e. XORG_DRIVER_CHECK_EXT) to check for required modules 
