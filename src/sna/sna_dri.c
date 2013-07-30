@@ -482,19 +482,9 @@ static void sna_dri_reference_buffer(DRI2Buffer2Ptr buffer)
 	get_private(buffer)->refcnt++;
 }
 
-static void damage(PixmapPtr pixmap, RegionPtr region)
+static void damage(PixmapPtr pixmap, struct sna_pixmap *priv, RegionPtr region)
 {
-	struct sna_pixmap *priv;
-
-	priv = sna_pixmap(pixmap);
-	assert(priv != NULL);
 	assert(priv->gpu_bo);
-
-	if (priv->cow) {
-		sna_pixmap_undo_cow(to_sna_from_pixmap(pixmap), priv,
-				    region ? MOVE_READ : 0);
-	}
-
 	if (DAMAGE_IS_ALL(priv->gpu_damage))
 		return;
 
@@ -779,6 +769,8 @@ __sna_dri_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		priv = sna_pixmap_move_to_gpu(pixmap, flags);
 		if (priv)
 			dst_bo = priv->gpu_bo;
+
+		damage(pixmap, priv, region);
 	} else
 		sync = false;
 
@@ -795,8 +787,6 @@ __sna_dri_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 					      &clip.extents));
 	}
 
-	if (dst->attachment == DRI2BufferFrontLeft)
-		damage(pixmap, region);
 	if (region) {
 		boxes = REGION_RECTS(region);
 		n = REGION_NUM_RECTS(region);
@@ -807,6 +797,7 @@ __sna_dri_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		n = 1;
 	}
 	DamageRegionAppend(&pixmap->drawable, region);
+
 	if (wedged(sna)) {
 		sna_dri_copy_fallback(sna, draw->bitsPerPixel,
 				      src_bo, sx, sy,
