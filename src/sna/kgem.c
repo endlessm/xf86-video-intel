@@ -77,6 +77,7 @@ search_snoop_cache(struct kgem *kgem, unsigned int num_pages, unsigned flags);
 #define DBG_NO_PINNED_BATCHES 0
 #define DBG_NO_FAST_RELOC 0
 #define DBG_NO_HANDLE_LUT 0
+#define DBG_NO_WT 0
 #define DBG_DUMP 0
 
 #define FORCE_MMAP_SYNC 0 /* ((1 << DOMAIN_CPU) | (1 << DOMAIN_GTT)) */
@@ -124,6 +125,7 @@ search_snoop_cache(struct kgem *kgem, unsigned int num_pages, unsigned flags);
 #define LOCAL_I915_PARAM_HAS_PINNED_BATCHES	24
 #define LOCAL_I915_PARAM_HAS_NO_RELOC		25
 #define LOCAL_I915_PARAM_HAS_HANDLE_LUT		26
+#define LOCAL_I915_PARAM_HAS_WT			27
 
 #define LOCAL_I915_EXEC_IS_PINNED		(1<<10)
 #define LOCAL_I915_EXEC_NO_RELOC		(1<<11)
@@ -818,6 +820,18 @@ static bool test_has_handle_lut(struct kgem *kgem)
 	return gem_param(kgem, LOCAL_I915_PARAM_HAS_HANDLE_LUT) > 0;
 }
 
+static bool test_has_wt(struct kgem *kgem)
+{
+#if defined(USE_WT)
+	if (DBG_NO_WT)
+		return false;
+
+	return gem_param(kgem, LOCAL_I915_PARAM_HAS_WT) > 0;
+#else
+	return false;
+#endif
+}
+
 static bool test_has_semaphores_enabled(struct kgem *kgem)
 {
 	FILE *file;
@@ -1155,6 +1169,10 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 	kgem->has_llc = test_has_llc(kgem);
 	DBG(("%s: has shared last-level-cache? %d\n", __FUNCTION__,
 	     kgem->has_llc));
+
+	kgem->has_wt = test_has_wt(kgem);
+	DBG(("%s: has write-through cacheing for scanouts? %d\n", __FUNCTION__,
+	     kgem->has_wt));
 
 	kgem->has_cacheing = test_has_cacheing(kgem);
 	DBG(("%s: has set-cache-level? %d\n", __FUNCTION__,
@@ -4998,7 +5016,7 @@ void *kgem_bo_map__cpu(struct kgem *kgem, struct kgem_bo *bo)
 	     __FUNCTION__, bo->handle, bytes(bo), (int)__MAP_TYPE(bo->map)));
 	assert(!bo->purged);
 	assert(list_is_empty(&bo->list));
-	assert(!bo->scanout);
+	assert(!bo->scanout || kgem->has_wt);
 	assert(bo->proxy == NULL);
 
 	if (IS_CPU_MAP(bo->map))
@@ -5047,6 +5065,7 @@ void *__kgem_bo_map__cpu(struct kgem *kgem, struct kgem_bo *bo)
 	assert(!bo->purged);
 	assert(list_is_empty(&bo->list));
 	assert(bo->proxy == NULL);
+	assert(!bo->scanout || kgem->has_wt);
 
 	if (IS_CPU_MAP(bo->map))
 		return MAP(bo->map);
@@ -5186,6 +5205,7 @@ struct kgem_bo *kgem_create_map(struct kgem *kgem,
 void kgem_bo_sync__cpu(struct kgem *kgem, struct kgem_bo *bo)
 {
 	DBG(("%s: handle=%d\n", __FUNCTION__, bo->handle));
+	assert(!bo->scanout);
 	kgem_bo_submit(kgem, bo);
 
 	/* SHM pixmaps use proxies for subpage offsets */
@@ -5217,6 +5237,7 @@ void kgem_bo_sync__cpu(struct kgem *kgem, struct kgem_bo *bo)
 void kgem_bo_sync__cpu_full(struct kgem *kgem, struct kgem_bo *bo, bool write)
 {
 	DBG(("%s: handle=%d\n", __FUNCTION__, bo->handle));
+	assert(!bo->scanout || (kgem->has_wt && !write));
 
 	if (write || bo->needs_flush)
 		kgem_bo_submit(kgem, bo);

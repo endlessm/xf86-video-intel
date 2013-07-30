@@ -362,6 +362,16 @@ if test "x$ASYNC_SWAP" = xyes; then
 	AC_DEFINE(USE_ASYNC_SWAP,1,[Assume asynchronous swap support])
 fi
 
+AC_ARG_ENABLE(wt,
+	      AS_HELP_STRING([--enable-wt],
+			     [Enable use of WT cacheing (experimental) [default=no]]),
+	      [WT="$enableval"],
+	      [WT=no])
+AM_CONDITIONAL(USE_WT, test x$WT = xyes)
+if test "x$WT" = xyes; then
+	AC_DEFINE(USE_WT,1,[Assume WriteThrough cacheing support])
+fi
+
 AC_ARG_ENABLE(debug,
 	      AS_HELP_STRING([--enable-debug],
 			     [Enables internal debugging [default=no]]),

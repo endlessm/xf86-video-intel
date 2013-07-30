@@ -1412,7 +1412,7 @@ static inline bool has_coherent_map(struct sna *sna,
 	if (!IS_CPU_MAP(bo->map))
 		return true;
 
-	if (bo->tiling != I915_TILING_NONE)
+	if (bo->tiling == I915_TILING_Y)
 		return false;
 
 	return kgem_bo_can_map__cpu(&sna->kgem, bo, flags & MOVE_WRITE);
@@ -2183,7 +2183,8 @@ static inline bool region_inplace(struct sna *sna,
 	}
 
 	if (priv->mapped) {
-		DBG(("%s: yes, already mapped, continuiung\n", __FUNCTION__));
+		DBG(("%s: %s, already mapped, continuing\n", __FUNCTION__,
+		     has_coherent_map(sna, priv->gpu_bo, flags) ? "yes" : "no"));
 		return has_coherent_map(sna, priv->gpu_bo, flags);
 	}
 

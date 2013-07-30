@@ -179,6 +179,7 @@ struct kgem {
 	uint32_t has_pinned_batches :1;
 	uint32_t has_cacheing :1;
 	uint32_t has_llc :1;
+	uint32_t has_wt :1;
 	uint32_t has_no_reloc :1;
 	uint32_t has_handle_lut :1;
 
@@ -577,7 +578,7 @@ static inline bool kgem_bo_can_map__cpu(struct kgem *kgem,
 					struct kgem_bo *bo,
 					bool write)
 {
-	if (bo->scanout)
+	if (bo->scanout && (!kgem->has_wt || write))
 		return false;
 
 	if (kgem->has_llc)
