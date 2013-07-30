@@ -60,19 +60,19 @@ static Atom xvSyncToVblank;
 static XvFormatRec Formats[] = { {15}, {16}, {24} };
 
 static const XvAttributeRec Attributes[] = {
-	{XvSettable | XvGettable, 0, (1 << 24) - 1, "XV_COLORKEY"},
-	{XvSettable | XvGettable, -128, 127, "XV_BRIGHTNESS"},
-	{XvSettable | XvGettable, 0, 255, "XV_CONTRAST"},
-	{XvSettable | XvGettable, 0, 1023, "XV_SATURATION"},
-	{XvSettable | XvGettable, -1, 1, "XV_PIPE"},
+	{XvSettable | XvGettable, 0, (1 << 24) - 1, (char *)"XV_COLORKEY"},
+	{XvSettable | XvGettable, -128, 127, (char *)"XV_BRIGHTNESS"},
+	{XvSettable | XvGettable, 0, 255, (char *)"XV_CONTRAST"},
+	{XvSettable | XvGettable, 0, 1023, (char *)"XV_SATURATION"},
+	{XvSettable | XvGettable, -1, 1, (char *)"XV_PIPE"},
 #define NUM_ATTRIBUTES 5
 
-	{XvSettable | XvGettable, 0, 0xffffff, "XV_GAMMA0"},
-	{XvSettable | XvGettable, 0, 0xffffff, "XV_GAMMA1"},
-	{XvSettable | XvGettable, 0, 0xffffff, "XV_GAMMA2"},
-	{XvSettable | XvGettable, 0, 0xffffff, "XV_GAMMA3"},
-	{XvSettable | XvGettable, 0, 0xffffff, "XV_GAMMA4"},
-	{XvSettable | XvGettable, 0, 0xffffff, "XV_GAMMA5"}
+	{XvSettable | XvGettable, 0, 0xffffff, (char *)"XV_GAMMA0"},
+	{XvSettable | XvGettable, 0, 0xffffff, (char *)"XV_GAMMA1"},
+	{XvSettable | XvGettable, 0, 0xffffff, (char *)"XV_GAMMA2"},
+	{XvSettable | XvGettable, 0, 0xffffff, (char *)"XV_GAMMA3"},
+	{XvSettable | XvGettable, 0, 0xffffff, (char *)"XV_GAMMA4"},
+	{XvSettable | XvGettable, 0, 0xffffff, (char *)"XV_GAMMA5"}
 #define GAMMA_ATTRIBUTES 6
 };
 
@@ -703,12 +703,12 @@ void sna_video_overlay_setup(struct sna *sna, ScreenPtr screen)
 
 	adaptor->type = XvInputMask | XvImageMask;
 	adaptor->pScreen = screen;
-	adaptor->name = "Intel(R) Video Overlay";
+	adaptor->name = (char *)"Intel(R) Video Overlay";
 	adaptor->nEncodings = 1;
 	adaptor->pEncodings = xnfalloc(sizeof(XvEncodingRec));
 	adaptor->pEncodings[0].id = 0;
 	adaptor->pEncodings[0].pScreen = screen;
-	adaptor->pEncodings[0].name = "XV_IMAGE";
+	adaptor->pEncodings[0].name = (char *)"XV_IMAGE";
 	adaptor->pEncodings[0].width = sna->kgem.gen < 021 ? IMAGE_MAX_WIDTH_LEGACY : IMAGE_MAX_WIDTH;
 	adaptor->pEncodings[0].height = sna->kgem.gen < 021 ? IMAGE_MAX_HEIGHT_LEGACY : IMAGE_MAX_HEIGHT;
 	adaptor->pEncodings[0].rate.numerator = 1;
@@ -719,9 +719,9 @@ void sna_video_overlay_setup(struct sna *sna, ScreenPtr screen)
 	adaptor->nAttributes = NUM_ATTRIBUTES;
 	if (HAS_GAMMA(sna))
 		adaptor->nAttributes += GAMMA_ATTRIBUTES;
-	adaptor->pAttributes = Attributes;
+	adaptor->pAttributes = (XvAttributeRec *)Attributes;
 	adaptor->nImages = ARRAY_SIZE(Images);
-	adaptor->pImages = Images;
+	adaptor->pImages = (XvImageRec *)Images;
 	adaptor->ddAllocatePort = sna_xv_alloc_port;
 	adaptor->ddFreePort = sna_xv_free_port;
 	adaptor->ddPutVideo = NULL;

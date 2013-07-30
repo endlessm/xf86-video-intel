@@ -655,11 +655,11 @@ done:
 	sna_output->backlight_max = sna_output_backlight_get_max(output);
 	sna_output->backlight_active_level = sna_output_backlight_get(output);
 	switch (best_type) {
-	case INT_MAX: best_iface = "user"; from = X_CONFIG; break;
-	case FIRMWARE: best_iface = "firmware"; break;
-	case PLATFORM: best_iface = "platform"; break;
-	case RAW: best_iface = "raw"; break;
-	default: best_iface = "unknown"; break;
+	case INT_MAX: best_iface = (char *)"user"; from = X_CONFIG; break;
+	case FIRMWARE: best_iface = (char *)"firmware"; break;
+	case PLATFORM: best_iface = (char *)"platform"; break;
+	case RAW: best_iface = (char *)"raw"; break;
+	default: best_iface = (char *)"unknown"; break;
 	}
 	xf86DrvMsg(output->scrn->scrnIndex, from,
 		   "found backlight control interface %s (type '%s')\n",

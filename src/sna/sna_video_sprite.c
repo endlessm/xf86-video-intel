@@ -53,7 +53,7 @@ static Atom xvColorKey;
 static XvFormatRec formats[] = { {15}, {16}, {24} };
 static const XvImageRec images[] = { XVIMAGE_YUY2, XVIMAGE_UYVY, XVMC_YUV };
 static const XvAttributeRec attribs[] = {
-	{ XvSettable | XvGettable, 0, 0xffffff, "XV_COLORKEY" },
+	{ XvSettable | XvGettable, 0, 0xffffff, (char *)"XV_COLORKEY" },
 };
 
 static int sna_video_sprite_stop(ClientPtr client,
@@ -479,12 +479,12 @@ void sna_video_sprite_setup(struct sna *sna, ScreenPtr screen)
 
 	adaptor->type = XvInputMask | XvImageMask;
 	adaptor->pScreen = screen;
-	adaptor->name = "Intel(R) Video Sprite";
+	adaptor->name = (char *)"Intel(R) Video Sprite";
 	adaptor->nEncodings = 1;
 	adaptor->pEncodings = xnfalloc(sizeof(XvEncodingRec));
 	adaptor->pEncodings[0].id = 0;
 	adaptor->pEncodings[0].pScreen = screen;
-	adaptor->pEncodings[0].name = "XV_IMAGE";
+	adaptor->pEncodings[0].name = (char *)"XV_IMAGE";
 	adaptor->pEncodings[0].width = IMAGE_MAX_WIDTH;
 	adaptor->pEncodings[0].height = IMAGE_MAX_HEIGHT;
 	adaptor->pEncodings[0].rate.numerator = 1;
@@ -493,9 +493,9 @@ void sna_video_sprite_setup(struct sna *sna, ScreenPtr screen)
 	adaptor->nFormats = sna_xv_fixup_formats(screen, formats,
 						 ARRAY_SIZE(formats));
 	adaptor->nAttributes = ARRAY_SIZE(attribs);
-	adaptor->pAttributes = attribs;
+	adaptor->pAttributes = (XvAttributeRec *)attribs;
 	adaptor->nImages = ARRAY_SIZE(images);
-	adaptor->pImages = images;
+	adaptor->pImages = (XvImageRec *)images;
 	adaptor->ddAllocatePort = sna_xv_alloc_port;
 	adaptor->ddFreePort = sna_xv_free_port;
 	adaptor->ddPutVideo = NULL;

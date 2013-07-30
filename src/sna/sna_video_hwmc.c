@@ -256,7 +256,7 @@ void sna_video_xvmc_setup(struct sna *sna, ScreenPtr screen)
 		sna->PciInfo->domain,
 		sna->PciInfo->bus, sna->PciInfo->dev, sna->PciInfo->func);
 
-	xf86XvMCRegisterDRInfo(screen, SNA_XVMC_LIBNAME, bus,
+	xf86XvMCRegisterDRInfo(screen, (char *)SNA_XVMC_LIBNAME, bus,
 			       SNA_XVMC_MAJOR, SNA_XVMC_MINOR,
 			       SNA_XVMC_PATCHLEVEL);
 

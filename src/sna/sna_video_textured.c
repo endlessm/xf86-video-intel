@@ -43,9 +43,9 @@ static XvFormatRec Formats[] = {
 };
 
 static const XvAttributeRec Attributes[] = {
-	{XvSettable | XvGettable, -1, 1, "XV_SYNC_TO_VBLANK"},
-	//{XvSettable | XvGettable, -128, 127, "XV_BRIGHTNESS"},
-	//{XvSettable | XvGettable, 0, 255, "XV_CONTRAST"},
+	{XvSettable | XvGettable, -1, 1, (char *)"XV_SYNC_TO_VBLANK"},
+	//{XvSettable | XvGettable, -128, 127, (char *)"XV_BRIGHTNESS"},
+	//{XvSettable | XvGettable, 0, 255, (char *)"XV_CONTRAST"},
 };
 
 static const XvImageRec Images[] = {
@@ -361,12 +361,12 @@ void sna_video_textured_setup(struct sna *sna, ScreenPtr screen)
 
 	adaptor->type = XvInputMask | XvImageMask;
 	adaptor->pScreen = screen;
-	adaptor->name = "Intel(R) Textured Video";
+	adaptor->name = (char *)"Intel(R) Textured Video";
 	adaptor->nEncodings = 1;
 	adaptor->pEncodings = xnfalloc(sizeof(XvEncodingRec));
 	adaptor->pEncodings[0].id = 0;
 	adaptor->pEncodings[0].pScreen = screen;
-	adaptor->pEncodings[0].name = "XV_IMAGE";
+	adaptor->pEncodings[0].name = (char *)"XV_IMAGE";
 	adaptor->pEncodings[0].width = sna->render.max_3d_size;
 	adaptor->pEncodings[0].height = sna->render.max_3d_size;
 	adaptor->pEncodings[0].rate.numerator = 1;
@@ -375,9 +375,9 @@ void sna_video_textured_setup(struct sna *sna, ScreenPtr screen)
 	adaptor->nFormats = sna_xv_fixup_formats(screen, Formats,
 						 ARRAY_SIZE(Formats));
 	adaptor->nAttributes = ARRAY_SIZE(Attributes);
-	adaptor->pAttributes = Attributes;
+	adaptor->pAttributes = (XvAttributeRec *)Attributes;
 	adaptor->nImages = ARRAY_SIZE(Images);
-	adaptor->pImages = Images;
+	adaptor->pImages = (XvImageRec *)Images;
 	adaptor->ddAllocatePort = sna_xv_alloc_port;
 	adaptor->ddFreePort = sna_xv_free_port;
 	adaptor->ddPutVideo = NULL;

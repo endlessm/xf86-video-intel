@@ -302,7 +302,7 @@ intel_detect_chipset(ScrnInfoPtr scrn,
 			   name);
 	}
 
-	scrn->chipset = name;
+	scrn->chipset = (char *)name;
 }
 
 /*
@@ -442,8 +442,8 @@ intel_scrn_create(DriverPtr		driver,
 		return FALSE;
 
 	scrn->driverVersion = INTEL_VERSION;
-	scrn->driverName = INTEL_DRIVER_NAME;
-	scrn->name = INTEL_NAME;
+	scrn->driverName = (char *)INTEL_DRIVER_NAME;
+	scrn->name = (char *)INTEL_NAME;
 	scrn->driverPrivate = (void *)(match_data | 1);
 	scrn->Probe = NULL;
 
@@ -569,7 +569,7 @@ intel_available_options(int chipid, int busid)
 
 static DriverRec intel = {
 	INTEL_VERSION,
-	INTEL_DRIVER_NAME,
+	(char *)INTEL_DRIVER_NAME,
 	intel_identify,
 	NULL,
 	intel_available_options,
