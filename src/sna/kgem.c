@@ -5016,7 +5016,6 @@ void *kgem_bo_map__cpu(struct kgem *kgem, struct kgem_bo *bo)
 	     __FUNCTION__, bo->handle, bytes(bo), (int)__MAP_TYPE(bo->map)));
 	assert(!bo->purged);
 	assert(list_is_empty(&bo->list));
-	assert(!bo->scanout || kgem->has_wt);
 	assert(bo->proxy == NULL);
 
 	if (IS_CPU_MAP(bo->map))
@@ -5065,7 +5064,6 @@ void *__kgem_bo_map__cpu(struct kgem *kgem, struct kgem_bo *bo)
 	assert(!bo->purged);
 	assert(list_is_empty(&bo->list));
 	assert(bo->proxy == NULL);
-	assert(!bo->scanout || kgem->has_wt);
 
 	if (IS_CPU_MAP(bo->map))
 		return MAP(bo->map);
@@ -5237,7 +5235,7 @@ void kgem_bo_sync__cpu(struct kgem *kgem, struct kgem_bo *bo)
 void kgem_bo_sync__cpu_full(struct kgem *kgem, struct kgem_bo *bo, bool write)
 {
 	DBG(("%s: handle=%d\n", __FUNCTION__, bo->handle));
-	assert(!bo->scanout || (kgem->has_wt && !write));
+	assert(!bo->scanout || !write);
 
 	if (write || bo->needs_flush)
 		kgem_bo_submit(kgem, bo);
