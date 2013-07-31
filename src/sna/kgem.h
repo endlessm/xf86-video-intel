@@ -578,7 +578,7 @@ static inline bool kgem_bo_can_map__cpu(struct kgem *kgem,
 					struct kgem_bo *bo,
 					bool write)
 {
-	if (bo->scanout && (!kgem->has_wt || write))
+	if (bo->scanout && (write || bo->purged || !kgem->has_wt))
 		return false;
 
 	if (kgem->has_llc)
