@@ -138,7 +138,7 @@ xmm_save_128(__m128i *dst, __m128i data)
 }
 #endif
 
-fast_memcpy void
+fast void
 memcpy_blt(const void *src, void *dst, int bpp,
 	   int32_t src_stride, int32_t dst_stride,
 	   int16_t src_x, int16_t src_y,
@@ -198,6 +198,14 @@ memcpy_blt(const void *src, void *dst, int bpp,
 	case 8:
 		do {
 			*(uint64_t *)dst_bytes = *(const uint64_t *)src_bytes;
+			src_bytes += src_stride;
+			dst_bytes += dst_stride;
+		} while (--height);
+		break;
+	case 16:
+		do {
+			((uint64_t *)dst_bytes)[0] = ((const uint64_t *)src_bytes)[0];
+			((uint64_t *)dst_bytes)[1] = ((const uint64_t *)src_bytes)[1];
 			src_bytes += src_stride;
 			dst_bytes += dst_stride;
 		} while (--height);
