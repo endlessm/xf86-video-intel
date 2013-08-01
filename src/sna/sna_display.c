@@ -1386,6 +1386,17 @@ static char *outputs_for_crtc(xf86CrtcPtr crtc, char *outputs, int max)
 	return outputs;
 }
 
+static const char *rotation_to_str(Rotation rotation)
+{
+	switch (rotation) {
+	case RR_Rotate_0: return "normal";
+	case RR_Rotate_90: return "right";
+	case RR_Rotate_180: return "inverted";
+	case RR_Rotate_270: return "left";
+	default: return "unknown";
+	}
+}
+
 static Bool
 sna_crtc_set_mode_major(xf86CrtcPtr crtc, DisplayModePtr mode,
 			Rotation rotation, int x, int y)
@@ -1402,13 +1413,11 @@ sna_crtc_set_mode_major(xf86CrtcPtr crtc, DisplayModePtr mode,
 		return FALSE;
 
 	xf86DrvMsg(crtc->scrn->scrnIndex, X_INFO,
-		   "switch to mode %dx%d on pipe %d using %s\n",
-		   mode->HDisplay, mode->VDisplay, sna_crtc->pipe,
-		   outputs_for_crtc(crtc, outputs, sizeof(outputs)));
-
-	DBG(("%s(crtc=%d [pipe=%d] rotation=%d, x=%d, y=%d, mode=%dx%d@%d)\n",
-	     __FUNCTION__, sna_crtc->id, sna_crtc->pipe, rotation, x, y,
-	     mode->HDisplay, mode->VDisplay, mode->Clock));
+		   "switch to mode %dx%d@%.1f on pipe %d using %s, position (%d, %d), rotation %s\n",
+		   mode->HDisplay, mode->VDisplay, xf86ModeVRefresh(mode),
+		   sna_crtc->pipe,
+		   outputs_for_crtc(crtc, outputs, sizeof(outputs)),
+		   x, y, rotation_to_str(rotation));
 
 	assert(mode->HDisplay <= sna->mode.kmode->max_width &&
 	       mode->VDisplay <= sna->mode.kmode->max_height);
