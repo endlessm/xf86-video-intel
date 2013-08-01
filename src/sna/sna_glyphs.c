@@ -1233,11 +1233,8 @@ glyphs_format(int nlist, GlyphListPtr list, GlyphPtr * glyphs)
 		while (n--) {
 			GlyphPtr glyph = *glyphs++;
 
-			if (!glyph_valid(glyph)) {
-				x += glyph->info.xOff;
-				y += glyph->info.yOff;
-				continue;
-			}
+			if (!glyph_valid(glyph))
+				goto skip_glyph;
 
 			x1 = x - glyph->info.x;
 			y1 = y - glyph->info.y;
@@ -1273,6 +1270,7 @@ glyphs_format(int nlist, GlyphListPtr list, GlyphPtr * glyphs)
 				if (y2 > extents.y2)
 					extents.y2 = y2;
 			}
+skip_glyph:
 			x += glyph->info.xOff;
 			y += glyph->info.yOff;
 		}
@@ -1330,6 +1328,9 @@ static bool can_discard_mask(uint8_t op, PicturePtr src, PictFormatPtr mask,
 			list++;
 		}
 	} else {
+		if (PICT_FORMAT_A(mask->format) >= PICT_FORMAT_A(g->format))
+			return true;
+
 		if (g->depth != 1)
 			return false;
 	}
