@@ -48,6 +48,7 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <xf86drm.h>
 #include <i915_drm.h>
 #include <dri2.h>
+#include <compositeext.h>
 
 #if DRI2INFOREC_VERSION <= 2
 #error DRI2 version supported by the Xserver is too old
@@ -61,12 +62,12 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define COLOR_PREFER_TILING_Y 0
 
 enum frame_event_type {
+	DRI2_WAITMSC = 0,
 	DRI2_SWAP,
 	DRI2_SWAP_WAIT,
 	DRI2_SWAP_THROTTLE,
 	DRI2_FLIP,
 	DRI2_FLIP_THROTTLE,
-	DRI2_WAITMSC,
 };
 
 struct sna_dri_frame_event {
@@ -1118,11 +1119,6 @@ can_flip(struct sna * sna,
 		return false;
 	}
 
-	if (!get_private(front)->scanout) {
-		DBG(("%s: no, DRI2 drawable not attached at time of creation)\n",
-		     __FUNCTION__));
-		return false;
-	}
 	assert(get_private(front)->pixmap == sna->front);
 	assert(sna_pixmap(sna->front)->gpu_bo == get_private(front)->bo);
 
@@ -1685,6 +1681,34 @@ get_current_msc_for_target(struct sna *sna, CARD64 target_msc, int pipe)
 	return ret;
 }
 
+static Bool find(pointer value, XID id, pointer cdata)
+{
+	return TRUE;
+}
+
+static int use_triple_buffer(struct sna *sna, ClientPtr client)
+{
+	struct sna_client *priv;
+
+	if ((sna->flags & SNA_TRIPLE_BUFFER) == 0)
+		return DRI2_FLIP;
+
+	/* Hack: Disable triple buffering for compositors */
+
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,12,99,901,0)
+	priv = sna_client(client);
+	if (priv->is_compositor == 0)
+		priv->is_compositor =
+			LookupClientResourceComplex(client,
+						    CompositeClientWindowType+1,
+						    find, NULL) ? DRI2_FLIP : DRI2_FLIP_THROTTLE;
+
+	return priv->is_compositor;
+#else
+	return DRI2_FLIP_THROTTLE;
+#endif
+}
+
 static bool
 sna_dri_schedule_flip(ClientPtr client, DrawablePtr draw,
 		      DRI2BufferPtr front, DRI2BufferPtr back, int pipe,
@@ -1707,8 +1731,7 @@ sna_dri_schedule_flip(ClientPtr client, DrawablePtr draw,
 		DBG(("%s: performing immediate swap on pipe %d, pending? %d, mode: %d\n",
 		     __FUNCTION__, pipe, info != NULL, info ? info->mode : 0));
 
-		if (info &&
-		    info->draw == draw) {
+		if (info && info->draw == draw) {
 			assert(info->type == DRI2_FLIP_THROTTLE);
 			assert(info->front == front);
 			if (info->back != back) {
@@ -1734,8 +1757,7 @@ sna_dri_schedule_flip(ClientPtr client, DrawablePtr draw,
 		if (info == NULL)
 			return false;
 
-		info->type = sna->flags & SNA_TRIPLE_BUFFER ? DRI2_FLIP_THROTTLE: DRI2_FLIP;
-
+		info->type = use_triple_buffer(sna, client);
 		info->draw = draw;
 		info->client = client;
 		info->event_complete = func;

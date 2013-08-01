@@ -107,6 +107,17 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define SNA_CURSOR_X			64
 #define SNA_CURSOR_Y			SNA_CURSOR_X
 
+struct sna_client {
+	int is_compositor; /* only 4 bits used */
+};
+
+extern DevPrivateKeyRec sna_client_key;
+
+pure static inline struct sna_client *sna_client(ClientPtr client)
+{
+	return __get_private(client, sna_client_key);
+}
+
 struct sna_cow {
 	struct kgem_bo *bo;
 	struct list list;

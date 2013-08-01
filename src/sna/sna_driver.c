@@ -77,6 +77,7 @@ DevPrivateKeyRec sna_pixmap_key;
 DevPrivateKeyRec sna_gc_key;
 DevPrivateKeyRec sna_window_key;
 DevPrivateKeyRec sna_glyph_key;
+DevPrivateKeyRec sna_client_key;
 
 static void
 sna_load_palette(ScrnInfoPtr scrn, int numColors, int *indices,
@@ -788,6 +789,10 @@ sna_register_all_privates(void)
 	if (!dixRegisterPrivateKey(&sna_window_key, PRIVATE_WINDOW,
 				   3*sizeof(void *)))
 		return FALSE;
+
+	if (!dixRegisterPrivateKey(&sna_client_key, PRIVATE_CLIENT,
+				   sizeof(struct sna_client)))
+		return FALSE;
 #else
 	if (!dixRequestPrivate(&sna_pixmap_key, 3*sizeof(void *)))
 		return FALSE;
@@ -799,6 +804,9 @@ sna_register_all_privates(void)
 		return FALSE;
 
 	if (!dixRequestPrivate(&sna_window_key, 3*sizeof(void *)))
+		return FALSE;
+
+	if (!dixRequestPrivate(&sna_client_key, sizeof(struct sna_client)))
 		return FALSE;
 #endif
 
