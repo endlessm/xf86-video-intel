@@ -211,8 +211,8 @@ struct kgem {
 
 	uint16_t reloc__self[256];
 	uint32_t batch[64*1024-8] page_aligned;
-	struct drm_i915_gem_exec_object2 exec[256] page_aligned;
-	struct drm_i915_gem_relocation_entry reloc[4096] page_aligned;
+	struct drm_i915_gem_exec_object2 exec[384] page_aligned;
+	struct drm_i915_gem_relocation_entry reloc[8192] page_aligned;
 
 #ifdef DEBUG_MEMORY
 	struct {
@@ -222,9 +222,11 @@ struct kgem {
 #endif
 };
 
+#define KGEM_MAX_DEFERRED_VBO 16
+
 #define KGEM_BATCH_RESERVED 1
-#define KGEM_RELOC_RESERVED 4
-#define KGEM_EXEC_RESERVED 1
+#define KGEM_RELOC_RESERVED (KGEM_MAX_DEFERRED_VBO)
+#define KGEM_EXEC_RESERVED (1+KGEM_MAX_DEFERRED_VBO)
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
