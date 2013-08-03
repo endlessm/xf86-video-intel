@@ -874,9 +874,8 @@ fallback:
 		sna_pixmap_destroy(pixmap);
 		goto fallback;
 	}
-	priv->cpu_bo->flush = true;
 	priv->cpu_bo->pitch = pitch;
-	priv->cpu_bo->reusable = false;
+	kgem_bo_mark_unreusable(priv->cpu_bo);
 	sna_accel_watch_flush(sna, 1);
 #ifdef DEBUG_MEMORY
 	sna->debug_memory.cpu_bo_allocs++;
@@ -4036,7 +4035,6 @@ try_upload_blt(PixmapPtr pixmap, RegionRec *region,
 	if (src_bo == NULL)
 		return false;
 
-	src_bo->flush = true;
 	src_bo->pitch = stride;
 	kgem_bo_mark_unreusable(src_bo);
 
@@ -5300,7 +5298,6 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 						 src_pixmap->devKind * src_pixmap->drawable.height,
 						 true);
 			if (src_bo) {
-				src_bo->flush = true;
 				src_bo->pitch = src_pixmap->devKind;
 				kgem_bo_mark_unreusable(src_bo);
 
@@ -14512,7 +14509,6 @@ sna_get_image_blt(PixmapPtr pixmap,
 				 pitch * (region->extents.y2 - region->extents.y1),
 				 false);
 	if (dst_bo) {
-		dst_bo->flush = true;
 		dst_bo->pitch = pitch;
 		kgem_bo_mark_unreusable(dst_bo);
 

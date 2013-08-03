@@ -647,8 +647,11 @@ static inline bool __kgem_bo_is_busy(struct kgem *kgem, struct kgem_bo *bo)
 
 static inline void kgem_bo_mark_unreusable(struct kgem_bo *bo)
 {
-	while (bo->proxy)
+	while (bo->proxy) {
+		bo->flush = true;
 		bo = bo->proxy;
+	}
+	bo->flush = true;
 	bo->reusable = false;
 }
 

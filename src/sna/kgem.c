@@ -1909,6 +1909,7 @@ search_snoop_cache(struct kgem *kgem, unsigned int num_pages, unsigned flags)
 		assert(bo->refcnt == 0);
 		assert(bo->snoop);
 		assert(!bo->scanout);
+		assert(!bo->purged);
 		assert(bo->proxy == NULL);
 		assert(bo->tiling == I915_TILING_NONE);
 		assert(bo->rq == NULL);
