@@ -1,3 +1,21 @@
+Release 2.21.14 (2013-08-04)
+============================
+A few updates for the top-end Haswell systems (notably GT3 and GT3e
+systems), in particular, setting the appropriate thread counts for the
+larger GPU and handling a few scaling issues with the emedded DRAM. More
+important than the performance tuning though is a fix for a critical
+issue encountered by a few people on gen4/gen5 systems.
+
+ * Initial performance tuning for HSW:GT3e
+
+ * Fix a crash with Planetary Annihilation
+
+ * Disable triple buffering for compositors
+
+ * Reserve space in the exec buffer array for deferred VBOs.
+   https://bugs.freedesktop.org/show_bug.cgi?id=67504
+
+
 Release 2.21.13 (2013-07-27)
 ============================
 A minor release to repair the build for non-Linux systems, and to undo a
