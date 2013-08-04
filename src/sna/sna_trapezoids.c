@@ -4123,15 +4123,15 @@ choose_span(struct sna_composite_spans_op *tmp,
 		/* XXX An imprecise approximation */
 		if (maskFormat && !operator_is_bounded(tmp->base.op)) {
 			span = tor_blt_span_mono_unbounded;
-			if (REGION_NUM_RECTS(clip) > 1)
+			if (clip->data)
 				span = tor_blt_span_mono_unbounded_clipped;
 		} else {
 			span = tor_blt_span_mono;
-			if (REGION_NUM_RECTS(clip) > 1)
+			if (clip->data)
 				span = tor_blt_span_mono_clipped;
 		}
 	} else {
-		if (REGION_NUM_RECTS(clip) > 1)
+		if (clip->data)
 			span = tor_blt_span_clipped;
 		else if (tmp->base.damage == NULL)
 			span = tor_blt_span__no_damage;
@@ -4485,13 +4485,18 @@ thread_choose_span(struct sna_composite_spans_op *tmp,
 {
 	span_func_t span;
 
-	if (tmp->base.damage)
+	if (tmp->base.damage) {
+		DBG(("%s: damaged -> no thread support\n", __FUNCTION__));
 		return NULL;
+	}
 
 	if (is_mono(dst, maskFormat)) {
+		DBG(("%s: mono rendering -> no thread support\n", __FUNCTION__));
 		return NULL;
 	} else {
-		if (REGION_NUM_RECTS(clip) > 1)
+		assert(tmp->thread_boxes);
+		DBG(("%s: clipped? %d\n", __FUNCTION__, clip->data != NULL));
+		if (clip->data)
 			span = span_thread_clipped_box;
 		else
 			span = span_thread_box;
@@ -4667,6 +4672,7 @@ trapezoid_span_converter(struct sna *sna,
 		num_threads = sna_use_threads(extents.x2-extents.x1,
 					      extents.y2-extents.y1,
 					      16);
+	DBG(("%s: using %d threads\n", __FUNCTION__, num_threads));
 	if (num_threads == 1) {
 		struct tor tor;
 

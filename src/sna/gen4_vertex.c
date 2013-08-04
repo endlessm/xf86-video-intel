@@ -1906,9 +1906,9 @@ emit_composite_spans_primitive(struct sna *sna,
 
 sse2 fastcall static void
 emit_span_solid(struct sna *sna,
-		 const struct sna_composite_spans_op *op,
-		 const BoxRec *box,
-		 float opacity)
+		const struct sna_composite_spans_op *op,
+		const BoxRec *box,
+		float opacity)
 {
 	float *v;
 	union {

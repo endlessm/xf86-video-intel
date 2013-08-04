@@ -87,7 +87,7 @@ static int sna_video_sprite_set_attr(ClientPtr client,
 	if (attribute == xvColorKey) {
 		video->color_key_changed = true;
 		video->color_key = value;
-		DBG(("COLORKEY = %d\n", value));
+		DBG(("COLORKEY = %ld\n", (long)value));
 	} else
 		return BadMatch;
 
