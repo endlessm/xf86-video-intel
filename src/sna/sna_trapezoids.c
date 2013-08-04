@@ -2556,7 +2556,7 @@ trapezoids_fallback(struct sna *sna,
 			if (!scratch)
 				return;
 
-			num_threads = sna_use_threads(width, height, 4);
+			num_threads = sna_use_threads(width, height, 8);
 			if (num_threads == 1) {
 				if (depth < 8) {
 					image = pixman_image_create_bits(format, width, height,
@@ -4280,7 +4280,7 @@ mono_trapezoids_span_converter(struct sna *sna,
 	    !unbounded)
 		num_threads = sna_use_threads(mono.clip.extents.x2 - mono.clip.extents.x1,
 					      mono.clip.extents.y2 - mono.clip.extents.y1,
-					      16);
+					      32);
 	if (num_threads > 1) {
 		struct mono_span_thread threads[num_threads];
 		int y, h;
@@ -5795,7 +5795,7 @@ trapezoid_span_inplace__x8r8g8b8(CARD8 op,
 
 	num_threads = sna_use_threads(4*(region.extents.x2 - region.extents.x1),
 				      region.extents.y2 - region.extents.y1,
-				      8);
+				      16);
 
 	DBG(("%s: %dx%d, format=%x, op=%d, lerp?=%d, num_threads=%d\n",
 	     __FUNCTION__,
@@ -6166,7 +6166,7 @@ trapezoid_span_inplace(struct sna *sna,
 
 	num_threads = sna_use_threads(region.extents.x2 - region.extents.x1,
 				      region.extents.y2 - region.extents.y1,
-				      8);
+				      16);
 	if (num_threads == 1) {
 		struct tor tor;
 
