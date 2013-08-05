@@ -151,7 +151,7 @@ struct sna_composite_op {
 struct sna_opacity_box {
 	BoxRec box;
 	float alpha;
-} __packed__;
+} tightly_packed;
 
 struct sna_composite_spans_op {
 	struct sna_composite_op base;

@@ -37,7 +37,7 @@
 #define must_check __attribute__((warn_unused_result))
 #define constant __attribute__((const))
 #define pure __attribute__((pure))
-#define __packed__ __attribute__((__packed__))
+#define tightly_packed __attribute__((__packed__))
 #define flatten __attribute__((flatten))
 #define page_aligned __attribute__((aligned(4096)))
 #else
@@ -49,7 +49,7 @@
 #define must_check
 #define constant
 #define pure
-#define __packed__
+#define tighly_packed
 #define flatten
 #define page_aligned
 #endif
