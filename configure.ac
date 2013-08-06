@@ -433,7 +433,7 @@ else
         DRI1_CFLAGS=""
         DRI1_LIBS=""
 
-        if test "x$enable_dri" = "xyes"; then
+        if test "x$enable_dri" = "xyes" -a "x$KMS_ONLY" != "xyes"; then
                 AC_MSG_ERROR([DRI1 requested but prerequisites not found])
         fi
 fi
