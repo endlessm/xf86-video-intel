@@ -135,13 +135,15 @@ search_snoop_cache(struct kgem *kgem, unsigned int num_pages, unsigned flags);
 #define LOCAL_IOCTL_I915_GEM_CREATE2 DRM_IOWR (DRM_COMMAND_BASE + LOCAL_I915_GEM_CREATE2, struct local_i915_gem_create2)
 struct local_i915_gem_create2 {
 	uint64_t size;
+	uint32_t placement;
+#define LOCAL_I915_CREATE_PLACEMENT_SYSTEM 0
+#define LOCAL_I915_CREATE_PLACEMENT_STOLEN 1 /* Cannot use CPU mmaps or pread/pwrite */
 	uint32_t domain;
-#define LOCAL_I915_CREATE_DOMAIN_SYSTEM 0
-#define LOCAL_I915_CREATE_DOMAIN_STOLEN 1
 	uint32_t caching;
 	uint32_t tiling_mode;
 	uint32_t stride;
 	uint32_t flags;
+	uint32_t pad;
 	uint32_t handle;
 };
 
@@ -980,14 +982,8 @@ static bool test_has_create2(struct kgem *kgem)
 	if (DBG_NO_CREATE2)
 		return false;
 
-	VG_CLEAR(args);
+	memset(&args, 0, sizeof(args));
 	args.size = PAGE_SIZE;
-	args.domain = LOCAL_I915_CREATE_DOMAIN_SYSTEM;
-	args.caching = UNCACHED;
-	args.tiling_mode = I915_TILING_NONE;
-	args.stride = 0;
-	args.flags = 0;
-	args.handle = 0;
 	if (drmIoctl(kgem->fd, LOCAL_IOCTL_I915_GEM_CREATE2, &args) == 0)
 		gem_close(kgem->fd, args.handle);
 
@@ -3818,13 +3814,12 @@ __kgem_bo_create_from_stolen(struct kgem *kgem, int size, int tiling, int pitch)
 	if (!kgem->has_create2)
 		return NULL;
 
-	VG_CLEAR(args);
+	memset(&args, 0, sizeof(args));
 	args.size = size * PAGE_SIZE;
-	args.domain = LOCAL_I915_CREATE_DOMAIN_STOLEN;
+	args.placement = LOCAL_I915_CREATE_PLACEMENT_STOLEN;
 	args.caching = UNCACHED;
 	args.tiling_mode = tiling;
 	args.stride = pitch;
-	args.flags = 0;
 
 	if (drmIoctl(kgem->fd, LOCAL_IOCTL_I915_GEM_CREATE2, &args))
 		return NULL;
@@ -3840,6 +3835,12 @@ __kgem_bo_create_from_stolen(struct kgem *kgem, int size, int tiling, int pitch)
 	bo->pitch = pitch;
 	bo->purged = true; /* for asserts against CPU access */
 	bo->reusable = false; /* so that unclaimed scanouts are freed */
+	bo->domain = DOMAIN_NONE;
+
+	if (__kgem_busy(kgem, bo->handle)) {
+		list_add(&bo->request, &kgem->flushing);
+		bo->rq = (void *)kgem;
+	}
 
 	assert_tiling(kgem, bo);
 	debug_alloc__bo(kgem, bo);
