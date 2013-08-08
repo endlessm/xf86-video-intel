@@ -332,6 +332,8 @@ if test "x$accel" = xnone -a "x$UMS_ONLY" != "xyes"; then
 	AC_MSG_ERROR([No default acceleration option])
 fi
 
+xp_msg=""
+
 AC_ARG_ENABLE(create2,
 	      AS_HELP_STRING([--enable-create2],
 			     [Enable use of create2 ioctl (experimental) [default=no]]),
@@ -340,6 +342,7 @@ AC_ARG_ENABLE(create2,
 AM_CONDITIONAL(USE_CREATE2, test x$CREATE2 = xyes)
 if test "x$CREATE2" = xyes; then
 	AC_DEFINE(USE_CREATE2,1,[Assume "create2" support])
+	xp_msg="$xp_msg create2"
 fi
 
 AC_ARG_ENABLE(userptr,
@@ -350,6 +353,7 @@ AC_ARG_ENABLE(userptr,
 AM_CONDITIONAL(USE_USERPTR, test x$USERPTR = xyes)
 if test "x$USERPTR" = xyes; then
 	AC_DEFINE(USE_USERPTR,1,[Assume "userptr" support])
+	xp_msg="$xp_msg userptr"
 fi
 
 AC_ARG_ENABLE(async-swap,
@@ -360,6 +364,7 @@ AC_ARG_ENABLE(async-swap,
 AM_CONDITIONAL(USE_ASYNC_SWAP, test x$ASYNC_SWAP = xyes)
 if test "x$ASYNC_SWAP" = xyes; then
 	AC_DEFINE(USE_ASYNC_SWAP,1,[Assume asynchronous swap support])
+	xp_msg="$xp_msg async-swap"
 fi
 
 AC_ARG_ENABLE(wt,
@@ -370,6 +375,7 @@ AC_ARG_ENABLE(wt,
 AM_CONDITIONAL(USE_WT, test x$WT = xyes)
 if test "x$WT" = xyes; then
 	AC_DEFINE(USE_WT,1,[Assume WriteThrough cacheing support])
+	xp_msg="$xp_msg wt-cache"
 fi
 
 AC_ARG_ENABLE(debug,
@@ -591,4 +597,7 @@ echo "  Acceleration backends:$accel_msg"
 echo "  Additional debugging support?$debug_msg"
 echo "  Support for Direct Rendering Infrastructure:$dri_msg"
 echo "  Support for Xv motion compensation (XvMC and libXvMC):$xvmc_msg"
+if test -n "$xp_msg"; then
+echo "  Experimental support:$xp_msg"
+fi
 echo ""
