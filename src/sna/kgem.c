@@ -1795,30 +1795,6 @@ static void _kgem_bo_delete_buffer(struct kgem *kgem, struct kgem_bo *bo)
 		io->used = bo->delta;
 }
 
-static void kgem_bo_clear_scanout(struct kgem *kgem, struct kgem_bo *bo)
-{
-	assert(bo->scanout);
-	assert(!bo->refcnt);
-	assert(bo->exec == NULL);
-	assert(bo->proxy == NULL);
-
-	DBG(("%s: handle=%d, fb=%d (reusable=%d)\n",
-	     __FUNCTION__, bo->handle, bo->delta, bo->reusable));
-	if (bo->delta) {
-		/* XXX will leak if we are not DRM_MASTER. *shrug* */
-		drmIoctl(kgem->fd, DRM_IOCTL_MODE_RMFB, &bo->delta);
-		bo->delta = 0;
-	}
-
-	bo->scanout = false;
-	bo->flush = false;
-	bo->reusable = true;
-
-	if (kgem->has_llc &&
-	    !gem_set_cacheing(kgem->fd, bo->handle, SNOOPED))
-		bo->reusable = false;
-}
-
 static bool check_scanout_size(struct kgem *kgem,
 			       struct kgem_bo *bo,
 			       int width, int height)
@@ -3029,15 +3005,34 @@ void kgem_clean_scanout_cache(struct kgem *kgem)
 		struct kgem_bo *bo;
 
 		bo = list_first_entry(&kgem->scanout, struct kgem_bo, list);
+
+		assert(bo->scanout);
+		assert(bo->delta);
+		assert(!bo->refcnt);
+		assert(bo->exec == NULL);
+		assert(bo->proxy == NULL);
+
 		if (bo->exec || __kgem_busy(kgem, bo->handle))
 			break;
 
+		DBG(("%s: handle=%d, fb=%d (reusable=%d)\n",
+		     __FUNCTION__, bo->handle, bo->delta, bo->reusable));
 		list_del(&bo->list);
+
+		/* XXX will leak if we are not DRM_MASTER. *shrug* */
+		drmIoctl(kgem->fd, DRM_IOCTL_MODE_RMFB, &bo->delta);
+		bo->delta = 0;
+		bo->scanout = false;
+
 		if (!bo->purged) {
-			kgem_bo_clear_scanout(kgem, bo);
-			__kgem_bo_destroy(kgem, bo);
-		} else
-			kgem_bo_free(kgem, bo);
+			bo->reusable = true;
+			if (kgem->has_llc &&
+			    !gem_set_cacheing(kgem->fd, bo->handle, SNOOPED))
+				bo->reusable = false;
+
+		}
+
+		__kgem_bo_destroy(kgem, bo);
 	}
 }
 
