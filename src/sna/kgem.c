@@ -3878,7 +3878,9 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 	size /= PAGE_SIZE;
 	bucket = cache_bucket(size);
 
-	if ((flags & (CREATE_SCANOUT | CREATE_INACTIVE)) == CREATE_SCANOUT) {
+	if (flags & CREATE_SCANOUT) {
+		struct kgem_bo *last = NULL;
+
 		list_for_each_entry_reverse(bo, &kgem->scanout, list) {
 			assert(bo->scanout);
 			assert(bo->delta);
@@ -3901,6 +3903,11 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 				bo->pitch = pitch;
 			}
 
+			if (flags & CREATE_INACTIVE && bo->rq) {
+				last = bo;
+				continue;
+			}
+
 			list_del(&bo->list);
 
 			bo->unique_id = kgem_get_unique_id(kgem);
@@ -3910,6 +3917,18 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 			assert_tiling(kgem, bo);
 			bo->refcnt = 1;
 			return bo;
+		}
+
+		if (last) {
+			list_del(&last->list);
+
+			last->unique_id = kgem_get_unique_id(kgem);
+			DBG(("  1:from scanout: pitch=%d, tiling=%d, handle=%d, id=%d\n",
+			     last->pitch, last->tiling, last->handle, last->unique_id));
+			assert(last->pitch*kgem_aligned_height(kgem, height, last->tiling) <= kgem_bo_size(last));
+			assert_tiling(kgem, last);
+			last->refcnt = 1;
+			return last;
 		}
 
 		bo = __kgem_bo_create_from_stolen(kgem, size, tiling, pitch);
