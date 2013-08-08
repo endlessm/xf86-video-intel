@@ -3802,8 +3802,7 @@ inline int kgem_bo_fenced_size(struct kgem *kgem, struct kgem_bo *bo)
 }
 
 static struct kgem_bo *
-__kgem_bo_create_from_stolen(struct kgem *kgem, int size, int tiling, int pitch)
-
+__kgem_bo_create_as_display(struct kgem *kgem, int size, int tiling, int pitch)
 {
 	struct local_i915_gem_create2 args;
 	struct kgem_bo *bo;
@@ -3818,8 +3817,11 @@ __kgem_bo_create_from_stolen(struct kgem *kgem, int size, int tiling, int pitch)
 	args.tiling_mode = tiling;
 	args.stride = pitch;
 
-	if (drmIoctl(kgem->fd, LOCAL_IOCTL_I915_GEM_CREATE2, &args))
-		return NULL;
+	if (drmIoctl(kgem->fd, LOCAL_IOCTL_I915_GEM_CREATE2, &args)) {
+		args.placement = LOCAL_I915_CREATE_PLACEMENT_SYSTEM;
+		if (drmIoctl(kgem->fd, LOCAL_IOCTL_I915_GEM_CREATE2, &args))
+			return NULL;
+	}
 
 	bo = __kgem_bo_alloc(args.handle, size);
 	if (bo == NULL) {
@@ -3830,7 +3832,9 @@ __kgem_bo_create_from_stolen(struct kgem *kgem, int size, int tiling, int pitch)
 	bo->unique_id = kgem_get_unique_id(kgem);
 	bo->tiling = tiling;
 	bo->pitch = pitch;
-	bo->purged = true; /* for asserts against CPU access */
+	if (args.placement == LOCAL_I915_CREATE_PLACEMENT_STOLEN) {
+		bo->purged = true; /* for asserts against CPU access */
+	}
 	bo->reusable = false; /* so that unclaimed scanouts are freed */
 	bo->domain = DOMAIN_NONE;
 
@@ -3931,7 +3935,7 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 			return last;
 		}
 
-		bo = __kgem_bo_create_from_stolen(kgem, size, tiling, pitch);
+		bo = __kgem_bo_create_as_display(kgem, size, tiling, pitch);
 		if (bo)
 			return bo;
 	}
