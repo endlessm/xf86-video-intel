@@ -160,6 +160,7 @@ struct local_i915_gem_userptr {
 
 #define UNCACHED	0
 #define SNOOPED		1
+#define DISPLAY		2
 
 struct local_i915_gem_cacheing {
 	uint32_t handle;
@@ -984,6 +985,7 @@ static bool test_has_create2(struct kgem *kgem)
 
 	memset(&args, 0, sizeof(args));
 	args.size = PAGE_SIZE;
+	args.caching = DISPLAY;
 	if (drmIoctl(kgem->fd, LOCAL_IOCTL_I915_GEM_CREATE2, &args) == 0)
 		gem_close(kgem->fd, args.handle);
 
@@ -3817,7 +3819,7 @@ __kgem_bo_create_from_stolen(struct kgem *kgem, int size, int tiling, int pitch)
 	memset(&args, 0, sizeof(args));
 	args.size = size * PAGE_SIZE;
 	args.placement = LOCAL_I915_CREATE_PLACEMENT_STOLEN;
-	args.caching = UNCACHED;
+	args.caching = DISPLAY;
 	args.tiling_mode = tiling;
 	args.stride = pitch;
 
