@@ -1017,9 +1017,14 @@ static void intel_box_intersect(BoxPtr dest, BoxPtr a, BoxPtr b)
 {
 	dest->x1 = a->x1 > b->x1 ? a->x1 : b->x1;
 	dest->x2 = a->x2 < b->x2 ? a->x2 : b->x2;
+	if (dest->x1 >= dest->x2) {
+		dest->x1 = dest->x2 = dest->y1 = dest->y2 = 0;
+		return;
+	}
+
 	dest->y1 = a->y1 > b->y1 ? a->y1 : b->y1;
 	dest->y2 = a->y2 < b->y2 ? a->y2 : b->y2;
-	if (dest->x1 >= dest->x2 || dest->y1 >= dest->y2)
+	if (dest->y1 >= dest->y2)
 		dest->x1 = dest->x2 = dest->y1 = dest->y2 = 0;
 }
 

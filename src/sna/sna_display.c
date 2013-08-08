@@ -3213,6 +3213,9 @@ static bool sna_box_intersect(BoxPtr r, const BoxRec *a, const BoxRec *b)
 {
 	r->x1 = a->x1 > b->x1 ? a->x1 : b->x1;
 	r->x2 = a->x2 < b->x2 ? a->x2 : b->x2;
+	if (r->x1 >= r->x2)
+		return false;
+
 	r->y1 = a->y1 > b->y1 ? a->y1 : b->y1;
 	r->y2 = a->y2 < b->y2 ? a->y2 : b->y2;
 	DBG(("%s: (%d, %d), (%d, %d) intersect (%d, %d), (%d, %d) = (%d, %d), (%d, %d)\n",
@@ -3220,7 +3223,10 @@ static bool sna_box_intersect(BoxPtr r, const BoxRec *a, const BoxRec *b)
 	     a->x1, a->y1, a->x2, a->y2,
 	     b->x1, b->y1, b->x2, b->y2,
 	     r->x1, r->y1, r->x2, r->y2));
-	return r->x2 > r->x1 && r->y2 > r->y1;
+	if (r->y1 >= r->y2)
+		return false;
+
+	return true;
 }
 
 static int sna_box_area(const BoxRec *box)
