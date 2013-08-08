@@ -305,7 +305,8 @@ sna_dri_create_buffer(DrawablePtr draw,
 	case DRI2BufferFakeFrontRight:
 		bpp = draw->bitsPerPixel;
 		if (draw->width  == sna->front->drawable.width &&
-		    draw->height == sna->front->drawable.height)
+		    draw->height == sna->front->drawable.height &&
+		    (sna->flags & SNA_NO_FLIP) == 0)
 			flags |= CREATE_SCANOUT;
 		DBG(("%s: creating back buffer %dx%d, suitable for scanout? %d\n",
 		     __FUNCTION__,
