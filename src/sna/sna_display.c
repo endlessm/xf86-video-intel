@@ -3034,7 +3034,7 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 
 		DBG(("%s: CRTC:%d, pipe=%d: has mode?=%d\n", __FUNCTION__,
 		     sna_crtc->id, sna_crtc->pipe, mode.mode_valid));
-		if (!mode.mode_valid)
+		if (!mode.mode_valid || mode.mode.clock == 0)
 			continue;
 
 		memset(&crtc->desiredMode, 0, sizeof(crtc->desiredMode));
