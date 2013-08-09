@@ -580,7 +580,7 @@ static inline bool kgem_bo_can_map__cpu(struct kgem *kgem,
 					struct kgem_bo *bo,
 					bool write)
 {
-	if (bo->scanout && (write || bo->purged))
+	if (bo->purged || (bo->scanout && write))
 		return false;
 
 	if (kgem->has_llc)
