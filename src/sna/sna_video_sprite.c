@@ -456,6 +456,9 @@ void sna_video_sprite_setup(struct sna *sna, ScreenPtr screen)
 	struct sna_video *video;
 	XvPortPtr port;
 
+	if (sna->flags & SNA_IS_HOSTED)
+		return;
+
 	memset(&r, 0, sizeof(struct drm_mode_get_plane_res));
 	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPLANERESOURCES, &r))
 		return;

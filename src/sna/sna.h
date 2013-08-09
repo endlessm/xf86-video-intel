@@ -229,6 +229,7 @@ struct sna {
 #define SNA_TEAR_FREE		0x10
 #define SNA_FORCE_SHADOW	0x20
 #define SNA_FLUSH_GTT		0x40
+#define SNA_IS_HOSTED		0x80
 #define SNA_REPROBE		0x80000000
 
 	unsigned cpu_features;

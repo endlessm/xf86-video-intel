@@ -92,7 +92,7 @@ static int __intel_check_device(int fd)
 		if (drmIoctl(fd, DRM_IOCTL_I915_GETPARAM, &gp))
 			ret = FALSE;
 	}
-	if (ret) {
+	if (ret && !hosted()) {
 		struct drm_mode_card_res res;
 
 		memset(&res, 0, sizeof(res));
@@ -199,6 +199,12 @@ int intel_open_device(int entity_num,
 	dev->open_count = 0;
 	dev->master_count = 0;
 
+	/* If hosted under a system compositor, just pretend to be master */
+	if (hosted()) {
+		dev->open_count++;
+		dev->master_count++;
+	}
+
 	xf86GetEntityPrivate(entity_num, intel_device_key)->ptr = dev;
 
 	return fd;
@@ -221,6 +227,8 @@ int intel_get_device(ScrnInfoPtr scrn)
 	if (dev->open_count++ == 0) {
 		drmSetVersion sv;
 		int retry = 2000;
+
+		assert(!hosted());
 
 		/* Check that what we opened was a master or a
 		 * master-capable FD, by setting the version of the
@@ -267,6 +275,7 @@ int intel_get_master(ScrnInfoPtr scrn)
 	if (dev->master_count++ == 0) {
 		int retry = 2000;
 
+		assert(!hosted());
 		do {
 			ret = drmSetMaster(dev->fd);
 			if (ret == 0)
@@ -288,6 +297,7 @@ int intel_put_master(ScrnInfoPtr scrn)
 	ret = 0;
 	assert(dev->master_count);
 	if (--dev->master_count == 0) {
+		assert(!hosted());
 		assert(drmSetMaster(dev->fd) == 0);
 		ret = drmDropMaster(dev->fd);
 	}
@@ -317,6 +327,7 @@ void intel_put_device(ScrnInfoPtr scrn)
 	if (--dev->open_count)
 		return;
 
+	assert(!hosted());
 	intel_set_device(scrn, NULL);
 
 	drmClose(dev->fd);

@@ -683,6 +683,9 @@ void sna_video_overlay_setup(struct sna *sna, ScreenPtr screen)
 	struct sna_video *video;
 	XvPortPtr port;
 
+	if (sna->flags & SNA_IS_HOSTED)
+		return;
+
 	if (!sna_has_overlay(sna))
 		return;
 

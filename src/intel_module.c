@@ -382,6 +382,9 @@ static Bool intel_driver_func(ScrnInfoPtr pScrn,
 #else
 		(*flag) = HW_IO | HW_MMIO;
 #endif
+		if (hosted())
+			(*flag) = HW_SKIP_CONSOLE;
+
 		return TRUE;
 	default:
 		/* Unknown or deprecated function */
@@ -409,6 +412,9 @@ static enum accel_method { UXA, SNA } get_accel_method(void)
 {
 	enum accel_method accel_method = DEFAULT_ACCEL_METHOD;
 	XF86ConfDevicePtr dev;
+
+	if (hosted())
+		return SNA;
 
 	dev = _xf86findDriver("intel", xf86configptr->conf_device_lst);
 	if (dev && dev->dev_option_lst) {
@@ -493,7 +499,8 @@ static Bool intel_pci_probe(DriverPtr		driver,
 		case PCI_CHIP_I810_DC100:
 		case PCI_CHIP_I810_E:
 		case PCI_CHIP_I815:
-			break;
+			if (!hosted())
+				break;
 		default:
 			return FALSE;
 		}

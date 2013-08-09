@@ -287,7 +287,7 @@ static bool has_pageflipping(struct sna *sna)
 	drm_i915_getparam_t gp;
 	int v;
 
-	if (sna->flags & SNA_NO_WAIT)
+	if (sna->flags & (SNA_IS_HOSTED | SNA_NO_WAIT))
 		return false;
 
 	v = 0;
@@ -413,6 +413,7 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 	sna = to_sna(scrn);
 	sna->scrn = scrn;
 	sna->pEnt = pEnt;
+	sna->flags = 0;
 
 	scrn->displayWidth = 640;	/* default it */
 
@@ -425,7 +426,7 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 	fd = intel_get_device(scrn);
 	if (fd == -1) {
 		xf86DrvMsg(scrn->scrnIndex, X_ERROR,
-			   "Failed to become DRM master.\n");
+			   "Failed to claim DRM device.\n");
 		goto cleanup;
 	}
 
@@ -484,7 +485,6 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 	if (xf86ReturnOptValBool(sna->Options, OPTION_TILING_FB, FALSE))
 		sna->tiling &= ~SNA_TILING_FB;
 
-	sna->flags = 0;
 	if (!xf86ReturnOptValBool(sna->Options, OPTION_SWAPBUFFERS_WAIT, TRUE))
 		sna->flags |= SNA_NO_WAIT;
 	if (xf86ReturnOptValBool(sna->Options, OPTION_TRIPLE_BUFFER, TRUE))
@@ -628,6 +628,9 @@ sna_uevent_init(ScrnInfoPtr scrn)
 	struct udev_monitor *mon;
 	Bool hotplug;
 	MessageType from = X_CONFIG;
+
+	if (sna->flags & SNA_IS_HOSTED)
+		return;
 
 	DBG(("%s\n", __FUNCTION__));
 
@@ -895,7 +898,8 @@ sna_screen_init(SCREEN_INIT_ARGS_DECL)
 	if (!miDCInitialize(screen, xf86GetPointerScreenFuncs()))
 		return FALSE;
 
-	if (xf86_cursors_init(screen, SNA_CURSOR_X, SNA_CURSOR_Y,
+	if ((sna->flags & SNA_IS_HOSTED) == 0 &&
+	    xf86_cursors_init(screen, SNA_CURSOR_X, SNA_CURSOR_Y,
 			       HARDWARE_CURSOR_TRUECOLOR_AT_8BPP |
 			       HARDWARE_CURSOR_BIT_ORDER_MSBFIRST |
 			       HARDWARE_CURSOR_INVERT_MASK |

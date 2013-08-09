@@ -3151,10 +3151,21 @@ sna_crtc_config_notify(ScreenPtr screen)
 	sna_mode_update(to_sna_from_screen(screen));
 }
 
+#if HAS_PIXMAP_SHARING
+#define sna_setup_provider(scrn) xf86ProviderSetup(scrn, NULL, "Intel")
+#else
+#define sna_setup_provider(scrn)
+#endif
+
 bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 {
 	struct sna_mode *mode = &sna->mode;
 	int i;
+
+	if (sna->flags & SNA_IS_HOSTED) {
+		sna_setup_provider(scrn);
+		return true;
+	}
 
 	mode->kmode = drmModeGetResources(sna->kgem.fd);
 	if (mode->kmode) {
@@ -3172,9 +3183,7 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 		if (!xf86IsEntityShared(scrn->entityList[0]))
 			sna_mode_compute_possible_clones(scrn);
 
-#if HAS_PIXMAP_SHARING
-		xf86ProviderSetup(scrn, NULL, "Intel");
-#endif
+		sna_setup_provider(scrn);
 	} else {
 		if (!sna_mode_fake_init(sna))
 			return false;
@@ -3199,6 +3208,9 @@ sna_mode_close(struct sna *sna)
 	 */
 	while (sna_mode_has_pending_events(sna))
 		sna_mode_wakeup(sna);
+
+	if (sna->flags & SNA_IS_HOSTED)
+		return;
 
 	for (i = 0; i < xf86_config->num_crtc; i++)
 		sna_crtc_disable_shadow(sna, to_sna_crtc(xf86_config->crtc[i]));

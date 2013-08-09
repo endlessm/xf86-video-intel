@@ -129,4 +129,6 @@ void intel_put_device(ScrnInfoPtr scrn);
 
 void __intel_uxa_release_device(ScrnInfoPtr scrn);
 
+#define hosted() (0)
+
 #endif /* INTEL_DRIVER_H */
