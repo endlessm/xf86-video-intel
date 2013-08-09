@@ -335,6 +335,8 @@ retry_gtt:
 	if (drmIoctl(kgem->fd, DRM_IOCTL_I915_GEM_MMAP_GTT, &mmap_arg)) {
 		int err = errno;
 
+		assert(err != EINVAL);
+
 		(void)__kgem_throttle_retire(kgem, 0);
 		if (kgem_expire_cache(kgem))
 			goto retry_gtt;
@@ -354,6 +356,8 @@ retry_mmap:
 		   kgem->fd, mmap_arg.offset);
 	if (ptr == MAP_FAILED) {
 		int err = errno;
+
+		assert(err != EINVAL);
 
 		if (__kgem_throttle_retire(kgem, 0))
 			goto retry_mmap;
@@ -5056,6 +5060,8 @@ retry:
 	if (drmIoctl(kgem->fd, DRM_IOCTL_I915_GEM_MMAP, &mmap_arg)) {
 		int err = errno;
 
+		assert(err != EINVAL);
+
 		if (__kgem_throttle_retire(kgem, 0))
 			goto retry;
 
@@ -5097,6 +5103,8 @@ retry:
 	mmap_arg.size = bytes(bo);
 	if (drmIoctl(kgem->fd, DRM_IOCTL_I915_GEM_MMAP, &mmap_arg)) {
 		int err = errno;
+
+		assert(err != EINVAL);
 
 		if (__kgem_throttle_retire(kgem, 0))
 			goto retry;
