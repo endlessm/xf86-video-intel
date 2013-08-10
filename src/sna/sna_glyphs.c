@@ -114,6 +114,20 @@ static inline struct sna_glyph *sna_glyph(GlyphPtr glyph)
 	return __get_private(glyph, sna_glyph_key);
 }
 
+static inline struct sna_glyph *sna_glyph0(GlyphPtr glyph)
+{
+	return (struct sna_glyph *)glyph->devPrivates;
+}
+
+static inline bool can_use_glyph0(void)
+{
+#if HAS_DEVPRIVATEKEYREC
+	return sna_glyph_key.offset == 0;
+#else
+	return 0;
+#endif
+}
+
 #define NeedsComponent(f) (PICT_FORMAT_A(f) != 0 && PICT_FORMAT_RGB(f) != 0)
 
 static bool op_is_bounded(uint8_t op)
@@ -549,6 +563,159 @@ glyphs_to_dst(struct sna *sna,
 			int i;
 
 			p = sna_glyph(glyph);
+			if (unlikely(p->atlas == NULL)) {
+				if (unlikely(!glyph_valid(glyph)))
+					goto next_glyph;
+
+				if (glyph_atlas) {
+					tmp.done(sna, &tmp);
+					glyph_atlas = NULL;
+				}
+				if (!glyph_cache(screen, &sna->render, glyph)) {
+					/* no cache for this glyph */
+					p->atlas = GetGlyphPicture(glyph, screen);
+					if (unlikely(p->atlas == NULL)) {
+						glyph->info.width = glyph->info.height = 0;
+						goto next_glyph;
+					}
+					p->coordinate.x = p->coordinate.y = 0;
+				}
+			}
+
+			if (p->atlas != glyph_atlas) {
+				if (glyph_atlas)
+					tmp.done(sna, &tmp);
+
+				if (!sna->render.composite(sna,
+							   op, src, p->atlas, dst,
+							   0, 0, 0, 0, 0, 0,
+							   0, 0,
+							   &tmp))
+					return false;
+
+				glyph_atlas = p->atlas;
+			}
+
+			if (nrect) {
+				for (i = 0; i < nrect; i++) {
+					struct sna_composite_rectangles r;
+					int16_t dx, dy;
+					int16_t x2, y2;
+
+					r.dst.x = x - glyph->info.x;
+					r.dst.y = y - glyph->info.y;
+					x2 = r.dst.x + glyph->info.width;
+					y2 = r.dst.y + glyph->info.height;
+					dx = dy = 0;
+
+					DBG(("%s: glyph=(%d, %d), (%d, %d), clip=(%d, %d), (%d, %d)\n",
+					     __FUNCTION__,
+					     r.dst.x, r.dst.y, x2, y2,
+					     rects[i].x1, rects[i].y1,
+					     rects[i].x2, rects[i].y2));
+					if (rects[i].y1 >= y2)
+						break;
+
+					if (r.dst.x < rects[i].x1)
+						dx = rects[i].x1 - r.dst.x, r.dst.x = rects[i].x1;
+					if (x2 > rects[i].x2)
+						x2 = rects[i].x2;
+					if (r.dst.y < rects[i].y1)
+						dy = rects[i].y1 - r.dst.y, r.dst.y = rects[i].y1;
+					if (y2 > rects[i].y2)
+						y2 = rects[i].y2;
+
+					if (r.dst.x < x2 && r.dst.y < y2) {
+						DBG(("%s: blt=(%d, %d), (%d, %d)\n",
+						     __FUNCTION__, r.dst.x, r.dst.y, x2, y2));
+
+						r.src.x = r.dst.x + src_x;
+						r.src.y = r.dst.y + src_y;
+						r.mask.x = dx + p->coordinate.x;
+						r.mask.y = dy + p->coordinate.y;
+						r.width  = x2 - r.dst.x;
+						r.height = y2 - r.dst.y;
+						tmp.blt(sna, &tmp, &r);
+						apply_damage(&tmp, &r);
+					}
+				}
+			} else {
+				struct sna_composite_rectangles r;
+
+				r.dst.x = x - glyph->info.x;
+				r.dst.y = y - glyph->info.y;
+				r.src.x = r.dst.x + src_x;
+				r.src.y = r.dst.y + src_y;
+				r.mask = p->coordinate;
+				glyph_copy_size(&r, glyph);
+
+				DBG(("%s: glyph=(%d, %d)x(%d, %d), unclipped\n",
+				     __FUNCTION__,
+				     r.dst.x, r.dst.y,
+				     r.width, r.height));
+
+				tmp.blt(sna, &tmp, &r);
+				apply_damage_clipped_to_dst(&tmp, &r, dst->pDrawable);
+			}
+
+next_glyph:
+			x += glyph->info.xOff;
+			y += glyph->info.yOff;
+		}
+		list++;
+	}
+	if (glyph_atlas)
+		tmp.done(sna, &tmp);
+
+	return true;
+}
+
+flatten static bool
+glyphs0_to_dst(struct sna *sna,
+	       CARD8 op,
+	       PicturePtr src,
+	       PicturePtr dst,
+	       INT16 src_x, INT16 src_y,
+	       int nlist, GlyphListPtr list, GlyphPtr *glyphs)
+{
+	struct sna_composite_op tmp;
+	ScreenPtr screen = dst->pDrawable->pScreen;
+	PicturePtr glyph_atlas;
+	BoxPtr rects;
+	int nrect;
+	int16_t x, y;
+
+	if (NO_GLYPHS_TO_DST)
+		return false;
+
+	memset(&tmp, 0, sizeof(tmp));
+
+	DBG(("%s(op=%d, src=(%d, %d), nlist=%d,  dst=(%d, %d)+(%d, %d))\n",
+	     __FUNCTION__, op, src_x, src_y, nlist,
+	     list->xOff, list->yOff, dst->pDrawable->x, dst->pDrawable->y));
+
+	if (is_clipped(dst->pCompositeClip, dst->pDrawable)) {
+		rects = REGION_RECTS(dst->pCompositeClip);
+		nrect = REGION_NUM_RECTS(dst->pCompositeClip);
+	} else
+		nrect = 0;
+
+	x = dst->pDrawable->x;
+	y = dst->pDrawable->y;
+	src_x -= list->xOff + x;
+	src_y -= list->yOff + y;
+
+	glyph_atlas = NULL;
+	while (nlist--) {
+		int n = list->len;
+		x += list->xOff;
+		y += list->yOff;
+		while (n--) {
+			GlyphPtr glyph = *glyphs++;
+			struct sna_glyph *p;
+			int i;
+
+			p = sna_glyph0(glyph);
 			if (unlikely(p->atlas == NULL)) {
 				if (unlikely(!glyph_valid(glyph)))
 					goto next_glyph;
@@ -1695,11 +1862,19 @@ sna_glyphs(CARD8 op,
 	    (dst->pCompositeClip->data == NULL &&
 	     can_discard_mask(op, src, mask, nlist, list, glyphs))) {
 		DBG(("%s: discarding mask\n", __FUNCTION__));
-		if (glyphs_to_dst(sna, op,
-				  src, dst,
-				  src_x, src_y,
-				  nlist, list, glyphs))
-			return;
+		if (can_use_glyph0()) {
+			if (glyphs0_to_dst(sna, op,
+					   src, dst,
+					   src_x, src_y,
+					   nlist, list, glyphs))
+				return;
+		} else {
+			if (glyphs_to_dst(sna, op,
+					  src, dst,
+					  src_x, src_y,
+					  nlist, list, glyphs))
+				return;
+		}
 	}
 
 	/* Otherwise see if we can substitute a mask */
