@@ -1126,8 +1126,6 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 
 	DBG(("%s: fd=%d, gen=%d\n", __FUNCTION__, fd, gen));
 
-	memset(kgem, 0, sizeof(*kgem));
-
 	kgem->fd = fd;
 	kgem->gen = gen;
 
