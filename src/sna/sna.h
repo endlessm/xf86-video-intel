@@ -155,9 +155,9 @@ struct sna_pixmap {
 
 struct sna_glyph {
 	PicturePtr atlas;
-	pixman_image_t *image;
 	struct sna_coordinate coordinate;
 	uint16_t size, pos;
+	pixman_image_t *image;
 };
 
 static inline WindowPtr get_root_window(ScreenPtr screen)

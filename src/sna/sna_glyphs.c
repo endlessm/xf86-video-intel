@@ -365,7 +365,7 @@ glyph_cache(ScreenPtr screen,
 {
 	PicturePtr glyph_picture;
 	struct sna_glyph_cache *cache;
-	struct sna_glyph *priv;
+	struct sna_glyph *p;
 	int size, mask, pos, s;
 
 	if (NO_GLYPH_CACHE)
@@ -399,28 +399,28 @@ glyph_cache(ScreenPtr screen,
 	if (pos < GLYPH_CACHE_SIZE) {
 		cache->count = pos + s;
 	} else {
-		priv = NULL;
+		p = NULL;
 		for (s = size; s <= GLYPH_MAX_SIZE; s *= 2) {
 			int i = cache->evict & glyph_size_to_mask(s);
-			priv = cache->glyphs[i];
-			if (priv == NULL)
+			p = cache->glyphs[i];
+			if (p == NULL)
 				continue;
 
-			if (priv->size >= s) {
+			if (p->size >= s) {
 				cache->glyphs[i] = NULL;
-				priv->atlas = NULL;
+				p->atlas = NULL;
 				pos = i;
 			} else
-				priv = NULL;
+				p = NULL;
 			break;
 		}
-		if (priv == NULL) {
+		if (p == NULL) {
 			int count = glyph_size_to_count(size);
 			pos = cache->evict & glyph_count_to_mask(count);
 			for (s = 0; s < count; s++) {
-				priv = cache->glyphs[pos + s];
-				if (priv != NULL) {
-					priv->atlas =NULL;
+				p = cache->glyphs[pos + s];
+				if (p != NULL) {
+					p->atlas =NULL;
 					cache->glyphs[pos + s] = NULL;
 				}
 			}
@@ -431,27 +431,27 @@ glyph_cache(ScreenPtr screen,
 	}
 	assert(cache->glyphs[pos] == NULL);
 
-	priv = sna_glyph(glyph);
+	p = sna_glyph(glyph);
 	DBG(("%s(%d): adding glyph to cache %d, pos %d\n",
 	     __FUNCTION__, screen->myNum,
 	     PICT_FORMAT_RGB(glyph_picture->format) != 0, pos));
-	cache->glyphs[pos] = priv;
-	priv->atlas = cache->picture;
-	priv->size = size;
-	priv->pos = pos << 1 | (PICT_FORMAT_RGB(glyph_picture->format) != 0);
+	cache->glyphs[pos] = p;
+	p->atlas = cache->picture;
+	p->size = size;
+	p->pos = pos << 1 | (PICT_FORMAT_RGB(glyph_picture->format) != 0);
 	s = pos / ((GLYPH_MAX_SIZE / GLYPH_MIN_SIZE) * (GLYPH_MAX_SIZE / GLYPH_MIN_SIZE));
-	priv->coordinate.x = s % (CACHE_PICTURE_SIZE / GLYPH_MAX_SIZE) * GLYPH_MAX_SIZE;
-	priv->coordinate.y = (s / (CACHE_PICTURE_SIZE / GLYPH_MAX_SIZE)) * GLYPH_MAX_SIZE;
+	p->coordinate.x = s % (CACHE_PICTURE_SIZE / GLYPH_MAX_SIZE) * GLYPH_MAX_SIZE;
+	p->coordinate.y = (s / (CACHE_PICTURE_SIZE / GLYPH_MAX_SIZE)) * GLYPH_MAX_SIZE;
 	for (s = GLYPH_MIN_SIZE; s < GLYPH_MAX_SIZE; s *= 2) {
 		if (pos & 1)
-			priv->coordinate.x += s;
+			p->coordinate.x += s;
 		if (pos & 2)
-			priv->coordinate.y += s;
+			p->coordinate.y += s;
 		pos >>= 2;
 	}
 
 	glyph_cache_upload(cache, glyph, glyph_picture,
-			   priv->coordinate.x, priv->coordinate.y);
+			   p->coordinate.x, p->coordinate.y);
 
 	return true;
 }
@@ -545,42 +545,41 @@ glyphs_to_dst(struct sna *sna,
 		y += list->yOff;
 		while (n--) {
 			GlyphPtr glyph = *glyphs++;
-			struct sna_glyph priv;
+			struct sna_glyph *p;
 			int i;
 
-			if (!glyph_valid(glyph))
-				goto next_glyph;
+			p = sna_glyph(glyph);
+			if (unlikely(p->atlas == NULL)) {
+				if (unlikely(!glyph_valid(glyph)))
+					goto next_glyph;
 
-			priv = *sna_glyph(glyph);
-			if (priv.atlas == NULL) {
 				if (glyph_atlas) {
 					tmp.done(sna, &tmp);
 					glyph_atlas = NULL;
 				}
 				if (!glyph_cache(screen, &sna->render, glyph)) {
 					/* no cache for this glyph */
-					priv.atlas = GetGlyphPicture(glyph, screen);
-					if (unlikely(priv.atlas == NULL)) {
+					p->atlas = GetGlyphPicture(glyph, screen);
+					if (unlikely(p->atlas == NULL)) {
 						glyph->info.width = glyph->info.height = 0;
 						goto next_glyph;
 					}
-					priv.coordinate.x = priv.coordinate.y = 0;
-				} else
-					priv = *sna_glyph(glyph);
+					p->coordinate.x = p->coordinate.y = 0;
+				}
 			}
 
-			if (priv.atlas != glyph_atlas) {
+			if (p->atlas != glyph_atlas) {
 				if (glyph_atlas)
 					tmp.done(sna, &tmp);
 
 				if (!sna->render.composite(sna,
-							   op, src, priv.atlas, dst,
+							   op, src, p->atlas, dst,
 							   0, 0, 0, 0, 0, 0,
 							   0, 0,
 							   &tmp))
 					return false;
 
-				glyph_atlas = priv.atlas;
+				glyph_atlas = p->atlas;
 			}
 
 			if (nrect) {
@@ -618,8 +617,8 @@ glyphs_to_dst(struct sna *sna,
 
 						r.src.x = r.dst.x + src_x;
 						r.src.y = r.dst.y + src_y;
-						r.mask.x = dx + priv.coordinate.x;
-						r.mask.y = dy + priv.coordinate.y;
+						r.mask.x = dx + p->coordinate.x;
+						r.mask.y = dy + p->coordinate.y;
 						r.width  = x2 - r.dst.x;
 						r.height = y2 - r.dst.y;
 						tmp.blt(sna, &tmp, &r);
@@ -633,7 +632,7 @@ glyphs_to_dst(struct sna *sna,
 				r.dst.y = y - glyph->info.y;
 				r.src.x = r.dst.x + src_x;
 				r.src.y = r.dst.y + src_y;
-				r.mask = priv.coordinate;
+				r.mask = p->coordinate;
 				glyph_copy_size(&r, glyph);
 
 				DBG(("%s: glyph=(%d, %d)x(%d, %d), unclipped\n",
@@ -687,13 +686,10 @@ glyphs_slow(struct sna *sna,
 		y += list->yOff;
 		while (n--) {
 			GlyphPtr glyph = *glyphs++;
-			struct sna_glyph priv;
+			struct sna_glyph *p;
 			BoxPtr rects;
 			BoxRec box;
 			int nrect;
-
-			if (!glyph_valid(glyph))
-				goto next_glyph;
 
 			box.x1 = x - glyph->info.x;
 			box.y1 = y - glyph->info.y;
@@ -704,18 +700,20 @@ glyphs_slow(struct sna *sna,
 					   &dst->pCompositeClip->extents))
 				goto next_glyph;
 
-			priv = *sna_glyph(glyph);
-			if (priv.atlas == NULL) {
+			p = sna_glyph(glyph);
+			if (unlikely(p->atlas == NULL)) {
+				if (unlikely(!glyph_valid(glyph)))
+					goto next_glyph;
+
 				if (!glyph_cache(screen, &sna->render, glyph)) {
 					/* no cache for this glyph */
-					priv.atlas = GetGlyphPicture(glyph, screen);
-					if (unlikely(priv.atlas == NULL)) {
+					p->atlas = GetGlyphPicture(glyph, screen);
+					if (unlikely(p->atlas == NULL)) {
 						glyph->info.width = glyph->info.height = 0;
 						goto next_glyph;
 					}
-					priv.coordinate.x = priv.coordinate.y = 0;
-				} else
-					priv = *sna_glyph(glyph);
+					p->coordinate.x = p->coordinate.y = 0;
+				}
 			}
 
 			DBG(("%s: glyph=(%d, %d)x(%d, %d), src=(%d, %d), mask=(%d, %d)\n",
@@ -726,13 +724,13 @@ glyphs_slow(struct sna *sna,
 			     glyph->info.height,
 			     src_x + x - glyph->info.x,
 			     src_y + y - glyph->info.y,
-			     priv.coordinate.x, priv.coordinate.y));
+			     p->coordinate.x, p->coordinate.y));
 
 			if (!sna->render.composite(sna,
-						   op, src, priv.atlas, dst,
+						   op, src, p->atlas, dst,
 						   src_x + x - glyph->info.x,
 						   src_y + y - glyph->info.y,
-						   priv.coordinate.x, priv.coordinate.y,
+						   p->coordinate.x, p->coordinate.y,
 						   x - glyph->info.x,
 						   y - glyph->info.y,
 						   glyph->info.width,
@@ -1090,37 +1088,29 @@ next_image:
 			y += list->yOff;
 			while (n--) {
 				GlyphPtr glyph = *glyphs++;
-				struct sna_glyph *priv;
-				PicturePtr this_atlas;
+				struct sna_glyph *p;
 				struct sna_composite_rectangles r;
 
-				if (!glyph_valid(glyph))
-					goto next_glyph;
+				p = sna_glyph(glyph);
+				if (unlikely(p->atlas == NULL)) {
+					if (unlikely(!glyph_valid(glyph)))
+						goto next_glyph;
 
-				priv = sna_glyph(glyph);
-				if (priv->atlas != NULL) {
-					this_atlas = priv->atlas;
-					r.src = priv->coordinate;
-				} else {
 					if (glyph_atlas) {
 						tmp.done(sna, &tmp);
 						glyph_atlas = NULL;
 					}
-					if (glyph_cache(screen, &sna->render, glyph)) {
-						this_atlas = priv->atlas;
-						r.src = priv->coordinate;
-					} else {
+					if (!glyph_cache(screen, &sna->render, glyph)) {
 						/* no cache for this glyph */
-						this_atlas = GetGlyphPicture(glyph, screen);
-						if (unlikely(this_atlas == NULL)) {
+						p->atlas = GetGlyphPicture(glyph, screen);
+						if (unlikely(p->atlas == NULL)) {
 							glyph->info.width = glyph->info.height = 0;
 							goto next_glyph;
 						}
-						r.src.x = r.src.y = 0;
+						p->coordinate.x = p->coordinate.y = 0;
 					}
 				}
-
-				if (this_atlas != glyph_atlas) {
+				if (p->atlas != glyph_atlas) {
 					bool ok;
 
 					if (glyph_atlas)
@@ -1130,15 +1120,15 @@ next_image:
 					     __FUNCTION__,
 					     (int)this_atlas->format,
 					     (int)(format->depth << 24 | format->format)));
-					if (this_atlas->format == (format->depth << 24 | format->format)) {
+					if (p->atlas->format == (format->depth << 24 | format->format)) {
 						ok = sna->render.composite(sna, PictOpAdd,
-									   this_atlas, NULL, mask,
+									   p->atlas, NULL, mask,
 									   0, 0, 0, 0, 0, 0,
 									   0, 0,
 									   &tmp);
 					} else {
 						ok = sna->render.composite(sna, PictOpAdd,
-									   sna->render.white_picture, this_atlas, mask,
+									   sna->render.white_picture, p->atlas, mask,
 									   0, 0, 0, 0, 0, 0,
 									   0, 0,
 									   &tmp);
@@ -1149,17 +1139,17 @@ next_image:
 						goto err_mask;
 					}
 
-					glyph_atlas = this_atlas;
+					glyph_atlas = p->atlas;
 				}
 
 				DBG(("%s: blt glyph origin (%d, %d), offset (%d, %d), src (%d, %d), size (%d, %d)\n",
 				     __FUNCTION__,
 				     x, y,
 				     glyph->info.x, glyph->info.y,
-				     r.src.x, r.src.y,
+				     p->coordinate.x, p->coordinate.y,
 				     glyph->info.width, glyph->info.height));
 
-				r.mask = r.src;
+				r.mask = r.src = p->coordinate;
 				r.dst.x = x - glyph->info.x;
 				r.dst.y = y - glyph->info.y;
 				glyph_copy_size(&r, glyph);
@@ -2036,29 +2026,29 @@ fallback:
 void
 sna_glyph_unrealize(ScreenPtr screen, GlyphPtr glyph)
 {
-	struct sna_glyph *priv = sna_glyph(glyph);
+	struct sna_glyph *p = sna_glyph(glyph);
 
 	DBG(("%s: screen=%d, glyph(image?=%d, atlas?=%d)\n",
-	     __FUNCTION__, screen->myNum, !!priv->image, !!priv->atlas));
+	     __FUNCTION__, screen->myNum, !!p->image, !!p->atlas));
 
-	if (priv->image) {
+	if (p->image) {
 #if HAS_PIXMAN_GLYPHS
 		struct sna *sna = to_sna_from_screen(screen);
 		if (sna->render.glyph_cache)
 			pixman_glyph_cache_remove(sna->render.glyph_cache,
 						  glyph, NULL);
 #endif
-		pixman_image_unref(priv->image);
-		priv->image = NULL;
+		pixman_image_unref(p->image);
+		p->image = NULL;
 	}
 
-	if (priv->atlas) {
+	if (p->atlas) {
 		struct sna *sna = to_sna_from_screen(screen);
-		struct sna_glyph_cache *cache = &sna->render.glyph[priv->pos&1];
+		struct sna_glyph_cache *cache = &sna->render.glyph[p->pos&1];
 		DBG(("%s: releasing glyph pos %d from cache %d\n",
-		     __FUNCTION__, priv->pos >> 1, priv->pos & 1));
-		assert(cache->glyphs[priv->pos >> 1] == priv);
-		cache->glyphs[priv->pos >> 1] = NULL;
-		priv->atlas = NULL;
+		     __FUNCTION__, p->pos >> 1, p->pos & 1));
+		assert(cache->glyphs[p->pos >> 1] == p);
+		cache->glyphs[p->pos >> 1] = NULL;
+		p->atlas = NULL;
 	}
 }
