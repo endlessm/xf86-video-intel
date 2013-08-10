@@ -1406,6 +1406,7 @@ static inline bool has_coherent_map(struct sna *sna,
 				    struct kgem_bo *bo,
 				    unsigned flags)
 {
+	assert(bo);
 	assert(bo->map);
 
 	if (!IS_CPU_MAP(bo->map))
@@ -1446,10 +1447,13 @@ static inline bool pixmap_inplace(struct sna *sna,
 	if (wedged(sna) && !priv->pinned)
 		return false;
 
-	if (priv->gpu_damage &&
-	    (priv->clear || (flags & MOVE_READ) == 0) &&
-	    kgem_bo_is_busy(priv->gpu_bo))
-		return false;
+	if (priv->gpu_bo && kgem_bo_is_busy(priv->gpu_bo)) {
+		if ((flags & (MOVE_WRITE | MOVE_READ)) == (MOVE_WRITE | MOVE_READ))
+			return false;
+
+		if ((flags & MOVE_READ) == 0)
+			return !priv->pinned;
+	}
 
 	if (priv->mapped)
 		return has_coherent_map(sna, priv->gpu_bo, flags);
@@ -1845,8 +1849,8 @@ _sna_pixmap_move_to_cpu(PixmapPtr pixmap, unsigned int flags)
 		DBG(("%s: no readbck, discarding gpu damage [%d], pending clear[%d]\n",
 		     __FUNCTION__, priv->gpu_damage != NULL, priv->clear));
 
-		if (priv->create & KGEM_CAN_CREATE_GPU &&
-		    pixmap_inplace(sna, pixmap, priv, true) &&
+		if ((priv->gpu_bo || priv->create & KGEM_CAN_CREATE_GPU) &&
+		    pixmap_inplace(sna, pixmap, priv, flags) &&
 		    sna_pixmap_create_mappable_gpu(pixmap, true)) {
 			DBG(("%s: write inplace\n", __FUNCTION__));
 			assert(priv->cow == NULL || (flags & MOVE_WRITE) == 0);
