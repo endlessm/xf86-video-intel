@@ -3033,27 +3033,17 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 			continue;
 
 		DBG(("%s: CRTC:%d, pipe=%d: has mode?=%d\n", __FUNCTION__,
-		     sna_crtc->id, sna_crtc->pipe, mode.mode_valid));
+		     sna_crtc->id, sna_crtc->pipe,
+		     mode.mode_valid && mode.mode.clock));
+
 		if (!mode.mode_valid || mode.mode.clock == 0)
 			continue;
 
-		memset(&crtc->desiredMode, 0, sizeof(crtc->desiredMode));
 		mode_from_kmode(scrn, &mode.mode, &crtc->desiredMode);
 		crtc->desiredRotation = RR_Rotate_0;
 		crtc->desiredX = mode.x;
 		crtc->desiredY = mode.y;
 		crtc->desiredTransformPresent = FALSE;
-
-		crtc->mode = crtc->desiredMode;
-		crtc->mode.name = NULL;
-		crtc->x = mode.x;
-		crtc->y = mode.y;
-		crtc->rotation = RR_Rotate_0;
-		crtc->transformPresent = FALSE;
-
-		memset(&crtc->panningTotalArea, 0, sizeof(BoxRec));
-		memset(&crtc->panningTrackingArea, 0, sizeof(BoxRec));
-		memset(crtc->panningBorder, 0, 4 * sizeof(INT16));
 	}
 
 	/* Reconstruct outputs pointing to active CRTC */
@@ -3072,40 +3062,42 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 
 		for (j = 0; j < config->num_crtc; j++) {
 			xf86CrtcPtr crtc = config->crtc[j];
-			if (to_sna_crtc(crtc)->id == crtc_id) {
-				if (crtc->desiredMode.status == MODE_OK) {
-					DisplayModePtr M;
+			if (to_sna_crtc(crtc)->id != crtc_id)
+				continue;
 
-					xf86DrvMsg(scrn->scrnIndex, X_PROBED,
-						   "Output %s using initial mode %s on pipe %d\n",
-						   output->name,
-						   crtc->desiredMode.name,
-						   to_sna_crtc(crtc)->pipe);
+			if (crtc->desiredMode.status == MODE_OK) {
+				DisplayModePtr M;
 
-					output->crtc = crtc;
-					crtc->enabled = TRUE;
+				xf86DrvMsg(scrn->scrnIndex, X_PROBED,
+						"Output %s using initial mode %s on pipe %d\n",
+						output->name,
+						crtc->desiredMode.name,
+						to_sna_crtc(crtc)->pipe);
 
-					if (output->mm_width == 0 ||
-					    output->mm_height == 0) {
-						output->mm_height = (crtc->desiredMode.VDisplay * 254) / (10*DEFAULT_DPI);
-						output->mm_width = (crtc->desiredMode.HDisplay * 254) / (10*DEFAULT_DPI);
-					}
+				output->crtc = crtc;
+				crtc->enabled = TRUE;
 
-					set_initial_gamma(output, crtc);
-
-					M = calloc(1, sizeof(DisplayModeRec));
-					if (M) {
-						*M = crtc->desiredMode;
-						M->name = strdup(M->name);
-						output->probed_modes =
-							xf86ModesAdd(output->probed_modes, M);
-					}
+				if (output->mm_width == 0 ||
+						output->mm_height == 0) {
+					output->mm_height = (crtc->desiredMode.VDisplay * 254) / (10*DEFAULT_DPI);
+					output->mm_width = (crtc->desiredMode.HDisplay * 254) / (10*DEFAULT_DPI);
 				}
-				break;
+
+				set_initial_gamma(output, crtc);
+
+				M = calloc(1, sizeof(DisplayModeRec));
+				if (M) {
+					*M = crtc->desiredMode;
+					M->name = strdup(M->name);
+					output->probed_modes =
+						xf86ModesAdd(output->probed_modes, M);
+				}
 			}
+
+			break;
 		}
 
-		if (output->crtc == NULL) {
+		if (j == config->num_crtc) {
 			/* Can not find the earlier associated CRTC, bail */
 			return false;
 		}
