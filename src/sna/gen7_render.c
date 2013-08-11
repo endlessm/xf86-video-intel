@@ -2375,7 +2375,7 @@ reuse_source(struct sna *sna,
 static bool
 prefer_blt_composite(struct sna *sna, struct sna_composite_op *tmp)
 {
-	if (sna->kgem.ring == KGEM_BLT)
+	if (sna->kgem.mode == KGEM_BLT)
 		return true;
 
 	if (untiled_tlb_miss(tmp->dst.bo) ||
@@ -2403,8 +2403,8 @@ gen7_render_composite(struct sna *sna,
 	if (op >= ARRAY_SIZE(gen7_blend_op))
 		return false;
 
-	DBG(("%s: %dx%d, current mode=%d\n", __FUNCTION__,
-	     width, height, sna->kgem.ring));
+	DBG(("%s: %dx%d, current mode=%d/%d\n", __FUNCTION__,
+	     width, height, sna->kgem.mode, sna->kgem.ring));
 
 	if (mask == NULL &&
 	    try_blt(sna, dst, src, width, height) &&
@@ -2691,8 +2691,8 @@ gen7_render_composite_spans(struct sna *sna,
 			    unsigned flags,
 			    struct sna_composite_spans_op *tmp)
 {
-	DBG(("%s: %dx%d with flags=%x, current mode=%d\n", __FUNCTION__,
-	     width, height, flags, sna->kgem.ring));
+	DBG(("%s: %dx%d with flags=%x, current mode=%d/%d\n", __FUNCTION__,
+	     width, height, flags, sna->kgem.mode, sna->kgem.ring));
 
 	assert(gen7_check_composite_spans(sna, op, src, dst, width, height, flags));
 
@@ -2807,7 +2807,7 @@ static inline bool prefer_blt_copy(struct sna *sna,
 				   struct kgem_bo *dst_bo,
 				   unsigned flags)
 {
-	if (sna->kgem.ring == KGEM_BLT)
+	if (sna->kgem.mode == KGEM_BLT)
 		return true;
 
 	assert((flags & COPY_SYNC) == 0);
@@ -3630,7 +3630,7 @@ gen7_render_clear(struct sna *sna, PixmapPtr dst, struct kgem_bo *bo)
 	     dst->drawable.height));
 
 	/* Prefer to use the BLT if already engaged */
-	if (sna->kgem.ring == KGEM_BLT &&
+	if (sna->kgem.mode == KGEM_BLT &&
 	    gen7_render_clear_try_blt(sna, dst, bo))
 		return true;
 
