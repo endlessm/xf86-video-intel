@@ -263,10 +263,10 @@ AC_ARG_ENABLE(xaa,
 	      [XAA="$enableval"],
 	      [XAA=auto])
 if test "x$XAA" != xno; then
-        save_CFLAGS=$CFLAGS
-        CFLAGS=$XORG_CFLAGS
+        save_CPPFLAGS=$CPPFLAGS
+        CPPFLAGS=$XORG_CFLAGS
 	AC_CHECK_HEADERS([xaa.h], XAA=yes, XAA=no)
-        CFLAGS=$save_CFLAGS
+        CPPFLAGS=$save_CPPFLAGS
 fi
 AC_MSG_CHECKING([whether to include XAA support])
 AM_CONDITIONAL(XAA, test "x$XAA" = xyes)
