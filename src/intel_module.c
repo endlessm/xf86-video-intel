@@ -382,8 +382,10 @@ static Bool intel_driver_func(ScrnInfoPtr pScrn,
 #else
 		(*flag) = HW_IO | HW_MMIO;
 #endif
+#ifdef HW_SKIP_CONSOLE
 		if (hosted())
 			(*flag) = HW_SKIP_CONSOLE;
+#endif
 
 		return TRUE;
 	default:
