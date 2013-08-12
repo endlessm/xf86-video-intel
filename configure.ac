@@ -211,7 +211,7 @@ AC_ARG_ENABLE(sna,
 
 if test "x$SNA" != "xno"; then
 	AC_DEFINE(USE_SNA, 1, [Enable SNA support])
-	AC_CHECK_HEADERS([sys/sysinfo.h])
+	AC_CHECK_HEADERS([sys/sysinfo.h], AC_CHECK_MEMBERS([struct sysinfo.totalram], [], [], [[#include <sys/sysinfo.h>]]))
 fi
 AC_MSG_CHECKING([whether to include SNA support])
 AM_CONDITIONAL(SNA, test x$SNA != xno)

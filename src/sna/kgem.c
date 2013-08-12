@@ -46,7 +46,7 @@
 #include <memcheck.h>
 #endif
 
-#if HAVE_SYS_SYSINFO_H
+#ifdef HAVE_STRUCT_SYSINFO_TOTALRAM
 #include <sys/sysinfo.h>
 #endif
 
@@ -694,7 +694,7 @@ agp_aperture_size(struct pci_device *dev, unsigned gen)
 static size_t
 total_ram_size(void)
 {
-#if HAVE_SYS_SYSINFO_H
+#ifdef HAVE_STRUCT_SYSINFO_TOTALRAM
 	struct sysinfo info;
 	if (sysinfo(&info) == 0)
 		return info.totalram * info.mem_unit;
