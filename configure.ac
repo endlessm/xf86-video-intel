@@ -44,7 +44,7 @@ XORG_MACROS_VERSION(1.8)
 XORG_DEFAULT_OPTIONS
 
 # And disable a few very noisy warnings
-m4_ifdef([XORG_TESTSET_CLAG], [
+m4_ifdef([XORG_TESTSET_CFLAG], [
 XORG_TESTSET_CFLAG([NOWARNFLAGS], [-Wno-cast-qual])
 XORG_TESTSET_CFLAG([NOWARNFLAGS], [-Wno-redundant-decls])
 XORG_TESTSET_CFLAG([NOWARNFLAGS], [-Wno-maybe-uninitialized])
