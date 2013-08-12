@@ -1285,7 +1285,7 @@ next_image:
 
 					DBG(("%s: atlas format=%08x, mask format=%08x\n",
 					     __FUNCTION__,
-					     (int)this_atlas->format,
+					     (int)p->atlas->format,
 					     (int)(format->depth << 24 | format->format)));
 					if (p->atlas->format == (format->depth << 24 | format->format)) {
 						ok = sna->render.composite(sna, PictOpAdd,
