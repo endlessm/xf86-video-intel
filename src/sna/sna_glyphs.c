@@ -2217,7 +2217,7 @@ sna_glyph_unrealize(ScreenPtr screen, GlyphPtr glyph)
 		p->image = NULL;
 	}
 
-	if (p->atlas) {
+	if (p->atlas && p->atlas != GetGlyphPicture(glyph, screen)) {
 		struct sna *sna = to_sna_from_screen(screen);
 		struct sna_glyph_cache *cache = &sna->render.glyph[p->pos&1];
 		DBG(("%s: releasing glyph pos %d from cache %d\n",
