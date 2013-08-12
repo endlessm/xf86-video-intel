@@ -481,17 +481,6 @@ sna_composite_fb(CARD8 op,
 	     region->extents.x1, region->extents.y1,
 	     region->extents.x2, region->extents.y2));
 
-	DBG(("%s: fallback -- move dst to cpu\n", __FUNCTION__));
-	if (op <= PictOpSrc && !dst->alphaMap)
-		flags = MOVE_WRITE | MOVE_INPLACE_HINT;
-	else
-		flags = MOVE_WRITE | MOVE_READ;
-	if (!sna_drawable_move_region_to_cpu(dst->pDrawable, region, flags))
-		return;
-	if (dst->alphaMap &&
-	    !sna_drawable_move_to_cpu(dst->alphaMap->pDrawable, flags))
-		return;
-
 	if (src->pDrawable) {
 		DBG(("%s: fallback -- move src to cpu\n", __FUNCTION__));
 		if (!sna_drawable_move_to_cpu(src->pDrawable,
@@ -520,67 +509,79 @@ sna_composite_fb(CARD8 op,
 		}
 
 		validate_source(mask);
-	} else {
-		if (src->pDrawable &&
-		    dst->pDrawable->bitsPerPixel >= 8 &&
-		    src->filter != PictFilterConvolution &&
-		    (op == PictOpSrc || (op == PictOpOver && !PICT_FORMAT_A(src->format))) &&
-		    (dst->format == src->format || dst->format == alphaless(src->format)) &&
-		    sna_transform_is_integer_translation(src->transform, &tx, &ty)) {
-			PixmapPtr dst_pixmap = get_drawable_pixmap(dst->pDrawable);
-			PixmapPtr src_pixmap = get_drawable_pixmap(src->pDrawable);
-			int16_t sx = src_x + tx - (dst->pDrawable->x + dst_x);
-			int16_t sy = src_y + ty - (dst->pDrawable->y + dst_y);
+	}
 
-			assert(src->pDrawable->bitsPerPixel == dst->pDrawable->bitsPerPixel);
-			assert(src_pixmap->drawable.bitsPerPixel == dst_pixmap->drawable.bitsPerPixel);
+	DBG(("%s: fallback -- move dst to cpu\n", __FUNCTION__));
+	if (op <= PictOpSrc && !dst->alphaMap)
+		flags = MOVE_WRITE | MOVE_INPLACE_HINT;
+	else
+		flags = MOVE_WRITE | MOVE_READ;
+	if (!sna_drawable_move_region_to_cpu(dst->pDrawable, region, flags))
+		return;
+	if (dst->alphaMap &&
+	    !sna_drawable_move_to_cpu(dst->alphaMap->pDrawable, flags))
+		return;
 
-			if (region->extents.x1 + sx >= 0 &&
-			    region->extents.y1 + sy >= 0 &&
-			    region->extents.x2 + sx <= src->pDrawable->width &&
-			    region->extents.y2 + sy <= src->pDrawable->height) {
-				BoxPtr box = RegionRects(region);
-				int nbox = RegionNumRects(region);
+	if (mask == NULL &&
+	    src->pDrawable &&
+	    dst->pDrawable->bitsPerPixel >= 8 &&
+	    src->filter != PictFilterConvolution &&
+	    (op == PictOpSrc || (op == PictOpOver && !PICT_FORMAT_A(src->format))) &&
+	    (dst->format == src->format || dst->format == alphaless(src->format)) &&
+	    sna_transform_is_integer_translation(src->transform, &tx, &ty)) {
+		PixmapPtr dst_pixmap = get_drawable_pixmap(dst->pDrawable);
+		PixmapPtr src_pixmap = get_drawable_pixmap(src->pDrawable);
+		int16_t sx = src_x + tx - (dst->pDrawable->x + dst_x);
+		int16_t sy = src_y + ty - (dst->pDrawable->y + dst_y);
 
-				sx += src->pDrawable->x;
-				sy += src->pDrawable->y;
-				if (get_drawable_deltas(src->pDrawable, src_pixmap, &tx, &ty))
-					sx += tx, sy += ty;
+		assert(src->pDrawable->bitsPerPixel == dst->pDrawable->bitsPerPixel);
+		assert(src_pixmap->drawable.bitsPerPixel == dst_pixmap->drawable.bitsPerPixel);
 
-				assert(region->extents.x1 + sx >= 0);
-				assert(region->extents.x2 + sx <= src_pixmap->drawable.width);
-				assert(region->extents.y1 + sy >= 0);
-				assert(region->extents.y2 + sy <= src_pixmap->drawable.height);
+		if (region->extents.x1 + sx >= 0 &&
+		    region->extents.y1 + sy >= 0 &&
+		    region->extents.x2 + sx <= src->pDrawable->width &&
+		    region->extents.y2 + sy <= src->pDrawable->height) {
+			BoxPtr box = RegionRects(region);
+			int nbox = RegionNumRects(region);
 
-				get_drawable_deltas(dst->pDrawable, dst_pixmap, &tx, &ty);
+			sx += src->pDrawable->x;
+			sy += src->pDrawable->y;
+			if (get_drawable_deltas(src->pDrawable, src_pixmap, &tx, &ty))
+				sx += tx, sy += ty;
 
-				assert(nbox);
-				do {
-					assert(box->x1 + sx >= 0);
-					assert(box->x2 + sx <= src_pixmap->drawable.width);
-					assert(box->y1 + sy >= 0);
-					assert(box->y2 + sy <= src_pixmap->drawable.height);
+			assert(region->extents.x1 + sx >= 0);
+			assert(region->extents.x2 + sx <= src_pixmap->drawable.width);
+			assert(region->extents.y1 + sy >= 0);
+			assert(region->extents.y2 + sy <= src_pixmap->drawable.height);
 
-					assert(box->x1 + dst_x >= 0);
-					assert(box->x2 + dst_x <= dst_pixmap->drawable.width);
-					assert(box->y1 + dst_y >= 0);
-					assert(box->y2 + dst_y <= dst_pixmap->drawable.height);
+			get_drawable_deltas(dst->pDrawable, dst_pixmap, &tx, &ty);
 
-					assert(box->x2 > box->x1 && box->y2 > box->y1);
+			assert(nbox);
+			do {
+				assert(box->x1 + sx >= 0);
+				assert(box->x2 + sx <= src_pixmap->drawable.width);
+				assert(box->y1 + sy >= 0);
+				assert(box->y2 + sy <= src_pixmap->drawable.height);
 
-					memcpy_blt(src_pixmap->devPrivate.ptr,
-						   dst_pixmap->devPrivate.ptr,
-						   dst_pixmap->drawable.bitsPerPixel,
-						   src_pixmap->devKind,
-						   dst_pixmap->devKind,
-						   box->x1 + sx, box->y1 + sy,
-						   box->x1 + tx, box->y1 + ty,
-						   box->x2 - box->x1, box->y2 - box->y1);
-					box++;
-				} while (--nbox);
+				assert(box->x1 + dst_x >= 0);
+				assert(box->x2 + dst_x <= dst_pixmap->drawable.width);
+				assert(box->y1 + dst_y >= 0);
+				assert(box->y2 + dst_y <= dst_pixmap->drawable.height);
 
-				return;
-			}
+				assert(box->x2 > box->x1 && box->y2 > box->y1);
+
+				memcpy_blt(src_pixmap->devPrivate.ptr,
+					   dst_pixmap->devPrivate.ptr,
+					   dst_pixmap->drawable.bitsPerPixel,
+					   src_pixmap->devKind,
+					   dst_pixmap->devKind,
+					   box->x1 + sx, box->y1 + sy,
+					   box->x1 + tx, box->y1 + ty,
+					   box->x2 - box->x1, box->y2 - box->y1);
+				box++;
+			} while (--nbox);
+
+			return;
 		}
 	}
 
