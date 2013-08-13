@@ -563,10 +563,10 @@ sna_composite_fb(CARD8 op,
 				assert(box->y1 + sy >= 0);
 				assert(box->y2 + sy <= src_pixmap->drawable.height);
 
-				assert(box->x1 + dst_x >= 0);
-				assert(box->x2 + dst_x <= dst_pixmap->drawable.width);
-				assert(box->y1 + dst_y >= 0);
-				assert(box->y2 + dst_y <= dst_pixmap->drawable.height);
+				assert(box->x1 + tx >= 0);
+				assert(box->x2 + tx <= dst_pixmap->drawable.width);
+				assert(box->y1 + ty >= 0);
+				assert(box->y2 + ty <= dst_pixmap->drawable.height);
 
 				assert(box->x2 > box->x1 && box->y2 > box->y1);
 
