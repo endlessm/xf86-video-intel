@@ -1080,6 +1080,15 @@ static Bool sna_pm_event(SCRN_ARG_TYPE arg, pmEvent event, Bool undo)
 	return TRUE;
 }
 
+static Bool sna_enter_vt__hosted(VT_FUNC_ARGS_DECL)
+{
+	return TRUE;
+}
+
+static void sna_leave_vt__hosted(VT_FUNC_ARGS_DECL)
+{
+}
+
 Bool sna_init_scrn(ScrnInfoPtr scrn, int entity_num)
 {
 	DBG(("%s: entity_num=%d\n", __FUNCTION__, entity_num));
@@ -1110,13 +1119,18 @@ Bool sna_init_scrn(ScrnInfoPtr scrn, int entity_num)
 
 	scrn->PreInit = sna_pre_init;
 	scrn->ScreenInit = sna_screen_init;
-	scrn->SwitchMode = sna_switch_mode;
-	scrn->AdjustFrame = sna_adjust_frame;
-	scrn->EnterVT = sna_enter_vt;
-	scrn->LeaveVT = sna_leave_vt;
+	if (!hosted()) {
+		scrn->SwitchMode = sna_switch_mode;
+		scrn->AdjustFrame = sna_adjust_frame;
+		scrn->EnterVT = sna_enter_vt;
+		scrn->LeaveVT = sna_leave_vt;
+		scrn->ValidMode = sna_valid_mode;
+		scrn->PMEvent = sna_pm_event;
+	} else {
+		scrn->EnterVT = sna_enter_vt__hosted;
+		scrn->LeaveVT = sna_leave_vt__hosted;
+	}
 	scrn->FreeScreen = sna_free_screen;
-	scrn->ValidMode = sna_valid_mode;
-	scrn->PMEvent = sna_pm_event;
 
 	xf86SetEntitySharable(entity_num);
 	xf86SetEntityInstanceForScreen(scrn, entity_num,
