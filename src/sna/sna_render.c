@@ -1336,7 +1336,7 @@ sna_render_picture_convolve(struct sna *sna,
 
 	ValidatePicture(tmp);
 
-	bo = sna_pixmap_get_bo(pixmap);
+	bo = __sna_pixmap_get_bo(pixmap);
 	if (!sna->render.clear(sna, pixmap, bo)) {
 		FreePicture(tmp, 0);
 		return 0;
@@ -1450,7 +1450,7 @@ sna_render_picture_flatten(struct sna *sna,
 	channel->scale[1] = 1.f / h;
 	channel->offset[0] = -dst_x;
 	channel->offset[1] = -dst_y;
-	channel->bo = kgem_bo_reference(sna_pixmap_get_bo(pixmap));
+	channel->bo = kgem_bo_reference(__sna_pixmap_get_bo(pixmap));
 	FreePicture(tmp, 0);
 
 	return 1;
@@ -1817,7 +1817,7 @@ sna_render_picture_convert(struct sna *sna,
 		FreePicture(dst, 0);
 		FreePicture(src, 0);
 
-		channel->bo = sna_pixmap_get_bo(tmp);
+		channel->bo = __sna_pixmap_get_bo(tmp);
 		kgem_bo_reference(channel->bo);
 		screen->DestroyPixmap(tmp);
 	} else {
@@ -2112,7 +2112,7 @@ sna_render_copy_boxes__overlap(struct sna *sna, uint8_t alu,
 	if (tmp == NULL)
 		return false;
 
-	bo = sna_pixmap_get_bo(tmp);
+	bo = __sna_pixmap_get_bo(tmp);
 	if (bo == NULL)
 		goto out;
 

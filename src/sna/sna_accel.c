@@ -4311,7 +4311,7 @@ sna_put_xybitmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 
 	if (bo->tiling == I915_TILING_Y) {
 		DBG(("%s: converting bo from Y-tiling\n", __FUNCTION__));
-		assert(bo == sna_pixmap_get_bo(pixmap));
+		assert(bo == __sna_pixmap_get_bo(pixmap));
 		bo = sna_pixmap_change_tiling(pixmap, I915_TILING_X);
 		if (bo == NULL) {
 			DBG(("%s: fallback -- unable to change tiling\n",
@@ -4435,7 +4435,7 @@ sna_put_xypixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 
 	if (bo->tiling == I915_TILING_Y) {
 		DBG(("%s: converting bo from Y-tiling\n", __FUNCTION__));
-		assert(bo == sna_pixmap_get_bo(pixmap));
+		assert(bo == __sna_pixmap_get_bo(pixmap));
 		bo = sna_pixmap_change_tiling(pixmap, I915_TILING_X);
 		if (bo == NULL) {
 			DBG(("%s: fallback -- unable to change tiling\n",
@@ -5340,7 +5340,7 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 			if (tmp == NullPixmap)
 				return;
 
-			src_bo = sna_pixmap_get_bo(tmp);
+			src_bo = __sna_pixmap_get_bo(tmp);
 			assert(src_bo != NULL);
 
 			dx = -region->extents.x1;
@@ -7266,7 +7266,7 @@ sna_copy_plane(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 				     &region.extents, &arg.damage);
 	if (arg.bo) {
 		if (arg.bo->tiling == I915_TILING_Y) {
-			assert(arg.bo == sna_pixmap_get_bo(pixmap));
+			assert(arg.bo == __sna_pixmap_get_bo(pixmap));
 			arg.bo = sna_pixmap_change_tiling(pixmap, I915_TILING_X);
 			if (arg.bo == NULL) {
 				DBG(("%s: fallback -- unable to change tiling\n",
@@ -12567,7 +12567,7 @@ sna_poly_fill_rect_stippled_blt(DrawablePtr drawable,
 
 		DBG(("%s: converting bo from Y-tiling\n", __FUNCTION__));
 		/* This is cheating, but only the gpu_bo can be tiled */
-		assert(bo == sna_pixmap_get_bo(pixmap));
+		assert(bo == __sna_pixmap_get_bo(pixmap));
 		bo = sna_pixmap_change_tiling(pixmap, I915_TILING_X);
 		if (bo == NULL) {
 			DBG(("%s: fallback -- unable to change tiling\n",
@@ -13103,7 +13103,7 @@ sna_glyph_blt(DrawablePtr drawable, GCPtr gc,
 
 	if (bo->tiling == I915_TILING_Y) {
 		DBG(("%s: converting bo from Y-tiling\n", __FUNCTION__));
-		assert(bo == sna_pixmap_get_bo(pixmap));
+		assert(bo == __sna_pixmap_get_bo(pixmap));
 		bo = sna_pixmap_change_tiling(pixmap, I915_TILING_X);
 		if (bo == NULL) {
 			DBG(("%s: fallback -- unable to change tiling\n",
@@ -13762,7 +13762,7 @@ sna_reversed_glyph_blt(DrawablePtr drawable, GCPtr gc,
 
 	if (bo->tiling == I915_TILING_Y) {
 		DBG(("%s: converting bo from Y-tiling\n", __FUNCTION__));
-		assert(bo == sna_pixmap_get_bo(pixmap));
+		assert(bo == __sna_pixmap_get_bo(pixmap));
 		bo = sna_pixmap_change_tiling(pixmap, I915_TILING_X);
 		if (bo == NULL) {
 			DBG(("%s: fallback -- unable to change tiling\n",
@@ -14156,7 +14156,7 @@ sna_push_pixels_solid_blt(GCPtr gc,
 
 	if (bo->tiling == I915_TILING_Y) {
 		DBG(("%s: converting bo from Y-tiling\n", __FUNCTION__));
-		assert(bo == sna_pixmap_get_bo(pixmap));
+		assert(bo == __sna_pixmap_get_bo(pixmap));
 		bo = sna_pixmap_change_tiling(pixmap, I915_TILING_X);
 		if (bo == NULL) {
 			DBG(("%s: fallback -- unable to change tiling\n",
@@ -15089,8 +15089,8 @@ fallback:
 				goto fallback;
 
 			if (!sna->render.copy_boxes(sna, GXcopy,
-						    src, sna_pixmap_get_bo(src), dirty->x, dirty->y,
-						    dst, sna_pixmap_get_bo(dst),0, 0,
+						    src, __sna_pixmap_get_bo(src), dirty->x, dirty->y,
+						    dst, __sna_pixmap_get_bo(dst),0, 0,
 						    box, n, COPY_LAST))
 				goto fallback;
 

@@ -607,7 +607,7 @@ sna_drawable_is_clear(DrawablePtr d)
 	return priv && priv->clear && priv->clear_color == 0;
 }
 
-static inline struct kgem_bo *sna_pixmap_get_bo(PixmapPtr pixmap)
+static inline struct kgem_bo *__sna_pixmap_get_bo(PixmapPtr pixmap)
 {
 	return sna_pixmap(pixmap)->gpu_bo;
 }

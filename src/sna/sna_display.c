@@ -1118,7 +1118,7 @@ static bool use_shadow(struct sna *sna, xf86CrtcPtr crtc)
 		return true;
 	}
 
-	bo = sna_pixmap_get_bo(sna->front);
+	bo = __sna_pixmap_get_bo(sna->front);
 	if (sna->kgem.gen == 071)
 		pitch_limit = bo->tiling ? 16 * 1024 : 32 * 1024;
 	else if ((sna->kgem.gen >> 3) > 4)
@@ -3857,7 +3857,7 @@ sna_crtc_redisplay(xf86CrtcPtr crtc, RegionPtr region)
 		 */
 
 		if (sna->render.copy_boxes(sna, GXcopy,
-					   sna->front, sna_pixmap_get_bo(sna->front), 0, 0,
+					   sna->front, __sna_pixmap_get_bo(sna->front), 0, 0,
 					   &tmp, sna_crtc->bo, -tx, -ty,
 					   REGION_RECTS(region), REGION_NUM_RECTS(region), 0))
 			return;
@@ -3958,7 +3958,7 @@ void sna_mode_redisplay(struct sna *sna)
 	}
 
 	if (sna->mode.shadow_flip == 0) {
-		struct kgem_bo *new = sna_pixmap_get_bo(sna->front);
+		struct kgem_bo *new = __sna_pixmap_get_bo(sna->front);
 		struct kgem_bo *old = sna->mode.shadow;
 
 		DBG(("%s: flipping tear-free outputs\n", __FUNCTION__));
