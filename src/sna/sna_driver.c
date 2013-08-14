@@ -430,6 +430,13 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 		goto cleanup;
 	}
 
+	/* Sanity check */
+	if (hosted() && (sna->flags & SNA_IS_HOSTED) == 0) {
+		xf86DrvMsg(scrn->scrnIndex, X_ERROR,
+			   "Failed to setup hosted device.\n");
+		goto cleanup;
+	}
+
 	preferred_depth = sna->info->gen < 030 ? 15 : 24;
 	if (!fb_supports_depth(fd, preferred_depth))
 		preferred_depth = 24;
