@@ -2626,8 +2626,6 @@ sna_mode_compute_possible_clones(ScrnInfoPtr scrn)
 static void copy_front(struct sna *sna, PixmapPtr old, PixmapPtr new)
 {
 	struct sna_pixmap *old_priv, *new_priv;
-	int16_t sx, sy, dx, dy;
-	BoxRec box;
 
 	DBG(("%s\n", __FUNCTION__));
 
@@ -2642,25 +2640,6 @@ static void copy_front(struct sna *sna, PixmapPtr old, PixmapPtr new)
 	if (!new_priv)
 		return;
 
-	box.x1 = box.y1 = 0;
-	box.x2 = min(old->drawable.width, new->drawable.width);
-	box.y2 = min(old->drawable.height, new->drawable.height);
-
-	sx = dx = 0;
-	if (box.x2 < old->drawable.width)
-		sx = (old->drawable.width - box.x2) / 2;
-	if (box.x2 < new->drawable.width)
-		dx = (new->drawable.width - box.x2) / 2;
-
-	sy = dy = 0;
-	if (box.y2 < old->drawable.height)
-		sy = (old->drawable.height - box.y2) / 2;
-	if (box.y2 < new->drawable.height)
-		dy = (new->drawable.height - box.y2) / 2;
-
-	DBG(("%s: copying box (%dx%d) from (%d, %d) to (%d, %d)\n",
-	     __FUNCTION__, box.x2, box.y2, sx, sy, dx, dy));
-
 	if (old_priv->clear) {
 		(void)sna->render.fill_one(sna, new, new_priv->gpu_bo,
 					   old_priv->clear_color,
@@ -2671,17 +2650,62 @@ static void copy_front(struct sna *sna, PixmapPtr old, PixmapPtr new)
 		new_priv->clear = true;
 		new_priv->clear_color = old_priv->clear_color;
 	} else {
-		if (box.x2 != new->drawable.width || box.y2 != new->drawable.height) {
-			(void)sna->render.fill_one(sna, new, new_priv->gpu_bo, 0,
-						   0, 0,
-						   new->drawable.width,
-						   new->drawable.height,
-						   GXclear);
+		BoxRec box;
+		int16_t sx, sy, dx, dy;
+
+		if (new->drawable.width >= old->drawable.width &&
+		    new->drawable.height >= old->drawable.height)
+		{
+			int nx = (new->drawable.width + old->drawable.width) / old->drawable.width;
+			int ny = (new->drawable.height + old->drawable.height) / old->drawable.height;
+
+			box.x1 = box.y1 = 0;
+			box.x2 = old->drawable.width;
+			box.y2 = old->drawable.height;
+			dy = 0;
+			for (sy = 0; sy < ny; sy++) {
+				dx = 0;
+				for (sx = 0; sx < nx; sx++) {
+					(void)sna->render.copy_boxes(sna, GXcopy,
+								     old, old_priv->gpu_bo, 0, 0,
+								     new, new_priv->gpu_bo, dx, dy,
+								     &box, 1, 0);
+					dx += old->drawable.width;
+				}
+				dy += old->drawable.height;
+			}
+		} else {
+			box.x1 = box.y1 = 0;
+			box.x2 = min(old->drawable.width, new->drawable.width);
+			box.y2 = min(old->drawable.height, new->drawable.height);
+
+			sx = dx = 0;
+			if (box.x2 < old->drawable.width)
+				sx = (old->drawable.width - box.x2) / 2;
+			if (box.x2 < new->drawable.width)
+				dx = (new->drawable.width - box.x2) / 2;
+
+			sy = dy = 0;
+			if (box.y2 < old->drawable.height)
+				sy = (old->drawable.height - box.y2) / 2;
+			if (box.y2 < new->drawable.height)
+				dy = (new->drawable.height - box.y2) / 2;
+
+			DBG(("%s: copying box (%dx%d) from (%d, %d) to (%d, %d)\n",
+			     __FUNCTION__, box.x2, box.y2, sx, sy, dx, dy));
+
+			if (box.x2 != new->drawable.width || box.y2 != new->drawable.height) {
+				(void)sna->render.fill_one(sna, new, new_priv->gpu_bo, 0,
+							   0, 0,
+							   new->drawable.width,
+							   new->drawable.height,
+							   GXclear);
+			}
+			(void)sna->render.copy_boxes(sna, GXcopy,
+						     old, old_priv->gpu_bo, sx, sy,
+						     new, new_priv->gpu_bo, dx, dy,
+						     &box, 1, 0);
 		}
-		(void)sna->render.copy_boxes(sna, GXcopy,
-					     old, old_priv->gpu_bo, sx, sy,
-					     new, new_priv->gpu_bo, dx, dy,
-					     &box, 1, 0);
 	}
 
 	if (!DAMAGE_IS_ALL(new_priv->gpu_damage))
