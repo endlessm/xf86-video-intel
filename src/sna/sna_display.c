@@ -1093,7 +1093,7 @@ static bool use_shadow(struct sna *sna, xf86CrtcPtr crtc)
 	PictTransform crtc_to_fb;
 	struct pict_f_transform f_crtc_to_fb, f_fb_to_crtc;
 	unsigned long pitch_limit;
-	struct kgem_bo *bo;
+	struct sna_pixmap *priv;
 	BoxRec b;
 
 	assert(sna->scrn->virtualX && sna->scrn->virtualY);
@@ -1118,18 +1118,21 @@ static bool use_shadow(struct sna *sna, xf86CrtcPtr crtc)
 		return true;
 	}
 
-	bo = __sna_pixmap_get_bo(sna->front);
+	priv = sna_pixmap_force_to_gpu(sna->front, MOVE_READ | MOVE_WRITE);
+	if (priv == NULL)
+		return true; /* maybe we can create a bo for the scanout? */
+
 	if (sna->kgem.gen == 071)
-		pitch_limit = bo->tiling ? 16 * 1024 : 32 * 1024;
+		pitch_limit = priv->gpu_bo->tiling ? 16 * 1024 : 32 * 1024;
 	else if ((sna->kgem.gen >> 3) > 4)
 		pitch_limit = 32 * 1024;
 	else if ((sna->kgem.gen >> 3) == 4)
-		pitch_limit = bo->tiling ? 16 * 1024 : 32 * 1024;
+		pitch_limit = priv->gpu_bo->tiling ? 16 * 1024 : 32 * 1024;
 	else if ((sna->kgem.gen >> 3) == 3)
-		pitch_limit = bo->tiling ? 8 * 1024 : 16 * 1024;
+		pitch_limit = priv->gpu_bo->tiling ? 8 * 1024 : 16 * 1024;
 	else
 		pitch_limit = 8 * 1024;
-	if (bo->pitch > pitch_limit)
+	if (priv->gpu_bo->pitch > pitch_limit)
 		return true;
 
 	transform = NULL;
