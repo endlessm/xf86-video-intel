@@ -2659,16 +2659,23 @@ static void copy_front(struct sna *sna, PixmapPtr old, PixmapPtr new)
 		if (new->drawable.width >= old->drawable.width &&
 		    new->drawable.height >= old->drawable.height)
 		{
-			int nx = (new->drawable.width + old->drawable.width) / old->drawable.width;
-			int ny = (new->drawable.height + old->drawable.height) / old->drawable.height;
+			int nx = (new->drawable.width + old->drawable.width - 1) / old->drawable.width;
+			int ny = (new->drawable.height + old->drawable.height - 1) / old->drawable.height;
 
 			box.x1 = box.y1 = 0;
-			box.x2 = old->drawable.width;
-			box.y2 = old->drawable.height;
+
 			dy = 0;
 			for (sy = 0; sy < ny; sy++) {
+				box.y2 = old->drawable.height;
+				if (box.y2 + dy > new->drawable.height)
+					box.y2 = new->drawable.height - dy;
+
 				dx = 0;
 				for (sx = 0; sx < nx; sx++) {
+					box.x2 = old->drawable.width;
+					if (box.x2 + dx > new->drawable.width)
+						box.x2 = new->drawable.width - dx;
+
 					(void)sna->render.copy_boxes(sna, GXcopy,
 								     old, old_priv->gpu_bo, 0, 0,
 								     new, new_priv->gpu_bo, dx, dy,
