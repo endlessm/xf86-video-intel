@@ -371,12 +371,12 @@ fi
 
 AC_ARG_ENABLE(wt,
 	      AS_HELP_STRING([--enable-wt],
-			     [Enable use of WT cacheing (experimental) [default=no]]),
+			     [Enable use of WT caching (experimental) [default=no]]),
 	      [WT="$enableval"],
 	      [WT=no])
 AM_CONDITIONAL(USE_WT, test x$WT = xyes)
 if test "x$WT" = xyes; then
-	AC_DEFINE(USE_WT,1,[Assume WriteThrough cacheing support])
+	AC_DEFINE(USE_WT,1,[Assume WriteThrough caching support])
 	xp_msg="$xp_msg wt-cache"
 fi
 

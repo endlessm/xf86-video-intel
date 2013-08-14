@@ -177,7 +177,7 @@ struct kgem {
 	uint32_t has_semaphores :1;
 	uint32_t has_secure_batches :1;
 	uint32_t has_pinned_batches :1;
-	uint32_t has_cacheing :1;
+	uint32_t has_caching :1;
 	uint32_t has_llc :1;
 	uint32_t has_wt :1;
 	uint32_t has_no_reloc :1;
