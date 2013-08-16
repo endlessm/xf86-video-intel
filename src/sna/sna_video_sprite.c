@@ -91,6 +91,7 @@ static int sna_video_sprite_set_attr(ClientPtr client,
 	} else if (attribute == xvAlwaysOnTop) {
 		DBG(("%s: ALWAYS_ON_TOP: %d -> %d\n", __FUNCTION__,
 		     video->AlwaysOnTop, !!value));
+		video->color_key_changed = true;
 		video->AlwaysOnTop = !!value;
 	} else
 		return BadMatch;
