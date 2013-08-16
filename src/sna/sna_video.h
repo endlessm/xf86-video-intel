@@ -35,6 +35,10 @@ THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define SNA_XVMC 1
 #endif
 
+#define FOURCC_XVMC (('C' << 24) + ('M' << 16) + ('V' << 8) + 'X')
+#define FOURCC_RGB565 ((16 << 24) + ('B' << 16) + ('G' << 8) + 'R')
+#define FOURCC_RGB888 ((24 << 24) + ('B' << 16) + ('G' << 8) + 'R')
+
 /*
  * Below, a dummy picture type that is used in XvPutImage
  * only to do an overlay update.
@@ -46,6 +50,22 @@ THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 	{'X', 'V', 'M', 'C', 0x00, 0x00, 0x00, 0x10, 0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71}, \
 	12, XvPlanar, 3, 0, 0, 0, 0, 8, 8, 8, 1, 2, 2, 1, 2, 2, \
 	{'Y', 'V', 'U', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, \
+	XvTopToBottom \
+}
+
+#define XVMC_RGB565 { \
+	FOURCC_RGB565, XvRGB, LSBFirst, \
+	{'P', 'A', 'S', 'S', 'T', 'H', 'R', 'O', 'U', 'G', 'H', 'R', 'G', 'B', '1', '6'}, \
+	16, XvPacked, 1, 16, 0x1f<<11, 0x3f<<5, 0x1f<<0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
+	{'B', 'G', 'R', 'X', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, \
+	XvTopToBottom \
+}
+
+#define XVMC_RGB888 { \
+	FOURCC_RGB888, XvRGB, LSBFirst, \
+	{'P', 'A', 'S', 'S', 'T', 'H', 'R', 'O', 'U', 'G', 'H', 'R', 'G', 'B', '2', '4'}, \
+	32, XvPacked, 1, 24, 0xff<<16, 0xff<<8, 0xff<<0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
+	{'B', 'G', 'R', 'X', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, \
 	XvTopToBottom \
 }
 
@@ -116,11 +136,16 @@ int sna_xv_fixup_formats(ScreenPtr screen,
 int sna_xv_alloc_port(unsigned long port, XvPortPtr in, XvPortPtr *out);
 int sna_xv_free_port(XvPortPtr port);
 
-#define FOURCC_XVMC     (('C' << 24) + ('M' << 16) + ('V' << 8) + 'X')
-
 static inline int xvmc_passthrough(int id)
 {
-	return id == FOURCC_XVMC;
+	switch (id) {
+	case FOURCC_XVMC:
+	case FOURCC_RGB565:
+	case FOURCC_RGB888:
+		return true;
+	default:
+		return false;
+	}
 }
 
 static inline int is_planar_fourcc(int id)
@@ -130,8 +155,6 @@ static inline int is_planar_fourcc(int id)
 	case FOURCC_I420:
 	case FOURCC_XVMC:
 		return 1;
-	case FOURCC_UYVY:
-	case FOURCC_YUY2:
 	default:
 		return 0;
 	}

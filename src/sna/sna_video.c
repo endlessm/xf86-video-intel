@@ -226,24 +226,48 @@ sna_video_frame_init(struct sna_video *video,
 		}
 		frame->size *= frame->pitch[0] + frame->pitch[1];
 	} else {
-		if (video->rotation & (RR_Rotate_90 | RR_Rotate_270)) {
-			frame->pitch[0] = ALIGN((height << 1), align);
-			frame->size = (int)frame->pitch[0] * width;
-		} else {
-			frame->pitch[0] = ALIGN((width << 1), align);
-			frame->size = (int)frame->pitch[0] * height;
+		switch (frame->id) {
+		case FOURCC_RGB888:
+			if (video->rotation & (RR_Rotate_90 | RR_Rotate_270)) {
+				frame->pitch[0] = ALIGN((height << 2), align);
+				frame->size = (int)frame->pitch[0] * width;
+			} else {
+				frame->pitch[0] = ALIGN((width << 2), align);
+				frame->size = (int)frame->pitch[0] * height;
+			}
+			frame->UBufOffset = frame->VBufOffset = 0;
+			break;
+		case FOURCC_RGB565:
+			if (video->rotation & (RR_Rotate_90 | RR_Rotate_270)) {
+				frame->pitch[0] = ALIGN((height << 1), align);
+				frame->size = (int)frame->pitch[0] * width;
+			} else {
+				frame->pitch[0] = ALIGN((width << 1), align);
+				frame->size = (int)frame->pitch[0] * height;
+			}
+			frame->UBufOffset = frame->VBufOffset = 0;
+			break;
+
+		default:
+			if (video->rotation & (RR_Rotate_90 | RR_Rotate_270)) {
+				frame->pitch[0] = ALIGN((height << 1), align);
+				frame->size = (int)frame->pitch[0] * width;
+			} else {
+				frame->pitch[0] = ALIGN((width << 1), align);
+				frame->size = (int)frame->pitch[0] * height;
+			}
+			if (video->rotation & (RR_Rotate_90 | RR_Rotate_270)) {
+				frame->UBufOffset = (int)frame->pitch[1] * width;
+				frame->VBufOffset =
+					frame->UBufOffset + (int)frame->pitch[0] * width / 2;
+			} else {
+				frame->UBufOffset = (int)frame->pitch[1] * height;
+				frame->VBufOffset =
+					frame->UBufOffset + (int)frame->pitch[0] * height / 2;
+			}
+			break;
 		}
 		frame->pitch[1] = 0;
-	}
-
-	if (video->rotation & (RR_Rotate_90 | RR_Rotate_270)) {
-		frame->UBufOffset = (int)frame->pitch[1] * width;
-		frame->VBufOffset =
-			frame->UBufOffset + (int)frame->pitch[0] * width / 2;
-	} else {
-		frame->UBufOffset = (int)frame->pitch[1] * height;
-		frame->VBufOffset =
-			frame->UBufOffset + (int)frame->pitch[0] * height / 2;
 	}
 
 	assert(frame->size);

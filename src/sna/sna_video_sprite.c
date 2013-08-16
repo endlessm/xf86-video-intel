@@ -51,7 +51,7 @@
 static Atom xvColorKey, xvAlwaysOnTop;
 
 static XvFormatRec formats[] = { {15}, {16}, {24} };
-static const XvImageRec images[] = { XVIMAGE_YUY2, XVIMAGE_UYVY, XVMC_YUV };
+static const XvImageRec images[] = { XVIMAGE_YUY2, XVIMAGE_UYVY, XVMC_RGB888, XVMC_RGB565 };
 static const XvAttributeRec attribs[] = {
 	{ XvSettable | XvGettable, 0, 0xffffff, (char *)"XV_COLORKEY" },
 };
@@ -232,7 +232,17 @@ sna_video_sprite_show(struct sna *sna,
 		uint32_t offsets[4], pitches[4], handles[4];
 		uint32_t pixel_format;
 
+		handles[0] = frame->bo->handle;
+		pitches[0] = frame->pitch[0];
+		offsets[0] = 0;
+
 		switch (frame->id) {
+		case FOURCC_RGB565:
+			pixel_format = DRM_FORMAT_RGB565;
+			break;
+		case FOURCC_RGB888:
+			pixel_format = DRM_FORMAT_XRGB8888;
+			break;
 		case FOURCC_UYVY:
 			pixel_format = DRM_FORMAT_UYVY;
 			break;
@@ -242,13 +252,9 @@ sna_video_sprite_show(struct sna *sna,
 			break;
 		}
 
-		handles[0] = frame->bo->handle;
-		pitches[0] = frame->pitch[0];
-		offsets[0] = 0;
-
 		DBG(("%s: creating new fb for handle=%d, width=%d, height=%d, stride=%d\n",
 		     __FUNCTION__, frame->bo->handle,
-		     frame->width, frame->height, frame->pitch[0]));
+		     frame->width, frame->height, pitches[0]));
 
 		if (drmModeAddFB2(sna->kgem.fd,
 				  frame->width, frame->height, pixel_format,
@@ -420,6 +426,8 @@ static int sna_video_sprite_query(ClientPtr client,
 				  int *pitches,
 				  int *offsets)
 {
+	struct sna_video *video = port->devPriv.ptr;
+	struct sna_video_frame frame;
 	int size;
 
 	if (*w > IMAGE_MAX_WIDTH)
@@ -427,20 +435,22 @@ static int sna_video_sprite_query(ClientPtr client,
 	if (*h > IMAGE_MAX_HEIGHT)
 		*h = IMAGE_MAX_HEIGHT;
 
-	*w = (*w + 1) & ~1;
 	if (offsets)
 		offsets[0] = 0;
 
 	switch (format->id) {
-	case FOURCC_XVMC:
-		*h = (*h + 1) & ~1;
-		size = sizeof(uint32_t);
+	case FOURCC_RGB888:
+	case FOURCC_RGB565:
+		sna_video_frame_init(video, format->id, *w, *h, &frame);
 		if (pitches)
-			pitches[0] = size;
+			pitches[0] = frame.pitch[0];
+		size = 4;
 		break;
 
-	case FOURCC_YUY2:
 	default:
+		*w = (*w + 1) & ~1;
+		*h = (*h + 1) & ~1;
+
 		size = *w << 1;
 		if (pitches)
 			pitches[0] = size;
@@ -518,8 +528,11 @@ void sna_video_sprite_setup(struct sna *sna, ScreenPtr screen)
 						 ARRAY_SIZE(formats));
 	adaptor->nAttributes = ARRAY_SIZE(attribs);
 	adaptor->pAttributes = (XvAttributeRec *)attribs;
-	adaptor->nImages = ARRAY_SIZE(images);
 	adaptor->pImages = (XvImageRec *)images;
+	adaptor->nImages = 3;
+	if (sna->kgem.gen == 071)
+		adaptor->nImages = 4;
+
 	adaptor->ddAllocatePort = sna_xv_alloc_port;
 	adaptor->ddFreePort = sna_xv_free_port;
 	adaptor->ddPutVideo = NULL;

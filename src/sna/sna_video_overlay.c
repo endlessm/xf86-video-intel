@@ -600,6 +600,7 @@ sna_video_overlay_query(ClientPtr client,
 			int *offsets)
 {
 	struct sna_video *video = port->devPriv.ptr;
+	struct sna_video_frame frame;
 	struct sna *sna = video->sna;
 	int size, tmp;
 
@@ -624,9 +625,17 @@ sna_video_overlay_query(ClientPtr client,
 	switch (format->id) {
 	case FOURCC_XVMC:
 		*h = (*h + 1) & ~1;
+		sna_video_frame_init(video, format->id, *w, *h, &frame);
 		size = sizeof(uint32_t);
-		if (pitches)
-			pitches[0] = size;
+		if (pitches) {
+			pitches[0] = frame.pitch[1];
+			pitches[1] = frame.pitch[0];
+			pitches[2] = frame.pitch[0];
+		}
+		if (offsets) {
+			offsets[1] = frame.UBufOffset;
+			offsets[2] = frame.VBufOffset;
+		}
 		break;
 
 		/* IA44 is for XvMC only */
