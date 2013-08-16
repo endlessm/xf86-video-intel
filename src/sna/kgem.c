@@ -1833,6 +1833,13 @@ static void kgem_bo_move_to_scanout(struct kgem *kgem, struct kgem_bo *bo)
 	assert(!bo->snoop);
 	assert(!bo->io);
 
+	if (bo->purged) {
+		DBG(("%s: discarding purged scanout - external name?\n",
+		     __FUNCTION__));
+		kgem_bo_free(kgem, bo);
+		return;
+	}
+
 	DBG(("%s: moving %d [fb %d] to scanout cache, active? %d\n",
 	     __FUNCTION__, bo->handle, bo->delta, bo->rq != NULL));
 	if (bo->rq)
@@ -3511,6 +3518,7 @@ struct kgem_bo *kgem_create_for_name(struct kgem *kgem, uint32_t name)
 
 	bo->reusable = false;
 	bo->flush = true;
+	bo->purged = true; /* no coherency guarrantees */
 
 	debug_alloc__bo(kgem, bo);
 	return bo;
