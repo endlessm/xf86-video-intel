@@ -373,6 +373,9 @@ static int sna_video_sprite_put_image(ClientPtr client,
 		DBG(("%s: using passthough, name=%d\n",
 		     __FUNCTION__, *(uint32_t *)buf));
 
+		if (*(uint32_t*)buf == 0)
+			goto invisible;
+
 		frame.bo = kgem_create_for_name(&sna->kgem, *(uint32_t*)buf);
 		if (frame.bo == NULL)
 			return BadAlloc;

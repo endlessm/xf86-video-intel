@@ -541,6 +541,9 @@ sna_video_overlay_put_image(ClientPtr client,
 		DBG(("%s: using passthough, name=%d\n",
 		     __FUNCTION__, *(uint32_t *)buf));
 
+		if (*(uint32_t*)buf == 0)
+			goto invisible;
+
 		frame.bo = kgem_create_for_name(&sna->kgem, *(uint32_t*)buf);
 		if (frame.bo == NULL) {
 			DBG(("%s: failed to open bo\n", __FUNCTION__));
