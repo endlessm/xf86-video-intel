@@ -138,6 +138,10 @@ static int sna_video_overlay_stop(ClientPtr client,
 		       DRM_IOCTL_I915_OVERLAY_PUT_IMAGE,
 		       &request);
 
+	if (video->bo)
+		kgem_bo_destroy(&sna->kgem, video->bo);
+	video->bo = NULL;
+
 	sna_video_free_buffers(video);
 	sna_window_set_port((WindowPtr)draw, NULL);
 	return Success;
@@ -445,7 +449,18 @@ sna_video_overlay_show(struct sna *sna,
 
 	DBG(("%s: flags=%x\n", __FUNCTION__, request.flags));
 
-	return drmIoctl(sna->kgem.fd, DRM_IOCTL_I915_OVERLAY_PUT_IMAGE, &request) == 0;
+	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_I915_OVERLAY_PUT_IMAGE, &request)) {
+		DBG(("%s: Putimage failed\n", __FUNCTION__));
+		return false;
+	}
+
+	if (video->bo != frame->bo) {
+		if (video->bo)
+			kgem_bo_destroy(&sna->kgem, video->bo);
+		video->bo = kgem_bo_reference(frame->bo);
+	}
+
+	return true;
 }
 
 static int

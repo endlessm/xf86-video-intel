@@ -72,8 +72,13 @@ static int sna_video_sprite_stop(ClientPtr client,
 		xf86DrvMsg(video->sna->scrn->scrnIndex, X_ERROR,
 			   "failed to disable plane\n");
 
+	if (video->bo)
+		kgem_bo_destroy(&video->sna->kgem, video->bo);
+	video->bo = NULL;
+
 	video->plane = 0;
 	sna_window_set_port((WindowPtr)draw, NULL);
+
 	return Success;
 }
 
@@ -296,6 +301,12 @@ sna_video_sprite_show(struct sna *sna,
 
 	frame->bo->domain = DOMAIN_NONE;
 	video->plane = s.plane_id;
+
+	if (video->bo != frame->bo) {
+		if (video->bo)
+			kgem_bo_destroy(&sna->kgem, video->bo);
+		video->bo = kgem_bo_reference(frame->bo);
+	}
 	return true;
 }
 

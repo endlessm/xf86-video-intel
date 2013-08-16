@@ -98,6 +98,7 @@ struct sna_video {
 	bool textured;
 	Rotation rotation;
 	int plane;
+	struct kgem_bo *bo;
 
 	int SyncToVblank;	/* -1: auto, 0: off, 1: on */
 	int AlwaysOnTop;
