@@ -348,7 +348,13 @@ static int sna_video_sprite_put_image(ClientPtr client,
 		if (frame.bo == NULL)
 			return BadAlloc;
 
-		assert(kgem_bo_size(frame.bo) >= frame.size);
+		if (kgem_bo_size(frame.bo) < frame.size) {
+			DBG(("%s: bo size=%d, expected=%d\n",
+			     __FUNCTION__, kgem_bo_size(frame.bo), frame.size));
+			kgem_bo_destroy(&sna->kgem, frame.bo);
+			return BadAlloc;
+		}
+
 		frame.image.x1 = 0;
 		frame.image.y1 = 0;
 		frame.image.x2 = frame.width;
