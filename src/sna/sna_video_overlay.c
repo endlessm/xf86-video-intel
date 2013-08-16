@@ -43,9 +43,8 @@
 
 #define HAS_GAMMA(sna) ((sna)->kgem.gen >= 030)
 
-static Atom xvBrightness, xvContrast, xvSaturation, xvColorKey, xvPipe;
+static Atom xvBrightness, xvContrast, xvSaturation, xvColorKey, xvPipe, xvAlwaysOnTop;
 static Atom xvGamma0, xvGamma1, xvGamma2, xvGamma3, xvGamma4, xvGamma5;
-static Atom xvSyncToVblank;
 
 /* Limits for the overlay/textured video source sizes.  The documented hardware
  * limits are 2048x2048 or better for overlay and both of our textured video
@@ -116,6 +115,9 @@ static bool sna_video_overlay_update_attrs(struct sna_video *video)
 	attrs.gamma4 = video->gamma4;
 	attrs.gamma5 = video->gamma5;
 
+	if (video->AlwaysOnTop)
+		attrs.flags |= 1<<2;
+
 	return drmIoctl(video->sna->kgem.fd, DRM_IOCTL_I915_OVERLAY_ATTRS, &attrs) == 0;
 }
 
@@ -150,6 +152,7 @@ sna_video_overlay_set_attribute(ClientPtr client,
 	struct sna_video *video = port->devPriv.ptr;
 	struct sna *sna = video->sna;
 
+	DBG(("%s: set(%lx) to %d\n", __FUNCTION__, (long)attribute, (int)value));
 	if (attribute == xvBrightness) {
 		if ((value < -128) || (value > 127))
 			return BadValue;
@@ -176,6 +179,10 @@ sna_video_overlay_set_attribute(ClientPtr client,
 			video->desired_crtc = NULL;
 		else
 			video->desired_crtc = xf86_config->crtc[value];
+	} else if (attribute == xvAlwaysOnTop) {
+		DBG(("%s: ALWAYS_ON_TOP: %d -> %d\n", __FUNCTION__,
+		     video->AlwaysOnTop, !!value));
+		video->AlwaysOnTop = !!value;
 	} else if (attribute == xvGamma0 && HAS_GAMMA(sna)) {
 		video->gamma0 = value;
 	} else if (attribute == xvGamma1 && HAS_GAMMA(sna)) {
@@ -236,6 +243,8 @@ sna_video_overlay_get_attribute(ClientPtr client,
 		if (c == xf86_config->num_crtc)
 			c = -1;
 		*value = c;
+	} else if (attribute == xvAlwaysOnTop) {
+		*value = video->AlwaysOnTop;
 	} else if (attribute == xvGamma0 && HAS_GAMMA(sna)) {
 		*value = video->gamma0;
 	} else if (attribute == xvGamma1 && HAS_GAMMA(sna)) {
@@ -250,8 +259,6 @@ sna_video_overlay_get_attribute(ClientPtr client,
 		*value = video->gamma5;
 	} else if (attribute == xvColorKey) {
 		*value = video->color_key;
-	} else if (attribute == xvSyncToVblank) {
-		*value = video->SyncToVblank;
 	} else
 		return BadMatch;
 
@@ -483,8 +490,10 @@ sna_video_overlay_put_image(ClientPtr client,
 	clip.extents.y2 = clip.extents.y1 + drw_h;
 	clip.data = NULL;
 
-	RegionIntersect(&clip, &clip, gc->pCompositeClip);
-	if (!RegionNotEmpty(&clip))
+	DBG(("%s: always_on_top=%d\n", __FUNCTION__, video->AlwaysOnTop));
+	if (!video->AlwaysOnTop)
+		RegionIntersect(&clip, &clip, gc->pCompositeClip);
+	if (box_empty(&clip.extents))
 		goto invisible;
 
 	DBG(("%s: src=(%d, %d),(%d, %d), dst=(%d, %d),(%d, %d), id=%d, sizep=%dx%d, sync?=%d\n",
@@ -550,11 +559,15 @@ sna_video_overlay_put_image(ClientPtr client,
 	ret = Success;
 	if (sna_video_overlay_show
 	    (sna, video, &frame, crtc, &dstBox, src_w, src_h, drw_w, drw_h)) {
-		if (!RegionEqual(&video->clip, &clip)) {
+		//xf86XVFillKeyHelperDrawable(draw, video->color_key, &clip);
+		if (!video->AlwaysOnTop && !RegionEqual(&video->clip, &clip) &&
+		    sna_blt_fill_boxes(sna, GXcopy,
+				       __sna_pixmap_get_bo(sna->front),
+				       sna->front->drawable.bitsPerPixel,
+				       video->color_key,
+				       RegionRects(&clip),
+				       RegionNumRects(&clip)))
 			RegionCopy(&video->clip, &clip);
-			xf86XVFillKeyHelperDrawable(draw, video->color_key, &clip);
-		}
-
 		sna_window_set_port((WindowPtr)draw, port);
 	} else {
 		DBG(("%s: failed to show video frame\n", __FUNCTION__));
@@ -791,6 +804,7 @@ void sna_video_overlay_setup(struct sna *sna, ScreenPtr screen)
 
 	/* Allow the pipe to be switched from pipe A to B when in clone mode */
 	xvPipe = MAKE_ATOM("XV_PIPE");
+	xvAlwaysOnTop = MAKE_ATOM("XV_ALWAYS_ON_TOP");
 
 	if (HAS_GAMMA(sna)) {
 		xvGamma0 = MAKE_ATOM("XV_GAMMA0");

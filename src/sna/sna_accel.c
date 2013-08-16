@@ -2217,11 +2217,6 @@ static inline bool region_inplace(struct sna *sna,
 		>= sna->kgem.half_cpu_cache_pages;
 }
 
-static inline bool box_empty(const BoxRec *box)
-{
-	return box->x2 <= box->x1 || box->y2 <= box->y1;
-}
-
 bool
 sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 				RegionPtr region,

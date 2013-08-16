@@ -48,7 +48,7 @@
 
 #define MAKE_ATOM(a) MakeAtom(a, sizeof(a) - 1, true)
 
-static Atom xvColorKey;
+static Atom xvColorKey, xvAlwaysOnTop;
 
 static XvFormatRec formats[] = { {15}, {16}, {24} };
 static const XvImageRec images[] = { XVIMAGE_YUY2, XVIMAGE_UYVY, XVMC_YUV };
@@ -88,6 +88,10 @@ static int sna_video_sprite_set_attr(ClientPtr client,
 		video->color_key_changed = true;
 		video->color_key = value;
 		DBG(("COLORKEY = %ld\n", (long)value));
+	} else if (attribute == xvAlwaysOnTop) {
+		DBG(("%s: ALWAYS_ON_TOP: %d -> %d\n", __FUNCTION__,
+		     video->AlwaysOnTop, !!value));
+		video->AlwaysOnTop = !!value;
 	} else
 		return BadMatch;
 
@@ -103,6 +107,8 @@ static int sna_video_sprite_get_attr(ClientPtr client,
 
 	if (attribute == xvColorKey)
 		*value = video->color_key;
+	else if (attribute == xvAlwaysOnTop)
+		*value = video->AlwaysOnTop;
 	else
 		return BadMatch;
 
@@ -208,6 +214,9 @@ sna_video_sprite_show(struct sna *sna,
 
 		set.plane_id = s.plane_id;
 		set.value = video->color_key;
+		set.flags = 0;
+		if (!video->AlwaysOnTop)
+			set.flags = I915_SET_COLORKEY_DESTINATION;
 
 		if (drmIoctl(sna->kgem.fd,
 			     DRM_IOCTL_I915_SET_SPRITE_DESTKEY,
@@ -310,8 +319,10 @@ static int sna_video_sprite_put_image(ClientPtr client,
 	clip.extents.y2 = clip.extents.y1 + drw_h;
 	clip.data = NULL;
 
-	RegionIntersect(&clip, &clip, gc->pCompositeClip);
-	if (!RegionNotEmpty(&clip))
+	DBG(("%s: always_on_top=%d\n", __FUNCTION__, video->AlwaysOnTop));
+	if (!video->AlwaysOnTop)
+		RegionIntersect(&clip, &clip, gc->pCompositeClip);
+	if (box_empty(&clip.extents))
 		goto invisible;
 
 	DBG(("%s: src=(%d, %d),(%d, %d), dst=(%d, %d),(%d, %d), id=%d, sizep=%dx%d, sync?=%d\n",
@@ -377,10 +388,14 @@ static int sna_video_sprite_put_image(ClientPtr client,
 		DBG(("%s: failed to show video frame\n", __FUNCTION__));
 		ret = BadAlloc;
 	} else {
-		if (!RegionEqual(&video->clip, &clip)) {
-			RegionCopy(&video->clip, &clip);
-			xf86XVFillKeyHelperDrawable(draw, video->color_key, &clip);
-		}
+		//xf86XVFillKeyHelperDrawable(draw, video->color_key, &clip);
+		if (!video->AlwaysOnTop && !RegionEqual(&video->clip, &clip) &&
+		    sna_blt_fill_boxes(sna, GXcopy,
+				       __sna_pixmap_get_bo(sna->front),
+				       sna->front->drawable.bitsPerPixel,
+				       video->color_key,
+				       RegionRects(&clip),
+				       RegionNumRects(&clip)))
 		sna_window_set_port((WindowPtr)draw, port);
 	}
 
@@ -549,6 +564,7 @@ void sna_video_sprite_setup(struct sna *sna, ScreenPtr screen)
 	RegionNull(&video->clip);
 
 	xvColorKey = MAKE_ATOM("XV_COLORKEY");
+	xvAlwaysOnTop = MAKE_ATOM("XV_ALWAYS_ON_TOP");
 }
 #else
 void sna_video_sprite_setup(struct sna *sna, ScreenPtr screen)

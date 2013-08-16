@@ -80,6 +80,7 @@ struct sna_video {
 	int plane;
 
 	int SyncToVblank;	/* -1: auto, 0: off, 1: on */
+	int AlwaysOnTop;
 };
 
 struct sna_video_frame {

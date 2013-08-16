@@ -548,6 +548,11 @@ inline static int16_t clamp(int16_t a, int16_t b)
 	return v;
 }
 
+static inline bool box_empty(const BoxRec *box)
+{
+	return box->x2 <= box->x1 || box->y2 <= box->y1;
+}
+
 static inline bool
 box_inplace(PixmapPtr pixmap, const BoxRec *box)
 {
