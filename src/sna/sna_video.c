@@ -225,6 +225,16 @@ sna_video_frame_init(struct sna_video *video,
 			frame->size = height;
 		}
 		frame->size *= frame->pitch[0] + frame->pitch[1];
+
+		if (video->rotation & (RR_Rotate_90 | RR_Rotate_270)) {
+			frame->UBufOffset = (int)frame->pitch[1] * width;
+			frame->VBufOffset =
+				frame->UBufOffset + (int)frame->pitch[0] * width / 2;
+		} else {
+			frame->UBufOffset = (int)frame->pitch[1] * height;
+			frame->VBufOffset =
+				frame->UBufOffset + (int)frame->pitch[0] * height / 2;
+		}
 	} else {
 		switch (frame->id) {
 		case FOURCC_RGB888:
@@ -255,15 +265,6 @@ sna_video_frame_init(struct sna_video *video,
 			} else {
 				frame->pitch[0] = ALIGN((width << 1), align);
 				frame->size = (int)frame->pitch[0] * height;
-			}
-			if (video->rotation & (RR_Rotate_90 | RR_Rotate_270)) {
-				frame->UBufOffset = (int)frame->pitch[1] * width;
-				frame->VBufOffset =
-					frame->UBufOffset + (int)frame->pitch[0] * width / 2;
-			} else {
-				frame->UBufOffset = (int)frame->pitch[1] * height;
-				frame->VBufOffset =
-					frame->UBufOffset + (int)frame->pitch[0] * height / 2;
 			}
 			break;
 		}
