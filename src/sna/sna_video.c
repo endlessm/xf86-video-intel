@@ -269,6 +269,8 @@ sna_video_frame_init(struct sna_video *video,
 			break;
 		}
 		frame->pitch[1] = 0;
+		frame->UBufOffset = 0;
+		frame->VBufOffset = 0;
 	}
 
 	assert(frame->size);
