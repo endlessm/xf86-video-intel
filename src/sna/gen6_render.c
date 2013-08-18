@@ -1841,9 +1841,9 @@ gen6_composite_set_target(struct sna *sna,
 	} else
 		sna_render_picture_extents(dst, &box);
 
-	op->dst.bo = sna_drawable_use_bo (dst->pDrawable,
-					  PREFER_GPU | FORCE_GPU | RENDER_GPU,
-					  &box, &op->damage);
+	op->dst.bo = sna_drawable_use_bo(dst->pDrawable,
+					 PREFER_GPU | FORCE_GPU | RENDER_GPU,
+					 &box, &op->damage);
 	if (op->dst.bo == NULL)
 		return false;
 
@@ -1896,8 +1896,8 @@ static inline bool untiled_tlb_miss(struct kgem_bo *bo)
 
 static int prefer_blt_bo(struct sna *sna, struct kgem_bo *bo)
 {
-	if (bo->rq)
-		return RQ_IS_BLT(bo->rq) ? 1 : -1;
+	if (RQ_IS_BLT(bo->rq))
+		return true;
 
 	return bo->tiling == I915_TILING_NONE || bo->scanout;
 }
@@ -1914,6 +1914,15 @@ try_blt(struct sna *sna,
 	PicturePtr dst, PicturePtr src,
 	int width, int height)
 {
+	struct kgem_bo *bo;
+
+	bo = __sna_drawable_peek_bo(dst->pDrawable);
+	if (bo == NULL)
+		return true;
+
+	if (bo->rq)
+		return RQ_IS_BLT(bo->rq);
+
 	if (sna->kgem.ring == KGEM_BLT) {
 		DBG(("%s: already performing BLT\n", __FUNCTION__));
 		return true;
@@ -2141,17 +2150,18 @@ reuse_source(struct sna *sna,
 static bool
 prefer_blt_composite(struct sna *sna, struct sna_composite_op *tmp)
 {
-	if (sna->kgem.ring == KGEM_BLT)
-		return true;
-
 	if (untiled_tlb_miss(tmp->dst.bo) ||
 	    untiled_tlb_miss(tmp->src.bo))
 		return true;
 
+	if (kgem_bo_is_render(tmp->dst.bo) ||
+	    kgem_bo_is_render(tmp->src.bo))
+		return false;
+
 	if (!prefer_blt_ring(sna, tmp->dst.bo, 0))
 		return false;
 
-	return (prefer_blt_bo(sna, tmp->dst.bo) | prefer_blt_bo(sna, tmp->src.bo)) > 0;
+	return prefer_blt_bo(sna, tmp->dst.bo) || prefer_blt_bo(sna, tmp->src.bo);
 }
 
 static bool
@@ -2609,11 +2619,14 @@ static inline bool prefer_blt_copy(struct sna *sna,
 	    untiled_tlb_miss(dst_bo))
 		return true;
 
+	if (kgem_bo_is_render(dst_bo) ||
+	    kgem_bo_is_render(src_bo))
+		return false;
+
 	if (!prefer_blt_ring(sna, dst_bo, flags))
 		return false;
 
-	return (prefer_blt_bo(sna, src_bo) >= 0 &&
-		prefer_blt_bo(sna, dst_bo) > 0);
+	return prefer_blt_bo(sna, src_bo) || prefer_blt_bo(sna, dst_bo);
 }
 
 inline static void boxes_extents(const BoxRec *box, int n, BoxRec *extents)
@@ -3021,10 +3034,16 @@ static inline bool prefer_blt_fill(struct sna *sna,
 	if (PREFER_RENDER)
 		return PREFER_RENDER < 0;
 
+	if (kgem_bo_is_render(bo))
+		return false;
+
 	if (untiled_tlb_miss(bo))
 		return true;
 
-	return prefer_blt_ring(sna, bo, 0) || prefer_blt_bo(sna, bo) >= 0;
+	if (!prefer_blt_ring(sna, bo, 0))
+		return false;
+
+	return prefer_blt_bo(sna, bo);
 }
 
 static bool

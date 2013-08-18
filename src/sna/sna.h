@@ -617,6 +617,11 @@ static inline struct kgem_bo *__sna_pixmap_get_bo(PixmapPtr pixmap)
 	return sna_pixmap(pixmap)->gpu_bo;
 }
 
+static inline struct kgem_bo *__sna_drawable_peek_bo(DrawablePtr d)
+{
+	return sna_pixmap(get_drawable_pixmap(d))->gpu_bo;
+}
+
 static inline struct kgem_bo *sna_pixmap_pin(PixmapPtr pixmap, unsigned flags)
 {
 	struct sna_pixmap *priv;
