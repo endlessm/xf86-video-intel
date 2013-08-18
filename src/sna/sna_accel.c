@@ -4962,7 +4962,7 @@ source_prefer_gpu(struct sna *sna, struct sna_pixmap *priv,
 static bool use_shm_bo(struct sna *sna,
 		       struct kgem_bo *bo,
 		       struct sna_pixmap *priv,
-		       int alu)
+		       int alu, bool replaces)
 {
 	if (priv == NULL || priv->cpu_bo == NULL) {
 		DBG(("%s: no, not attached\n", __FUNCTION__));
@@ -4979,7 +4979,7 @@ static bool use_shm_bo(struct sna *sna,
 		return true;
 	}
 
-	if (__kgem_bo_is_busy(&sna->kgem, bo)) {
+	if (!replaces && __kgem_bo_is_busy(&sna->kgem, bo)) {
 		DBG(("%s: yes, dst is busy\n", __FUNCTION__));
 		return true;
 	}
@@ -5227,7 +5227,7 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 		if (bo != dst_priv->gpu_bo)
 			goto fallback;
 
-		if (use_shm_bo(sna, bo, src_priv, alu)) {
+		if (use_shm_bo(sna, bo, src_priv, alu, replaces)) {
 			bool ret;
 
 			DBG(("%s: region overlaps CPU damage, copy from CPU bo (shm? %d)\n",
