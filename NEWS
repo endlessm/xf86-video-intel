@@ -1,3 +1,35 @@
+Release 2.21.15 (2013-08-21)
+============================
+Some build fixes for the BSDs and alternate compiler, and conflicting
+configure options and a critcial fix for some PRIME setups.
+
+ * Don't fail to configure if DRI1 is not available and the user asks
+   for both DRI and KMS-only
+   [Regression from 2.21.14]
+
+ * Lots of miscellaneous fixes for older gcc, other compilers and BSD.
+
+ * Initial framework support for hosted X.
+
+ * Improve transition from fbcon to X with multiple outputs and extended
+   desktops.
+
+ * Ensure the framebuffer exists before checking it against the CRTC
+   constraints.
+   https://bugs.launchpad.net/ubuntu/+source/xorg-server/+bug/121234
+   [Regression from 2.21.10]
+
+ * Add RGB overlay support for Ironlake and later.
+
+ * Don't release the overlay buffer too early, i.e. before the client
+   disables the Xv image.
+
+ * Tweak the ring switching logic to reduce use of semaphores on
+   Sandybridge and later - a delicate balancing act between trying to
+   use the faster engine for the task and preventing concurrent use of
+   multiple rings.
+
+
 Release 2.21.14 (2013-08-04)
 ============================
 A few updates for the top-end Haswell systems (notably GT3 and GT3e
