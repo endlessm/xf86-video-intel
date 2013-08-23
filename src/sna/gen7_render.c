@@ -85,6 +85,7 @@ struct gt_info {
 		int max_gs_entries;
 		int push_ps_size; /* in 1KBs */
 	} urb;
+	int gt;
 };
 
 static const struct gt_info ivb_gt_info = {
@@ -93,6 +94,7 @@ static const struct gt_info ivb_gt_info = {
 	.max_gs_threads = 16,
 	.max_wm_threads = (16-1) << IVB_PS_MAX_THREADS_SHIFT,
 	.urb = { 128, 64, 64, 8 },
+	.gt = 0,
 };
 
 static const struct gt_info ivb_gt1_info = {
@@ -101,6 +103,7 @@ static const struct gt_info ivb_gt1_info = {
 	.max_gs_threads = 36,
 	.max_wm_threads = (48-1) << IVB_PS_MAX_THREADS_SHIFT,
 	.urb = { 128, 512, 192, 8 },
+	.gt = 1,
 };
 
 static const struct gt_info ivb_gt2_info = {
@@ -109,6 +112,7 @@ static const struct gt_info ivb_gt2_info = {
 	.max_gs_threads = 128,
 	.max_wm_threads = (172-1) << IVB_PS_MAX_THREADS_SHIFT,
 	.urb = { 256, 704, 320, 8 },
+	.gt = 2,
 };
 
 static const struct gt_info byt_gt_info = {
@@ -118,6 +122,7 @@ static const struct gt_info byt_gt_info = {
 	.max_gs_threads = 36,
 	.max_wm_threads = (48-1) << IVB_PS_MAX_THREADS_SHIFT,
 	.urb = { 128, 512, 192, 8 },
+	.gt = 1,
 };
 
 static const struct gt_info hsw_gt_info = {
@@ -128,6 +133,7 @@ static const struct gt_info hsw_gt_info = {
 		(8 - 1) << HSW_PS_MAX_THREADS_SHIFT |
 		1 << HSW_PS_SAMPLE_MASK_SHIFT,
 	.urb = { 128, 64, 64, 8 },
+	.gt = 0,
 };
 
 static const struct gt_info hsw_gt1_info = {
@@ -138,6 +144,7 @@ static const struct gt_info hsw_gt1_info = {
 		(102 - 1) << HSW_PS_MAX_THREADS_SHIFT |
 		1 << HSW_PS_SAMPLE_MASK_SHIFT,
 	.urb = { 128, 640, 256, 8 },
+	.gt = 1,
 };
 
 static const struct gt_info hsw_gt2_info = {
@@ -148,6 +155,7 @@ static const struct gt_info hsw_gt2_info = {
 		(140 - 1) << HSW_PS_MAX_THREADS_SHIFT |
 		1 << HSW_PS_SAMPLE_MASK_SHIFT,
 	.urb = { 256, 1664, 640, 8 },
+	.gt = 2,
 };
 
 static const struct gt_info hsw_gt3_info = {
@@ -158,6 +166,7 @@ static const struct gt_info hsw_gt3_info = {
 		(280 - 1) << HSW_PS_MAX_THREADS_SHIFT |
 		1 << HSW_PS_SAMPLE_MASK_SHIFT,
 	.urb = { 512, 3328, 1280, 16 },
+	.gt = 3,
 };
 
 inline static bool is_ivb(struct sna *sna)
@@ -2123,6 +2132,24 @@ inline static bool can_switch_to_blt(struct sna *sna,
 	return kgem_ring_is_idle(&sna->kgem, KGEM_BLT);
 }
 
+inline static bool can_switch_to_render(struct sna *sna,
+					struct kgem_bo *bo)
+{
+	if (sna->kgem.ring == KGEM_RENDER)
+		return true;
+
+	if (NO_RING_SWITCH)
+		return false;
+
+	if (!sna->kgem.has_semaphores)
+		return false;
+
+	if (bo && !RQ_IS_BLT(bo->rq) && !(bo->scanout && !sna->kgem.has_wt))
+		return true;
+
+	return !kgem_ring_is_idle(&sna->kgem, KGEM_RENDER);
+}
+
 static inline bool untiled_tlb_miss(struct kgem_bo *bo)
 {
 	return bo->tiling == I915_TILING_NONE && bo->pitch >= 4096;
@@ -2141,6 +2168,15 @@ inline static bool prefer_blt_ring(struct sna *sna,
 				   unsigned flags)
 {
 	return can_switch_to_blt(sna, bo, flags);
+}
+
+inline static bool prefer_render_ring(struct sna *sna,
+				      struct kgem_bo *bo)
+{
+	if (sna->render_state.gen7.info->gt < 2)
+		return false;
+
+	return can_switch_to_render(sna, bo);
 }
 
 static bool
@@ -2390,6 +2426,9 @@ prefer_blt_composite(struct sna *sna, struct sna_composite_op *tmp)
 
 	if (kgem_bo_is_render(tmp->dst.bo) ||
 	    kgem_bo_is_render(tmp->src.bo))
+		return false;
+
+	if (prefer_render_ring(sna, tmp->dst.bo))
 		return false;
 
 	if (!prefer_blt_ring(sna, tmp->dst.bo, 0))
@@ -2833,6 +2872,9 @@ static inline bool prefer_blt_copy(struct sna *sna,
 	    kgem_bo_is_render(src_bo))
 		return false;
 
+	if (prefer_render_ring(sna, dst_bo))
+		return false;
+
 	if (!prefer_blt_ring(sna, dst_bo, flags))
 		return false;
 
@@ -3237,6 +3279,9 @@ static inline bool prefer_blt_fill(struct sna *sna,
 
 	if (untiled_tlb_miss(bo))
 		return true;
+
+	if (prefer_render_ring(sna, bo))
+		return false;
 
 	if (!prefer_blt_ring(sna, bo, 0))
 		return false;
