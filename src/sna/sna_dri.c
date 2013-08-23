@@ -1415,7 +1415,7 @@ sna_dri_immediate_blit(struct sna *sna,
 			ret = true;
 	} else {
 		info->bo = __sna_dri_copy_region(sna, draw, NULL,
-						 info->back, info->front, true);
+						 info->back, info->front, false);
 		if (event)
 			DRI2SwapComplete(info->client, draw, 0, 0, 0,
 					 DRI2_BLIT_COMPLETE,
