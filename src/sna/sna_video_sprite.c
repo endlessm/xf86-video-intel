@@ -201,6 +201,8 @@ sna_video_sprite_show(struct sna *sna,
 {
 	struct drm_mode_set_plane s;
 
+	/* XXX handle video spanning multiple CRTC */
+
 	VG_CLEAR(s);
 	s.plane_id = sna_crtc_to_plane(crtc);
 
@@ -300,7 +302,15 @@ sna_video_sprite_show(struct sna *sna,
 	}
 
 	frame->bo->domain = DOMAIN_NONE;
-	video->plane = s.plane_id;
+
+	if (video->plane != s.plane_id) {
+		if (video->plane) {
+			memset(&s, 0, sizeof(s));
+			s.plane_id = video->plane;
+			drmIoctl(video->sna->kgem.fd, DRM_IOCTL_MODE_SETPLANE, &s);
+		}
+		video->plane = s.plane_id;
+	}
 
 	if (video->bo != frame->bo) {
 		if (video->bo)
