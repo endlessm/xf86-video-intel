@@ -2321,7 +2321,7 @@ bool sna_dri_open(struct sna *sna, ScreenPtr screen)
 	memset(&info, '\0', sizeof(info));
 	info.fd = sna->kgem.fd;
 	info.driverName = dri_driver_name(sna);
-	info.deviceName = intel_get_device_name(sna->scrn);
+	info.deviceName = intel_get_client_name(sna->scrn);
 
 	DBG(("%s: loading dri driver '%s' [gen=%d] for device '%s'\n",
 	     __FUNCTION__, info.driverName, sna->kgem.gen, info.deviceName));

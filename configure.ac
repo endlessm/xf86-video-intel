@@ -336,6 +336,17 @@ fi
 
 xp_msg=""
 
+AC_ARG_ENABLE(rendernode,
+	      AS_HELP_STRING([--enable-rendernode],
+			     [Enable use of render nodes (experimental) [default=no]]),
+	      [RENDERNODE="$enableval"],
+	      [RENDERNODE=no])
+AM_CONDITIONAL(USE_RENDERNODE, test x$RENDERNODE = xyes)
+if test "x$RENDERNODE" = xyes; then
+	AC_DEFINE(USE_RENDERNODE,1,[Assume "rendernode" support])
+	xp_msg="$xp_msg rendernode"
+fi
+
 AC_ARG_ENABLE(create2,
 	      AS_HELP_STRING([--enable-create2],
 			     [Enable use of create2 ioctl (experimental) [default=no]]),
