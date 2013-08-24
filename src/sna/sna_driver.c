@@ -452,7 +452,8 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 	case 16:
 	case 24:
 	case 30:
-		if (fb_supports_depth(fd, scrn->depth))
+		if ((sna->flags & SNA_IS_HOSTED) == 0 &&
+		    fb_supports_depth(fd, scrn->depth))
 			break;
 	default:
 		xf86DrvMsg(scrn->scrnIndex, X_ERROR,
