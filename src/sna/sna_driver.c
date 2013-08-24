@@ -259,7 +259,7 @@ static Bool sna_create_screen_resources(ScreenPtr screen)
 	screen->SetScreenPixmap(sna->front);
 
 	/* Only preserve the fbcon, not any subsequent server regens */
-	if (serverGeneration == 1)
+	if (serverGeneration == 1 && (sna->flags & SNA_IS_HOSTED) == 0)
 		sna_copy_fbcon(sna);
 
 	if (!sna_become_master(sna)) {
