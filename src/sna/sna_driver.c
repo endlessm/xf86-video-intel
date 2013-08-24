@@ -220,6 +220,7 @@ static Bool sna_become_master(struct sna *sna)
 static Bool sna_create_screen_resources(ScreenPtr screen)
 {
 	struct sna *sna = to_sna_from_screen(screen);
+	unsigned hint;
 
 	DBG(("%s(%dx%d@%d)\n", __FUNCTION__,
 	     screen->width, screen->height, screen->rootDepth));
@@ -232,11 +233,15 @@ static Bool sna_create_screen_resources(ScreenPtr screen)
 
 	sna_accel_create(sna);
 
+	hint = SNA_CREATE_FB;
+	if (sna->flags & SNA_IS_HOSTED)
+		hint = 0;
+
 	sna->front = screen->CreatePixmap(screen,
 					  screen->width,
 					  screen->height,
 					  screen->rootDepth,
-					  SNA_CREATE_FB);
+					  hint);
 	if (!sna->front) {
 		xf86DrvMsg(screen->myNum, X_ERROR,
 			   "[intel] Unable to create front buffer %dx%d at depth %d\n",
