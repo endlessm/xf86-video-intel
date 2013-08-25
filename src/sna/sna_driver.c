@@ -192,14 +192,11 @@ sna_set_fallback_mode(ScrnInfoPtr scrn)
 #endif
 }
 
-static Bool sna_become_master(struct sna *sna)
+static Bool sna_set_desired_mode(struct sna *sna)
 {
 	ScrnInfoPtr scrn = sna->scrn;
 
 	DBG(("%s\n", __FUNCTION__));
-
-	if (intel_get_master(scrn))
-		return FALSE;
 
 	if (!xf86SetDesiredModes(scrn)) {
 		xf86DrvMsg(scrn->scrnIndex, X_WARNING,
@@ -269,13 +266,21 @@ static Bool sna_create_screen_resources(ScreenPtr screen)
 	assert(sna->front == new_front);
 	screen->DestroyPixmap(new_front); /* transfer ownership to screen */
 
+	if (intel_get_master(sna->scrn)) {
+		xf86DrvMsg(screen->myNum, X_ERROR,
+			   "[intel] Failed to become DRM master\n");
+		screen->DestroyPixmap(sna->front);
+		sna->front = NULL;
+		return FALSE;
+	}
+
 	/* Only preserve the fbcon, not any subsequent server regens */
 	if (serverGeneration == 1 && (sna->flags & SNA_IS_HOSTED) == 0)
 		sna_copy_fbcon(sna);
 
-	if (!sna_become_master(sna)) {
+	if (!sna_set_desired_mode(sna)) {
 		xf86DrvMsg(screen->myNum, X_ERROR,
-			   "[intel] Failed to become DRM master\n");
+			   "[intel] Failed to set initial mode\n");
 		screen->DestroyPixmap(sna->front);
 		sna->front = NULL;
 		return FALSE;
@@ -1007,7 +1012,10 @@ static Bool sna_enter_vt(VT_FUNC_ARGS_DECL)
 	struct sna *sna = to_sna(scrn);
 
 	DBG(("%s\n", __FUNCTION__));
-	if (!sna_become_master(sna))
+	if (intel_get_master(scrn))
+		return FALSE;
+
+	if (!sna_set_desired_mode(sna))
 		return FALSE;
 
 	if (sna->flags & SNA_REPROBE) {
