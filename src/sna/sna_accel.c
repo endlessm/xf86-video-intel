@@ -15244,15 +15244,19 @@ migrate_dirty_tracking(PixmapPtr old_front, PixmapPtr new_front)
 static void
 sna_set_screen_pixmap(PixmapPtr pixmap)
 {
-	PixmapPtr old_front = pixmap->drawable.pScreen->devPrivate;
+	ScreenPtr screen = pixmap->drawable.pScreen;
+	PixmapPtr old_front = screen->devPrivate;
 	WindowPtr root;
 
-	assert(pixmap == to_sna_from_pixmap(pixmap)->front);
+	assert(to_sna_from_pixmap(pixmap) == to_sna_from_screen(screen));
+	assert(to_sna_from_pixmap(pixmap)->front == old_front);
 
-	if (old_front)
+	if (old_front) {
+		assert(to_sna_from_pixmap(old_front)->front == old_front);
 		migrate_dirty_tracking(old_front, pixmap);
+	}
 
-	root = get_root_window(pixmap->drawable.pScreen);
+	root = get_root_window(screen);
 	if (root) {
 		struct sna_visit_set_pixmap_window visit;
 
@@ -15262,7 +15266,12 @@ sna_set_screen_pixmap(PixmapPtr pixmap)
 		assert(fbGetWindowPixmap(root) == pixmap);
 	}
 
-	pixmap->drawable.pScreen->devPrivate = pixmap;
+	to_sna_from_pixmap(pixmap)->front = pixmap;
+	screen->devPrivate = pixmap;
+	pixmap->refcnt++;
+
+	if (old_front)
+		screen->DestroyPixmap(old_front);
 }
 
 static Bool

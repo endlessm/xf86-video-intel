@@ -220,6 +220,7 @@ static Bool sna_become_master(struct sna *sna)
 static Bool sna_create_screen_resources(ScreenPtr screen)
 {
 	struct sna *sna = to_sna_from_screen(screen);
+	PixmapPtr new_front;
 	unsigned hint;
 
 	DBG(("%s(%dx%d@%d)\n", __FUNCTION__,
@@ -228,6 +229,7 @@ static Bool sna_create_screen_resources(ScreenPtr screen)
 	assert(sna->scrn == xf86ScreenToScrn(screen));
 	assert(sna->scrn->pScreen == screen);
 
+	/* free the data used during miInitScreen */
 	free(screen->devPrivate);
 	screen->devPrivate = NULL;
 
@@ -237,12 +239,12 @@ static Bool sna_create_screen_resources(ScreenPtr screen)
 	if (sna->flags & SNA_IS_HOSTED)
 		hint = 0;
 
-	sna->front = screen->CreatePixmap(screen,
-					  screen->width,
-					  screen->height,
-					  screen->rootDepth,
-					  hint);
-	if (!sna->front) {
+	new_front = screen->CreatePixmap(screen,
+					 screen->width,
+					 screen->height,
+					 screen->rootDepth,
+					 hint);
+	if (!new_front) {
 		xf86DrvMsg(screen->myNum, X_ERROR,
 			   "[intel] Unable to create front buffer %dx%d at depth %d\n",
 			   screen->width,
@@ -252,16 +254,20 @@ static Bool sna_create_screen_resources(ScreenPtr screen)
 		return FALSE;
 	}
 
-	if (!sna_pixmap_force_to_gpu(sna->front, MOVE_WRITE)) {
+	if (!sna_pixmap_force_to_gpu(new_front, MOVE_WRITE)) {
 		xf86DrvMsg(screen->myNum, X_ERROR,
 			   "[intel] Failed to allocate video resources for front buffer %dx%d at depth %d\n",
 			   screen->width,
 			   screen->height,
 			   screen->rootDepth);
-		goto cleanup_front;
+		screen->DestroyPixmap(new_front);
+		return FALSE;
 	}
 
-	screen->SetScreenPixmap(sna->front);
+	screen->SetScreenPixmap(new_front);
+	assert(screen->GetScreenPixmap(screen) == new_front);
+	assert(sna->front == new_front);
+	screen->DestroyPixmap(new_front); /* transfer ownership to screen */
 
 	/* Only preserve the fbcon, not any subsequent server regens */
 	if (serverGeneration == 1 && (sna->flags & SNA_IS_HOSTED) == 0)
@@ -270,16 +276,12 @@ static Bool sna_create_screen_resources(ScreenPtr screen)
 	if (!sna_become_master(sna)) {
 		xf86DrvMsg(screen->myNum, X_ERROR,
 			   "[intel] Failed to become DRM master\n");
-		goto cleanup_front;
+		screen->DestroyPixmap(sna->front);
+		sna->front = NULL;
+		return FALSE;
 	}
 
 	return TRUE;
-
-cleanup_front:
-	screen->SetScreenPixmap(NULL);
-	screen->DestroyPixmap(sna->front);
-	sna->front = NULL;
-	return FALSE;
 }
 
 static void sna_selftest(void)

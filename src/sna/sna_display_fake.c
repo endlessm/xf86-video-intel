@@ -202,9 +202,8 @@ sna_output_fake(struct sna *sna)
 static Bool
 sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 {
-	struct sna *sna = to_sna(scrn);
 	ScreenPtr screen = scrn->pScreen;
-	PixmapPtr old_front, new_front;
+	PixmapPtr new_front;
 
 	DBG(("%s (%d, %d) -> (%d, %d)\n", __FUNCTION__,
 	     scrn->virtualX, scrn->virtualY,
@@ -213,28 +212,27 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 	if (scrn->virtualX == width && scrn->virtualY == height)
 		return TRUE;
 
-	assert(sna->front);
-	assert(screen->GetScreenPixmap(screen) == sna->front);
+	assert(to_sna_from_screen(screen)->front);
+	assert(screen->GetScreenPixmap(screen) == to_sna_from_screen(screen)->front);
 
 	DBG(("%s: creating new framebuffer %dx%d\n",
 	     __FUNCTION__, width, height));
 
-	old_front = sna->front;
 	new_front = screen->CreatePixmap(screen,
 					 width, height, scrn->depth,
-					 SNA_CREATE_FB);
+					 0);
 	if (!new_front)
 		return FALSE;
 
-	sna->front = new_front;
 	scrn->virtualX = width;
 	scrn->virtualY = height;
 	scrn->displayWidth = width;
 
-	screen->SetScreenPixmap(sna->front);
-	assert(screen->GetScreenPixmap(screen) == sna->front);
+	screen->SetScreenPixmap(new_front);
+	assert(screen->GetScreenPixmap(screen) == new_front);
+	assert(to_sna_from_screen(screen)->front == new_front);
 
-	screen->DestroyPixmap(old_front);
+	screen->DestroyPixmap(new_front);
 
 	return TRUE;
 }

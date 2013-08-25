@@ -2731,7 +2731,7 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
 	struct sna *sna = to_sna(scrn);
 	ScreenPtr screen = scrn->pScreen;
-	PixmapPtr old_front, new_front;
+	PixmapPtr new_front;
 	int i;
 
 	DBG(("%s (%d, %d) -> (%d, %d)\n", __FUNCTION__,
@@ -2748,7 +2748,6 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 	DBG(("%s: creating new framebuffer %dx%d\n",
 	     __FUNCTION__, width, height));
 
-	old_front = sna->front;
 	new_front = screen->CreatePixmap(screen,
 					 width, height, scrn->depth,
 					 SNA_CREATE_FB);
@@ -2767,7 +2766,11 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 
 	copy_front(sna, sna->front, new_front);
 
-	sna->front = new_front;
+	screen->SetScreenPixmap(new_front);
+	assert(screen->GetScreenPixmap(screen) == new_front);
+	assert(sna->front == new_front);
+	screen->DestroyPixmap(new_front); /* owned by screen now */
+
 	scrn->virtualX = width;
 	scrn->virtualY = height;
 	scrn->displayWidth = width;
@@ -2783,11 +2786,6 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 					     crtc->x, crtc->y))
 			sna_crtc_disable(crtc);
 	}
-
-	screen->SetScreenPixmap(sna->front);
-	assert(screen->GetScreenPixmap(screen) == sna->front);
-
-	screen->DestroyPixmap(old_front);
 
 	while (sna_mode_has_pending_events(sna))
 		sna_mode_wakeup(sna);
