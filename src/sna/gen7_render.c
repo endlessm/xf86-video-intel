@@ -45,6 +45,8 @@
 #include "gen4_source.h"
 #include "gen4_vertex.h"
 
+#define ALWAYS_FLUSH 0
+
 #define NO_COMPOSITE 0
 #define NO_COMPOSITE_SPANS 0
 #define NO_COPY 0
@@ -1059,10 +1061,17 @@ gen7_emit_pipe_invalidate(struct sna *sna)
 }
 
 inline static void
-gen7_emit_pipe_flush(struct sna *sna)
+gen7_emit_pipe_flush(struct sna *sna, bool need_stall)
 {
+	unsigned stall;
+
+	stall = 0;
+	if (need_stall)
+		stall = (GEN7_PIPE_CONTROL_CS_STALL |
+			 GEN7_PIPE_CONTROL_STALL_AT_SCOREBOARD);
+
 	OUT_BATCH(GEN7_PIPE_CONTROL | (4 - 2));
-	OUT_BATCH(GEN7_PIPE_CONTROL_WC_FLUSH);
+	OUT_BATCH(GEN7_PIPE_CONTROL_WC_FLUSH | stall);
 	OUT_BATCH(0);
 	OUT_BATCH(0);
 }
@@ -1086,9 +1095,6 @@ gen7_emit_state(struct sna *sna,
 
 	assert(op->dst.bo->exec);
 
-	if (sna->render_state.gen7.emit_flush)
-		gen7_emit_pipe_flush(sna);
-
 	gen7_emit_cc(sna, GEN7_BLEND(op->u.gen7.flags));
 	gen7_emit_sampler(sna, GEN7_SAMPLER(op->u.gen7.flags));
 	gen7_emit_sf(sna, GEN7_VERTEX(op->u.gen7.flags) >> 2);
@@ -1098,11 +1104,16 @@ gen7_emit_state(struct sna *sna,
 	need_stall = gen7_emit_binding_table(sna, wm_binding_table);
 	need_stall &= gen7_emit_drawing_rectangle(sna, op);
 
-	if (kgem_bo_is_dirty(op->src.bo) || kgem_bo_is_dirty(op->mask.bo)) {
+	if (ALWAYS_FLUSH || kgem_bo_is_dirty(op->src.bo) || kgem_bo_is_dirty(op->mask.bo)) {
 		gen7_emit_pipe_invalidate(sna);
 		kgem_clear_dirty(&sna->kgem);
 		assert(op->dst.bo->exec);
 		kgem_bo_mark_dirty(op->dst.bo);
+		sna->render_state.gen7.emit_flush = false;
+		need_stall = false;
+	}
+	if (sna->render_state.gen7.emit_flush) {
+		gen7_emit_pipe_flush(sna, need_stall);
 		need_stall = false;
 	}
 	if (need_stall)
