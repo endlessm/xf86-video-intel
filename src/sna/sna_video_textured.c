@@ -205,8 +205,7 @@ sna_video_textured_put_image(ClientPtr client,
 
 	sna_video_frame_init(video, format->id, width, height, &frame);
 
-	if (!sna_video_clip_helper(sna->scrn, video, &frame,
-				   &crtc, &dstBox,
+	if (!sna_video_clip_helper(video, &frame, &crtc, &dstBox,
 				   src_x, src_y, drw_x + draw->x, drw_y + draw->y,
 				   src_w, src_h, drw_w, drw_h,
 				   &clip))

@@ -366,8 +366,7 @@ static int sna_video_sprite_put_image(ClientPtr client,
 
 	sna_video_frame_init(video, format->id, width, height, &frame);
 
-	if (!sna_video_clip_helper(sna->scrn, video, &frame,
-				   &crtc, &dst_box,
+	if (!sna_video_clip_helper(video, &frame, &crtc, &dst_box,
 				   src_x, src_y, draw->x + drw_x, draw->y + drw_y,
 				   src_w, src_h, drw_w, drw_h,
 				   &clip))

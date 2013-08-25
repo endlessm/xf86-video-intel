@@ -162,10 +162,9 @@ static inline int is_planar_fourcc(int id)
 }
 
 bool
-sna_video_clip_helper(ScrnInfoPtr scrn,
-		      struct sna_video *adaptor_priv,
+sna_video_clip_helper(struct sna_video *video,
 		      struct sna_video_frame *frame,
-		      xf86CrtcPtr * crtc_ret,
+		      xf86CrtcPtr *crtc_ret,
 		      BoxPtr dst,
 		      short src_x, short src_y,
 		      short drw_x, short drw_y,

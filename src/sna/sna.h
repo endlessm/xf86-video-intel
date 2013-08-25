@@ -389,7 +389,7 @@ to_sna_from_kgem(struct kgem *kgem)
 #define MAX(a,b)	((a) >= (b) ? (a) : (b))
 #endif
 
-extern xf86CrtcPtr sna_covering_crtc(ScrnInfoPtr scrn,
+extern xf86CrtcPtr sna_covering_crtc(struct sna *sna,
 				     const BoxRec *box,
 				     xf86CrtcPtr desired);
 

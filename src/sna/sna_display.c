@@ -1004,6 +1004,7 @@ void sna_copy_fbcon(struct sna *sna)
 		return;
 
 	DBG(("%s\n", __FUNCTION__));
+	assert((sna->flags & SNA_IS_HOSTED) == 0);
 
 	priv = sna_pixmap(sna->front);
 	assert(priv && priv->gpu_bo);
@@ -2736,6 +2737,7 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 	DBG(("%s (%d, %d) -> (%d, %d)\n", __FUNCTION__,
 	     scrn->virtualX, scrn->virtualY,
 	     width, height));
+	assert((sna->flags & SNA_IS_HOSTED) == 0);
 
 	if (scrn->virtualX == width && scrn->virtualY == height)
 		return TRUE;
@@ -2873,6 +2875,7 @@ sna_page_flip(struct sna *sna,
 
 	DBG(("%s: handle %d attached\n", __FUNCTION__, bo->handle));
 	assert(bo->refcnt);
+	assert((sna->flags & SNA_IS_HOSTED) == 0);
 
 	kgem_bo_submit(&sna->kgem, bo);
 
@@ -2978,6 +2981,8 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 	};
 	int width, height;
 	int i, j;
+
+	assert((sna->flags & SNA_IS_HOSTED) == 0);
 
 	if (xf86ReturnOptValBool(sna->Options, OPTION_REPROBE, FALSE))
 		return false;
@@ -3278,16 +3283,17 @@ static int sna_box_area(const BoxRec *box)
  * with greater coverage
  */
 xf86CrtcPtr
-sna_covering_crtc(ScrnInfoPtr scrn,
-		  const BoxRec *box,
-		  xf86CrtcPtr desired)
+sna_covering_crtc(struct sna *sna, const BoxRec *box, xf86CrtcPtr desired)
 {
-	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
+	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(sna->scrn);
 	xf86CrtcPtr best_crtc;
 	int best_coverage, c;
 
+	if (sna->flags & SNA_IS_HOSTED)
+		return NULL;
+
 	/* If we do not own the VT, we do not own the CRTC either */
-	if (!scrn->vtSema)
+	if (!sna->scrn->vtSema)
 		return NULL;
 
 	DBG(("%s for box=(%d, %d), (%d, %d)\n",
@@ -3616,6 +3622,9 @@ void sna_mode_update(struct sna *sna)
 	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(sna->scrn);
 	int i;
 
+	if (sna->flags & SNA_IS_HOSTED)
+		return;
+
 	/* Validate CRTC attachments and force consistency upon the kernel */
 	for (i = 0; i < xf86_config->num_crtc; i++) {
 		xf86CrtcPtr crtc = xf86_config->crtc[i];
@@ -3906,6 +3915,7 @@ void sna_mode_redisplay(struct sna *sna)
 		return;
 
 	DBG(("%s: posting shadow damage\n", __FUNCTION__));
+	assert((sna->flags & SNA_IS_HOSTED) == 0);
 	assert(sna->mode.shadow_active);
 
 	region = DamageRegion(sna->mode.shadow_damage);

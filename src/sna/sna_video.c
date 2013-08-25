@@ -121,10 +121,9 @@ void sna_video_buffer_fini(struct sna_video *video)
 }
 
 bool
-sna_video_clip_helper(ScrnInfoPtr scrn,
-		      struct sna_video *video,
+sna_video_clip_helper(struct sna_video *video,
 		      struct sna_video_frame *frame,
-		      xf86CrtcPtr * crtc_ret,
+		      xf86CrtcPtr *crtc_ret,
 		      BoxPtr dst,
 		      short src_x, short src_y,
 		      short drw_x, short drw_y,
@@ -152,7 +151,7 @@ sna_video_clip_helper(ScrnInfoPtr scrn,
 	 * For overlay video, compute the relevant CRTC and
 	 * clip video to that
 	 */
-	crtc = sna_covering_crtc(scrn, dst, video->desired_crtc);
+	crtc = sna_covering_crtc(video->sna, dst, video->desired_crtc);
 
 	/* For textured video, we don't actually want to clip at all. */
 	if (crtc && !video->textured) {

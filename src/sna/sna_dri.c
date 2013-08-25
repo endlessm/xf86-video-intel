@@ -781,7 +781,7 @@ __sna_dri_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 
 		crtc = NULL;
 		if (sync && sna_pixmap_is_scanout(sna, pixmap))
-			crtc = sna_covering_crtc(sna->scrn, &clip.extents, NULL);
+			crtc = sna_covering_crtc(sna, &clip.extents, NULL);
 		sna_dri_select_mode(sna, dst_bo, src_bo, crtc != NULL);
 
 		sync = (crtc != NULL&&
@@ -885,22 +885,22 @@ static inline int sna_wait_vblank(struct sna *sna, drmVBlank *vbl)
 #if DRI2INFOREC_VERSION >= 4
 
 static int
-sna_dri_get_pipe(DrawablePtr pDraw)
+sna_dri_get_pipe(DrawablePtr draw)
 {
-	ScrnInfoPtr pScrn = xf86ScreenToScrn(pDraw->pScreen);
+	struct sna *sna = to_sna_from_drawable(draw);
 	xf86CrtcPtr crtc;
 	BoxRec box;
 	int pipe;
 
-	if (pDraw->type == DRAWABLE_PIXMAP)
+	if (draw->type == DRAWABLE_PIXMAP)
 		return -1;
 
-	box.x1 = pDraw->x;
-	box.y1 = pDraw->y;
-	box.x2 = box.x1 + pDraw->width;
-	box.y2 = box.y1 + pDraw->height;
+	box.x1 = draw->x;
+	box.y1 = draw->y;
+	box.x2 = box.x1 + draw->width;
+	box.y2 = box.y1 + draw->height;
 
-	crtc = sna_covering_crtc(pScrn, &box, NULL);
+	crtc = sna_covering_crtc(sna, &box, NULL);
 
 	/* Make sure the CRTC is valid and this is the real front buffer */
 	pipe = -1;
