@@ -2363,6 +2363,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 	if (USE_INPLACE &&
 	    priv->gpu_damage &&
 	    priv->gpu_bo->tiling == I915_TILING_NONE &&
+	    (priv->cow == NULL || (flags & MOVE_WRITE) == 0) &&
 	    (DAMAGE_IS_ALL(priv->gpu_damage) ||
 	     sna_damage_contains_box__no_reduce(priv->gpu_damage,
 						&region->extents)) &&
@@ -2371,7 +2372,6 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 	     !__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo))) {
 		DBG(("%s: try to operate inplace (CPU), read? %d, write? %d\n",
 		     __FUNCTION__, !!(flags & MOVE_READ), !!(flags & MOVE_WRITE)));
-		assert(priv->cow == NULL || (flags & MOVE_WRITE) == 0);
 		assert(sna_damage_contains_box(priv->gpu_damage, &region->extents) == PIXMAN_REGION_IN);
 		assert(sna_damage_contains_box(priv->cpu_damage, &region->extents) == PIXMAN_REGION_OUT);
 
