@@ -428,6 +428,7 @@ static int sna_video_sprite_put_image(ClientPtr client,
 				       video->color_key,
 				       RegionRects(&clip),
 				       RegionNumRects(&clip)))
+			RegionCopy(&video->clip, &clip);
 		sna_window_set_port((WindowPtr)draw, port);
 	}
 
