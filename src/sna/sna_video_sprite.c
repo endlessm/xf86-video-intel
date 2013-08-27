@@ -213,21 +213,23 @@ sna_video_sprite_show(struct sna *sna,
 		frame->height = tmp;
 	}
 
-#if defined(DRM_I915_SET_SPRITE_DESTKEY)
+#if defined(DRM_I915_SET_SPRITE_COLORKEY)
 	if (video->color_key_changed || video->plane != s.plane_id) {
-		struct drm_intel_set_sprite_destkey set;
+		struct drm_intel_sprite_colorkey set;
 
 		DBG(("%s: updating color key: %x\n",
 		     __FUNCTION__, video->color_key));
 
 		set.plane_id = s.plane_id;
-		set.value = video->color_key;
+		set.min_value = video->color_key;
+		set.max_value = video->color_key; /* not used for destkey */
+		set.channel_mask = 0x7 << 24 | 0xff << 16 | 0xff << 8 | 0xff << 0;
 		set.flags = 0;
 		if (!video->AlwaysOnTop)
 			set.flags = I915_SET_COLORKEY_DESTINATION;
 
 		if (drmIoctl(sna->kgem.fd,
-			     DRM_IOCTL_I915_SET_SPRITE_DESTKEY,
+			     DRM_IOCTL_I915_SET_SPRITE_COLORKEY,
 			     &set))
 			xf86DrvMsg(sna->scrn->scrnIndex, X_ERROR,
 				   "failed to update color key\n");
