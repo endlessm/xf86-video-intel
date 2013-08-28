@@ -2197,14 +2197,7 @@ try_blt(struct sna *sna,
 {
 	struct kgem_bo *bo;
 
-	bo = __sna_drawable_peek_bo(dst->pDrawable);
-	if (bo == NULL)
-		return true;
-
-	if (bo->rq)
-		return RQ_IS_BLT(bo->rq);
-
-	if (sna->kgem.ring == KGEM_BLT) {
+	if (sna->kgem.mode == KGEM_BLT) {
 		DBG(("%s: already performing BLT\n", __FUNCTION__));
 		return true;
 	}
@@ -2215,8 +2208,23 @@ try_blt(struct sna *sna,
 		return true;
 	}
 
+	bo = __sna_drawable_peek_bo(dst->pDrawable);
+	if (bo && bo->rq)
+		return RQ_IS_BLT(bo->rq);
+
 	if (sna_picture_is_solid(src, NULL) && can_switch_to_blt(sna, NULL, 0))
 		return true;
+
+	if (src->pDrawable) {
+		bo = __sna_drawable_peek_bo(src->pDrawable);
+		if (bo && bo->rq)
+			return RQ_IS_BLT(bo->rq);
+	}
+
+	if (sna->kgem.ring == KGEM_BLT) {
+		DBG(("%s: already performing BLT\n", __FUNCTION__));
+		return true;
+	}
 
 	return false;
 }
