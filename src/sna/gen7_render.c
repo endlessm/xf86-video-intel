@@ -2178,6 +2178,9 @@ inline static bool prefer_blt_ring(struct sna *sna,
 				   struct kgem_bo *bo,
 				   unsigned flags)
 {
+	if (kgem_bo_is_render(bo))
+		return false;
+
 	return can_switch_to_blt(sna, bo, flags);
 }
 

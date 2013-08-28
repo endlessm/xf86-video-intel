@@ -1891,6 +1891,9 @@ inline static bool can_switch_to_blt(struct sna *sna,
 
 static inline bool untiled_tlb_miss(struct kgem_bo *bo)
 {
+	if (kgem_bo_is_render(bo))
+		return false;
+
 	return bo->tiling == I915_TILING_NONE && bo->pitch >= 4096;
 }
 
