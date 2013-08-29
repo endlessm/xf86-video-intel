@@ -1044,6 +1044,11 @@ sna_dri_page_flip(struct sna *sna, struct sna_dri_frame_event *info)
 	if (!info->count)
 		return false;
 
+	DBG(("%s: mark handle=%d as scanout, swap front (handle=%d, name=%d) and back (handle=%d, name=%d)\n",
+	     __FUNCTION__, bo->handle,
+	     get_private(info->front)->bo->handle, info->front->name,
+	     get_private(info->back)->bo->handle, info->back->name));
+
 	info->scanout[1] = info->scanout[0];
 	info->scanout[0].bo = ref(bo);
 	info->scanout[0].name = info->back->name;
@@ -1589,8 +1594,8 @@ static void sna_dri_flip_event(struct sna *sna,
 	/* We assume our flips arrive in order, so we don't check the frame */
 	switch (flip->type) {
 	case DRI2_FLIP:
-		DBG(("%s: flip complete (drawable gone? %d)\n",
-		     __FUNCTION__, flip->draw == NULL));
+		DBG(("%s: flip complete (drawable gone? %d), msc=%d\n",
+		     __FUNCTION__, flip->draw == NULL, flip->fe_frame));
 		if (flip->draw)
 			DRI2SwapComplete(flip->client, flip->draw,
 					 flip->fe_frame,
@@ -1784,17 +1789,15 @@ sna_dri_schedule_flip(ClientPtr client, DrawablePtr draw,
 			     __FUNCTION__));
 			info->type = DRI2_FLIP;
 			sna->dri.flip_pending = info;
-			*target_msc = current_msc + 1;
-			return true;
+		} else {
+			if (!sna_dri_page_flip(sna, info)) {
+				sna_dri_frame_event_info_free(sna, draw, info);
+				return false;
+			}
 		}
 
-		if (!sna_dri_page_flip(sna, info)) {
-			sna_dri_frame_event_info_free(sna, draw, info);
-			return false;
-		}
-
+		current_msc++;
 		if (info->type != DRI2_FLIP) {
-			current_msc++;
 new_back:
 			sna_dri_flip_get_back(sna, info);
 			DRI2SwapComplete(client, draw, 0, 0, 0,
@@ -1802,6 +1805,7 @@ new_back:
 					 func, data);
 		}
 out:
+		DBG(("%s: target_msc=%lu\n", __FUNCTION__, (unsigned long)current_msc));
 		*target_msc = current_msc;
 		return true;
 	}
