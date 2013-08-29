@@ -2758,8 +2758,15 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 		   "resizing framebuffer to %dx%d\n",
 		   width, height);
 
-	for (i = 0; i < xf86_config->num_crtc; i++)
-		sna_crtc_disable_shadow(sna, to_sna_crtc(xf86_config->crtc[i]));
+	for (i = 0; i < xf86_config->num_crtc; i++) {
+		struct sna_crtc *crtc;
+
+		crtc = to_sna_crtc(xf86_config->crtc[i]);
+		if (crtc == NULL)
+			continue;
+
+		sna_crtc_disable_shadow(sna, crtc);
+	}
 	assert(sna->mode.shadow_active == 0);
 	assert(sna->mode.shadow_damage == NULL);
 	assert(sna->mode.shadow == NULL);
@@ -2778,7 +2785,7 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 	for (i = 0; i < xf86_config->num_crtc; i++) {
 		xf86CrtcPtr crtc = xf86_config->crtc[i];
 
-		if (!crtc->enabled)
+		if (!crtc->enabled || to_sna_crtc(crtc) == NULL)
 			continue;
 
 		if (!sna_crtc_set_mode_major(crtc,
@@ -2818,8 +2825,8 @@ static int do_page_flip(struct sna *sna, struct kgem_bo *bo,
 		struct drm_mode_crtc_page_flip arg;
 
 		DBG(("%s: crtc %d active? %d\n",
-		     __FUNCTION__, i, crtc->bo != NULL));
-		if (crtc->bo == NULL)
+		     __FUNCTION__, i, crtc && crtc->bo));
+		if (crtc == NULL || crtc->bo == NULL)
 			continue;
 
 		arg.crtc_id = crtc->id;
@@ -3019,6 +3026,9 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 		struct drm_mode_crtc mode;
 		uint16_t *gamma;
 
+		if (sna_crtc == NULL)
+			continue;
+
 		crtc->enabled = FALSE;
 		crtc->desiredMode.status = MODE_NOMODE;
 
@@ -3087,6 +3097,9 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 	for (i = 0; i < config->num_output; i++) {
 		xf86OutputPtr output = config->output[i];
 		uint32_t crtc_id;
+
+		if (to_sna_output(output) == NULL)
+			continue;
 
 		crtc_id = (uintptr_t)output->crtc;
 		output->crtc = NULL;
@@ -3189,12 +3202,16 @@ sna_crtc_config_notify(ScreenPtr screen)
 bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 {
 	struct sna_mode *mode = &sna->mode;
+	int num_fake = 0;
 	int i;
 
 	if (sna->flags & SNA_IS_HOSTED) {
 		sna_setup_provider(scrn);
 		return true;
 	}
+
+	if (!xf86GetOptValInteger(sna->Options, OPTION_VIRTUAL, &num_fake))
+		num_fake = 0;
 
 	mode->kmode = drmModeGetResources(sna->kgem.fd);
 	if (mode->kmode) {
@@ -3211,17 +3228,20 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 
 		if (!xf86IsEntityShared(scrn->entityList[0]))
 			sna_mode_compute_possible_clones(scrn);
-
-		sna_setup_provider(scrn);
 	} else {
-		if (!sna_mode_fake_init(sna))
-			return false;
+		if (num_fake == 0)
+			num_fake = 1;
 	}
 
 	set_size_range(sna);
 
+	if (!sna_mode_fake_init(sna, num_fake))
+		return false;
+
 	if (!sna_probe_initial_configuration(sna))
 		xf86InitialConfiguration(scrn, TRUE);
+
+	sna_setup_provider(scrn);
 	return scrn->modes != NULL;
 }
 
@@ -3241,8 +3261,15 @@ sna_mode_close(struct sna *sna)
 	if (sna->flags & SNA_IS_HOSTED)
 		return;
 
-	for (i = 0; i < xf86_config->num_crtc; i++)
-		sna_crtc_disable_shadow(sna, to_sna_crtc(xf86_config->crtc[i]));
+	for (i = 0; i < xf86_config->num_crtc; i++) {
+		struct sna_crtc *crtc;
+
+		crtc = to_sna_crtc(xf86_config->crtc[i]);
+		if (crtc == NULL)
+			continue;
+
+		sna_crtc_disable_shadow(sna, crtc);
+	}
 }
 
 void
@@ -3567,7 +3594,8 @@ sna_wait_for_scanline(struct sna *sna,
 	int y1, y2, pipe;
 	bool ret;
 
-	assert(crtc);
+	assert(crtc != NULL);
+	assert(to_sna_crtc(crtc) != NULL);
 	assert(to_sna_crtc(crtc)->bo != NULL);
 	assert(pixmap == sna->front);
 
@@ -3930,7 +3958,7 @@ void sna_mode_redisplay(struct sna *sna)
 			struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
 			RegionRec damage;
 
-			if (!sna_crtc->shadow)
+			if (sna_crtc == NULL || !sna_crtc->shadow)
 				continue;
 
 			assert(crtc->enabled);
@@ -3953,7 +3981,9 @@ void sna_mode_redisplay(struct sna *sna)
 		struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
 		RegionRec damage;
 
-		if (!sna_crtc->shadow || sna_crtc->bo == sna->mode.shadow)
+		if (sna_crtc == NULL ||
+		    !sna_crtc->shadow ||
+		    sna_crtc->bo == sna->mode.shadow)
 			continue;
 
 		assert(crtc->enabled);
@@ -3987,8 +4017,8 @@ void sna_mode_redisplay(struct sna *sna)
 			struct drm_mode_crtc_page_flip arg;
 
 			DBG(("%s: crtc %d [%d, pipe=%d] active? %d\n",
-			     __FUNCTION__, i, crtc->id, crtc->pipe, crtc->bo != NULL));
-			if (crtc->bo != old)
+			     __FUNCTION__, i, crtc->id, crtc->pipe, crtc && crtc->bo));
+			if (crtc == NULL || crtc->bo != old)
 				continue;
 
 			assert(config->crtc[i]->enabled);

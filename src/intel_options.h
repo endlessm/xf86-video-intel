@@ -30,6 +30,7 @@ enum intel_options {
 #endif
 #ifdef USE_SNA
 	OPTION_ZAPHOD,
+	OPTION_VIRTUAL,
 	OPTION_TEAR_FREE,
 	OPTION_CRTC_PIXMAPS,
 #endif

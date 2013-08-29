@@ -261,6 +261,18 @@ applications when monitors are connected or disconnected.
 .IP
 Default: enabled.
 .TP
+.BI "Option \*qVirtualheads\*q \*q" integer \*q
+This option controls specifies the number of fake outputs to create in
+addition to the normal outputs detected on your hardware. These outputs
+cannot be assigned to the regular displays attached to the GPU, but do
+otherwise act as any other xrandr output and share a portion of the
+regular framebuffer. One use case for these extra heads is for extending
+your desktop onto a discrete GPU using the Bumblebee project. However,
+the recommendation here is to use PRIME instead to create a single
+Xserver that can addresses and coordinate between multiple GPUs.
+.IP
+Default: 0
+.TP
 .BI "Option \*qZaphodHeads\*q \*q" string \*q
 .IP
 Specify the randr output(s) to use with zaphod mode for a particular driver

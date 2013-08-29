@@ -330,7 +330,7 @@ struct sna {
 };
 
 bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna);
-bool sna_mode_fake_init(struct sna *sna);
+bool sna_mode_fake_init(struct sna *sna, int num_fake);
 void sna_mode_adjust_frame(struct sna *sna, int x, int y);
 extern void sna_mode_update(struct sna *sna);
 extern void sna_mode_wakeup(struct sna *sna);
