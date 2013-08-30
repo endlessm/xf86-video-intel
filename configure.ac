@@ -166,6 +166,8 @@ fi
 PKG_CHECK_MODULES(X11, [x11 xrender xext pixman-1], [x11=yes], [x11=no])
 AM_CONDITIONAL(HAVE_X11, test x$x11 = xyes)
 
+PKG_CHECK_MODULES(TOOL, [xrandr xdamage xfixes xcursor xtst xext x11], [tools=yes], [tools=no])
+
 AH_TOP([#include "xorg-server.h"])
 
 # Define a configure option for an alternate module directory
@@ -574,6 +576,7 @@ AC_CONFIG_FILES([
                 xvmc/shader/mc/Makefile
                 xvmc/shader/vld/Makefile
 		test/Makefile
+		tools/Makefile
 ])
 AC_OUTPUT
 

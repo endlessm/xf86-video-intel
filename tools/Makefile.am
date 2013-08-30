@@ -18,22 +18,27 @@
 #  IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 #  CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-ACLOCAL_AMFLAGS = ${ACLOCAL_FLAGS} -I m4
+AM_CFLAGS = \
+	@CWARNFLAGS@ \
+	@TOOL_CFLAGS@ \
+	@NOWARNFLAGS@ \
+	$(NULL)
 
-SUBDIRS = man xvmc src tools
+bin_PROGRAMS = intel-virtual-output
 
-MAINTAINERCLEANFILES = ChangeLog INSTALL
+intel_virtual_output_SOURCES = \
+	virtual.c \
+	$(NULL)
 
-if HAVE_X11
-SUBDIRS += test
-endif
+intel_virtual_output_LDADD = @TOOL_LIBS@
 
-.PHONY: ChangeLog INSTALL
+drivermandir = $(DRIVER_MAN_DIR)
+driverman_DATA = intel-virtual-output.$(DRIVER_MAN_SUFFIX)
 
-INSTALL:
-	$(INSTALL_CMD)
+EXTRA_DIST = intel-virtual-output.man
+CLEANFILES = $(driverman_DATA)
 
-ChangeLog:
-	$(CHANGELOG_CMD)
-
-dist-hook: ChangeLog INSTALL
+# String replacements in MAN_SUBSTS now come from xorg-macros.m4 via configure
+SUFFIXES = .$(DRIVER_MAN_SUFFIX) .man
+.man.$(DRIVER_MAN_SUFFIX):
+	$(AM_V_GEN)$(SED) $(MAN_SUBSTS) < $< > $@
