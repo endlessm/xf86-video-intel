@@ -128,6 +128,22 @@ static int fd_set_cloexec(int fd)
 	return fd;
 }
 
+static int fd_set_nonblock(int fd)
+{
+	int flags;
+
+	if (fd == -1)
+		return fd;
+
+	flags = fcntl(fd, F_GETFD);
+	if (flags != -1) {
+		flags |= O_NONBLOCK;
+		fcntl(fd, F_SETFD, flags);
+	}
+
+	return fd;
+}
+
 static int __intel_open_device(const struct pci_device *pci, char **path)
 {
 	int fd;
@@ -158,14 +174,15 @@ static int __intel_open_device(const struct pci_device *pci, char **path)
 				fd = -1;
 			}
 		}
+		fd = fd_set_nonblock(fd);
 	} else {
 #ifdef O_CLOEXEC
-		fd = open(*path, O_RDWR | O_CLOEXEC);
+		fd = open(*path, O_RDWR | O_NONBLOCK | O_CLOEXEC);
 #else
 		fd = -1;
 #endif
 		if (fd == -1)
-			fd = fd_set_cloexec(open(*path, O_RDWR));
+			fd = fd_set_cloexec(open(*path, O_RDWR | O_NONBLOCK));
 	}
 
 	return fd;
