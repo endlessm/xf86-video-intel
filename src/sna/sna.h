@@ -176,6 +176,7 @@ static inline PixmapPtr get_window_pixmap(WindowPtr window)
 
 static inline PixmapPtr get_drawable_pixmap(DrawablePtr drawable)
 {
+	assert(drawable);
 	if (drawable->type == DRAWABLE_PIXMAP)
 		return (PixmapPtr)drawable;
 	else
@@ -619,7 +620,8 @@ static inline struct kgem_bo *__sna_pixmap_get_bo(PixmapPtr pixmap)
 
 static inline struct kgem_bo *__sna_drawable_peek_bo(DrawablePtr d)
 {
-	return sna_pixmap(get_drawable_pixmap(d))->gpu_bo;
+	struct sna_pixmap *priv = sna_pixmap(get_drawable_pixmap(d));
+	return priv ? priv->gpu_bo : NULL;
 }
 
 static inline struct kgem_bo *sna_pixmap_pin(PixmapPtr pixmap, unsigned flags)
