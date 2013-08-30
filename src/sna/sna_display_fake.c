@@ -143,19 +143,25 @@ sna_output_dpms(xf86OutputPtr output, int dpms)
 static xf86OutputStatus
 sna_output_detect(xf86OutputPtr output)
 {
-	return XF86OutputStatusUnknown;
+	if (output->randr_output->numUserModes)
+		return XF86OutputStatusConnected;
+
+	return XF86OutputStatusDisconnected;
 }
 
 static Bool
 sna_output_mode_valid(xf86OutputPtr output, DisplayModePtr mode)
 {
+	if (mode->type & M_T_DEFAULT)
+		return MODE_BAD;
+
 	return MODE_OK;
 }
 
 static DisplayModePtr
 sna_output_get_modes(xf86OutputPtr output)
 {
-	return xf86GetDefaultModes();
+	return NULL;
 }
 
 static void
