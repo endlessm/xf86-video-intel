@@ -167,6 +167,7 @@ PKG_CHECK_MODULES(X11, [x11 xrender xext pixman-1], [x11=yes], [x11=no])
 AM_CONDITIONAL(HAVE_X11, test x$x11 = xyes)
 
 PKG_CHECK_MODULES(TOOL, [xrandr xdamage xfixes xcursor xtst xext x11], [tools=yes], [tools=no])
+AM_CONDITIONAL(BUILD_TOOLS, test x$tools = xyes)
 
 AH_TOP([#include "xorg-server.h"])
 
@@ -607,12 +608,19 @@ if test "x$dri_msg" = x; then
 	dri_msg=" none"
 fi
 
+if test "x$tools" = xyes; then
+	tools_msg=" intel-virtual-output"
+else
+	tools_msg=" none"
+fi
+
 echo ""
 echo "AC_PACKAGE_STRING will be compiled with:"
 echo "  Acceleration backends:$accel_msg"
 echo "  Additional debugging support?$debug_msg"
 echo "  Support for Direct Rendering Infrastructure:$dri_msg"
 echo "  Support for Xv motion compensation (XvMC and libXvMC):$xvmc_msg"
+echo "  Build additional tools and utilities?$tools_msg"
 if test -n "$xp_msg"; then
 echo "  Experimental support:$xp_msg"
 fi

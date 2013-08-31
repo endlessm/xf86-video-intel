@@ -20,7 +20,11 @@
 
 ACLOCAL_AMFLAGS = ${ACLOCAL_FLAGS} -I m4
 
-SUBDIRS = man xvmc src tools
+SUBDIRS = man xvmc src
+
+if BUILD_TOOLS
+SUBDIRS += tools
+endif
 
 MAINTAINERCLEANFILES = ChangeLog INSTALL
 

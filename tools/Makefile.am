@@ -24,16 +24,16 @@ AM_CFLAGS = \
 	@NOWARNFLAGS@ \
 	$(NULL)
 
+drivermandir = $(DRIVER_MAN_DIR)
+
 bin_PROGRAMS = intel-virtual-output
+driverman_DATA = intel-virtual-output.$(DRIVER_MAN_SUFFIX)
 
 intel_virtual_output_SOURCES = \
 	virtual.c \
 	$(NULL)
 
 intel_virtual_output_LDADD = @TOOL_LIBS@
-
-drivermandir = $(DRIVER_MAN_DIR)
-driverman_DATA = intel-virtual-output.$(DRIVER_MAN_SUFFIX)
 
 EXTRA_DIST = intel-virtual-output.man
 CLEANFILES = $(driverman_DATA)
