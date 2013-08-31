@@ -128,8 +128,10 @@ struct clone {
 struct context {
 	struct display *display;
 	struct clone *clones;
-	int num_clones;
-	int num_display;
+	struct pollfd *pfd;
+	int nclone;
+	int ndisplay;
+	int nfd;
 };
 
 static int xlib_vendor_is_xorg(Display *dpy)
@@ -262,26 +264,6 @@ static int mode_equal(const XRRModeInfo *a, const XRRModeInfo *b)
 		a->modeFlags == b->modeFlags);
 }
 
-static RROutput find_output(Display *dpy, const char *name)
-{
-	XRRScreenResources *res;
-	RROutput ret = 0;
-	int i;
-
-	res = XRRGetScreenResourcesCurrent(dpy, DefaultRootWindow(dpy));
-	if (res == NULL)
-		return 0;
-
-	for (i = 0; ret == 0 && i < res->noutput; i++) {
-		XRROutputInfo *o = XRRGetOutputInfo(dpy, res, res->outputs[i]);
-		if (strcmp(o->name, name) == 0)
-			ret = res->outputs[i];
-		XRRFreeOutputInfo(o);
-	}
-	XRRFreeScreenResources(res);
-
-	return ret;
-}
 
 static XRRModeInfo *lookup_mode(XRRScreenResources *res, int id)
 {
@@ -383,35 +365,54 @@ err:
 	return ret;
 }
 
-static int claim_virtual(struct output *output)
+static RROutput claim_virtual(struct display *display, const char *name)
 {
 	char buf[] = "ClaimVirtualHead";
+	Display *dpy = display->dpy;
 	XRRScreenResources *res;
 	XRRModeInfo mode;
 	RRMode id;
+	RROutput rr_output;
+	int i;
+
+	DBG(("%s(%s)\n", __func__, name));
+
+	res = XRRGetScreenResourcesCurrent(dpy, display->root);
+	if (res == NULL)
+		return 0;
+
+	for (i = rr_output = 0; rr_output == 0 && i < res->noutput; i++) {
+		XRROutputInfo *o = XRRGetOutputInfo(dpy, res, res->outputs[i]);
+		if (strcmp(o->name, name) == 0)
+			rr_output = res->outputs[i];
+		XRRFreeOutputInfo(o);
+	}
+	XRRFreeScreenResources(res);
+
+	DBG(("%s(%s): rr_output=%ld\n", __func__, name, (long)rr_output));
+	if (rr_output == 0)
+		return 0;
 
 	/* Set any mode on the VirtualHead to make the Xserver allocate another */
-	assert(output->rr_output);
-
 	memset(&mode, 0, sizeof(mode));
 	mode.width = 1024;
 	mode.height = 768;
 	mode.name = buf;
 	mode.nameLength = sizeof(buf) - 1;
 
-	id = XRRCreateMode(output->dpy, output->window, &mode);
-	XRRAddOutputMode(output->dpy, output->rr_output, id);
+	id = XRRCreateMode(dpy, display->root, &mode);
+	XRRAddOutputMode(dpy, rr_output, id);
 
 	/* Force a redetection for the ddx to spot the new outputs */
-	res = XRRGetScreenResources(output->dpy, output->window);
+	res = XRRGetScreenResources(dpy, display->root);
 	if (res == NULL)
-		return ENOMEM;
-
+		return 0;
 	XRRFreeScreenResources(res);
-	XRRDeleteOutputMode(output->dpy, output->rr_output, id);
-	XRRDestroyMode(output->dpy, id);
 
-	return 0;
+	XRRDeleteOutputMode(dpy, rr_output, id);
+	XRRDestroyMode(dpy, id);
+
+	return rr_output;
 }
 
 static int get_current_config(struct output *output)
@@ -711,12 +712,6 @@ static void display_load_visible_cursor(struct display *display, XFixesCursorIma
 	display->cursor_visible += display->cursor != display->invisible_cursor;
 }
 
-static void display_start_cursor_move(struct display *display)
-{
-	display->cursor_moved = 0;
-	display->cursor_visible = 0;
-}
-
 static void display_cursor_move(struct display *display, int x, int y, int visible)
 {
 	display->cursor_moved++;
@@ -727,7 +722,7 @@ static void display_cursor_move(struct display *display, int x, int y, int visib
 	}
 }
 
-static void display_end_cursor_move(struct display *display)
+static void display_flush_cursor(struct display *display)
 {
 	Cursor cursor;
 	int x, y;
@@ -755,6 +750,9 @@ static void display_end_cursor_move(struct display *display)
 		XDefineCursor(display->dpy, display->root, cursor);
 		display->cursor = cursor;
 	}
+
+	display->cursor_moved = 0;
+	display->cursor_visible = 0;
 }
 
 static void clone_move_cursor(struct clone *c, int x, int y)
@@ -777,23 +775,25 @@ static void clone_move_cursor(struct clone *c, int x, int y)
 }
 
 static int clone_output_init(struct clone *clone, struct output *output,
-			     struct display *display, const char *name)
+			     struct display *display, const char *name,
+			     RROutput rr_output)
 {
 	Display *dpy = display->dpy;
 	int depth;
 
+	if (rr_output == 0)
+		return -ENOENT;
+
 	DBG(("%s(%s, %s)\n", __func__, DisplayString(dpy), name));
+
+	output->name = strdup(name);
+	if (output->name == NULL)
+		return -ENOMEM;
 
 	output->display = display;
 	output->dpy = dpy;
 
-	output->rr_output = find_output(dpy, name);
-	if (output->rr_output == 0)
-		return ENOENT;
-
-	output->name = strdup(name);
-	if (output->name == NULL)
-		return ENOMEM;
+	output->rr_output = rr_output;
 
 	output->window = display->root;
 	output->use_shm = display->has_shm;
@@ -998,7 +998,7 @@ static void clone_damage(struct clone *c, const XRectangle *rec)
 
 static void usage(const char *arg0)
 {
-	printf("usage: %s [-d <source display>] [<target display>] <target output>...\n", arg0);
+	printf("usage: %s [-d <source display>] [-b] [<target display>]...\n", arg0);
 }
 
 static void record_callback(XPointer closure, XRecordInterceptData *data)
@@ -1010,7 +1010,7 @@ static void record_callback(XPointer closure, XRecordInterceptData *data)
 		const xEvent *e = (const xEvent *)data->data;
 
 		if (e->u.u.type == MotionNotify) {
-			for (n = 0; n < ctx->num_clones; n++)
+			for (n = 0; n < ctx->nclone; n++)
 				clone_move_cursor(&ctx->clones[n],
 						  e->u.keyButtonPointer.rootX,
 						  e->u.keyButtonPointer.rootY);
@@ -1047,7 +1047,7 @@ static int record_mouse(struct context *ctx)
 	if (!XRecordEnableContextAsync(dpy, rc, record_callback, (XPointer)ctx))
 		return -EINVAL;
 
-	ctx->display[ctx->num_display].dpy = dpy;
+	ctx->display[ctx->ndisplay].dpy = dpy;
 	return ConnectionNumber(dpy);
 }
 
@@ -1217,7 +1217,7 @@ static int display_init_render(struct display *display, int depth, XRenderPictFo
 	if (display->root_format == 0) {
 		if (!XRenderQueryVersion(dpy, &major, &minor)) {
 			fprintf(stderr, "Render extension not supported by %s\n", DisplayString(dpy));
-			return EINVAL;
+			return -EINVAL;
 		}
 
 		display->root_format = XRenderFindVisualFormat(dpy, display->visual);
@@ -1236,7 +1236,7 @@ static int display_init_render(struct display *display, int depth, XRenderPictFo
 	case 24: *use_render = display->rgb24_format; break;
 	}
 	if (*use_render == 0)
-		return ENOENT;
+		return -ENOENT;
 
 	return 0;
 }
@@ -1295,9 +1295,30 @@ static int display_init_core(struct display *display)
 	return 0;
 }
 
-static int display_open(struct display *display, const char *name)
+static inline int is_power_of_2(unsigned long n)
 {
+	return n && ((n & (n - 1)) == 0);
+}
+
+static struct display *add_display(struct context *ctx)
+{
+	if (is_power_of_2(ctx->ndisplay)) {
+		ctx->display = realloc(ctx->display, 2*ctx->ndisplay*sizeof(struct display));
+		if (ctx->display == NULL)
+			return NULL;
+	}
+
+	return memset(&ctx->display[ctx->ndisplay++], 0, sizeof(struct display));
+}
+
+static int display_open(struct context *ctx, const char *name)
+{
+	struct display *display;
 	int ret;
+
+	display = add_display(ctx);
+	if (display == NULL)
+		return -ENOMEM;
 
 	DBG(("%s(%s)\n", __func__, name));
 
@@ -1314,10 +1335,11 @@ static int display_open(struct display *display, const char *name)
 	return ConnectionNumber(display->dpy);
 }
 
-static int bumblebee_open(struct display *display)
+static int bumblebee_open(struct context *ctx)
 {
 	char buf[256];
 	struct sockaddr_un addr;
+	struct display *display;
 	int fd, len;
 
 	fd = socket(PF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
@@ -1349,6 +1371,10 @@ static int bumblebee_open(struct display *display)
 
 	while (isspace(buf[--len]))
 		buf[len] = '\0';
+
+	display = add_display(ctx);
+	if (display == NULL)
+		return -ENOMEM;
 
 	display->dpy = XOpenDisplay(buf+7);
 	if (display->dpy == NULL) {
@@ -1384,6 +1410,42 @@ static int display_init_damage(struct display *display)
 	return 0;
 }
 
+static int context_init(struct context *ctx)
+{
+	memset(ctx, 0, sizeof(*ctx));
+
+	ctx->pfd = malloc(sizeof(struct pollfd));
+	if (ctx->pfd == NULL)
+		return -ENOMEM;
+
+	ctx->clones = malloc(sizeof(struct clone));
+	if (ctx->clones == NULL)
+		return -ENOMEM;
+
+	ctx->display = malloc(sizeof(struct display));
+	if (ctx->display == NULL)
+		return -ENOMEM;
+
+	return 0;
+}
+
+static int add_fd(struct context *ctx, int fd)
+{
+	if (fd < 0)
+		return fd;
+
+	if (is_power_of_2(ctx->nfd)) {
+		ctx->pfd = realloc(ctx->pfd, 2*ctx->nfd*sizeof(struct pollfd));
+		if (ctx->pfd == NULL)
+			return -ENOMEM;
+	}
+
+	ctx->pfd[ctx->nfd].fd = fd;
+	ctx->pfd[ctx->nfd].events = POLLIN;
+	ctx->nfd++;
+	return 0;
+}
+
 static void display_init_randr_hpd(struct display *display)
 {
 	int major, minor;
@@ -1397,8 +1459,75 @@ static void display_init_randr_hpd(struct display *display)
 		XRRSelectInput(display->dpy, display->root, RROutputChangeNotifyMask);
 }
 
+static struct clone *add_clone(struct context *ctx)
+{
+	if (is_power_of_2(ctx->nclone)) {
+		ctx->clones = realloc(ctx->clones, 2*ctx->nclone*sizeof(struct clone));
+		if (ctx->clones == NULL)
+			return NULL;
+	}
+
+	return memset(&ctx->clones[ctx->nclone++], 0, sizeof(struct clone));
+}
+
+static int last_display_add_clones(struct context *ctx)
+{
+	struct display *display = &ctx->display[ctx->ndisplay-1];
+	XRRScreenResources *res;
+	char buf[80];
+	int i, ret;
+
+	display_init_randr_hpd(display);
+
+	res = XRRGetScreenResourcesCurrent(display->dpy, display->root);
+	if (res == NULL)
+		return -ENOMEM;
+
+	for (i = 0; i < res->noutput; i++) {
+		XRROutputInfo *o = XRRGetOutputInfo(display->dpy, res, res->outputs[i]);
+		struct clone *clone = add_clone(ctx);
+
+		clone->depth = 24;
+
+		sprintf(buf, "VIRTUAL%d", ctx->nclone);
+		ret = clone_output_init(clone, &clone->src, ctx->display, buf, claim_virtual(ctx->display, buf));
+		if (ret) {
+			fprintf(stderr, "Failed to find available VirtualHead for \"%s\" on display \"%s\"\n",
+				o->name, DisplayString(display->dpy));
+			return ret;
+		}
+
+		ret = clone_output_init(clone, &clone->dst, display, o->name, res->outputs[i]);
+		if (ret) {
+			fprintf(stderr, "Failed to add output \"%s\" on display \"%s\"\n",
+				o->name, DisplayString(display->dpy));
+			return ret;
+		}
+
+		ret = clone_init_depth(clone);
+		if (ret) {
+			fprintf(stderr, "Failed to negotiate image format for display \"%s\"\n",
+				DisplayString(display->dpy));
+			return ret;
+		}
+
+		ret = clone_update_dst(&clone->dst, &clone->src);
+		if (ret) {
+			fprintf(stderr, "Failed to clone output \"%s\" from display \"%s\"\n",
+				o->name, DisplayString(display->dpy));
+			return ret;
+		}
+
+		XRRFreeOutputInfo(o);
+	}
+	XRRFreeScreenResources(res);
+	return 0;
+}
+
 static void display_flush(struct display *display)
 {
+	display_flush_cursor(display);
+
 	if (!display->flush)
 		return;
 
@@ -1408,37 +1537,24 @@ static void display_flush(struct display *display)
 	display->flush = 0;
 }
 
-static int context_init(struct context *ctx, int num_clones)
-{
-	memset(ctx, 0, sizeof(*ctx));
-
-	ctx->display = calloc(num_clones+2, sizeof(struct display));
-	if (ctx->display == NULL)
-		return ENOMEM;
-
-	ctx->clones = calloc(num_clones, sizeof(struct clone));
-	if (ctx->clones == NULL)
-		return ENOMEM;
-
-	return 0;
-}
-
 int main(int argc, char **argv)
 {
 	struct context ctx;
 	const char *src_name = NULL;
-	struct pollfd *pfd;
 	uint64_t count;
-	int nfd, enable_timer = 0;
-	int i, ret, daemonize = 1;
+	int enable_timer = 0;
+	int i, ret, daemonize = 1, bumblebee = 0;
 
-	while ((i = getopt(argc, argv, "d:fh")) != -1) {
+	while ((i = getopt(argc, argv, "bd:fh")) != -1) {
 		switch (i) {
 		case 'd':
 			src_name = optarg;
 			break;
 		case 'f':
 			daemonize = 0;
+			break;
+		case 'b':
+			bumblebee = 1;
 			break;
 		case 'h':
 		default:
@@ -1447,104 +1563,58 @@ int main(int argc, char **argv)
 		}
 	}
 
-	count = argc - optind;
-	if (count < 2) {
-		usage(argv[0]);
-		exit(EINVAL);
+	ret = context_init(&ctx);
+	if (ret)
+		return -ret;
+
+	ret = add_fd(&ctx, display_open(&ctx, src_name));
+	if (ret)
+		return -ret;
+
+	ret = display_init_damage(ctx.display);
+	if (ret)
+		return ret;
+
+	XRRSelectInput(ctx.display->dpy, ctx.display->root, RRScreenChangeNotifyMask);
+	XFixesSelectCursorInput(ctx.display->dpy, ctx.display->root, XFixesDisplayCursorNotifyMask);
+
+	if (optind == argc || bumblebee) {
+		ret = add_fd(&ctx, bumblebee_open(&ctx));
+		if (ret) {
+			if (!bumblebee) {
+				usage(argv[0]);
+				return 0;
+			}
+			return -ret;
+		}
+
+		ret = last_display_add_clones(&ctx);
+		if (ret)
+			return -ret;
 	}
-
-	pfd = malloc(sizeof(struct pollfd) * (count+3));
-	if (pfd == NULL)
-		return ENOMEM;
-
-	ret = context_init(&ctx, count);
-	if (ret)
-		return ret;
-
-	nfd = 1;
-	pfd->events = POLLIN;
-	pfd->fd = display_open(&ctx.display[0], src_name);
-	if (pfd->fd < 0)
-		return -pfd->fd;
-
-	ret = display_init_damage(&ctx.display[0]);
-	if (ret)
-		return ret;
-
-	XRRSelectInput(ctx.display[0].dpy, ctx.display[0].root, RRScreenChangeNotifyMask);
-	XFixesSelectCursorInput(ctx.display[0].dpy, ctx.display[0].root, XFixesDisplayCursorNotifyMask);
-	ctx.num_display++;
 
 	for (i = optind; i < argc; i++) {
-		char buf[80];
+		ret = add_fd(&ctx, display_open(&ctx, argv[i]));
+		if (ret)
+			return -ret;
 
-		if (strchr(argv[i], ':')) {
-			pfd[nfd].fd = display_open(&ctx.display[ctx.num_display++], argv[i]);
-			if (pfd[nfd].fd < 0)
-				return -pfd[nfd].fd;
-			pfd[nfd].events = POLLIN;
-			nfd++;
-
-			display_init_randr_hpd(&ctx.display[ctx.num_display-1]);
-			continue;
-		}
-		if (nfd == 1) {
-			pfd[nfd].fd = bumblebee_open(&ctx.display[ctx.num_display++]);
-			if (pfd[nfd].fd < 0)
-				return -pfd[nfd].fd;
-			pfd[nfd].events = POLLIN;
-			nfd++;
-
-			display_init_randr_hpd(&ctx.display[ctx.num_display-1]);
-		}
-
-		ctx.clones[ctx.num_clones].depth = 24;
-
-		sprintf(buf, "VIRTUAL%d", ctx.num_clones+1);
-		ret = clone_output_init(&ctx.clones[ctx.num_clones], &ctx.clones[ctx.num_clones].src, &ctx.display[0], buf);
-		if (ret || claim_virtual(&ctx.clones[ctx.num_clones].src)) {
-			fprintf(stderr, "Failed to find available VirtualHead for argv[i].\n");
-			return ret;
-		}
-
-		ret = clone_output_init(&ctx.clones[ctx.num_clones], &ctx.clones[ctx.num_clones].dst, &ctx.display[ctx.num_display-1], argv[i]);
-		if (ret) {
-			fprintf(stderr, "Unable to find output \"%s\" on display \"%s\"\n",
-				argv[i], DisplayString(ctx.display[nfd-1].dpy));
-			return ret;
-		}
-
-		ret = clone_init_depth(&ctx.clones[ctx.num_clones]);
-		if (ret) {
-			fprintf(stderr, "Failed to negotiate image format for display \"%s\"\n",
-				DisplayString(ctx.display[nfd-1].dpy));
-			return ret;
-		}
-
-		ret = clone_update_dst(&ctx.clones[ctx.num_clones].dst, &ctx.clones[ctx.num_clones].src);
-		if (ret) {
-			fprintf(stderr, "Failed to clone output \"%s\" from display \"%s\"\n",
-				argv[i], DisplayString(ctx.display[nfd-1].dpy));
-			return ret;
-		}
-
-		ctx.num_clones++;
+		ret = last_display_add_clones(&ctx);
+		if (ret)
+			return -ret;
 	}
 
-	pfd[nfd].fd = record_mouse(&ctx);
-	if (pfd[nfd].fd < 0) {
+	ret = add_fd(&ctx, record_mouse(&ctx));
+	if (ret) {
 		fprintf(stderr, "XTEST extension not supported by display \"%s\"\n", DisplayString(ctx.display[0].dpy));
-		return -pfd[nfd].fd;
+		return -ret;
 	}
-	pfd[nfd].events = POLLIN;
-	nfd++;
 
-	pfd[nfd].fd = timer(60);
-	if (pfd[nfd].fd < 0) {
+	ret = add_fd(&ctx, timer(60));
+	if (ret) {
 		fprintf(stderr, "Failed to setup timer\n");
-		return -pfd[nfd].fd;
+		return -ret;
 	}
-	pfd[nfd].events = POLLIN;
+	ctx.nfd--; /* we only conditionally poll the timer */
 
 	if (daemonize && daemon(0, 0))
 		return EINVAL;
@@ -1553,53 +1623,50 @@ int main(int argc, char **argv)
 		XEvent e;
 		int reconfigure = 0;
 
-		ret = poll(pfd, nfd + enable_timer, -1);
+		ret = poll(ctx.pfd, ctx.nfd + enable_timer, -1);
 		if (ret <= 0)
 			break;
 
-		for (i = 1; i < ctx.num_display; i++)
-			display_start_cursor_move(&ctx.display[i]);
-
-		if (pfd[0].revents) {
+		if (ctx.pfd[0].revents) {
 			int damaged = 0;
 
 			do {
-				XNextEvent(ctx.display[0].dpy, &e);
+				XNextEvent(ctx.display->dpy, &e);
 
-				if (e.type == ctx.display[0].damage_event + XDamageNotify ) {
+				if (e.type == ctx.display->damage_event + XDamageNotify ) {
 					const XDamageNotifyEvent *de = (const XDamageNotifyEvent *)&e;
-					for (i = 0; i < ctx.num_clones; i++)
+					for (i = 0; i < ctx.nclone; i++)
 						clone_damage(&ctx.clones[i], &de->area);
 					if (!enable_timer)
-						enable_timer = read(pfd[nfd].fd, &count, sizeof(count)) > 0;
+						enable_timer = read(ctx.pfd[ctx.nfd].fd, &count, sizeof(count)) > 0;
 					damaged++;
-				} else if (e.type == ctx.display[0].xfixes_event + XFixesCursorNotify) {
+				} else if (e.type == ctx.display->xfixes_event + XFixesCursorNotify) {
 					XFixesCursorImage *cur;
 
-					cur = XFixesGetCursorImage(ctx.display[0].dpy);
+					cur = XFixesGetCursorImage(ctx.display->dpy);
 					if (cur == NULL)
 						continue;
 
-					for (i = 1; i < ctx.num_display; i++)
+					for (i = 1; i < ctx.ndisplay; i++)
 						display_load_visible_cursor(&ctx.display[i], cur);
 
 					XFree(cur);
-				} else if (e.type == ctx.display[0].rr_event + RRScreenChangeNotify) {
+				} else if (e.type == ctx.display->rr_event + RRScreenChangeNotify) {
 					reconfigure = 1;
 					if (!enable_timer)
-						enable_timer = read(pfd[nfd].fd, &count, sizeof(count)) > 0;
+						enable_timer = read(ctx.pfd[ctx.nfd].fd, &count, sizeof(count)) > 0;
 				} else {
 					DBG(("unknown event %d\n", e.type));
 				}
-			} while (XPending(ctx.display[0].dpy) || poll(pfd, 1, 0) > 0);
+			} while (XPending(ctx.display->dpy) || poll(ctx.pfd, 1, 0) > 0);
 
 			if (damaged)
-				XDamageSubtract(ctx.display[0].dpy, ctx.display[0].damage, None, None);
+				XDamageSubtract(ctx.display->dpy, ctx.display->damage, None, None);
 			ret--;
 		}
 
-		for (i = 1; ret && i < ctx.num_display; i++) {
-			if (pfd[i].revents == 0)
+		for (i = 1; ret && i < ctx.ndisplay; i++) {
+			if (ctx.pfd[i].revents == 0)
 				continue;
 
 			do {
@@ -1611,34 +1678,31 @@ int main(int argc, char **argv)
 						XRROutputPropertyNotifyEvent *ro = (XRROutputPropertyNotifyEvent *)re;
 						int j;
 
-						for (j = 0; j < ctx.num_clones; j++) {
+						for (j = 0; j < ctx.nclone; j++) {
 							if (ctx.clones[j].dst.display == &ctx.display[i] &&
 							    ctx.clones[j].dst.rr_output == ro->output)
 								ctx.clones[j].rr_update = 1;
 						}
 					}
 				}
-			} while (XPending(ctx.display[i].dpy) || poll(&pfd[i], 1, 0) > 0);
+			} while (XPending(ctx.display[i].dpy) || poll(&ctx.pfd[i], 1, 0) > 0);
 
 			ret--;
 		}
 
-		for (i = 0; i < ctx.num_clones; i++)
+		for (i = 0; i < ctx.nclone; i++)
 			clone_update(&ctx.clones[i], reconfigure);
 
-		if (enable_timer && read(pfd[nfd].fd, &count, sizeof(count)) > 0 && count > 0) {
+		if (enable_timer && read(ctx.pfd[ctx.nfd].fd, &count, sizeof(count)) > 0 && count > 0) {
 			ret = 0;
-			for (i = 0; i < ctx.num_clones; i++)
+			for (i = 0; i < ctx.nclone; i++)
 				ret |= clone_paint(&ctx.clones[i]);
 			enable_timer = ret != 0;
 		}
 
-		XPending(ctx.display[ctx.num_display].dpy);
+		XPending(ctx.display[ctx.ndisplay].dpy);
 
-		for (i = 1; i < ctx.num_display; i++)
-			display_end_cursor_move(&ctx.display[i]);
-
-		for (i = 0; i < ctx.num_display; i++)
+		for (i = 0; i < ctx.ndisplay; i++)
 			display_flush(&ctx.display[i]);
 	}
 
