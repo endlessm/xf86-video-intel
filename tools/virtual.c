@@ -60,6 +60,7 @@
 
 struct display {
 	Display *dpy;
+	struct clone *clone;
 
 	int damage_event, damage_error;
 	int xfixes_event, xfixes_error;
@@ -96,6 +97,7 @@ struct output {
 	Display *dpy;
 	char *name;
 	RROutput rr_output;
+	RRCrtc rr_crtc;
 	XShmSegmentInfo shm;
 	Window window;
 	Picture win_picture;
@@ -115,6 +117,8 @@ struct output {
 };
 
 struct clone {
+	struct clone *next;
+
 	struct output src, dst;
 
 	XShmSegmentInfo shm;
@@ -277,48 +281,52 @@ static XRRModeInfo *lookup_mode(XRRScreenResources *res, int id)
 	return NULL;
 }
 
-static int clone_update_dst(struct output *src, struct output *dst)
+static int clone_update_modes(struct clone *clone)
 {
-	XRRScreenResources *src_res, *dst_res;
-	XRROutputInfo *src_info, *dst_info;
+	XRRScreenResources *from_res, *to_res;
+	XRROutputInfo *from_info, *to_info;
 	int i, j, ret = ENOENT;
 
-	assert(src->rr_output);
-	assert(dst->rr_output);
+	assert(clone->src.rr_output);
+	assert(clone->dst.rr_output);
 
-	src_res = XRRGetScreenResources(src->dpy, src->window);
-	if (src_res == NULL)
+	from_res = XRRGetScreenResources(clone->dst.dpy, clone->dst.window);
+	if (from_res == NULL)
 		goto err;
 
-	src_info = XRRGetOutputInfo(src->dpy, src_res, src->rr_output);
-	if (src_info == NULL)
+	from_info = XRRGetOutputInfo(clone->dst.dpy, from_res, clone->dst.rr_output);
+	if (from_info == NULL)
 		goto err;
 
-	dst_res = XRRGetScreenResourcesCurrent(dst->dpy, dst->window);
-	if (dst_res == NULL)
+	to_res = XRRGetScreenResourcesCurrent(clone->src.dpy, clone->src.window);
+	if (to_res == NULL)
 		goto err;
 
-	dst_info = XRRGetOutputInfo(dst->dpy, dst_res, dst->rr_output);
-	if (dst_info == NULL)
+	to_info = XRRGetOutputInfo(clone->src.dpy, to_res, clone->src.rr_output);
+	if (to_info == NULL)
 		goto err;
+
+	clone->dst.rr_crtc = from_info->crtc;
 
 	/* Clear all current UserModes on the output, including any active ones */
-	if (dst_info->crtc)
-		XRRSetCrtcConfig(dst->dpy, dst_res, dst_info->crtc, CurrentTime,
+	if (to_info->crtc)
+		XRRSetCrtcConfig(clone->src.dpy, to_res, to_info->crtc, CurrentTime,
 				0, 0, None, RR_Rotate_0, NULL, 0);
-	for (i = 0; i < dst_info->nmode; i++)
-		XRRDeleteOutputMode(dst->dpy, dst->rr_output, dst_info->modes[i]);
+	for (i = 0; i < to_info->nmode; i++)
+		XRRDeleteOutputMode(clone->src.dpy, clone->src.rr_output, to_info->modes[i]);
+
+	clone->src.rr_crtc = 0;
 
 	/* Create matching modes for the real output on the virtual */
-	for (i = 0; i < src_info->nmode; i++) {
+	for (i = 0; i < from_info->nmode; i++) {
 		XRRModeInfo *mode, *old;
 		RRMode id;
 
-		mode = lookup_mode(src_res, src_info->modes[i]);
+		mode = lookup_mode(from_res, from_info->modes[i]);
 		if (mode == NULL)
 			continue;
 		for (j = 0; j < i; j++) {
-			old = lookup_mode(src_res, src_info->modes[j]);
+			old = lookup_mode(from_res, from_info->modes[j]);
 			if (old && mode_equal(mode, old)) {
 				mode = NULL;
 				break;
@@ -328,8 +336,8 @@ static int clone_update_dst(struct output *src, struct output *dst)
 			continue;
 
 		id = 0;
-		for (j = 0; j < dst_res->nmode; j++) {
-			old = &dst_res->modes[j];
+		for (j = 0; j < to_res->nmode; j++) {
+			old = &to_res->modes[j];
 			if (mode_equal(mode, old)) {
 				id = old->id;
 				break;
@@ -342,25 +350,25 @@ static int clone_update_dst(struct output *src, struct output *dst)
 			/* XXX User names must be unique! */
 			m = *mode;
 			m.nameLength = snprintf(buf, sizeof(buf),
-						"%s.%ld-%s", dst->name, (long)src_info->modes[i], mode->name);
+						"%s.%ld-%s", clone->src.name, (long)from_info->modes[i], mode->name);
 			m.name = buf;
 
-			id = XRRCreateMode(dst->dpy, dst->window, &m);
+			id = XRRCreateMode(clone->src.dpy, clone->src.window, &m);
 		}
 
-		XRRAddOutputMode(dst->dpy, dst->rr_output, id);
+		XRRAddOutputMode(clone->src.dpy, clone->src.rr_output, id);
 	}
 	ret = 0;
 
 err:
-	if (dst_info)
-		XRRFreeOutputInfo(dst_info);
-	if (dst_res)
-		XRRFreeScreenResources(dst_res);
-	if (src_info)
-		XRRFreeOutputInfo(src_info);
-	if (src_res)
-		XRRFreeScreenResources(src_res);
+	if (to_info)
+		XRRFreeOutputInfo(to_info);
+	if (to_res)
+		XRRFreeScreenResources(to_res);
+	if (from_info)
+		XRRFreeOutputInfo(from_info);
+	if (from_res)
+		XRRFreeScreenResources(from_res);
 
 	return ret;
 }
@@ -418,101 +426,6 @@ static RROutput claim_virtual(struct display *display, const char *name)
 	XRRDestroyMode(dpy, id);
 
 	return rr_output;
-}
-
-static int get_current_config(struct output *output)
-{
-	XRRScreenResources *res;
-	int i, ret = ENOENT;
-	XRROutputInfo *o;
-	RRMode mode = 0;
-
-	res = XRRGetScreenResourcesCurrent(output->dpy, output->window);
-	if (res == NULL)
-		return ENOMEM;
-
-	o = XRRGetOutputInfo(output->dpy, res, output->rr_output);
-	if (o) {
-		XRRCrtcInfo *c = NULL;
-		if (o->crtc)
-			c = XRRGetCrtcInfo(output->dpy, res, o->crtc);
-		if (c) {
-			output->rotation = c->rotation;
-			output->x = c->x;
-			output->y = c->y;
-			mode = c->mode;
-			ret = 0;
-		} else
-			ret = ENOMEM;
-		XRRFreeOutputInfo(o);
-	}
-	if (ret == 0) {
-		ret = EINVAL;
-		for (i = 0; ret == EINVAL && i < res->nmode; i++) {
-			XRRModeInfo *m = &res->modes[i];
-			if (m->id != mode)
-				continue;
-
-			output->mode = *m;
-			ret = 0;
-		}
-	}
-	XRRFreeScreenResources(res);
-
-	return ret;
-}
-
-static int set_config(struct output *output, const struct output *config)
-{
-	XRRScreenResources *res;
-	XRROutputInfo *o;
-	XRRCrtcInfo *c;
-	int i, ret = ENOENT;
-	RRCrtc rr_crtc = 0;
-	RRMode rr_mode = 0;
-	int x = 0, y = 0;
-
-	res = XRRGetScreenResourcesCurrent(output->dpy, output->window);
-	if (res == NULL)
-		return ENOMEM;
-
-	o = XRRGetOutputInfo(output->dpy, res, res->outputs[i]);
-	if (o) {
-		rr_crtc = o->crtcs[0];
-		XRRFreeOutputInfo(o);
-	}
-	if (rr_crtc == 0)
-		goto err;
-
-	c = XRRGetCrtcInfo(output->dpy, res, rr_crtc);
-	if (c) {
-		x = c->x;
-		y = c->y;
-		XRRFreeCrtcInfo(c);
-	}
-
-	for (i = 0; i < res->nmode; i++) {
-		if (mode_equal(&config->mode, &res->modes[i])) {
-			rr_mode = res->modes[i].id;
-			break;
-		}
-	}
-	if (rr_mode == 0)
-		goto err;
-
-	XRRSetCrtcConfig(output->dpy, res, rr_crtc, CurrentTime,
-			 x, y, rr_mode, config->rotation,
-			 &output->rr_output, 1);
-	output->x = x;
-	output->y = y;
-	output->rotation = config->rotation;
-	output->mode = config->mode;
-	output->display->flush = 1;
-	ret = 0;
-
-err:
-	XRRFreeScreenResources(res);
-	return ret;
 }
 
 static int stride_for_depth(int width, int depth)
@@ -597,6 +510,30 @@ static void output_init_xfer(struct clone *clone, struct output *output)
 
 static int clone_init_xfer(struct clone *clone)
 {
+	if (clone->src.mode.id == 0) {
+		if (clone->width == 0 && clone->height == 0)
+			return 0;
+
+		clone->width = 0;
+		clone->height = 0;
+
+		if (clone->src.use_shm)
+			XShmDetach(clone->src.dpy, &clone->shm);
+		if (clone->dst.use_shm)
+			XShmDetach(clone->dst.dpy, &clone->shm);
+
+		if (clone->shm.shmaddr) {
+			shmdt(clone->shm.shmaddr);
+			clone->shm.shmaddr = 0;
+		}
+
+		return 0;
+	}
+
+	if (clone->src.mode.width == clone->width &&
+	    clone->src.mode.height == clone->height)
+		return 0;
+
 	DBG(("%s-%s create xfer\n",
 	     DisplayString(clone->dst.dpy), clone->dst.name));
 
@@ -645,44 +582,213 @@ static int clone_init_xfer(struct clone *clone)
 	return 0;
 }
 
-static int clone_update_src(struct clone *clone)
+static void clone_update(struct clone *clone)
 {
-	int ret;
-
-	DBG(("%s-%s clone %s\n",
-	     DisplayString(clone->dst.dpy), clone->dst.name, clone->src.name));
-
-	ret = get_current_config(&clone->src);
-	if (ret)
-		return ret;
-
-	set_config(&clone->dst, &clone->src);
-
-	if (clone->src.mode.width != clone->width ||
-	    clone->src.mode.height != clone->height)
-		clone_init_xfer(clone);
-
-	clone->damaged.x1 = clone->src.x;
-	clone->damaged.x2 = clone->src.x + clone->width;
-	clone->damaged.y1 = clone->src.y;
-	clone->damaged.y2 = clone->src.y + clone->height;
-
-	return 0;
-}
-
-static void clone_update(struct clone *clone, int reconfigure)
-{
-	if (reconfigure)
-		clone_update_src(clone);
-
 	if (!clone->rr_update)
 		return;
 
 	DBG(("%s-%s cloning modes\n",
 	     DisplayString(clone->dst.dpy), clone->dst.name));
 
-	clone_update_dst(&clone->dst, &clone->src);
+	clone_update_modes(clone);
 	clone->rr_update = 0;
+}
+
+static void context_update(struct context *ctx)
+{
+	Display *dpy = ctx->display->dpy;
+	XRRScreenResources *res;
+	int context_changed = 0;
+	int i, n;
+
+	res = XRRGetScreenResourcesCurrent(dpy, ctx->display->root);
+	if (res == NULL)
+		return;
+
+	for (n = 0; n < ctx->nclone; n++) {
+		struct output *output = &ctx->clones[n].src;
+		XRROutputInfo *o;
+		XRRCrtcInfo *c;
+		RRMode mode = 0;
+		int changed = 0l;
+
+		o = XRRGetOutputInfo(dpy, res, output->rr_output);
+		if (o == NULL)
+			continue;
+
+		c = NULL;
+		if (o->crtc)
+			c = XRRGetCrtcInfo(dpy, res, o->crtc);
+		if (c) {
+			changed |= output->rotation |= c->rotation;
+			output->rotation = c->rotation;
+
+			changed |= output->x != c->x;
+			output->x = c->x;
+
+			changed |= output->y != c->y;
+			output->y = c->y;
+
+			changed |= output->mode.id != mode;
+			mode = c->mode;
+			XRRFreeCrtcInfo(c);
+		}
+		output->rr_crtc = o->crtc;
+		XRRFreeOutputInfo(o);
+
+		if (mode) {
+			if (output->mode.id != mode) {
+				for (i = 0; i < res->nmode; i++) {
+					if (res->modes[i].id == mode) {
+						output->mode = res->modes[i];
+						break;
+					}
+				}
+			}
+		} else {
+			changed = output->mode.id != 0;
+			output->mode.id = 0;
+		}
+
+		if (changed)
+			clone_init_xfer(&ctx->clones[n]);
+		context_changed |= changed;
+	}
+	XRRFreeScreenResources(res);
+
+	if (!context_changed)
+		return;
+
+	for (n = 1; n < ctx->ndisplay; n++) {
+		struct display *display = &ctx->display[n];
+		struct clone *clone;
+		int x1, x2, y1, y2;
+
+		x1 = y1 = INT_MAX;
+		x2 = y2 = INT_MIN;
+
+		for (clone = display->clone; clone; clone = clone->next) {
+			struct output *output = &clone->src;
+			int v;
+
+			assert(clone->dst.display == display);
+
+			if (output->mode.id == 0)
+				continue;
+
+			DBG(("%s: source %s enabled (%d, %d)x(%d, %d)\n",
+			     DisplayString(clone->dst.dpy), output->name,
+			     output->x, output->y,
+			     output->mode.width, output->mode.height));
+
+			if (output->x < x1)
+				x1 = output->x;
+			if (output->y < y1)
+				y1 = output->y;
+
+			v = (int)output->x + output->mode.width;
+			if (v > x2)
+				x2 = v;
+			v = (int)output->y + output->mode.height;
+			if (v > y2)
+				y2 = v;
+		}
+
+		DBG(("%s fb bounds (%d, %d)x(%d, %d)\n", DisplayString(display->dpy),
+		     x1, y1, x2-x1, y2-y1));
+
+		res = XRRGetScreenResourcesCurrent(display->dpy, display->root);
+		if (res == NULL)
+			continue;
+
+		for (clone = display->clone; clone; clone = clone->next) {
+			struct output *src = &clone->src;
+			struct output *dst = &clone->dst;
+			XRROutputInfo *o;
+			struct clone *set;
+			RRCrtc rr_crtc;
+
+			DBG(("%s: copying configuration from %s (mode=%ld) to %s\n",
+			     DisplayString(dst->dpy), src->name, (long)src->mode.id, dst->name));
+
+			if (src->mode.id == 0) {
+err:
+				if (dst->rr_crtc) {
+					DBG(("%s: disabling unused output '%s'\n",
+					     DisplayString(dst->dpy), dst->name));
+					XRRSetCrtcConfig(dst->dpy, res, dst->rr_crtc, CurrentTime,
+							 0, 0, None, RR_Rotate_0, NULL, 0);
+					dst->rr_crtc = 0;
+					dst->mode.id = 0;
+				}
+				continue;
+			}
+
+			dst->x = src->x - x1;
+			dst->y = src->y - y1;
+			dst->rotation = src->rotation;
+			dst->mode = src->mode;
+
+			dst->mode.id = 0;
+			for (i = 0; i < res->nmode; i++) {
+				if (mode_equal(&src->mode, &res->modes[i])) {
+					dst->mode.id = res->modes[i].id;
+					break;
+				}
+			}
+			if (dst->mode.id == 0) {
+				DBG(("%s: failed to find suitable mode for %s\n",
+				     DisplayString(dst->dpy), dst->name));
+				goto err;
+			}
+
+			rr_crtc = dst->rr_crtc;
+			if (rr_crtc) {
+				for (set = display->clone; set != clone; set = set->next) {
+					if (set->dst.rr_crtc == rr_crtc) {
+						DBG(("%s: CRTC reassigned from %s\n",
+						     DisplayString(dst->dpy), dst->name));
+						rr_crtc = 0;
+						break;
+					}
+				}
+			}
+			if (rr_crtc == 0) {
+				o = XRRGetOutputInfo(dst->dpy, res, dst->rr_output);
+				for (i = 0; i < o->ncrtc; i++) {
+					DBG(("%s: checking whether CRTC:%ld is available\n",
+					     DisplayString(dst->dpy), (long)o->crtcs[i]));
+					for (set = display->clone; set != clone; set = set->next) {
+						if (set->dst.rr_crtc == o->crtcs[i]) {
+							DBG(("%s: CRTC:%ld already assigned to %s\n",
+							     DisplayString(dst->dpy), (long)o->crtcs[i], set->dst.name));
+							break;
+						}
+					}
+					if (set == clone) {
+						rr_crtc = o->crtcs[i];
+						break;
+					}
+				}
+				XRRFreeOutputInfo(o);
+			}
+			if (rr_crtc == 0) {
+				DBG(("%s: failed to find availble CRTC for %s\n",
+				     DisplayString(dst->dpy), dst->name));
+				goto err;
+			}
+
+			DBG(("%s: enabling output '%s' (%d,%d)x(%d,%d) on CRTC:%ld\n",
+			     DisplayString(dst->dpy), dst->name,
+			     dst->x, dst->y, dst->mode.width, dst->mode.height, (long)rr_crtc));
+			XRRSetCrtcConfig(dst->dpy, res, rr_crtc, CurrentTime,
+					 dst->x, dst->y, dst->mode.id, dst->rotation,
+					 &dst->rr_output, 1);
+			dst->rr_crtc = rr_crtc;
+		}
+
+		XRRFreeScreenResources(res);
+	}
 }
 
 static Cursor display_load_invisible_cursor(struct display *display)
@@ -1516,7 +1622,7 @@ static int last_display_add_clones(struct context *ctx)
 			return ret;
 		}
 
-		ret = clone_update_dst(&clone->dst, &clone->src);
+		ret = clone_update_modes(clone);
 		if (ret) {
 			fprintf(stderr, "Failed to clone output \"%s\" from display \"%s\"\n",
 				o->name, DisplayString(display->dpy));
@@ -1540,6 +1646,25 @@ static void display_flush(struct display *display)
 
 	XFlush(display->dpy);
 	display->flush = 0;
+}
+
+static void context_build_lists(struct context *ctx)
+{
+	int n, m;
+
+	for (n = 1; n < ctx->ndisplay; n++) {
+		struct display *d = &ctx->display[n];
+
+		for (m = 0; m < ctx->nclone; m++) {
+			struct clone *c = &ctx->clones[m];
+
+			if (c->dst.display != d)
+				continue;
+
+			c->next = d->clone;
+			d->clone = c;
+		}
+	}
 }
 
 int main(int argc, char **argv)
@@ -1611,6 +1736,8 @@ int main(int argc, char **argv)
 		if (ret)
 			return -ret;
 	}
+
+	context_build_lists(&ctx);
 
 	XSync(ctx.display->dpy, False);
 	XSetErrorHandler(old_handler);
@@ -1702,8 +1829,11 @@ int main(int argc, char **argv)
 			ret--;
 		}
 
+		if (reconfigure)
+			context_update(&ctx);
+
 		for (i = 0; i < ctx.nclone; i++)
-			clone_update(&ctx.clones[i], reconfigure);
+			clone_update(&ctx.clones[i]);
 
 		if (enable_timer && read(ctx.pfd[ctx.nfd].fd, &count, sizeof(count)) > 0 && count > 0) {
 			ret = 0;
@@ -1718,5 +1848,5 @@ int main(int argc, char **argv)
 			display_flush(&ctx.display[i]);
 	}
 
-	return 0;
+	return EINVAL;
 }
