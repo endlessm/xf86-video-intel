@@ -387,6 +387,10 @@ static RROutput claim_virtual(struct display *display, const char *name)
 			rr_output = res->outputs[i];
 		XRRFreeOutputInfo(o);
 	}
+	for (i = id = 0; id == 0 && i < res->nmode; i++) {
+		if (strcmp(res->modes[i].name, buf) == 0)
+			id = res->modes[i].id;
+	}
 	XRRFreeScreenResources(res);
 
 	DBG(("%s(%s): rr_output=%ld\n", __func__, name, (long)rr_output));
@@ -400,7 +404,8 @@ static RROutput claim_virtual(struct display *display, const char *name)
 	mode.name = buf;
 	mode.nameLength = sizeof(buf) - 1;
 
-	id = XRRCreateMode(dpy, display->root, &mode);
+	if (id == 0)
+		id = XRRCreateMode(dpy, display->root, &mode);
 	XRRAddOutputMode(dpy, rr_output, id);
 
 	/* Force a redetection for the ddx to spot the new outputs */
@@ -1492,8 +1497,8 @@ static int last_display_add_clones(struct context *ctx)
 		sprintf(buf, "VIRTUAL%d", ctx->nclone);
 		ret = clone_output_init(clone, &clone->src, ctx->display, buf, claim_virtual(ctx->display, buf));
 		if (ret) {
-			fprintf(stderr, "Failed to find available VirtualHead for \"%s\" on display \"%s\"\n",
-				o->name, DisplayString(display->dpy));
+			fprintf(stderr, "Failed to find available VirtualHead \"%s\" for \"%s\" on display \"%s\"\n",
+				buf, o->name, DisplayString(display->dpy));
 			return ret;
 		}
 
@@ -1540,6 +1545,7 @@ static void display_flush(struct display *display)
 int main(int argc, char **argv)
 {
 	struct context ctx;
+	int (*old_handler)(Display *display, XErrorEvent *event);
 	const char *src_name = NULL;
 	uint64_t count;
 	int enable_timer = 0;
@@ -1578,6 +1584,9 @@ int main(int argc, char **argv)
 	XRRSelectInput(ctx.display->dpy, ctx.display->root, RRScreenChangeNotifyMask);
 	XFixesSelectCursorInput(ctx.display->dpy, ctx.display->root, XFixesDisplayCursorNotifyMask);
 
+	XSync(ctx.display->dpy, False);
+	old_handler = XSetErrorHandler(_check_error_handler);
+
 	if (optind == argc || bumblebee) {
 		ret = add_fd(&ctx, bumblebee_open(&ctx));
 		if (ret) {
@@ -1602,6 +1611,9 @@ int main(int argc, char **argv)
 		if (ret)
 			return -ret;
 	}
+
+	XSync(ctx.display->dpy, False);
+	XSetErrorHandler(old_handler);
 
 	ret = add_fd(&ctx, record_mouse(&ctx));
 	if (ret) {
