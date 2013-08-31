@@ -478,6 +478,13 @@ err:
 	return ret;
 }
 
+static int stride_for_depth(int width, int depth)
+{
+	if (depth == 24)
+		depth = 32;
+	return (width * depth + 31) / 8;
+}
+
 static void init_image(struct clone *clone)
 {
 	XImage *image = &clone->image;
@@ -492,13 +499,13 @@ static void init_image(struct clone *clone)
 	image->bitmap_bit_order = LSBFirst;
 	image->bitmap_pad = 32;
 	image->data = clone->shm.shmaddr;
+	image->bytes_per_line = stride_for_depth(clone->width, clone->depth);
 	switch (clone->depth) {
 	case 24:
 		image->red_mask = 0xff << 16;
 		image->green_mask = 0xff << 8;
 		image->blue_mask = 0xff << 0;;
 		image->depth = 24;
-		image->bytes_per_line = 4*clone->width;
 		image->bits_per_pixel = 32;
 		break;
 	case 16:
@@ -506,7 +513,6 @@ static void init_image(struct clone *clone)
 		image->green_mask = 0x3f << 5;
 		image->blue_mask = 0x1f << 0;;
 		image->depth = 16;
-		image->bytes_per_line = 2*clone->width;
 		image->bits_per_pixel = 16;
 		break;
 	}
@@ -564,7 +570,7 @@ static int clone_init_xfer(struct clone *clone)
 		shmdt(clone->shm.shmaddr);
 
 	clone->shm.shmid = shmget(IPC_PRIVATE,
-				  clone->height * clone->width * clone->depth / 8,
+				  clone->height * stride_for_depth(clone->width, clone->depth),
 				  IPC_CREAT | 0666);
 	if (clone->shm.shmid == -1)
 		return errno;
