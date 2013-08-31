@@ -32,6 +32,7 @@
 #include <X11/extensions/Xrender.h>
 #include <X11/extensions/record.h>
 #include <X11/Xcursor/Xcursor.h>
+#include <pixman.h>
 
 #include <sys/types.h>
 #include <sys/ipc.h>
@@ -64,10 +65,19 @@ struct display {
 	int xfixes_event, xfixes_error;
 	int rr_event, rr_error;
 	Window root;
+	Visual *visual;
 	Damage damage;
 
+	int depth;
+
 	XRenderPictFormat *root_format;
+	XRenderPictFormat *rgb16_format;
 	XRenderPictFormat *rgb24_format;
+
+	int has_shm;
+	int has_shm_pixmap;
+	int shm_opcode;
+	int shm_event;
 
 	Cursor invisible_cursor;
 	Cursor visible_cursor;
@@ -93,13 +103,11 @@ struct output {
 	Pixmap pixmap;
 	GC gc;
 
-	int depth;
 	int serial;
+	int use_shm;
+	int use_shm_pixmap;
 
-	int has_shm;
-	int has_shm_pixmap;
-	int shm_opcode;
-	int shm_event;
+	XRenderPictFormat *use_render;
 
 	int x, y;
 	XRRModeInfo mode;
@@ -112,7 +120,7 @@ struct clone {
 	XShmSegmentInfo shm;
 	XImage image;
 
-	int width, height;
+	int width, height, depth;
 	struct { int x1, x2, y1, y2; } damaged;
 	int rr_update;
 };
@@ -478,48 +486,60 @@ static void init_image(struct clone *clone)
 	image->width = clone->width;
 	image->height = clone->height;
 	image->format = ZPixmap;
+	image->xoffset = 0;
 	image->byte_order = LSBFirst;
 	image->bitmap_unit = 32;
 	image->bitmap_bit_order = LSBFirst;
-	image->red_mask = 0xff << 16;
-	image->green_mask = 0xff << 8;
-	image->blue_mask = 0xff << 0;;
-	image->xoffset = 0;
 	image->bitmap_pad = 32;
-	image->depth = 24;
 	image->data = clone->shm.shmaddr;
-	image->bytes_per_line = 4*clone->width;
-	image->bits_per_pixel = 32;
+	switch (clone->depth) {
+	case 24:
+		image->red_mask = 0xff << 16;
+		image->green_mask = 0xff << 8;
+		image->blue_mask = 0xff << 0;;
+		image->depth = 24;
+		image->bytes_per_line = 4*clone->width;
+		image->bits_per_pixel = 32;
+		break;
+	case 16:
+		image->red_mask = 0x1f << 11;
+		image->green_mask = 0x3f << 5;
+		image->blue_mask = 0x1f << 0;;
+		image->depth = 16;
+		image->bytes_per_line = 2*clone->width;
+		image->bits_per_pixel = 16;
+		break;
+	}
 
 	ret = XInitImage(image);
 	assert(ret);
 }
 
-static void output_create_xfer(struct clone *clone, struct output *output)
+static void output_init_xfer(struct clone *clone, struct output *output)
 {
-	if (output->has_shm_pixmap) {
+	if (output->use_shm_pixmap) {
 		DBG(("%s-%s: creating shm pixmap\n", DisplayString(output->dpy), output->name));
 		if (output->pixmap)
 			XFreePixmap(output->dpy, output->pixmap);
 		output->pixmap = XShmCreatePixmap(output->dpy, output->window,
 						  clone->shm.shmaddr, &clone->shm,
-						  clone->width, clone->height, 24);
+						  clone->width, clone->height, clone->depth);
 		if (output->pix_picture) {
 			XRenderFreePicture(output->dpy, output->pix_picture);
 			output->pix_picture = None;
 		}
 	}
-	if (output->display->rgb24_format != output->display->root_format) {
+	if (output->use_render) {
 		DBG(("%s-%s: creating picture\n", DisplayString(output->dpy), output->name));
 		if (output->win_picture == None)
 			output->win_picture = XRenderCreatePicture(output->dpy, output->window,
 								   output->display->root_format, 0, NULL);
 		if (output->pixmap == None)
 			output->pixmap = XCreatePixmap(output->dpy, output->window,
-						       clone->width, clone->height, 24);
+						       clone->width, clone->height, clone->depth);
 		if (output->pix_picture == None)
 			output->pix_picture = XRenderCreatePicture(output->dpy, output->pixmap,
-								   output->display->rgb24_format, 0, NULL);
+								   output->use_render, 0, NULL);
 	}
 
 	if (output->gc == None) {
@@ -532,7 +552,7 @@ static void output_create_xfer(struct clone *clone, struct output *output)
 	}
 }
 
-static int clone_create_xfer(struct clone *clone)
+static int clone_init_xfer(struct clone *clone)
 {
 	DBG(("%s-%s create xfer\n",
 	     DisplayString(clone->dst.dpy), clone->dst.name));
@@ -543,7 +563,9 @@ static int clone_create_xfer(struct clone *clone)
 	if (clone->shm.shmaddr)
 		shmdt(clone->shm.shmaddr);
 
-	clone->shm.shmid = shmget(IPC_PRIVATE, clone->height * clone->width * 4, IPC_CREAT | 0666);
+	clone->shm.shmid = shmget(IPC_PRIVATE,
+				  clone->height * clone->width * clone->depth / 8,
+				  IPC_CREAT | 0666);
 	if (clone->shm.shmid == -1)
 		return errno;
 
@@ -557,19 +579,19 @@ static int clone_create_xfer(struct clone *clone)
 
 	init_image(clone);
 
-	if (clone->src.has_shm) {
+	if (clone->src.use_shm) {
 		XShmAttach(clone->src.dpy, &clone->shm);
 		XSync(clone->src.dpy, False);
 	}
-	if (clone->dst.has_shm) {
+	if (clone->dst.use_shm) {
 		XShmAttach(clone->dst.dpy, &clone->shm);
 		XSync(clone->dst.dpy, False);
 	}
 
 	shmctl(clone->shm.shmid, IPC_RMID, NULL);
 
-	output_create_xfer(clone, &clone->src);
-	output_create_xfer(clone, &clone->dst);
+	output_init_xfer(clone, &clone->src);
+	output_init_xfer(clone, &clone->dst);
 
 	clone->damaged.x1 = clone->src.x;
 	clone->damaged.x2 = clone->src.x + clone->width;
@@ -595,7 +617,7 @@ static int clone_update_src(struct clone *clone)
 
 	if (clone->src.mode.width != clone->width ||
 	    clone->src.mode.height != clone->height)
-		clone_create_xfer(clone);
+		clone_init_xfer(clone);
 
 	clone->damaged.x1 = clone->src.x;
 	clone->damaged.x2 = clone->src.x + clone->width;
@@ -721,6 +743,7 @@ static int clone_output_init(struct clone *clone, struct output *output,
 			     struct display *display, const char *name)
 {
 	Display *dpy = display->dpy;
+	int depth;
 
 	DBG(("%s(%s, %s)\n", __func__, DisplayString(dpy), name));
 
@@ -735,12 +758,13 @@ static int clone_output_init(struct clone *clone, struct output *output,
 	if (output->name == NULL)
 		return ENOMEM;
 
-	output->depth = DefaultDepth(dpy, DefaultScreen(dpy));
 	output->window = display->root;
-	output->has_shm = can_use_shm(dpy, output->window,
-				      &output->shm_event,
-				      &output->shm_opcode,
-				      &output->has_shm_pixmap);
+	output->use_shm = display->has_shm;
+	output->use_shm_pixmap = display->has_shm_pixmap;
+
+	depth = output->use_shm ? display->depth : 16;
+	if (depth < clone->depth)
+		clone->depth = depth;
 
 	return 0;
 }
@@ -749,16 +773,16 @@ static void send_shm(struct output *o, int serial)
 {
 	XShmCompletionEvent e;
 
-	if (o->shm_event == 0) {
+	if (o->display->shm_event == 0) {
 		XSync(o->dpy, False);
 		return;
 	}
 
-	e.type = o->shm_event;
+	e.type = o->display->shm_event;
 	e.send_event = 1;
 	e.serial = serial;
 	e.drawable = o->pixmap;
-	e.major_code = o->shm_opcode;
+	e.major_code = o->display->shm_opcode;
 	e.minor_code = X_ShmPutImage;
 	e.shmseg = 0;
 	e.offset = 0;
@@ -771,16 +795,16 @@ static void get_src(struct clone *c, const XRectangle *clip)
 {
 	DBG(("%s-%s get_src(%d,%d)x(%d,%d)\n", DisplayString(c->dst.dpy), c->dst.name,
 	     clip->x, clip->y, clip->width, clip->height));
-	if (c->src.win_picture) {
+	if (c->src.use_render) {
 		XRenderComposite(c->src.dpy, PictOpSrc,
 				 c->src.win_picture, 0, c->src.pix_picture,
 				 clip->x, clip->y,
 				 0, 0,
 				 0, 0,
 				 clip->width, clip->height);
-		if (c->src.has_shm_pixmap) {
+		if (c->src.use_shm_pixmap) {
 			XSync(c->src.dpy, False);
-		} else if (c->src.has_shm) {
+		} else if (c->src.use_shm) {
 			c->image.width = clip->width;
 			c->image.height = clip->height;
 			c->image.obdata = (char *)&c->shm;
@@ -801,7 +825,7 @@ static void get_src(struct clone *c, const XRectangle *clip)
 			  clip->width, clip->height,
 			  0, 0);
 		XSync(c->src.dpy, False);
-	} else if (c->src.has_shm) {
+	} else if (c->src.use_shm) {
 		c->image.width = clip->width;
 		c->image.height = clip->height;
 		c->image.obdata = (char *)&c->shm;
@@ -822,10 +846,10 @@ static void put_dst(struct clone *c, const XRectangle *clip)
 {
 	DBG(("%s-%s put_dst(%d,%d)x(%d,%d)\n", DisplayString(c->dst.dpy), c->dst.name,
 	     clip->x, clip->y, clip->width, clip->height));
-	if (c->dst.win_picture) {
+	if (c->dst.use_render) {
 		int serial;
-		if (c->dst.has_shm_pixmap) {
-		} else if (c->dst.has_shm) {
+		if (c->dst.use_shm_pixmap) {
+		} else if (c->dst.use_shm) {
 			c->image.width = clip->width;
 			c->image.height = clip->height;
 			c->image.obdata = (char *)&c->shm;
@@ -850,7 +874,7 @@ static void put_dst(struct clone *c, const XRectangle *clip)
 				 0, 0,
 				 clip->x, clip->y,
 				 clip->width, clip->height);
-		if (c->dst.has_shm)
+		if (c->dst.use_shm)
 			send_shm(&c->dst, serial);
 	} else if (c->dst.pixmap) {
 		int serial = NextRequest(c->dst.dpy);
@@ -859,7 +883,7 @@ static void put_dst(struct clone *c, const XRectangle *clip)
 			  clip->width, clip->height,
 			  clip->x, clip->y);
 		send_shm(&c->dst, serial);
-	} else if (c->dst.has_shm) {
+	} else if (c->dst.use_shm) {
 		c->image.width = clip->width;
 		c->image.height = clip->height;
 		c->image.obdata = (char *)&c->shm;
@@ -1012,42 +1036,221 @@ static int timer(int hz)
 	return fd;
 }
 
+static int bad_visual(Visual *visual, int depth)
+{
+	switch (depth) {
+	case 16: return (visual->bits_per_rgb != 6 ||
+			 visual->red_mask != 0x1f << 11 ||
+			 visual->green_mask != 0x3f << 5 ||
+			 visual->blue_mask != 0x1f << 0);
+	case 24: return (visual->bits_per_rgb != 8 ||
+			 visual->red_mask != 0xff << 16 ||
+			 visual->green_mask != 0xff << 8 ||
+			 visual->blue_mask != 0xff << 0);
+	default: return 0;
+	}
+}
+
+static XRenderPictFormat *
+find_xrender_format(Display *dpy, pixman_format_code_t format)
+{
+    XRenderPictFormat tmpl;
+    int mask;
+
+#define MASK(x) ((1<<(x))-1)
+
+    memset(&tmpl, 0, sizeof(tmpl));
+
+    tmpl.depth = PIXMAN_FORMAT_DEPTH(format);
+    mask = PictFormatType | PictFormatDepth;
+
+    DBG(("%s(0x%08lx)\n", __func__, (long)format));
+
+    switch (PIXMAN_FORMAT_TYPE(format)) {
+    case PIXMAN_TYPE_ARGB:
+	tmpl.type = PictTypeDirect;
+
+	if (PIXMAN_FORMAT_A(format)) {
+		tmpl.direct.alphaMask = MASK(PIXMAN_FORMAT_A(format));
+		tmpl.direct.alpha = (PIXMAN_FORMAT_R(format) +
+				     PIXMAN_FORMAT_G(format) +
+				     PIXMAN_FORMAT_B(format));
+	}
+
+	tmpl.direct.redMask = MASK(PIXMAN_FORMAT_R(format));
+	tmpl.direct.red = (PIXMAN_FORMAT_G(format) +
+			   PIXMAN_FORMAT_B(format));
+
+	tmpl.direct.greenMask = MASK(PIXMAN_FORMAT_G(format));
+	tmpl.direct.green = PIXMAN_FORMAT_B(format);
+
+	tmpl.direct.blueMask = MASK(PIXMAN_FORMAT_B(format));
+	tmpl.direct.blue = 0;
+
+	mask |= PictFormatRed | PictFormatRedMask;
+	mask |= PictFormatGreen | PictFormatGreenMask;
+	mask |= PictFormatBlue | PictFormatBlueMask;
+	mask |= PictFormatAlpha | PictFormatAlphaMask;
+	break;
+
+    case PIXMAN_TYPE_ABGR:
+	tmpl.type = PictTypeDirect;
+
+	if (tmpl.direct.alphaMask) {
+		tmpl.direct.alphaMask = MASK(PIXMAN_FORMAT_A(format));
+		tmpl.direct.alpha = (PIXMAN_FORMAT_B(format) +
+				     PIXMAN_FORMAT_G(format) +
+				     PIXMAN_FORMAT_R(format));
+	}
+
+	tmpl.direct.blueMask = MASK(PIXMAN_FORMAT_B(format));
+	tmpl.direct.blue = (PIXMAN_FORMAT_G(format) +
+			    PIXMAN_FORMAT_R(format));
+
+	tmpl.direct.greenMask = MASK(PIXMAN_FORMAT_G(format));
+	tmpl.direct.green = PIXMAN_FORMAT_R(format);
+
+	tmpl.direct.redMask = MASK(PIXMAN_FORMAT_R(format));
+	tmpl.direct.red = 0;
+
+	mask |= PictFormatRed | PictFormatRedMask;
+	mask |= PictFormatGreen | PictFormatGreenMask;
+	mask |= PictFormatBlue | PictFormatBlueMask;
+	mask |= PictFormatAlpha | PictFormatAlphaMask;
+	break;
+
+    case PIXMAN_TYPE_BGRA:
+	tmpl.type = PictTypeDirect;
+
+	tmpl.direct.blueMask = MASK(PIXMAN_FORMAT_B(format));
+	tmpl.direct.blue = (PIXMAN_FORMAT_BPP(format) - PIXMAN_FORMAT_B(format));
+
+	tmpl.direct.greenMask = MASK(PIXMAN_FORMAT_G(format));
+	tmpl.direct.green = (PIXMAN_FORMAT_BPP(format) - PIXMAN_FORMAT_B(format) -
+			     PIXMAN_FORMAT_G(format));
+
+	tmpl.direct.redMask = MASK(PIXMAN_FORMAT_R(format));
+	tmpl.direct.red = (PIXMAN_FORMAT_BPP(format) - PIXMAN_FORMAT_B(format) -
+			   PIXMAN_FORMAT_G(format) - PIXMAN_FORMAT_R(format));
+
+	if (tmpl.direct.alphaMask) {
+		tmpl.direct.alphaMask = MASK(PIXMAN_FORMAT_A(format));
+		tmpl.direct.alpha = 0;
+	}
+
+	mask |= PictFormatRed | PictFormatRedMask;
+	mask |= PictFormatGreen | PictFormatGreenMask;
+	mask |= PictFormatBlue | PictFormatBlueMask;
+	mask |= PictFormatAlpha | PictFormatAlphaMask;
+	break;
+
+    case PIXMAN_TYPE_A:
+	tmpl.type = PictTypeDirect;
+
+	tmpl.direct.alpha = 0;
+	tmpl.direct.alphaMask = MASK(PIXMAN_FORMAT_A(format));
+
+	mask |= PictFormatAlpha | PictFormatAlphaMask;
+	break;
+
+    case PIXMAN_TYPE_COLOR:
+    case PIXMAN_TYPE_GRAY:
+	/* XXX Find matching visual/colormap */
+	tmpl.type = PictTypeIndexed;
+	//tmpl.colormap = screen->visuals[PIXMAN_FORMAT_VIS(format)].vid;
+	//mask |= PictFormatColormap;
+	return NULL;
+    }
+#undef MASK
+
+    return XRenderFindFormat(dpy, mask, &tmpl, 0);
+}
+
+static int display_init_render(struct display *display, int depth, XRenderPictFormat **use_render)
+{
+	Display *dpy = display->dpy;
+	int major, minor;
+
+	DBG(("%s is depth %d, want %d\n", DisplayString(dpy), display->depth, depth));
+
+	*use_render = 0;
+	if (depth == display->depth && !bad_visual(display->visual, depth))
+		return 0;
+
+	if (display->root_format == 0) {
+		if (!XRenderQueryVersion(dpy, &major, &minor)) {
+			fprintf(stderr, "Render extension not supported by %s\n", DisplayString(dpy));
+			return EINVAL;
+		}
+
+		display->root_format = XRenderFindVisualFormat(dpy, display->visual);
+		display->rgb16_format = find_xrender_format(dpy, PIXMAN_r5g6b5);
+		display->rgb24_format = XRenderFindStandardFormat(dpy, PictStandardRGB24);
+
+		DBG(("%s: root format=%lx, rgb16 format=%lx, rgb24 format=%lx\n",
+		     DisplayString(dpy),
+		     (long)display->root_format,
+		     (long)display->rgb16_format,
+		     (long)display->rgb24_format));
+	}
+
+	switch (depth) {
+	case 16: *use_render = display->rgb16_format; break;
+	case 24: *use_render = display->rgb24_format; break;
+	}
+	if (*use_render == 0)
+		return ENOENT;
+
+	return 0;
+}
+
+static int clone_init_depth(struct clone *clone)
+{
+	int ret, depth;
+
+	DBG(("%s-%s wants depth %d\n",
+	     DisplayString(clone->dst.dpy), clone->dst.name, clone->depth));
+
+	for (depth = clone->depth; depth <= 24; depth += 8) {
+		ret = display_init_render(clone->src.display, depth, &clone->src.use_render);
+		if (ret)
+			continue;
+
+		ret = display_init_render(clone->dst.display, depth, &clone->dst.use_render);
+		if (ret)
+			continue;
+
+		break;
+	}
+	if (ret)
+		return ret;
+
+	DBG(("%s-%s using depth %d, requires xrender for src? %d, for dst? %d\n",
+	     DisplayString(clone->dst.dpy), clone->dst.name,
+	     clone->depth,
+	     clone->src.use_render != NULL,
+	     clone->dst.use_render != NULL));
+
+	return 0;
+}
+
 static int display_init_core(struct display *display)
 {
 	Display *dpy = display->dpy;
-	Visual *visual;
-	int major, minor;
 
 	display->root = DefaultRootWindow(dpy);
+	display->depth = DefaultDepth(dpy, DefaultScreen(dpy));
+	display->visual = DefaultVisual(dpy, DefaultScreen(dpy));
 
-	visual = DefaultVisual(dpy, DefaultScreen(dpy));
-	if (visual->bits_per_rgb != 8 ||
-	    visual->red_mask != 0xff << 16 ||
-	    visual->green_mask != 0xff << 8 ||
-	    visual->blue_mask != 0xff << 0) {
-		DBG(("%s: has non-RGB24 visual, forcing render (bpp=%d, red=%lx, green=%lx, blue=%lx)\n",
-		     DisplayString(dpy), visual->bits_per_rgb,
-		     (long)visual->red_mask,
-		     (long)visual->green_mask,
-		     (long)visual->blue_mask));
-
-		if (!XRenderQueryVersion(dpy, &major, &minor)) {
-			fprintf(stderr, "Render extension not supported by %s\n", DisplayString(dpy));
-			return -EINVAL;
-		}
-
-		display->root_format = XRenderFindVisualFormat(dpy, visual);
-		display->rgb24_format = XRenderFindStandardFormat(dpy, PictStandardRGB24);
-
-		DBG(("%s: root=%x, rgb24=%x\n", DisplayString(dpy),
-		     (int)display->root_format->id, (int)display->rgb24_format->id));
-	}
+	display->has_shm = can_use_shm(dpy, display->root,
+				       &display->shm_event,
+				       &display->shm_opcode,
+				       &display->has_shm_pixmap);
 
 	if (!XRRQueryExtension(dpy, &display->rr_event, &display->rr_error)) {
 		fprintf(stderr, "RandR extension not supported by %s\n", DisplayString(dpy));
 		return -EINVAL;
 	}
-
 
 	display->invisible_cursor = display_load_invisible_cursor(display);
 	display->cursor = None;
@@ -1258,6 +1461,8 @@ int main(int argc, char **argv)
 			display_init_randr_hpd(&ctx.display[ctx.num_display-1]);
 		}
 
+		ctx.clones[ctx.num_clones].depth = 24;
+
 		sprintf(buf, "VIRTUAL%d", ctx.num_clones+1);
 		ret = clone_output_init(&ctx.clones[ctx.num_clones], &ctx.clones[ctx.num_clones].src, &ctx.display[0], buf);
 		if (ret) {
@@ -1279,6 +1484,13 @@ int main(int argc, char **argv)
 		if (ret) {
 			fprintf(stderr, "Unable to find output \"%s\" on display \"%s\"\n",
 				argv[i], DisplayString(ctx.display[nfd-1].dpy));
+			return ret;
+		}
+
+		ret = clone_init_depth(&ctx.clones[ctx.num_clones]);
+		if (ret) {
+			fprintf(stderr, "Failed to negotiate image format for display \"%s\"\n",
+				DisplayString(ctx.display[nfd-1].dpy));
 			return ret;
 		}
 
