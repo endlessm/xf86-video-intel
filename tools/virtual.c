@@ -29,6 +29,7 @@
 #include <X11/extensions/shmproto.h>
 #include <X11/extensions/Xdamage.h>
 #include <X11/extensions/Xrandr.h>
+#include <X11/extensions/Xrender.h>
 #include <X11/extensions/record.h>
 #include <X11/Xcursor/Xcursor.h>
 
@@ -65,6 +66,9 @@ struct display {
 	Window root;
 	Damage damage;
 
+	XRenderPictFormat *root_format;
+	XRenderPictFormat *rgb24_format;
+
 	Cursor invisible_cursor;
 	Cursor visible_cursor;
 
@@ -84,7 +88,8 @@ struct output {
 	RROutput rr_output;
 	XShmSegmentInfo shm;
 	Window window;
-	Picture picture;
+	Picture win_picture;
+	Picture pix_picture;
 	Pixmap pixmap;
 	GC gc;
 
@@ -282,7 +287,7 @@ static XRRModeInfo *lookup_mode(XRRScreenResources *res, int id)
 	return NULL;
 }
 
-static int clone_update_modes(struct output *src, struct output *dst)
+static int clone_update_dst(struct output *src, struct output *dst)
 {
 	XRRScreenResources *src_res, *dst_res;
 	XRROutputInfo *src_info, *dst_info;
@@ -465,15 +470,153 @@ err:
 	return ret;
 }
 
-static void clone_update(struct clone *clone)
+static void init_image(struct clone *clone)
 {
+	XImage *image = &clone->image;
+	int ret;
+
+	image->width = clone->width;
+	image->height = clone->height;
+	image->format = ZPixmap;
+	image->byte_order = LSBFirst;
+	image->bitmap_unit = 32;
+	image->bitmap_bit_order = LSBFirst;
+	image->red_mask = 0xff << 16;
+	image->green_mask = 0xff << 8;
+	image->blue_mask = 0xff << 0;;
+	image->xoffset = 0;
+	image->bitmap_pad = 32;
+	image->depth = 24;
+	image->data = clone->shm.shmaddr;
+	image->bytes_per_line = 4*clone->width;
+	image->bits_per_pixel = 32;
+
+	ret = XInitImage(image);
+	assert(ret);
+}
+
+static void output_create_xfer(struct clone *clone, struct output *output)
+{
+	if (output->has_shm_pixmap) {
+		DBG(("%s-%s: creating shm pixmap\n", DisplayString(output->dpy), output->name));
+		if (output->pixmap)
+			XFreePixmap(output->dpy, output->pixmap);
+		output->pixmap = XShmCreatePixmap(output->dpy, output->window,
+						  clone->shm.shmaddr, &clone->shm,
+						  clone->width, clone->height, 24);
+		if (output->pix_picture) {
+			XRenderFreePicture(output->dpy, output->pix_picture);
+			output->pix_picture = None;
+		}
+	}
+	if (output->display->rgb24_format != output->display->root_format) {
+		DBG(("%s-%s: creating picture\n", DisplayString(output->dpy), output->name));
+		if (output->win_picture == None)
+			output->win_picture = XRenderCreatePicture(output->dpy, output->window,
+								   output->display->root_format, 0, NULL);
+		if (output->pixmap == None)
+			output->pixmap = XCreatePixmap(output->dpy, output->window,
+						       clone->width, clone->height, 24);
+		if (output->pix_picture == None)
+			output->pix_picture = XRenderCreatePicture(output->dpy, output->pixmap,
+								   output->display->rgb24_format, 0, NULL);
+	}
+
+	if (output->gc == None) {
+		XGCValues gcv;
+
+		gcv.graphics_exposures = False;
+		gcv.subwindow_mode = IncludeInferiors;
+
+		output->gc = XCreateGC(output->dpy, output->pixmap ?: output->window, GCGraphicsExposures | GCSubwindowMode, &gcv);
+	}
+}
+
+static int clone_create_xfer(struct clone *clone)
+{
+	DBG(("%s-%s create xfer\n",
+	     DisplayString(clone->dst.dpy), clone->dst.name));
+
+	clone->width = clone->src.mode.width;
+	clone->height = clone->src.mode.height;
+
+	if (clone->shm.shmaddr)
+		shmdt(clone->shm.shmaddr);
+
+	clone->shm.shmid = shmget(IPC_PRIVATE, clone->height * clone->width * 4, IPC_CREAT | 0666);
+	if (clone->shm.shmid == -1)
+		return errno;
+
+	clone->shm.shmaddr = shmat(clone->shm.shmid, 0, 0);
+	if (clone->shm.shmaddr == (char *) -1) {
+		shmctl(clone->shm.shmid, IPC_RMID, NULL);
+		return ENOMEM;
+	}
+
+	clone->shm.readOnly = 0;
+
+	init_image(clone);
+
+	if (clone->src.has_shm) {
+		XShmAttach(clone->src.dpy, &clone->shm);
+		XSync(clone->src.dpy, False);
+	}
+	if (clone->dst.has_shm) {
+		XShmAttach(clone->dst.dpy, &clone->shm);
+		XSync(clone->dst.dpy, False);
+	}
+
+	shmctl(clone->shm.shmid, IPC_RMID, NULL);
+
+	output_create_xfer(clone, &clone->src);
+	output_create_xfer(clone, &clone->dst);
+
+	clone->damaged.x1 = clone->src.x;
+	clone->damaged.x2 = clone->src.x + clone->width;
+	clone->damaged.y1 = clone->src.y;
+	clone->damaged.y2 = clone->src.y + clone->height;
+
+	clone->dst.display->flush = 1;
+	return 0;
+}
+
+static int clone_update_src(struct clone *clone)
+{
+	int ret;
+
+	DBG(("%s-%s clone %s\n",
+	     DisplayString(clone->dst.dpy), clone->dst.name, clone->src.name));
+
+	ret = get_current_config(&clone->src);
+	if (ret)
+		return ret;
+
+	set_config(&clone->dst, &clone->src);
+
+	if (clone->src.mode.width != clone->width ||
+	    clone->src.mode.height != clone->height)
+		clone_create_xfer(clone);
+
+	clone->damaged.x1 = clone->src.x;
+	clone->damaged.x2 = clone->src.x + clone->width;
+	clone->damaged.y1 = clone->src.y;
+	clone->damaged.y2 = clone->src.y + clone->height;
+
+	return 0;
+}
+
+static void clone_update(struct clone *clone, int reconfigure)
+{
+	if (reconfigure)
+		clone_update_src(clone);
+
 	if (!clone->rr_update)
 		return;
 
 	DBG(("%s-%s cloning modes\n",
 	     DisplayString(clone->dst.dpy), clone->dst.name));
 
-	clone_update_modes(&clone->dst, &clone->src);
+	clone_update_dst(&clone->dst, &clone->src);
 	clone->rr_update = 0;
 }
 
@@ -574,118 +717,10 @@ static void clone_move_cursor(struct clone *c, int x, int y)
 	display_cursor_move(c->dst.display, x, y, visible);
 }
 
-static void init_image(struct clone *clone)
-{
-	XImage *image = &clone->image;
-	int ret;
-
-	image->width = clone->width;
-	image->height = clone->height;
-	image->format = ZPixmap;
-	image->byte_order = LSBFirst;
-	image->bitmap_unit = 32;
-	image->bitmap_bit_order = LSBFirst;
-	image->red_mask = 0xff << 16;
-	image->green_mask = 0xff << 8;
-	image->blue_mask = 0xff << 0;;
-	image->xoffset = 0;
-	image->bitmap_pad = 32;
-	image->depth = 24;
-	image->data = clone->shm.shmaddr;
-	image->bytes_per_line = 4*clone->width;
-	image->bits_per_pixel = 32;
-
-	ret = XInitImage(image);
-	assert(ret);
-}
-
-static int clone_create_xfer(struct clone *clone)
-{
-	DBG(("%s-%s create xfer\n",
-	     DisplayString(clone->dst.dpy), clone->dst.name));
-
-	clone->width = clone->src.mode.width;
-	clone->height = clone->src.mode.height;
-
-	if (clone->shm.shmaddr)
-		shmdt(clone->shm.shmaddr);
-
-	clone->shm.shmid = shmget(IPC_PRIVATE, clone->height * clone->width * 4, IPC_CREAT | 0666);
-	if (clone->shm.shmid == -1)
-		return errno;
-
-	clone->shm.shmaddr = shmat(clone->shm.shmid, 0, 0);
-	if (clone->shm.shmaddr == (char *) -1) {
-		shmctl(clone->shm.shmid, IPC_RMID, NULL);
-		return ENOMEM;
-	}
-
-	clone->shm.readOnly = 0;
-
-	init_image(clone);
-
-	if (clone->src.has_shm) {
-		XShmAttach(clone->src.dpy, &clone->shm);
-		XSync(clone->src.dpy, False);
-	}
-	if (clone->dst.has_shm) {
-		XShmAttach(clone->dst.dpy, &clone->shm);
-		XSync(clone->dst.dpy, False);
-	}
-
-	shmctl(clone->shm.shmid, IPC_RMID, NULL);
-
-	if (clone->src.has_shm_pixmap) {
-		clone->src.pixmap = XShmCreatePixmap(clone->src.dpy, clone->src.window,
-						     clone->shm.shmaddr, &clone->shm,
-						     clone->width, clone->height, clone->src.depth);
-	}
-
-	if (clone->dst.has_shm_pixmap) {
-		clone->dst.pixmap = XShmCreatePixmap(clone->dst.dpy, clone->dst.window,
-						     clone->shm.shmaddr, &clone->shm,
-						     clone->width, clone->height, clone->dst.depth);
-	}
-
-	clone->damaged.x1 = clone->src.x;
-	clone->damaged.x2 = clone->src.x + clone->width;
-	clone->damaged.y1 = clone->src.y;
-	clone->damaged.y2 = clone->src.y + clone->height;
-
-	clone->dst.display->flush = 1;
-	return 0;
-}
-
-static int clone_output(struct clone *clone)
-{
-	int ret;
-
-	DBG(("%s-%s clone %s\n",
-	     DisplayString(clone->dst.dpy), clone->dst.name, clone->src.name));
-
-	ret = get_current_config(&clone->src);
-	if (ret)
-		return ret;
-
-	set_config(&clone->dst, &clone->src);
-
-	if (clone->src.mode.width != clone->width ||
-	    clone->src.mode.height != clone->height)
-		clone_create_xfer(clone);
-
-	clone->damaged.x1 = clone->src.x;
-	clone->damaged.x2 = clone->src.x + clone->width;
-	clone->damaged.y1 = clone->src.y;
-	clone->damaged.y2 = clone->src.y + clone->height;
-
-	return 0;
-}
-
 static int clone_output_init(struct clone *clone, struct output *output,
 			     struct display *display, const char *name)
 {
 	Display *dpy = display->dpy;
-	XGCValues gcv;
 
 	DBG(("%s(%s, %s)\n", __func__, DisplayString(dpy), name));
 
@@ -707,17 +742,17 @@ static int clone_output_init(struct clone *clone, struct output *output,
 				      &output->shm_opcode,
 				      &output->has_shm_pixmap);
 
-	gcv.graphics_exposures = False;
-	gcv.subwindow_mode = IncludeInferiors;
-
-	output->gc = XCreateGC(dpy, output->window, GCGraphicsExposures | GCSubwindowMode, &gcv);
-
 	return 0;
 }
 
 static void send_shm(struct output *o, int serial)
 {
 	XShmCompletionEvent e;
+
+	if (o->shm_event == 0) {
+		XSync(o->dpy, False);
+		return;
+	}
 
 	e.type = o->shm_event;
 	e.send_event = 1;
@@ -736,7 +771,30 @@ static void get_src(struct clone *c, const XRectangle *clip)
 {
 	DBG(("%s-%s get_src(%d,%d)x(%d,%d)\n", DisplayString(c->dst.dpy), c->dst.name,
 	     clip->x, clip->y, clip->width, clip->height));
-	if (c->src.picture) {
+	if (c->src.win_picture) {
+		XRenderComposite(c->src.dpy, PictOpSrc,
+				 c->src.win_picture, 0, c->src.pix_picture,
+				 clip->x, clip->y,
+				 0, 0,
+				 0, 0,
+				 clip->width, clip->height);
+		if (c->src.has_shm_pixmap) {
+			XSync(c->src.dpy, False);
+		} else if (c->src.has_shm) {
+			c->image.width = clip->width;
+			c->image.height = clip->height;
+			c->image.obdata = (char *)&c->shm;
+			XShmGetImage(c->src.dpy, c->src.pixmap, &c->image,
+				     clip->x, clip->y, AllPlanes);
+		} else {
+			c->image.width = c->width;
+			c->image.height = c->height;
+			c->image.obdata = 0;
+			XGetSubImage(c->src.dpy, c->src.pixmap,
+				     clip->x, clip->y, clip->width, clip->height,
+				     AllPlanes, ZPixmap,
+				     &c->image, 0, 0);
+		}
 	} else if (c->src.pixmap) {
 		XCopyArea(c->src.dpy, c->src.window, c->src.pixmap, c->src.gc,
 			  clip->x, clip->y,
@@ -764,7 +822,36 @@ static void put_dst(struct clone *c, const XRectangle *clip)
 {
 	DBG(("%s-%s put_dst(%d,%d)x(%d,%d)\n", DisplayString(c->dst.dpy), c->dst.name,
 	     clip->x, clip->y, clip->width, clip->height));
-	if (c->dst.picture) {
+	if (c->dst.win_picture) {
+		int serial;
+		if (c->dst.has_shm_pixmap) {
+		} else if (c->dst.has_shm) {
+			c->image.width = clip->width;
+			c->image.height = clip->height;
+			c->image.obdata = (char *)&c->shm;
+			XShmPutImage(c->dst.dpy, c->dst.pixmap, c->dst.gc, &c->image,
+				     0, 0,
+				     0, 0,
+				     clip->width, clip->height,
+				     False);
+		} else {
+			c->image.width = c->width;
+			c->image.height = c->height;
+			c->image.obdata = 0;
+			XPutImage(c->dst.dpy, c->dst.pixmap, c->dst.gc, &c->image,
+				  0, 0,
+				  0, 0,
+				  clip->width, clip->height);
+		}
+		serial = NextRequest(c->dst.dpy);
+		XRenderComposite(c->dst.dpy, PictOpSrc,
+				 c->dst.pix_picture, 0, c->dst.win_picture,
+				 0, 0,
+				 0, 0,
+				 clip->x, clip->y,
+				 clip->width, clip->height);
+		if (c->dst.has_shm)
+			send_shm(&c->dst, serial);
 	} else if (c->dst.pixmap) {
 		int serial = NextRequest(c->dst.dpy);
 		XCopyArea(c->dst.dpy, c->dst.pixmap, c->dst.window, c->dst.gc,
@@ -853,60 +940,6 @@ static void usage(const char *arg0)
 	printf("usage: %s [-d <source display>] [<target display>] <target output>...\n", arg0);
 }
 
-static int bumblebee_open(struct display *display)
-{
-	char buf[256];
-	struct sockaddr_un addr;
-	int fd, len;
-
-	fd = socket(PF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-	if (fd < 0)
-		goto err;
-
-	addr.sun_family = AF_UNIX;
-	strcpy(addr.sun_path, optarg && *optarg ? optarg : "/var/run/bumblebee.socket");
-	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
-		goto err;
-
-	/* Ask bumblebee to start the second server */
-	buf[0] = 'C';
-	if (send(fd, &buf, 1, 0) != 1 || (len = recv(fd, &buf, 255, 0)) <= 0) {
-		close(fd);
-		goto err;
-	}
-	buf[len] = '\0';
-
-	/* Query the display name */
-	strcpy(buf, "Q VirtualDisplay");
-	if (send(fd, buf, 17, 0) != 17 || (len = recv(fd, buf, 255, 0)) <= 0)
-		goto err;
-	buf[len] = '\0';
-	close(fd);
-
-	if (strncmp(buf, "Value: ", 7))
-		goto err;
-
-	while (isspace(buf[--len]))
-		buf[len] = '\0';
-
-	display->dpy = XOpenDisplay(buf+7);
-	if (display->dpy == NULL) {
-		fprintf(stderr, "Unable to connect to bumblebee Xserver on %s\n", buf+7);
-		return -ECONNREFUSED;
-	}
-
-	if (!XRRQueryExtension(display->dpy, &display->rr_event, &display->rr_error)) {
-		fprintf(stderr, "RandR extension not supported by bumblebee Xserver\n");
-		return -EINVAL;
-	}
-
-	return ConnectionNumber(display->dpy);
-
-err:
-	fprintf(stderr, "Unable to connect to bumblebee\n");
-	return -ECONNREFUSED;
-}
-
 static void record_callback(XPointer closure, XRecordInterceptData *data)
 {
 	struct context *ctx = (struct context *)closure;
@@ -979,8 +1012,53 @@ static int timer(int hz)
 	return fd;
 }
 
-static int display_init(struct display *display, const char *name)
+static int display_init_core(struct display *display)
 {
+	Display *dpy = display->dpy;
+	Visual *visual;
+	int major, minor;
+
+	display->root = DefaultRootWindow(dpy);
+
+	visual = DefaultVisual(dpy, DefaultScreen(dpy));
+	if (visual->bits_per_rgb != 8 ||
+	    visual->red_mask != 0xff << 16 ||
+	    visual->green_mask != 0xff << 8 ||
+	    visual->blue_mask != 0xff << 0) {
+		DBG(("%s: has non-RGB24 visual, forcing render (bpp=%d, red=%lx, green=%lx, blue=%lx)\n",
+		     DisplayString(dpy), visual->bits_per_rgb,
+		     (long)visual->red_mask,
+		     (long)visual->green_mask,
+		     (long)visual->blue_mask));
+
+		if (!XRenderQueryVersion(dpy, &major, &minor)) {
+			fprintf(stderr, "Render extension not supported by %s\n", DisplayString(dpy));
+			return -EINVAL;
+		}
+
+		display->root_format = XRenderFindVisualFormat(dpy, visual);
+		display->rgb24_format = XRenderFindStandardFormat(dpy, PictStandardRGB24);
+
+		DBG(("%s: root=%x, rgb24=%x\n", DisplayString(dpy),
+		     (int)display->root_format->id, (int)display->rgb24_format->id));
+	}
+
+	if (!XRRQueryExtension(dpy, &display->rr_event, &display->rr_error)) {
+		fprintf(stderr, "RandR extension not supported by %s\n", DisplayString(dpy));
+		return -EINVAL;
+	}
+
+
+	display->invisible_cursor = display_load_invisible_cursor(display);
+	display->cursor = None;
+
+	return 0;
+}
+
+static int display_open(struct display *display, const char *name)
+{
+	int ret;
+
 	DBG(("%s(%s)\n", __func__, name));
 
 	display->dpy = XOpenDisplay(name);
@@ -989,17 +1067,64 @@ static int display_init(struct display *display, const char *name)
 		return -ECONNREFUSED;
 	}
 
-	display->root = DefaultRootWindow(display->dpy);
-
-	if (!XRRQueryExtension(display->dpy, &display->rr_event, &display->rr_error)) {
-		fprintf(stderr, "RandR extension not supported by %s\n", DisplayString(display->dpy));
-		return -EINVAL;
-	}
-
-	display->invisible_cursor = display_load_invisible_cursor(display);
-	display->cursor = None;
+	ret = display_init_core(display);
+	if (ret)
+		return ret;
 
 	return ConnectionNumber(display->dpy);
+}
+
+static int bumblebee_open(struct display *display)
+{
+	char buf[256];
+	struct sockaddr_un addr;
+	int fd, len;
+
+	fd = socket(PF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+	if (fd < 0)
+		goto err;
+
+	addr.sun_family = AF_UNIX;
+	strcpy(addr.sun_path, optarg && *optarg ? optarg : "/var/run/bumblebee.socket");
+	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
+		goto err;
+
+	/* Ask bumblebee to start the second server */
+	buf[0] = 'C';
+	if (send(fd, &buf, 1, 0) != 1 || (len = recv(fd, &buf, 255, 0)) <= 0) {
+		close(fd);
+		goto err;
+	}
+	buf[len] = '\0';
+
+	/* Query the display name */
+	strcpy(buf, "Q VirtualDisplay");
+	if (send(fd, buf, 17, 0) != 17 || (len = recv(fd, buf, 255, 0)) <= 0)
+		goto err;
+	buf[len] = '\0';
+	close(fd);
+
+	if (strncmp(buf, "Value: ", 7))
+		goto err;
+
+	while (isspace(buf[--len]))
+		buf[len] = '\0';
+
+	display->dpy = XOpenDisplay(buf+7);
+	if (display->dpy == NULL) {
+		fprintf(stderr, "Unable to connect to bumblebee Xserver on %s\n", buf+7);
+		return -ECONNREFUSED;
+	}
+
+	len = display_init_core(display);
+	if (len)
+		return len;
+
+	return ConnectionNumber(display->dpy);
+
+err:
+	fprintf(stderr, "Unable to connect to bumblebee\n");
+	return -ECONNREFUSED;
 }
 
 static int display_init_damage(struct display *display)
@@ -1098,7 +1223,7 @@ int main(int argc, char **argv)
 
 	nfd = 1;
 	pfd->events = POLLIN;
-	pfd->fd = display_init(&ctx.display[0], src_name);
+	pfd->fd = display_open(&ctx.display[0], src_name);
 	if (pfd->fd < 0)
 		return -pfd->fd;
 
@@ -1114,7 +1239,7 @@ int main(int argc, char **argv)
 		char buf[80];
 
 		if (strchr(argv[i], ':')) {
-			pfd[nfd].fd = display_init(&ctx.display[ctx.num_display++], argv[i]);
+			pfd[nfd].fd = display_open(&ctx.display[ctx.num_display++], argv[i]);
 			if (pfd[nfd].fd < 0)
 				return -pfd[nfd].fd;
 			pfd[nfd].events = POLLIN;
@@ -1157,7 +1282,7 @@ int main(int argc, char **argv)
 			return ret;
 		}
 
-		ret = clone_update_modes(&ctx.clones[ctx.num_clones].dst, &ctx.clones[ctx.num_clones].src);
+		ret = clone_update_dst(&ctx.clones[ctx.num_clones].dst, &ctx.clones[ctx.num_clones].src);
 		if (ret) {
 			fprintf(stderr, "Failed to clone output \"%s\" from display \"%s\"\n",
 				argv[i], DisplayString(ctx.display[nfd-1].dpy));
@@ -1187,6 +1312,7 @@ int main(int argc, char **argv)
 
 	while (1) {
 		XEvent e;
+		int reconfigure = 0;
 
 		ret = poll(pfd, nfd + enable_timer, -1);
 		if (ret <= 0)
@@ -1220,8 +1346,9 @@ int main(int argc, char **argv)
 
 					XFree(cur);
 				} else if (e.type == ctx.display[0].rr_event + RRScreenChangeNotify) {
-					for (i = 0; i < ctx.num_clones; i++)
-						(void)clone_output(&ctx.clones[i]);
+					reconfigure = 1;
+					if (!enable_timer)
+						enable_timer = read(pfd[nfd].fd, &count, sizeof(count)) > 0;
 				} else {
 					DBG(("unknown event %d\n", e.type));
 				}
@@ -1258,7 +1385,7 @@ int main(int argc, char **argv)
 		}
 
 		for (i = 0; i < ctx.num_clones; i++)
-			clone_update(&ctx.clones[i]);
+			clone_update(&ctx.clones[i], reconfigure);
 
 		if (enable_timer && read(pfd[nfd].fd, &count, sizeof(count)) > 0 && count > 0) {
 			ret = 0;
