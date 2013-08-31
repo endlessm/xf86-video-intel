@@ -3211,7 +3211,7 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 	}
 
 	if (!xf86GetOptValInteger(sna->Options, OPTION_VIRTUAL, &num_fake))
-		num_fake = 0;
+		num_fake = 1;
 
 	mode->kmode = drmModeGetResources(sna->kgem.fd);
 	if (mode->kmode) {

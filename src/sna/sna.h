@@ -265,6 +265,10 @@ struct sna {
 		DamagePtr shadow_damage;
 		struct kgem_bo *shadow;
 		int shadow_flip;
+
+		unsigned num_real_crtc;
+		unsigned num_real_output;
+		unsigned num_fake;
 	} mode;
 
 	struct sna_dri {

@@ -31,6 +31,8 @@
 
 #include "sna.h"
 
+static bool add_fake_output(struct sna *sna, bool late);
+
 static void
 sna_crtc_dpms(xf86CrtcPtr crtc, int mode)
 {
@@ -102,21 +104,6 @@ static const xf86CrtcFuncsRec sna_crtc_funcs = {
 #endif
 };
 
-static bool
-sna_crtc_fake(struct sna *sna)
-{
-	ScrnInfoPtr scrn = sna->scrn;
-	xf86CrtcPtr crtc;
-
-	DBG(("%s\n", __FUNCTION__));
-
-	crtc = xf86CrtcCreate(scrn, &sna_crtc_funcs);
-	if (crtc == NULL)
-		return false;
-
-	return true;
-}
-
 static void
 sna_output_create_resources(xf86OutputPtr output)
 {
@@ -143,8 +130,14 @@ sna_output_dpms(xf86OutputPtr output, int dpms)
 static xf86OutputStatus
 sna_output_detect(xf86OutputPtr output)
 {
-	if (output->randr_output->numUserModes)
+	if (output->randr_output->numUserModes) {
+		xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(output->scrn);
+
+		if (xf86_config->output[xf86_config->num_output-1] == output)
+			add_fake_output(to_sna(output->scrn), true);
+
 		return XF86OutputStatusConnected;
+	}
 
 	return XF86OutputStatusDisconnected;
 }
@@ -182,32 +175,6 @@ static const xf86OutputFuncsRec sna_output_funcs = {
 	.get_modes = sna_output_get_modes,
 	.destroy = sna_output_destroy
 };
-
-static bool
-sna_output_fake(struct sna *sna, int n, int num_fake, int num_real_crtc, int num_real_output)
-{
-	ScrnInfoPtr scrn = sna->scrn;
-	xf86OutputPtr output;
-	unsigned mask;
-	char buf[80];
-
-	sprintf(buf, "VIRTUAL%d", n+1);
-	output = xf86OutputCreate(scrn, &sna_output_funcs, buf);
-	if (!output)
-		return false;
-
-	output->mm_width = 0;
-	output->mm_height = 0;
-
-	output->subpixel_order = SubPixelNone;
-
-	mask = (1 << num_fake) - 1;
-	output->possible_crtcs = mask << num_real_crtc;
-	output->possible_clones = mask << num_real_output;
-	output->interlaceAllowed = FALSE;
-
-	return true;
-}
 
 static Bool
 sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
@@ -251,28 +218,126 @@ static const xf86CrtcConfigFuncsRec sna_mode_funcs = {
 	sna_mode_resize
 };
 
+static bool add_fake_output(struct sna *sna, bool late)
+{
+	ScrnInfoPtr scrn = sna->scrn;
+	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
+	xf86OutputPtr output;
+	xf86CrtcPtr crtc;
+	RROutputPtr clones[32];
+	RRCrtcPtr crtcs[32];
+	unsigned mask;
+	char buf[80];
+	int i, j, len;
+
+	if (sna->mode.num_fake >= 32)
+		return false;
+
+	DBG(("%s(late=%d, num_fake=%d)\n", __FUNCTION__, late, sna->mode.num_fake+1));
+
+	crtc = xf86CrtcCreate(scrn, &sna_crtc_funcs);
+	if (crtc == NULL)
+		return false;
+
+	len = sprintf(buf, "VIRTUAL%d", sna->mode.num_fake+1);
+	output = xf86OutputCreate(scrn, &sna_output_funcs, buf);
+	if (!output) {
+		xf86CrtcDestroy(crtc);
+		return false;
+	}
+
+	output->mm_width = 0;
+	output->mm_height = 0;
+	output->interlaceAllowed = FALSE;
+	output->subpixel_order = SubPixelNone;
+
+	if (late) {
+		ScreenPtr screen = xf86ScrnToScreen(scrn);
+
+		crtc->randr_crtc = RRCrtcCreate(screen, crtc);
+		output->randr_output = RROutputCreate(screen, buf, len, output);
+		if (crtc->randr_crtc == NULL || output->randr_output == NULL) {
+			xf86OutputDestroy(output);
+			xf86CrtcDestroy(crtc);
+			return false;
+		}
+
+		RRPostPendingProperties(output->randr_output);
+
+		mask = (1 << ++sna->mode.num_fake) - 1;
+		for (i = j = 0; i < xf86_config->num_output; i++) {
+			output = xf86_config->output[i];
+			if (output->driver_private)
+				continue;
+
+			output->possible_crtcs = mask << sna->mode.num_real_crtc;
+			output->possible_clones = mask << sna->mode.num_real_output;
+
+			clones[j++] = output->randr_output;
+		}
+		assert(j == sna->mode.num_fake);
+
+		for (i = j = 0; i < xf86_config->num_crtc; i++) {
+			crtc = xf86_config->crtc[i];
+			if (crtc->driver_private)
+				continue;
+
+			crtcs[j++] = crtc->randr_crtc;
+		}
+		assert(j == sna->mode.num_fake);
+
+		for (i = 0; i < xf86_config->num_output; i++) {
+			output = xf86_config->output[i];
+			if (output->driver_private)
+				continue;
+
+			if (!RROutputSetCrtcs(output->randr_output, crtcs, j) ||
+			    !RROutputSetClones(output->randr_output, clones, j))
+				goto err;
+		}
+	} else {
+		mask = (1 << ++sna->mode.num_fake) - 1;
+		output->possible_crtcs = mask << sna->mode.num_real_crtc;
+		output->possible_clones = mask << sna->mode.num_real_output;
+	}
+
+	return true;
+
+err:
+	for (i = 0; i < xf86_config->num_output; i++) {
+		output = xf86_config->output[i];
+		if (output->driver_private)
+			continue;
+
+		xf86OutputDestroy(output);
+	}
+
+	for (i = 0; i < xf86_config->num_crtc; i++) {
+		crtc = xf86_config->crtc[i];
+		if (crtc->driver_private)
+			continue;
+		xf86CrtcDestroy(crtc);
+	}
+	sna->mode.num_fake = -1;
+	return false;
+}
+
 bool sna_mode_fake_init(struct sna *sna, int num_fake)
 {
 	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(sna->scrn);
-	int n, num_real_crtc, num_real_output;
+	bool ret;
 
 	if (num_fake == 0)
 		return true;
 
-	num_real_crtc = xf86_config->num_crtc;
-	num_real_output = xf86_config->num_output;
+	sna->mode.num_real_crtc = xf86_config->num_crtc;
+	sna->mode.num_real_output = xf86_config->num_output;
 
-	if (num_real_crtc == 0)
+	if (sna->mode.num_real_crtc == 0)
 		xf86CrtcConfigInit(sna->scrn, &sna_mode_funcs);
 
-	for (n = 0; n < num_fake; n++) {
-		if (!sna_crtc_fake(sna))
-			return false;
-
-		if (!sna_output_fake(sna, n, num_fake,
-				     num_real_crtc, num_real_output))
-			return false;
-	}
-
-	return true;
+	ret = true;
+	while (ret && num_fake--)
+		ret = add_fake_output(sna, false);
+	return ret;
 }

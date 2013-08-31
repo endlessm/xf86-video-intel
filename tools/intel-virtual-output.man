@@ -5,19 +5,12 @@
 intel-virtual-output \- Utility for connecting the Integrated Intel GPU to discrete outputs
 .SH SYNOPSIS
 .nf
-.B "Section \*qDevice\*q"
-.BI "  Identifier \*q"  devname \*q
-.B  "  Driver \*qintel\*q"
-.B  "  Option \*qVirtualHeads\*q" \*q<number>\*q
-\ \ ...
-.B EndSection
-.B ""
 .B "intel-virtual-output [<remote display>] <output name>..."
 .fi
 .SH DESCRIPTION
 .B intel-virtual-output
 is a utility for Intel integrated graphics chipsets on hybrid systems.
-The tool connects pre-allocated VirtualHeads to a remote output, allowing
+The tool connects local VirtualHeads to a remote output, allowing
 the primary display to extend onto the remote outputs.
 
 .SH REPORTING BUGS

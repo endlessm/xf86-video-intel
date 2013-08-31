@@ -383,6 +383,37 @@ err:
 	return ret;
 }
 
+static int claim_virtual(struct output *output)
+{
+	char buf[] = "ClaimVirtualHead";
+	XRRScreenResources *res;
+	XRRModeInfo mode;
+	RRMode id;
+
+	/* Set any mode on the VirtualHead to make the Xserver allocate another */
+	assert(output->rr_output);
+
+	memset(&mode, 0, sizeof(mode));
+	mode.width = 1024;
+	mode.height = 768;
+	mode.name = buf;
+	mode.nameLength = sizeof(buf) - 1;
+
+	id = XRRCreateMode(output->dpy, output->window, &mode);
+	XRRAddOutputMode(output->dpy, output->rr_output, id);
+
+	/* Force a redetection for the ddx to spot the new outputs */
+	res = XRRGetScreenResources(output->dpy, output->window);
+	if (res == NULL)
+		return ENOMEM;
+
+	XRRFreeScreenResources(res);
+	XRRDeleteOutputMode(output->dpy, output->rr_output, id);
+	XRRDestroyMode(output->dpy, id);
+
+	return 0;
+}
+
 static int get_current_config(struct output *output)
 {
 	XRRScreenResources *res;
@@ -1471,18 +1502,8 @@ int main(int argc, char **argv)
 
 		sprintf(buf, "VIRTUAL%d", ctx.num_clones+1);
 		ret = clone_output_init(&ctx.clones[ctx.num_clones], &ctx.clones[ctx.num_clones].src, &ctx.display[0], buf);
-		if (ret) {
-			while (++i < argc)
-				ctx.num_clones += strchr(argv[i], ':') == NULL;
-			fprintf(stderr,
-				"No preallocated VirtualHead found for argv[i].\n"
-				"Please increase the number of VirtualHeads in xorg.conf:\n"
-				"  Section \"Device\"\n"
-				"    Identifier \"<identifier>\"\n"
-				"    Driver \"intel\"\n"
-				"    Option \"VirtualHeads\" \"%d\"\n"
-				"    ...\n"
-				"  EndSection\n", ctx.num_clones+1);
+		if (ret || claim_virtual(&ctx.clones[ctx.num_clones].src)) {
+			fprintf(stderr, "Failed to find available VirtualHead for argv[i].\n");
 			return ret;
 		}
 
