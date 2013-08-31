@@ -513,7 +513,7 @@ static int stride_for_depth(int width, int depth)
 {
 	if (depth == 24)
 		depth = 32;
-	return (width * depth + 31) / 8;
+	return ((width * depth + 7) / 8 + 3) & ~3;
 }
 
 static void init_image(struct clone *clone)
