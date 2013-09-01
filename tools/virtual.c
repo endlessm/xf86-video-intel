@@ -133,6 +133,7 @@ struct context {
 	struct display *display;
 	struct clone *clones;
 	struct pollfd *pfd;
+	Display *record;
 	int nclone;
 	int ndisplay;
 	int nfd;
@@ -1158,7 +1159,7 @@ static int record_mouse(struct context *ctx)
 	if (!XRecordEnableContextAsync(dpy, rc, record_callback, (XPointer)ctx))
 		return -EINVAL;
 
-	ctx->display[ctx->ndisplay].dpy = dpy;
+	ctx->record = dpy;
 	return ConnectionNumber(dpy);
 }
 
@@ -1837,7 +1838,7 @@ int main(int argc, char **argv)
 			enable_timer = ret != 0;
 		}
 
-		XPending(ctx.display[ctx.ndisplay].dpy);
+		XPending(ctx.record);
 
 		for (i = 0; i < ctx.ndisplay; i++)
 			display_flush(&ctx.display[i]);
