@@ -1585,7 +1585,7 @@ static void display_init_randr_hpd(struct display *display)
 		XRRSelectInput(display->dpy, display->root, RROutputChangeNotifyMask);
 }
 
-static void rebuild_clones(struct context *ctx)
+static void rebuild_clones(struct context *ctx, struct clone *new_clones)
 {
 	int n, m;
 
@@ -1594,7 +1594,7 @@ static void rebuild_clones(struct context *ctx)
 
 		d->clone = NULL;
 		for (m = 0; m < ctx->nclone; m++) {
-			struct clone *c = &ctx->clones[m];
+			struct clone *c = &new_clones[m];
 
 			if (c->dst.display != d)
 				continue;
@@ -1603,6 +1603,8 @@ static void rebuild_clones(struct context *ctx)
 			d->clone = c;
 		}
 	}
+
+	ctx->clones = new_clones;
 }
 
 static struct clone *add_clone(struct context *ctx)
@@ -1615,9 +1617,7 @@ static struct clone *add_clone(struct context *ctx)
 			return NULL;
 
 		if (new_clones != ctx->clones)
-			rebuild_clones(ctx);
-
-		ctx->clones = new_clones;
+			rebuild_clones(ctx, new_clones);
 	}
 
 	return memset(&ctx->clones[ctx->nclone++], 0, sizeof(struct clone));
