@@ -1529,6 +1529,8 @@ static int timerfd(int hz)
 
 static int context_init(struct context *ctx)
 {
+	struct pollfd *pfd;
+
 	memset(ctx, 0, sizeof(*ctx));
 
 	ctx->pfd = malloc(2*sizeof(struct pollfd));
@@ -1543,19 +1545,19 @@ static int context_init(struct context *ctx)
 	if (ctx->display == NULL)
 		return -ENOMEM;
 
-	ctx->pfd[0].fd = timerfd(60);
-	if (ctx->pfd[0].fd < 0)
-		return ctx->pfd[0].fd;
-
-	ctx->pfd[0].events = 0;
-	ctx->pfd[0].revents = 0;
-	ctx->nfd++;
+	pfd = memset(&ctx->pfd[ctx->nfd++], 0, sizeof(struct pollfd));
+	pfd->fd = timerfd(60);
+	if (pfd->fd < 0)
+		return pfd->fd;
+	pfd->events = POLLIN;
 
 	return 0;
 }
 
 static int add_fd(struct context *ctx, int fd)
 {
+	struct pollfd *pfd;
+
 	if (fd < 0)
 		return fd;
 
@@ -1565,10 +1567,9 @@ static int add_fd(struct context *ctx, int fd)
 			return -ENOMEM;
 	}
 
-	ctx->pfd[ctx->nfd].fd = fd;
-	ctx->pfd[ctx->nfd].events = POLLIN;
-	ctx->pfd[ctx->nfd].revents = 0;
-	ctx->nfd++;
+	pfd = memset(&ctx->pfd[ctx->nfd++], 0, sizeof(struct pollfd));
+	pfd->fd = fd;
+	pfd->events = POLLIN;
 	return 0;
 }
 
