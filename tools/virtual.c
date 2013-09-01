@@ -1382,9 +1382,24 @@ static int clone_init_depth(struct clone *clone)
 	return 0;
 }
 
-static int display_init_core(struct display *display)
+static inline int is_power_of_2(unsigned long n)
 {
-	Display *dpy = display->dpy;
+	return n && ((n & (n - 1)) == 0);
+}
+
+static int add_display(struct context *ctx, Display *dpy)
+{
+	struct display *display;
+
+	if (is_power_of_2(ctx->ndisplay)) {
+		ctx->display = realloc(ctx->display, 2*ctx->ndisplay*sizeof(struct display));
+		if (ctx->display == NULL)
+			return -ENOMEM;
+	}
+
+	display = memset(&ctx->display[ctx->ndisplay++], 0, sizeof(struct display));
+
+	display->dpy = dpy;
 
 	display->root = DefaultRootWindow(dpy);
 	display->depth = DefaultDepth(dpy, DefaultScreen(dpy));
@@ -1403,54 +1418,38 @@ static int display_init_core(struct display *display)
 	display->invisible_cursor = display_load_invisible_cursor(display);
 	display->cursor = None;
 
-	return 0;
-}
-
-static inline int is_power_of_2(unsigned long n)
-{
-	return n && ((n & (n - 1)) == 0);
-}
-
-static struct display *add_display(struct context *ctx)
-{
-	if (is_power_of_2(ctx->ndisplay)) {
-		ctx->display = realloc(ctx->display, 2*ctx->ndisplay*sizeof(struct display));
-		if (ctx->display == NULL)
-			return NULL;
-	}
-
-	return memset(&ctx->display[ctx->ndisplay++], 0, sizeof(struct display));
+	return ConnectionNumber(dpy);
 }
 
 static int display_open(struct context *ctx, const char *name)
 {
-	struct display *display;
-	int ret;
-
-	display = add_display(ctx);
-	if (display == NULL)
-		return -ENOMEM;
+	Display *dpy;
+	int n;
 
 	DBG(("%s(%s)\n", __func__, name));
 
-	display->dpy = XOpenDisplay(name);
-	if (display->dpy == NULL) {
+	dpy = XOpenDisplay(name);
+	if (dpy == NULL) {
 		fprintf(stderr, "Unable to connect to %s\n", name);
 		return -ECONNREFUSED;
 	}
 
-	ret = display_init_core(display);
-	if (ret)
-		return ret;
+	/* Prevent cloning the same display twice */
+	for (n = 0; n < ctx->ndisplay; n++) {
+		if (strcmp(DisplayString(dpy), DisplayString(ctx->display[n].dpy)) == 0) {
+			XCloseDisplay(dpy);
+			return -EBUSY;
+		}
+	}
 
-	return ConnectionNumber(display->dpy);
+	return add_display(ctx, dpy);
 }
 
 static int bumblebee_open(struct context *ctx)
 {
 	char buf[256];
 	struct sockaddr_un addr;
-	struct display *display;
+	Display *dpy;
 	int fd, len;
 
 	fd = socket(PF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
@@ -1483,21 +1482,13 @@ static int bumblebee_open(struct context *ctx)
 	while (isspace(buf[--len]))
 		buf[len] = '\0';
 
-	display = add_display(ctx);
-	if (display == NULL)
-		return -ENOMEM;
-
-	display->dpy = XOpenDisplay(buf+7);
-	if (display->dpy == NULL) {
+	dpy = XOpenDisplay(buf+7);
+	if (dpy == NULL) {
 		fprintf(stderr, "Unable to connect to bumblebee Xserver on %s\n", buf+7);
 		return -ECONNREFUSED;
 	}
 
-	len = display_init_core(display);
-	if (len)
-		return len;
-
-	return ConnectionNumber(display->dpy);
+	return add_display(ctx, dpy);
 
 err:
 	fprintf(stderr, "Unable to connect to bumblebee\n");
@@ -1729,8 +1720,12 @@ int main(int argc, char **argv)
 
 	for (i = optind; i < argc; i++) {
 		ret = add_fd(&ctx, display_open(&ctx, argv[i]));
-		if (ret)
+		if (ret) {
+			if (ret == -EBUSY)
+				continue;
+
 			return -ret;
+		}
 
 		ret = last_display_add_clones(&ctx);
 		if (ret)
