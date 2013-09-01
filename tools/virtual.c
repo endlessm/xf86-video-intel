@@ -23,6 +23,7 @@
  */
 
 #include <X11/Xlib.h>
+#include <X11/Xatom.h>
 
 #include <X11/Xlibint.h>
 #include <X11/extensions/XShm.h>
@@ -42,6 +43,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -133,10 +135,15 @@ struct context {
 	struct display *display;
 	struct clone *clones;
 	struct pollfd *pfd;
+#define timer pfd[0].fd
 	Display *record;
 	int nclone;
 	int ndisplay;
 	int nfd;
+
+	Atom singleton;
+	char command[1024];
+	int command_continuation;
 };
 
 static int xlib_vendor_is_xorg(Display *dpy)
@@ -166,7 +173,6 @@ can_use_shm(Display *dpy,
 	    int *shm_pixmap)
 {
 	XShmSegmentInfo shm;
-	int (*old_handler)(Display *display, XErrorEvent *event);
 	Status success;
 	XExtCodes *codes;
 	int major, minor, has_shm, has_pixmap;
@@ -187,14 +193,12 @@ can_use_shm(Display *dpy,
 		return 0;
 	}
 
+	XSync(dpy, False);
 	_x_error_occurred = 0;
 
-	XSync(dpy, False);
-	old_handler = XSetErrorHandler(_check_error_handler);
-
 	success = XShmAttach(dpy, &shm);
-	XSync(dpy, False);
 
+	XSync(dpy, False);
 	has_shm = success && _x_error_occurred == 0;
 
 	codes = XInitExtension(dpy, SHMNAME);
@@ -231,16 +235,13 @@ can_use_shm(Display *dpy,
 		e.offset = 0;
 
 		XSendEvent(dpy, e.drawable, False, 0, (XEvent *)&e);
-		XSync(dpy, False);
 
+		XSync(dpy, False);
 		has_pixmap = _x_error_occurred == 0;
 	}
 
 	if (success)
 		XShmDetach(dpy, &shm);
-
-	XSync(dpy, False);
-	XSetErrorHandler(old_handler);
 
 	shmctl(shm.shmid, IPC_RMID, NULL);
 	shmdt(shm.shmaddr);
@@ -310,11 +311,17 @@ static int clone_update_modes(struct clone *clone)
 	clone->dst.rr_crtc = from_info->crtc;
 
 	/* Clear all current UserModes on the output, including any active ones */
-	if (to_info->crtc)
+	if (to_info->crtc) {
+		DBG(("%s(%s-%s): disabling active CRTC\n", __func__,
+		     DisplayString(clone->src.dpy), clone->src.name));
 		XRRSetCrtcConfig(clone->src.dpy, to_res, to_info->crtc, CurrentTime,
 				0, 0, None, RR_Rotate_0, NULL, 0);
-	for (i = 0; i < to_info->nmode; i++)
+	}
+	for (i = 0; i < to_info->nmode; i++) {
+		DBG(("%s(%s-%s): deleting mode %ld\n", __func__,
+		     DisplayString(clone->src.dpy), clone->src.name, (long)to_info->modes[i]));
 		XRRDeleteOutputMode(clone->src.dpy, clone->src.rr_output, to_info->modes[i]);
+	}
 
 	clone->src.rr_crtc = 0;
 
@@ -1163,28 +1170,6 @@ static int record_mouse(struct context *ctx)
 	return ConnectionNumber(dpy);
 }
 
-static int timer(int hz)
-{
-	struct itimerspec it;
-	int fd;
-
-	fd = timerfd_create(CLOCK_MONOTONIC_COARSE, TFD_NONBLOCK);
-	if (fd < 0)
-		fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
-	if (fd < 0)
-		return -ETIME;
-
-	it.it_interval.tv_sec = 0;
-	it.it_interval.tv_nsec = 1000000000 / hz;
-	it.it_value = it.it_interval;
-	if (timerfd_settime(fd, 0, &it, NULL) < 0) {
-		close(fd);
-		return -ETIME;
-	}
-
-	return fd;
-}
-
 static int bad_visual(Visual *visual, int depth)
 {
 	switch (depth) {
@@ -1450,7 +1435,6 @@ static int bumblebee_open(struct context *ctx)
 {
 	char buf[256];
 	struct sockaddr_un addr;
-	Display *dpy;
 	int fd, len;
 
 	fd = socket(PF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
@@ -1483,13 +1467,7 @@ static int bumblebee_open(struct context *ctx)
 	while (isspace(buf[--len]))
 		buf[len] = '\0';
 
-	dpy = XOpenDisplay(buf+7);
-	if (dpy == NULL) {
-		fprintf(stderr, "Unable to connect to bumblebee Xserver on %s\n", buf+7);
-		return -ECONNREFUSED;
-	}
-
-	return add_display(ctx, dpy);
+	return display_open(ctx, buf+7);
 
 err:
 	fprintf(stderr, "Unable to connect to bumblebee\n");
@@ -1513,11 +1491,33 @@ static int display_init_damage(struct display *display)
 	return 0;
 }
 
+static int timerfd(int hz)
+{
+	struct itimerspec it;
+	int fd;
+
+	fd = timerfd_create(CLOCK_MONOTONIC_COARSE, TFD_NONBLOCK);
+	if (fd < 0)
+		fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
+	if (fd < 0)
+		return -ETIME;
+
+	it.it_interval.tv_sec = 0;
+	it.it_interval.tv_nsec = 1000000000 / hz;
+	it.it_value = it.it_interval;
+	if (timerfd_settime(fd, 0, &it, NULL) < 0) {
+		close(fd);
+		return -ETIME;
+	}
+
+	return fd;
+}
+
 static int context_init(struct context *ctx)
 {
 	memset(ctx, 0, sizeof(*ctx));
 
-	ctx->pfd = malloc(sizeof(struct pollfd));
+	ctx->pfd = malloc(2*sizeof(struct pollfd));
 	if (ctx->pfd == NULL)
 		return -ENOMEM;
 
@@ -1529,7 +1529,35 @@ static int context_init(struct context *ctx)
 	if (ctx->display == NULL)
 		return -ENOMEM;
 
+	ctx->pfd[0].fd = timerfd(60);
+	if (ctx->pfd[0].fd < 0)
+		return ctx->pfd[0].fd;
+
+	ctx->pfd[0].events = 0;
+	ctx->pfd[0].revents = 0;
+	ctx->nfd++;
+
 	return 0;
+}
+
+static void context_build_lists(struct context *ctx)
+{
+	int n, m;
+
+	for (n = 1; n < ctx->ndisplay; n++) {
+		struct display *d = &ctx->display[n];
+
+		d->clone = NULL;
+		for (m = 0; m < ctx->nclone; m++) {
+			struct clone *c = &ctx->clones[m];
+
+			if (c->dst.display != d)
+				continue;
+
+			c->next = d->clone;
+			d->clone = c;
+		}
+	}
 }
 
 static int add_fd(struct context *ctx, int fd)
@@ -1545,6 +1573,7 @@ static int add_fd(struct context *ctx, int fd)
 
 	ctx->pfd[ctx->nfd].fd = fd;
 	ctx->pfd[ctx->nfd].events = POLLIN;
+	ctx->pfd[ctx->nfd].revents = 0;
 	ctx->nfd++;
 	return 0;
 }
@@ -1573,9 +1602,14 @@ static struct clone *add_clone(struct context *ctx)
 	return memset(&ctx->clones[ctx->nclone++], 0, sizeof(struct clone));
 }
 
+static struct display *last_display(struct context *ctx)
+{
+	return &ctx->display[ctx->ndisplay-1];
+}
+
 static int last_display_add_clones(struct context *ctx)
 {
-	struct display *display = &ctx->display[ctx->ndisplay-1];
+	struct display *display = last_display(ctx);
 	XRRScreenResources *res;
 	char buf[80];
 	int i, ret;
@@ -1627,6 +1661,226 @@ static int last_display_add_clones(struct context *ctx)
 	return 0;
 }
 
+static int last_display_clone(struct context *ctx, int fd)
+{
+	if (fd < 0)
+		goto err;
+
+	fd = add_fd(ctx, fd);
+	if (fd < 0)
+		goto err;
+
+	fd = last_display_add_clones(ctx);
+	if (fd)
+		goto err;
+
+err:
+	context_build_lists(ctx);
+	return fd;
+}
+
+static int first_display_has_singleton(struct context *ctx)
+{
+	struct display *display = ctx->display;
+	unsigned long nitems, bytes;
+	unsigned char *prop;
+	int format;
+	Atom type;
+
+	ctx->singleton = XInternAtom(display->dpy, "intel-virtual-output-singleton", False);
+
+	XGetWindowProperty(display->dpy, display->root, ctx->singleton,
+			   0, 0, 0, AnyPropertyType, &type, &format, &nitems, &bytes, &prop);
+	DBG(("%s: singleton registered? %d\n", DisplayString(display->dpy), type != None));
+	return type != None;
+}
+
+static int first_display_wait_for_ack(struct context *ctx, int timeout, int id)
+{
+	struct display *display = ctx->display;
+	struct pollfd pfd;
+	char expect[5];
+
+	sprintf(expect, "%04xR", id);
+	DBG(("%s: wait for act '%c%c%c%c%c'\n",
+	     DisplayString(display->dpy),
+	     expect[0], expect[1], expect[2], expect[3], expect[4]));
+
+	XFlush(display->dpy);
+
+	pfd.fd = ConnectionNumber(display->dpy);
+	pfd.events = POLLIN;
+	do {
+		if (poll(&pfd, 1, timeout) <= 0)
+			return -ETIME;
+
+		while (XPending(display->dpy)) {
+			XEvent e;
+			XClientMessageEvent *cme;
+
+			XNextEvent(display->dpy, &e);
+			DBG(("%s: reading event type %d\n", DisplayString(display->dpy), e.type));
+
+			if (e.type != ClientMessage)
+				continue;
+
+			cme = (XClientMessageEvent *)&e;
+			if (cme->message_type != ctx->singleton)
+				continue;
+			if (cme->format != 8)
+				continue;
+
+			DBG(("%s: client message '%c%c%c%c%c'\n",
+			     DisplayString(display->dpy),
+			     cme->data.b[0],
+			     cme->data.b[1],
+			     cme->data.b[2],
+			     cme->data.b[3],
+			     cme->data.b[4]));
+			if (memcmp(cme->data.b, expect, 5))
+				continue;
+
+			return -atoi(cme->data.b + 5);
+		}
+	} while(1);
+}
+
+#if defined(__GNUC__) && (__GNUC__ > 3)
+__attribute__((format(gnu_printf, 3, 4)))
+#endif
+static int first_display_send_command(struct context *ctx, int timeout,
+				      const char *format,
+				      ...)
+{
+	struct display *display = ctx->display;
+	char buf[1024], *b;
+	int len, id;
+	va_list va;
+
+	id = rand() & 0xffff;
+	sprintf(buf, "%04x", id);
+	va_start(va, format);
+	len = vsnprintf(buf+4, sizeof(buf)-4, format, va)+5;
+	va_end(va);
+	assert(len < sizeof(buf));
+
+	DBG(("%s: send command '%s'\n", DisplayString(display->dpy), buf));
+
+	b = buf;
+	while (len) {
+		XClientMessageEvent msg;
+		int n = len;
+		if (n > sizeof(msg.data.b))
+			n = sizeof(msg.data.b);
+		len -= n;
+
+		msg.type = ClientMessage;
+		msg.serial = 0;
+		msg.message_type = ctx->singleton;
+		msg.format = 8;
+		memcpy(msg.data.b, b, n);
+		b += n;
+
+		XSendEvent(display->dpy, display->root, False, PropertyChangeMask, (XEvent *)&msg);
+	}
+
+	return first_display_wait_for_ack(ctx, timeout, id);
+}
+
+static void first_display_reply(struct context *ctx, int result)
+{
+	struct display *display = ctx->display;
+	XClientMessageEvent msg;
+
+	sprintf(msg.data.b, "%c%c%c%cR%d",
+	     ctx->command[0],
+	     ctx->command[1],
+	     ctx->command[2],
+	     ctx->command[3],
+	     -result);
+
+	DBG(("%s: send reply '%s'\n", DisplayString(display->dpy), msg.data.b));
+
+	msg.type = ClientMessage;
+	msg.serial = 0;
+	msg.message_type = ctx->singleton;
+	msg.format = 8;
+
+	XSendEvent(display->dpy, display->root, False, PropertyChangeMask, (XEvent *)&msg);
+	XFlush(display->dpy);
+}
+
+static void first_display_handle_command(struct context *ctx,
+					 const char *msg)
+{
+	int len;
+
+	DBG(("client message!\n"));
+
+	for (len = 0; len < 20 && msg[len]; len++)
+		;
+
+	if (ctx->command_continuation + len > sizeof(ctx->command)) {
+		ctx->command_continuation = 0;
+		return;
+	}
+
+	memcpy(ctx->command + ctx->command_continuation, msg, len);
+	ctx->command_continuation += len;
+
+	if (len < 20) {
+		ctx->command[ctx->command_continuation] = 0;
+		DBG(("client command complete! '%s'\n", ctx->command));
+		switch (ctx->command[4]) {
+		case 'B':
+			first_display_reply(ctx, last_display_clone(ctx, bumblebee_open(ctx)));
+			break;
+		case 'C':
+			first_display_reply(ctx, last_display_clone(ctx, display_open(ctx, ctx->command + 5)));
+			break;
+		case 'P':
+			first_display_reply(ctx, 0);
+			break;
+		case 'R':
+			break;
+		}
+		ctx->command_continuation = 0;
+		return;
+	}
+}
+
+static int first_display_register_as_singleton(struct context *ctx)
+{
+	struct display *display = ctx->display;
+	struct pollfd pfd;
+
+	XChangeProperty(display->dpy, display->root, ctx->singleton,
+			XA_STRING, 8, PropModeReplace, (unsigned char *)".", 1);
+	XFlush(display->dpy);
+
+	/* And eat the notify (presuming that it is ours!) */
+
+	pfd.fd = ConnectionNumber(display->dpy);
+	pfd.events = POLLIN;
+	do {
+		if (poll(&pfd, 1, 1000) <= 0) {
+			fprintf(stderr, "Failed to register as singleton\n");
+			return EBUSY;
+		}
+
+		while (XPending(display->dpy)) {
+			XPropertyEvent pe;
+
+			XNextEvent(display->dpy, (XEvent *)&pe);
+			DBG(("%s: reading event type %d\n", DisplayString(display->dpy), pe.type));
+
+			if (pe.type == PropertyNotify &&
+			    pe.atom == ctx->singleton)
+				return 0;
+		}
+	} while(1);
+}
+
 static void display_flush(struct display *display)
 {
 	display_flush_cursor(display);
@@ -1640,35 +1894,15 @@ static void display_flush(struct display *display)
 	display->flush = 0;
 }
 
-static void context_build_lists(struct context *ctx)
-{
-	int n, m;
-
-	for (n = 1; n < ctx->ndisplay; n++) {
-		struct display *d = &ctx->display[n];
-
-		for (m = 0; m < ctx->nclone; m++) {
-			struct clone *c = &ctx->clones[m];
-
-			if (c->dst.display != d)
-				continue;
-
-			c->next = d->clone;
-			d->clone = c;
-		}
-	}
-}
-
 int main(int argc, char **argv)
 {
 	struct context ctx;
-	int (*old_handler)(Display *display, XErrorEvent *event);
 	const char *src_name = NULL;
 	uint64_t count;
 	int enable_timer = 0;
-	int i, ret, daemonize = 1, bumblebee = 0;
+	int i, ret, daemonize = 1, bumblebee = 0, singleton = 1;
 
-	while ((i = getopt(argc, argv, "bd:fh")) != -1) {
+	while ((i = getopt(argc, argv, "bd:fhS")) != -1) {
 		switch (i) {
 		case 'd':
 			src_name = optarg;
@@ -1678,6 +1912,9 @@ int main(int argc, char **argv)
 			break;
 		case 'b':
 			bumblebee = 1;
+			break;
+		case 'S':
+			singleton = 0;
 			break;
 		case 'h':
 		default:
@@ -1690,9 +1927,41 @@ int main(int argc, char **argv)
 	if (ret)
 		return -ret;
 
+	XSetErrorHandler(_check_error_handler);
+
 	ret = add_fd(&ctx, display_open(&ctx, src_name));
 	if (ret)
 		return -ret;
+
+	if (singleton) {
+		XSelectInput(ctx.display->dpy, ctx.display->root, PropertyChangeMask);
+		if (first_display_has_singleton(&ctx)) {
+			DBG(("%s: pinging singleton\n", DisplayString(ctx.display->dpy)));
+			ret = first_display_send_command(&ctx, 2000, "P");
+			if (ret) {
+				if (ret != -ETIME)
+					return -ret;
+				DBG(("No reply from singleton; assuming control\n"));
+			} else {
+				DBG(("%s: singleton active, sending open commands\n", DisplayString(ctx.display->dpy)));
+				if (optind == argc || bumblebee) {
+					ret = first_display_send_command(&ctx, 5000, "B");
+					if (ret && ret != -EBUSY)
+						return -ret;
+				}
+				for (i = optind; i < argc; i++) {
+					ret = first_display_send_command(&ctx, 5000, "C%s", argv[i]);
+					if (ret && ret != -EBUSY)
+						return -ret;
+				}
+
+				return 0;
+			}
+		}
+		ret = first_display_register_as_singleton(&ctx);
+		if (ret)
+			return ret;
+	}
 
 	ret = display_init_damage(ctx.display);
 	if (ret)
@@ -1701,11 +1970,8 @@ int main(int argc, char **argv)
 	XRRSelectInput(ctx.display->dpy, ctx.display->root, RRScreenChangeNotifyMask);
 	XFixesSelectCursorInput(ctx.display->dpy, ctx.display->root, XFixesDisplayCursorNotifyMask);
 
-	XSync(ctx.display->dpy, False);
-	old_handler = XSetErrorHandler(_check_error_handler);
-
 	if (optind == argc || bumblebee) {
-		ret = add_fd(&ctx, bumblebee_open(&ctx));
+		ret = last_display_clone(&ctx, bumblebee_open(&ctx));
 		if (ret) {
 			if (!bumblebee) {
 				usage(argv[0]);
@@ -1713,43 +1979,22 @@ int main(int argc, char **argv)
 			}
 			return -ret;
 		}
-
-		ret = last_display_add_clones(&ctx);
-		if (ret)
-			return -ret;
 	}
 
 	for (i = optind; i < argc; i++) {
-		ret = add_fd(&ctx, display_open(&ctx, argv[i]));
+		ret = last_display_clone(&ctx, display_open(&ctx, argv[i]));
 		if (ret) {
 			if (ret == -EBUSY)
 				continue;
-
 			return -ret;
 		}
-
-		ret = last_display_add_clones(&ctx);
-		if (ret)
-			return -ret;
 	}
-
-	context_build_lists(&ctx);
-
-	XSync(ctx.display->dpy, False);
-	XSetErrorHandler(old_handler);
 
 	ret = add_fd(&ctx, record_mouse(&ctx));
 	if (ret) {
 		fprintf(stderr, "XTEST extension not supported by display \"%s\"\n", DisplayString(ctx.display[0].dpy));
 		return -ret;
 	}
-
-	ret = add_fd(&ctx, timer(60));
-	if (ret) {
-		fprintf(stderr, "Failed to setup timer\n");
-		return -ret;
-	}
-	ctx.nfd--; /* we only conditionally poll the timer */
 
 	if (daemonize && daemon(0, 0))
 		return EINVAL;
@@ -1758,11 +2003,11 @@ int main(int argc, char **argv)
 		XEvent e;
 		int reconfigure = 0;
 
-		ret = poll(ctx.pfd, ctx.nfd + enable_timer, -1);
+		ret = poll(ctx.pfd + !enable_timer, ctx.nfd - !enable_timer, -1);
 		if (ret <= 0)
 			break;
 
-		if (ctx.pfd[0].revents) {
+		if (ctx.pfd[1].revents) {
 			int damaged = 0;
 
 			do {
@@ -1773,7 +2018,7 @@ int main(int argc, char **argv)
 					for (i = 0; i < ctx.nclone; i++)
 						clone_damage(&ctx.clones[i], &de->area);
 					if (!enable_timer)
-						enable_timer = read(ctx.pfd[ctx.nfd].fd, &count, sizeof(count)) > 0;
+						enable_timer = read(ctx.timer, &count, sizeof(count)) > 0;
 					damaged++;
 				} else if (e.type == ctx.display->xfixes_event + XFixesCursorNotify) {
 					XFixesCursorImage *cur;
@@ -1789,11 +2034,27 @@ int main(int argc, char **argv)
 				} else if (e.type == ctx.display->rr_event + RRScreenChangeNotify) {
 					reconfigure = 1;
 					if (!enable_timer)
-						enable_timer = read(ctx.pfd[ctx.nfd].fd, &count, sizeof(count)) > 0;
+						enable_timer = read(ctx.timer, &count, sizeof(count)) > 0;
+				} else if (e.type == PropertyNotify) {
+					XPropertyEvent *pe = (XPropertyEvent *)&e;
+					if (pe->atom == ctx.singleton) {
+						DBG(("lost control of singleton\n"));
+						return 0;
+					}
+				} else if (e.type == ClientMessage) {
+					XClientMessageEvent *cme;
+
+					cme = (XClientMessageEvent *)&e;
+					if (cme->message_type != ctx.singleton)
+						continue;
+					if (cme->format != 8)
+						continue;
+
+					first_display_handle_command(&ctx, cme->data.b);
 				} else {
 					DBG(("unknown event %d\n", e.type));
 				}
-			} while (XPending(ctx.display->dpy) || poll(ctx.pfd, 1, 0) > 0);
+			} while (XPending(ctx.display->dpy) || poll(&ctx.pfd[1], 1, 0) > 0);
 
 			if (damaged)
 				XDamageSubtract(ctx.display->dpy, ctx.display->damage, None, None);
@@ -1801,7 +2062,7 @@ int main(int argc, char **argv)
 		}
 
 		for (i = 1; ret && i < ctx.ndisplay; i++) {
-			if (ctx.pfd[i].revents == 0)
+			if (ctx.pfd[i+1].revents == 0)
 				continue;
 
 			do {
@@ -1820,7 +2081,7 @@ int main(int argc, char **argv)
 						}
 					}
 				}
-			} while (XPending(ctx.display[i].dpy) || poll(&ctx.pfd[i], 1, 0) > 0);
+			} while (XPending(ctx.display[i].dpy) || poll(&ctx.pfd[i+1], 1, 0) > 0);
 
 			ret--;
 		}
@@ -1831,7 +2092,7 @@ int main(int argc, char **argv)
 		for (i = 0; i < ctx.nclone; i++)
 			clone_update(&ctx.clones[i]);
 
-		if (enable_timer && read(ctx.pfd[ctx.nfd].fd, &count, sizeof(count)) > 0 && count > 0) {
+		if (enable_timer && read(ctx.timer, &count, sizeof(count)) > 0 && count > 0) {
 			ret = 0;
 			for (i = 0; i < ctx.nclone; i++)
 				ret |= clone_paint(&ctx.clones[i]);
