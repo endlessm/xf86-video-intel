@@ -1378,9 +1378,23 @@ static int add_display(struct context *ctx, Display *dpy)
 	struct display *display;
 
 	if (is_power_of_2(ctx->ndisplay)) {
-		ctx->display = realloc(ctx->display, 2*ctx->ndisplay*sizeof(struct display));
-		if (ctx->display == NULL)
+		struct display *new_display;
+
+		new_display = realloc(ctx->display, 2*ctx->ndisplay*sizeof(struct display));
+		if (new_display == NULL)
 			return -ENOMEM;
+
+		if (new_display != ctx->display) {
+			int n;
+
+			for (n = 0; n < ctx->nclone; n++) {
+				struct clone *clone = &ctx->clones[n];
+				clone->src.display = new_display + (clone->src.display - ctx->display);
+				clone->dst.display = new_display + (clone->dst.display - ctx->display);
+			}
+		}
+
+		ctx->display = new_display;
 	}
 
 	display = memset(&ctx->display[ctx->ndisplay++], 0, sizeof(struct display));
@@ -1540,26 +1554,6 @@ static int context_init(struct context *ctx)
 	return 0;
 }
 
-static void context_build_lists(struct context *ctx)
-{
-	int n, m;
-
-	for (n = 1; n < ctx->ndisplay; n++) {
-		struct display *d = &ctx->display[n];
-
-		d->clone = NULL;
-		for (m = 0; m < ctx->nclone; m++) {
-			struct clone *c = &ctx->clones[m];
-
-			if (c->dst.display != d)
-				continue;
-
-			c->next = d->clone;
-			d->clone = c;
-		}
-	}
-}
-
 static int add_fd(struct context *ctx, int fd)
 {
 	if (fd < 0)
@@ -1591,12 +1585,39 @@ static void display_init_randr_hpd(struct display *display)
 		XRRSelectInput(display->dpy, display->root, RROutputChangeNotifyMask);
 }
 
+static void rebuild_clones(struct context *ctx)
+{
+	int n, m;
+
+	for (n = 1; n < ctx->ndisplay; n++) {
+		struct display *d = &ctx->display[n];
+
+		d->clone = NULL;
+		for (m = 0; m < ctx->nclone; m++) {
+			struct clone *c = &ctx->clones[m];
+
+			if (c->dst.display != d)
+				continue;
+
+			c->next = d->clone;
+			d->clone = c;
+		}
+	}
+}
+
 static struct clone *add_clone(struct context *ctx)
 {
 	if (is_power_of_2(ctx->nclone)) {
-		ctx->clones = realloc(ctx->clones, 2*ctx->nclone*sizeof(struct clone));
-		if (ctx->clones == NULL)
+		struct clone *new_clones;
+
+		new_clones = realloc(ctx->clones, 2*ctx->nclone*sizeof(struct clone));
+		if (new_clones == NULL)
 			return NULL;
+
+		if (new_clones != ctx->clones)
+			rebuild_clones(ctx);
+
+		ctx->clones = new_clones;
 	}
 
 	return memset(&ctx->clones[ctx->nclone++], 0, sizeof(struct clone));
@@ -1625,6 +1646,8 @@ static int last_display_add_clones(struct context *ctx)
 		struct clone *clone = add_clone(ctx);
 
 		clone->depth = 24;
+		clone->next = display->clone;
+		display->clone = clone;
 
 		sprintf(buf, "VIRTUAL%d", ctx->nclone);
 		ret = clone_output_init(clone, &clone->src, ctx->display, buf, claim_virtual(ctx->display, buf));
@@ -1664,19 +1687,17 @@ static int last_display_add_clones(struct context *ctx)
 static int last_display_clone(struct context *ctx, int fd)
 {
 	if (fd < 0)
-		goto err;
+		return fd;
 
 	fd = add_fd(ctx, fd);
 	if (fd < 0)
-		goto err;
+		return fd;
 
 	fd = last_display_add_clones(ctx);
 	if (fd)
-		goto err;
+		return fd;
 
-err:
-	context_build_lists(ctx);
-	return fd;
+	return 0;
 }
 
 static int first_display_has_singleton(struct context *ctx)
