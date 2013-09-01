@@ -1146,9 +1146,9 @@ static int record_mouse(struct context *ctx)
 	XRecordClientSpec rcs;
 	XRecordContext rc;
 
-	DBG(("%s(%s)\n", __func__, DisplayString(ctx->display[0].dpy)));
+	DBG(("%s(%s)\n", __func__, DisplayString(ctx->display->dpy)));
 
-	dpy = XOpenDisplay(DisplayString(ctx->display[0].dpy));
+	dpy = XOpenDisplay(DisplayString(ctx->display->dpy));
 	if (dpy == NULL)
 		return -ECONNREFUSED;
 
@@ -1764,7 +1764,7 @@ static int first_display_wait_for_ack(struct context *ctx, int timeout, int id)
 
 			return -atoi(cme->data.b + 5);
 		}
-	} while(1);
+	} while (1);
 }
 
 #if defined(__GNUC__) && (__GNUC__ > 3)
@@ -1900,7 +1900,7 @@ static int first_display_register_as_singleton(struct context *ctx)
 			    pe.atom == ctx->singleton)
 				return 0;
 		}
-	} while(1);
+	} while (1);
 }
 
 static void display_flush(struct display *display)
@@ -2014,7 +2014,7 @@ int main(int argc, char **argv)
 
 	ret = add_fd(&ctx, record_mouse(&ctx));
 	if (ret) {
-		fprintf(stderr, "XTEST extension not supported by display \"%s\"\n", DisplayString(ctx.display[0].dpy));
+		fprintf(stderr, "XTEST extension not supported by display \"%s\"\n", DisplayString(ctx.display->dpy));
 		return -ret;
 	}
 
