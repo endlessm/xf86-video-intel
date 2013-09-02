@@ -165,6 +165,17 @@ static int xlib_vendor_is_xorg(Display *dpy)
 	return strstr(vendor, "X.Org") || strstr(vendor, "Xorg");
 }
 
+static inline XRRScreenResources *_XRRGetScreenResourcesCurrent(Display *dpy, Window window)
+{
+	XRRScreenResources *res;
+
+	res = XRRGetScreenResourcesCurrent(dpy, window);
+	if (res == NULL)
+		res = XRRGetScreenResources(dpy, window);
+
+	return res;
+}
+
 #define XORG_VERSION_ENCODE(major,minor,patch,snap) \
     (((major) * 10000000) + ((minor) * 100000) + ((patch) * 1000) + snap)
 
@@ -399,7 +410,7 @@ static int clone_update_modes__randr(struct clone *clone)
 	if (from_info == NULL)
 		goto err;
 
-	to_res = XRRGetScreenResourcesCurrent(clone->src.dpy, clone->src.window);
+	to_res = _XRRGetScreenResourcesCurrent(clone->src.dpy, clone->src.window);
 	if (to_res == NULL)
 		goto err;
 
@@ -491,7 +502,7 @@ static int clone_update_modes__fixed(struct clone *clone)
 
 	assert(clone->src.rr_output);
 
-	res = XRRGetScreenResourcesCurrent(clone->src.dpy, clone->src.window);
+	res = _XRRGetScreenResourcesCurrent(clone->src.dpy, clone->src.window);
 	if (res == NULL)
 		goto err;
 
@@ -555,7 +566,7 @@ static RROutput claim_virtual(struct display *display, char *output_name, int nc
 
 	DBG(("%s(%d)\n", __func__, nclone));
 
-	res = XRRGetScreenResourcesCurrent(dpy, display->root);
+	res = _XRRGetScreenResourcesCurrent(dpy, display->root);
 	if (res == NULL)
 		return 0;
 
@@ -789,7 +800,7 @@ static void context_update(struct context *ctx)
 
 	DBG(("%s\n", __func__));
 
-	res = XRRGetScreenResourcesCurrent(dpy, ctx->display->root);
+	res = _XRRGetScreenResourcesCurrent(dpy, ctx->display->root);
 	if (res == NULL)
 		return;
 
@@ -901,7 +912,7 @@ static void context_update(struct context *ctx)
 		DBG(("%s fb bounds (%d, %d)x(%d, %d)\n", DisplayString(display->dpy),
 		     x1, y1, x2-x1, y2-y1));
 
-		res = XRRGetScreenResourcesCurrent(display->dpy, display->root);
+		res = _XRRGetScreenResourcesCurrent(display->dpy, display->root);
 		if (res == NULL)
 			continue;
 
@@ -1795,10 +1806,11 @@ static int last_display_add_clones__randr(struct context *ctx)
 
 	display_init_randr_hpd(display);
 
-	res = XRRGetScreenResourcesCurrent(display->dpy, display->root);
+	res = _XRRGetScreenResourcesCurrent(display->dpy, display->root);
 	if (res == NULL)
 		return -ENOMEM;
 
+	DBG(("%s - noutputs=%d\n", DisplayString(display->dpy), res->noutput));
 	for (i = 0; i < res->noutput; i++) {
 		XRROutputInfo *o = XRRGetOutputInfo(display->dpy, res, res->outputs[i]);
 		struct clone *clone = add_clone(ctx);
