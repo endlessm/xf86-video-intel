@@ -237,7 +237,9 @@ can_use_shm(Display *dpy,
 	 *
 	 * Remove the SendEvent bit (0x80) before doing range checks on event type.
 	 */
-	codes = XInitExtension(dpy, SHMNAME);
+	codes = 0;
+	if (has_shm)
+		codes = XInitExtension(dpy, SHMNAME);
 	if (xlib_vendor_is_xorg(dpy) &&
 	    VendorRelease(dpy) < XORG_VERSION_ENCODE(1,11,0,1))
 		codes = 0;
@@ -1233,7 +1235,8 @@ static void put_dst(struct clone *c, const XRectangle *clip)
 				  0, 0,
 				  clip->width, clip->height);
 		}
-		c->dst.serial = NextRequest(c->dst.dpy);
+		if (c->dst.use_shm)
+			c->dst.serial = NextRequest(c->dst.dpy);
 		XRenderComposite(c->dst.dpy, PictOpSrc,
 				 c->dst.pix_picture, 0, c->dst.win_picture,
 				 0, 0,
