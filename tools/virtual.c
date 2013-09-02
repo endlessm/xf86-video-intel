@@ -1658,33 +1658,45 @@ static int bumblebee_open(struct context *ctx)
 	struct sockaddr_un addr;
 	int fd, len;
 
-	fd = socket(PF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-	if (fd < 0)
+	fd = socket(PF_UNIX, SOCK_STREAM, 0);
+	if (fd < 0) {
+		DBG(("%s unable to create a socket: %d\n", __func__, errno));
 		return -ECONNREFUSED;
+	}
 
 	addr.sun_family = AF_UNIX;
 	strcpy(addr.sun_path, optarg && *optarg ? optarg : "/var/run/bumblebee.socket");
-	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
+	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+		DBG(("%s unable to create a socket: %d\n", __func__, errno));
 		goto err;
+	}
 
 	/* Ask bumblebee to start the second server */
 	buf[0] = 'C';
-	if (send(fd, &buf, 1, 0) != 1 || (len = recv(fd, &buf, 255, 0)) <= 0)
+	if (send(fd, &buf, 1, 0) != 1 || (len = recv(fd, &buf, 255, 0)) <= 0) {
+		DBG(("%s startup send/recv failed: %d\n", __func__, errno));
 		goto err;
+	}
 	buf[len] = '\0';
 
 	/* Query the display name */
 	strcpy(buf, "Q VirtualDisplay");
-	if (send(fd, buf, 17, 0) != 17 || (len = recv(fd, buf, 255, 0)) <= 0)
+	if (send(fd, buf, 17, 0) != 17 || (len = recv(fd, buf, 255, 0)) <= 0) {
+		DBG(("%s query send/recv failed: %d\n", __func__, errno));
 		goto err;
+	}
 	buf[len] = '\0';
 	close(fd);
+
+	DBG(("%s query result '%s'\n", __func__, buf));
 
 	if (strncmp(buf, "Value: ", 7))
 		return -ECONNREFUSED;
 
-	while (isspace(buf[--len]))
-		buf[len] = '\0';
+	len = 7;
+	while (buf[len] != '\n' && buf[len] != '\0')
+		len++;
+	buf[len] = '\0';
 
 	return display_open(ctx, buf+7);
 
