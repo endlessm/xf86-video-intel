@@ -1901,13 +1901,13 @@ static int first_display_register_as_singleton(struct context *ctx)
 		}
 
 		while (XPending(display->dpy)) {
-			XPropertyEvent pe;
+			XEvent e;
 
-			XNextEvent(display->dpy, (XEvent *)&pe);
-			DBG(("%s: reading event type %d\n", DisplayString(display->dpy), pe.type));
+			XNextEvent(display->dpy, &e);
+			DBG(("%s: reading event type %d\n", DisplayString(display->dpy), e.type));
 
-			if (pe.type == PropertyNotify &&
-			    pe.atom == ctx->singleton)
+			if (e.type == PropertyNotify &&
+			    ((XPropertyEvent *)&e)->atom == ctx->singleton)
 				return 0;
 		}
 	} while (1);
