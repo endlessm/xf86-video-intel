@@ -812,7 +812,7 @@ static void context_update(struct context *ctx)
 		XRROutputInfo *o;
 		XRRCrtcInfo *c;
 		RRMode mode = 0;
-		int changed = 0l;
+		int changed = 0;
 
 		o = XRRGetOutputInfo(dpy, res, output->rr_output);
 		if (o == NULL)
