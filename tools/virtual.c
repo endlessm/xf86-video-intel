@@ -1429,10 +1429,8 @@ static int display_open(struct context *ctx, const char *name)
 	DBG(("%s(%s)\n", __func__, name));
 
 	dpy = XOpenDisplay(name);
-	if (dpy == NULL) {
-		fprintf(stderr, "Unable to connect to %s\n", name);
+	if (dpy == NULL)
 		return -ECONNREFUSED;
-	}
 
 	/* Prevent cloning the same display twice */
 	for (n = 0; n < ctx->ndisplay; n++) {
@@ -1453,7 +1451,7 @@ static int bumblebee_open(struct context *ctx)
 
 	fd = socket(PF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
 	if (fd < 0)
-		goto err;
+		return -ECONNREFUSED;
 
 	addr.sun_family = AF_UNIX;
 	strcpy(addr.sun_path, optarg && *optarg ? optarg : "/var/run/bumblebee.socket");
@@ -1462,10 +1460,8 @@ static int bumblebee_open(struct context *ctx)
 
 	/* Ask bumblebee to start the second server */
 	buf[0] = 'C';
-	if (send(fd, &buf, 1, 0) != 1 || (len = recv(fd, &buf, 255, 0)) <= 0) {
-		close(fd);
+	if (send(fd, &buf, 1, 0) != 1 || (len = recv(fd, &buf, 255, 0)) <= 0)
 		goto err;
-	}
 	buf[len] = '\0';
 
 	/* Query the display name */
@@ -1476,7 +1472,7 @@ static int bumblebee_open(struct context *ctx)
 	close(fd);
 
 	if (strncmp(buf, "Value: ", 7))
-		goto err;
+		return -ECONNREFUSED;
 
 	while (isspace(buf[--len]))
 		buf[len] = '\0';
@@ -1484,7 +1480,7 @@ static int bumblebee_open(struct context *ctx)
 	return display_open(ctx, buf+7);
 
 err:
-	fprintf(stderr, "Unable to connect to bumblebee\n");
+	close(fd);
 	return -ECONNREFUSED;
 }
 
@@ -1916,15 +1912,49 @@ static void display_flush(struct display *display)
 	display->flush = 0;
 }
 
+static int first_display_first_sibling(struct context *ctx)
+{
+	const char *str, *colon;
+	int dpy, scr, len;
+
+	str = DisplayString(ctx->display->dpy);
+	colon = strrchr(str, ':');
+	if (colon == NULL)
+		return -1;
+
+	if (sscanf(colon + 1, "%d.%d", &dpy, &scr) == 1)
+		scr = 0;
+
+	len = (colon - str) + 1;
+	memcpy(ctx->command, str, len);
+	len += sprintf(ctx->command + len, "%d.", dpy);
+	ctx->command_continuation = len;
+
+	return scr + 1;
+}
+
+static int first_display_sibling(struct context *ctx, int i)
+{
+	if (i < 0)
+		return 0;
+
+	sprintf(ctx->command + ctx->command_continuation, "%d", i);
+	return 1;
+}
+
+#define first_display_for_each_sibling(CTX, i) \
+	for (i = first_display_first_sibling(CTX); first_display_sibling(CTX, i); i++)
+
 int main(int argc, char **argv)
 {
 	struct context ctx;
 	const char *src_name = NULL;
 	uint64_t count;
 	int enable_timer = 0;
-	int i, ret, daemonize = 1, bumblebee = 0, singleton = 1;
+	int daemonize = 1, bumblebee = 0, all = 0, singleton = 1;
+	int i, ret, open, fail;
 
-	while ((i = getopt(argc, argv, "bd:fhS")) != -1) {
+	while ((i = getopt(argc, argv, "abd:fhS")) != -1) {
 		switch (i) {
 		case 'd':
 			src_name = optarg;
@@ -1934,6 +1964,9 @@ int main(int argc, char **argv)
 			break;
 		case 'b':
 			bumblebee = 1;
+			break;
+		case 'a':
+			all = 1;
 			break;
 		case 'S':
 			singleton = 0;
@@ -1952,8 +1985,11 @@ int main(int argc, char **argv)
 	XSetErrorHandler(_check_error_handler);
 
 	ret = add_fd(&ctx, display_open(&ctx, src_name));
-	if (ret)
+	if (ret) {
+		fprintf(stderr, "Unable to connect to \"%s\".\n", src_name ?: getenv("DISPLAY") ?:
+			"<unspecified>, set either the DISPLAY environment variable or pass -d <display name> on the commandline");
 		return -ret;
+	}
 
 	if (singleton) {
 		XSelectInput(ctx.display->dpy, ctx.display->root, PropertyChangeMask);
@@ -1966,18 +2002,35 @@ int main(int argc, char **argv)
 				DBG(("No reply from singleton; assuming control\n"));
 			} else {
 				DBG(("%s: singleton active, sending open commands\n", DisplayString(ctx.display->dpy)));
-				if (optind == argc || bumblebee) {
-					ret = first_display_send_command(&ctx, 5000, "B");
-					if (ret && ret != -EBUSY)
-						return -ret;
-				}
+
+				open = fail = 0;
 				for (i = optind; i < argc; i++) {
 					ret = first_display_send_command(&ctx, 5000, "C%s", argv[i]);
-					if (ret && ret != -EBUSY)
-						return -ret;
+					if (ret && ret != -EBUSY) {
+						fprintf(stderr, "Unable to connect to \"%s\".\n", argv[i]);
+						fail++;
+					} else
+						open++;
 				}
-
-				return 0;
+				if (all || (optind == argc && open == 0)) {
+					first_display_for_each_sibling(&ctx, i) {
+						ret = first_display_send_command(&ctx, 5000, "C%s", ctx.command);
+						if (ret && ret != -EBUSY)
+							break;
+						else
+							open++;
+					}
+				}
+				if (bumblebee || (optind == argc && open == 0)) {
+					ret = first_display_send_command(&ctx, 5000, "B");
+					if (ret && ret != -EBUSY) {
+						if (bumblebee)
+							fprintf(stderr, "Unable to connect to bumblebee.\n");
+						fail++;
+					} else
+						open++;
+				}
+				return open || !fail ? 0 : ECONNREFUSED;
 			}
 		}
 		ret = first_display_register_as_singleton(&ctx);
@@ -1992,25 +2045,35 @@ int main(int argc, char **argv)
 	XRRSelectInput(ctx.display->dpy, ctx.display->root, RRScreenChangeNotifyMask);
 	XFixesSelectCursorInput(ctx.display->dpy, ctx.display->root, XFixesDisplayCursorNotifyMask);
 
-	if (optind == argc || bumblebee) {
-		ret = last_display_clone(&ctx, bumblebee_open(&ctx));
-		if (ret) {
-			if (!bumblebee) {
-				usage(argv[0]);
-				return 0;
-			}
-			return -ret;
-		}
-	}
-
+	open = fail = 0;
 	for (i = optind; i < argc; i++) {
 		ret = last_display_clone(&ctx, display_open(&ctx, argv[i]));
-		if (ret) {
-			if (ret == -EBUSY)
-				continue;
-			return -ret;
+		if (ret && ret != -EBUSY) {
+			fprintf(stderr, "Unable to connect to \"%s\".\n", argv[i]);
+			fail++;
+		} else
+			open++;
+	}
+	if (all || (optind == argc && open == 0)) {
+		first_display_for_each_sibling(&ctx, i) {
+			ret = last_display_clone(&ctx, display_open(&ctx, ctx.command));
+			if (ret && ret != -EBUSY)
+				break;
+			else
+				open++;
 		}
 	}
+	if (bumblebee || (optind == argc && open == 0)) {
+		ret = last_display_clone(&ctx, bumblebee_open(&ctx));
+		if (ret && ret != -EBUSY) {
+			if (bumblebee)
+				fprintf(stderr, "Unable to connect to bumblebee.\n");
+			fail++;
+		} else
+			open++;
+	}
+	if (open == 0)
+		return fail ? ECONNREFUSED : 0;
 
 	ret = add_fd(&ctx, record_mouse(&ctx));
 	if (ret) {
@@ -2021,6 +2084,7 @@ int main(int argc, char **argv)
 	if (daemonize && daemon(0, 0))
 		return EINVAL;
 
+	ctx.command_continuation = 0;
 	while (1) {
 		XEvent e;
 		int reconfigure = 0;
