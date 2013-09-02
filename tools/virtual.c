@@ -94,6 +94,7 @@ struct display {
 	int cursor;
 
 	int flush;
+	int send;
 };
 
 struct output {
@@ -109,7 +110,7 @@ struct output {
 	Pixmap pixmap;
 	GC gc;
 
-	int serial;
+	long serial;
 	int use_shm;
 	int use_shm_pixmap;
 
@@ -203,10 +204,6 @@ can_use_shm(Display *dpy,
 	XSync(dpy, False);
 	has_shm = success && _x_error_occurred == 0;
 
-	codes = XInitExtension(dpy, SHMNAME);
-	if (codes == NULL)
-		has_pixmap = 0;
-
 	/* As libXext sets the SEND_EVENT bit in the ShmCompletionEvent,
 	 * the Xserver may crash if it does not take care when processing
 	 * the event type. For instance versions of Xorg prior to 1.11.1
@@ -218,12 +215,11 @@ can_use_shm(Display *dpy,
 	 *
 	 * Remove the SendEvent bit (0x80) before doing range checks on event type.
 	 */
-	if (has_pixmap &&
-	    xlib_vendor_is_xorg(dpy) &&
+	codes = XInitExtension(dpy, SHMNAME);
+	if (xlib_vendor_is_xorg(dpy) &&
 	    VendorRelease(dpy) < XORG_VERSION_ENCODE(1,11,0,1))
-		has_pixmap = 0;
-
-	if (has_pixmap) {
+		codes = 0;
+	if (codes) {
 		XShmCompletionEvent e;
 
 		e.type = codes->first_event;
@@ -237,22 +233,18 @@ can_use_shm(Display *dpy,
 		e.offset = 0;
 
 		XSendEvent(dpy, e.drawable, False, 0, (XEvent *)&e);
-
 		XSync(dpy, False);
-		has_pixmap = _x_error_occurred == 0;
+
+		if (_x_error_occurred == 0) {
+			*shm_opcode = codes->major_opcode;
+			*shm_event = codes->first_event;
+			*shm_pixmap = has_pixmap;
+		}
 	}
 
-	if (success)
-		XShmDetach(dpy, &shm);
-
+	XShmDetach(dpy, &shm);
 	shmctl(shm.shmid, IPC_RMID, NULL);
 	shmdt(shm.shmaddr);
-
-	if (has_pixmap) {
-		*shm_opcode = codes->major_opcode;
-		*shm_event = codes->first_event;
-		*shm_pixmap = has_pixmap;
-	}
 
 	return has_shm;
 }
@@ -555,6 +547,7 @@ static void init_image(struct clone *clone)
 		image->bits_per_pixel = 16;
 		break;
 	}
+	image->obdata = (char *)&clone->shm;
 
 	ret = XInitImage(image);
 	assert(ret);
@@ -1015,6 +1008,9 @@ static int clone_output_init(struct clone *clone, struct output *output,
 	output->use_shm = display->has_shm;
 	output->use_shm_pixmap = display->has_shm_pixmap;
 
+	DBG(("%s-%s use shm? %d (use shm pixmap? %d)\n",
+	     DisplayString(dpy), name, display->has_shm, display->has_shm_pixmap));
+
 	depth = output->use_shm ? display->depth : 16;
 	if (depth < clone->depth)
 		clone->depth = depth;
@@ -1022,26 +1018,11 @@ static int clone_output_init(struct clone *clone, struct output *output,
 	return 0;
 }
 
-static void send_shm(struct output *o, int serial)
+static void ximage_set_size(XImage *image, int width, int height)
 {
-	XShmCompletionEvent e;
-
-	if (o->display->shm_event == 0) {
-		XSync(o->dpy, False);
-		return;
-	}
-
-	e.type = o->display->shm_event;
-	e.send_event = 1;
-	e.serial = serial;
-	e.drawable = o->pixmap;
-	e.major_code = o->display->shm_opcode;
-	e.minor_code = X_ShmPutImage;
-	e.shmseg = 0;
-	e.offset = 0;
-
-	XSendEvent(o->dpy, o->window, False, 0, (XEvent *)&e);
-	o->serial = serial;
+	image->width = width;
+	image->height = height;
+	image->bytes_per_line = stride_for_depth(width, image->depth);
 }
 
 static void get_src(struct clone *c, const XRectangle *clip)
@@ -1058,15 +1039,11 @@ static void get_src(struct clone *c, const XRectangle *clip)
 		if (c->src.use_shm_pixmap) {
 			XSync(c->src.dpy, False);
 		} else if (c->src.use_shm) {
-			c->image.width = clip->width;
-			c->image.height = clip->height;
-			c->image.obdata = (char *)&c->shm;
+			ximage_set_size(&c->image, clip->width, clip->height);
 			XShmGetImage(c->src.dpy, c->src.pixmap, &c->image,
 				     clip->x, clip->y, AllPlanes);
 		} else {
-			c->image.width = c->width;
-			c->image.height = c->height;
-			c->image.obdata = 0;
+			ximage_set_size(&c->image, c->width, c->height);
 			XGetSubImage(c->src.dpy, c->src.pixmap,
 				     clip->x, clip->y, clip->width, clip->height,
 				     AllPlanes, ZPixmap,
@@ -1079,15 +1056,11 @@ static void get_src(struct clone *c, const XRectangle *clip)
 			  0, 0);
 		XSync(c->src.dpy, False);
 	} else if (c->src.use_shm) {
-		c->image.width = clip->width;
-		c->image.height = clip->height;
-		c->image.obdata = (char *)&c->shm;
+		ximage_set_size(&c->image, clip->width, clip->height);
 		XShmGetImage(c->src.dpy, c->src.window, &c->image,
 			     clip->x, clip->y, AllPlanes);
 	} else {
-		c->image.width = c->width;
-		c->image.height = c->height;
-		c->image.obdata = 0;
+		ximage_set_size(&c->image, c->width, c->height);
 		XGetSubImage(c->src.dpy, c->src.window,
 			     clip->x, clip->y, clip->width, clip->height,
 			     AllPlanes, ZPixmap,
@@ -1100,46 +1073,48 @@ static void put_dst(struct clone *c, const XRectangle *clip)
 	DBG(("%s-%s put_dst(%d,%d)x(%d,%d)\n", DisplayString(c->dst.dpy), c->dst.name,
 	     clip->x, clip->y, clip->width, clip->height));
 	if (c->dst.use_render) {
-		int serial;
 		if (c->dst.use_shm_pixmap) {
+			DBG(("%s-%s using SHM pixmap composite\n",
+			     DisplayString(c->dst.dpy), c->dst.name));
 		} else if (c->dst.use_shm) {
-			c->image.width = clip->width;
-			c->image.height = clip->height;
-			c->image.obdata = (char *)&c->shm;
+			DBG(("%s-%s using SHM image composite\n",
+			     DisplayString(c->dst.dpy), c->dst.name));
+			ximage_set_size(&c->image, clip->width, clip->height);
 			XShmPutImage(c->dst.dpy, c->dst.pixmap, c->dst.gc, &c->image,
 				     0, 0,
 				     0, 0,
 				     clip->width, clip->height,
 				     False);
 		} else {
-			c->image.width = c->width;
-			c->image.height = c->height;
-			c->image.obdata = 0;
+			DBG(("%s-%s using composite\n",
+			     DisplayString(c->dst.dpy), c->dst.name));
+			ximage_set_size(&c->image, c->width, c->height);
 			XPutImage(c->dst.dpy, c->dst.pixmap, c->dst.gc, &c->image,
 				  0, 0,
 				  0, 0,
 				  clip->width, clip->height);
 		}
-		serial = NextRequest(c->dst.dpy);
+		c->dst.serial = NextRequest(c->dst.dpy);
 		XRenderComposite(c->dst.dpy, PictOpSrc,
 				 c->dst.pix_picture, 0, c->dst.win_picture,
 				 0, 0,
 				 0, 0,
 				 clip->x, clip->y,
 				 clip->width, clip->height);
-		if (c->dst.use_shm)
-			send_shm(&c->dst, serial);
+		c->dst.display->send |= c->dst.use_shm;
 	} else if (c->dst.pixmap) {
-		int serial = NextRequest(c->dst.dpy);
+		DBG(("%s-%s using SHM pixmap\n",
+		     DisplayString(c->dst.dpy), c->dst.name));
+		c->dst.serial = NextRequest(c->dst.dpy);
 		XCopyArea(c->dst.dpy, c->dst.pixmap, c->dst.window, c->dst.gc,
 			  0, 0,
 			  clip->width, clip->height,
 			  clip->x, clip->y);
-		send_shm(&c->dst, serial);
+		c->dst.display->send = 1;
 	} else if (c->dst.use_shm) {
-		c->image.width = clip->width;
-		c->image.height = clip->height;
-		c->image.obdata = (char *)&c->shm;
+		DBG(("%s-%s using SHM image\n",
+		     DisplayString(c->dst.dpy), c->dst.name));
+		ximage_set_size(&c->image, clip->width, clip->height);
 		c->dst.serial = NextRequest(c->dst.dpy);
 		XShmPutImage(c->dst.dpy, c->dst.window, c->dst.gc, &c->image,
 			     0, 0,
@@ -1147,9 +1122,9 @@ static void put_dst(struct clone *c, const XRectangle *clip)
 			     clip->width, clip->height,
 			     True);
 	} else {
-		c->image.width = c->width;
-		c->image.height = c->height;
-		c->image.obdata = 0;
+		DBG(("%s-%s using image\n",
+		     DisplayString(c->dst.dpy), c->dst.name));
+		ximage_set_size(&c->image, c->width, c->height);
 		XPutImage(c->dst.dpy, c->dst.window, c->dst.gc, &c->image,
 			  0, 0,
 			  clip->x, clip->y,
@@ -1164,8 +1139,12 @@ static int clone_paint(struct clone *c)
 {
 	XRectangle clip;
 
-	DBG(("%s-%s paint clone\n",
-	     DisplayString(c->dst.dpy), c->dst.name));
+	DBG(("%s-%s paint clone, damaged (%d, %d), (%d, %d) [(%d, %d), (%d,  %d)]\n",
+	     DisplayString(c->dst.dpy), c->dst.name,
+	     c->damaged.x1, c->damaged.y1,
+	     c->damaged.x2, c->damaged.y2,
+	     c->src.x, c->src.y,
+	     c->src.x + c->width, c->src.y + c->height));
 
 	if (c->damaged.x1 < c->src.x)
 		c->damaged.x1 = c->src.x;
@@ -1181,6 +1160,9 @@ static int clone_paint(struct clone *c)
 	if (c->damaged.y2 <= c->damaged.y1)
 		goto done;
 
+	DBG(("%s-%s is damaged, last SHM serial: %ld, now %ld\n",
+	     DisplayString(c->dst.dpy), c->dst.name,
+	     (long)c->dst.serial, (long)LastKnownRequestProcessed(c->dst.dpy)));
 	if (c->dst.serial > LastKnownRequestProcessed(c->dst.dpy))
 		return EAGAIN;
 
@@ -2137,9 +2119,42 @@ static int first_display_register_as_singleton(struct context *ctx)
 	} while (1);
 }
 
+static void display_flush_send(struct display *display)
+{
+	XShmCompletionEvent e;
+
+	if (!display->send)
+		return;
+
+	DBG(("%s flushing send (serial now %ld) (has shm send? %d)\n",
+	     DisplayString(display->dpy),
+	     (long)NextRequest(display->dpy),
+	     display->shm_event));
+
+	if (display->shm_event == 0) {
+		XSync(display->dpy, False);
+		display->flush = 0;
+		return;
+	}
+
+	e.type = display->shm_event;
+	e.send_event = 1;
+	e.serial = 0;
+	e.drawable = display->root;
+	e.major_code = display->shm_opcode;
+	e.minor_code = X_ShmPutImage;
+	e.shmseg = 0;
+	e.offset = 0;
+
+	XSendEvent(display->dpy, display->root, False, 0, (XEvent *)&e);
+	display->send = 0;
+	display->flush = 1;
+}
+
 static void display_flush(struct display *display)
 {
 	display_flush_cursor(display);
+	display_flush_send(display);
 
 	if (!display->flush)
 		return;
