@@ -26,12 +26,13 @@
 #include <X11/Xatom.h>
 
 #include <X11/Xlibint.h>
-#include <X11/extensions/XShm.h>
+#include <X11/extensions/record.h>
 #include <X11/extensions/shmproto.h>
 #include <X11/extensions/Xdamage.h>
+#include <X11/extensions/Xinerama.h>
 #include <X11/extensions/Xrandr.h>
 #include <X11/extensions/Xrender.h>
-#include <X11/extensions/record.h>
+#include <X11/extensions/XShm.h>
 #include <X11/Xcursor/Xcursor.h>
 #include <pixman.h>
 
@@ -66,7 +67,8 @@ struct display {
 
 	int damage_event, damage_error;
 	int xfixes_event, xfixes_error;
-	int rr_event, rr_error;
+	int rr_event, rr_error, rr_active;
+	int xinerama_event, xinerama_error, xinerama_active;
 	Window root;
 	Visual *visual;
 	Damage damage;
@@ -283,7 +285,7 @@ static XRRModeInfo *lookup_mode(XRRScreenResources *res, int id)
 	return NULL;
 }
 
-static int clone_update_modes(struct clone *clone)
+static int clone_update_modes__randr(struct clone *clone)
 {
 	XRRScreenResources *from_res, *to_res;
 	XRROutputInfo *from_info, *to_info;
@@ -291,6 +293,7 @@ static int clone_update_modes(struct clone *clone)
 
 	assert(clone->src.rr_output);
 	assert(clone->dst.rr_output);
+	assert(clone->dst.display->rr_event);
 
 	from_res = XRRGetScreenResources(clone->dst.dpy, clone->dst.window);
 	if (from_res == NULL)
@@ -381,9 +384,68 @@ err:
 	return ret;
 }
 
-static RROutput claim_virtual(struct display *display, const char *name)
+static int clone_update_modes__fixed(struct clone *clone)
 {
-	char buf[] = "ClaimVirtualHead";
+	XRRScreenResources *res;
+	XRROutputInfo *info;
+	XRRModeInfo mode;
+	RRMode id;
+	int i, j, ret = ENOENT;
+
+	assert(clone->src.rr_output);
+
+	res = XRRGetScreenResourcesCurrent(clone->src.dpy, clone->src.window);
+	if (res == NULL)
+		goto err;
+
+	info = XRRGetOutputInfo(clone->src.dpy, res, clone->src.rr_output);
+	if (info == NULL)
+		goto err;
+
+	/* Clear all current UserModes on the output, including any active ones */
+	if (info->crtc) {
+		DBG(("%s(%s-%s): disabling active CRTC\n", __func__,
+		     DisplayString(clone->src.dpy), clone->src.name));
+		XRRSetCrtcConfig(clone->src.dpy, res, info->crtc, CurrentTime,
+				 0, 0, None, RR_Rotate_0, NULL, 0);
+	}
+	for (i = 0; i < info->nmode; i++) {
+		DBG(("%s(%s-%s): deleting mode %ld\n", __func__,
+		     DisplayString(clone->src.dpy), clone->src.name, (long)info->modes[i]));
+		XRRDeleteOutputMode(clone->src.dpy, clone->src.rr_output, info->modes[i]);
+	}
+
+	clone->src.rr_crtc = 0;
+
+	/* Create matching mode for the real output on the virtual */
+	memset(&mode, 0, sizeof(mode));
+	mode.width = clone->width;
+	mode.height = clone->height;
+
+	id = 0;
+	for (j = 0; j < res->nmode; j++) {
+		if (mode_equal(&mode, &res->modes[j])) {
+			id = res->modes[j].id;
+			break;
+		}
+	}
+	if (id == 0)
+		id = XRRCreateMode(clone->src.dpy, clone->src.window, &mode);
+
+	XRRAddOutputMode(clone->src.dpy, clone->src.rr_output, id);
+
+	ret = 0;
+err:
+	if (info)
+		XRRFreeOutputInfo(info);
+	if (res)
+		XRRFreeScreenResources(res);
+	return ret;
+}
+
+static RROutput claim_virtual(struct display *display, char *output_name, int nclone)
+{
+	char mode_name[] = "ClaimVirtualHead";
 	Display *dpy = display->dpy;
 	XRRScreenResources *res;
 	XRROutputInfo *output;
@@ -392,29 +454,31 @@ static RROutput claim_virtual(struct display *display, const char *name)
 	RROutput rr_output;
 	int i;
 
-	DBG(("%s(%s)\n", __func__, name));
+	DBG(("%s(%d)\n", __func__, nclone));
 
 	res = XRRGetScreenResourcesCurrent(dpy, display->root);
 	if (res == NULL)
 		return 0;
+
+	sprintf(output_name, "VIRTUAL%d", nclone);
 
 	for (i = rr_output = 0; rr_output == 0 && i < res->noutput; i++) {
 		output = XRRGetOutputInfo(dpy, res, res->outputs[i]);
 		if (output == NULL)
 			continue;
 
-		if (strcmp(output->name, name) == 0)
+		if (strcmp(output->name, output_name) == 0)
 			rr_output = res->outputs[i];
 
 		XRRFreeOutputInfo(output);
 	}
 	for (i = id = 0; id == 0 && i < res->nmode; i++) {
-		if (strcmp(res->modes[i].name, buf) == 0)
+		if (strcmp(res->modes[i].name, mode_name) == 0)
 			id = res->modes[i].id;
 	}
 	XRRFreeScreenResources(res);
 
-	DBG(("%s(%s): rr_output=%ld\n", __func__, name, (long)rr_output));
+	DBG(("%s(%s): rr_output=%ld\n", __func__, output_name, (long)rr_output));
 	if (rr_output == 0)
 		return 0;
 
@@ -422,8 +486,8 @@ static RROutput claim_virtual(struct display *display, const char *name)
 	memset(&mode, 0, sizeof(mode));
 	mode.width = 1024;
 	mode.height = 768;
-	mode.name = buf;
-	mode.nameLength = sizeof(buf) - 1;
+	mode.name = mode_name;
+	mode.nameLength = sizeof(mode_name) - 1;
 
 	if (id == 0)
 		id = XRRCreateMode(dpy, display->root, &mode);
@@ -612,7 +676,7 @@ static void clone_update(struct clone *clone)
 	DBG(("%s-%s cloning modes\n",
 	     DisplayString(clone->dst.dpy), clone->dst.name));
 
-	clone_update_modes(clone);
+	clone_update_modes__randr(clone);
 	clone->rr_update = 0;
 }
 
@@ -685,6 +749,9 @@ static void context_update(struct context *ctx)
 		struct display *display = &ctx->display[n];
 		struct clone *clone;
 		int x1, x2, y1, y2;
+
+		if (!display->rr_active == 0)
+			continue;
 
 		x1 = y1 = INT_MAX;
 		x2 = y2 = INT_MIN;
@@ -913,9 +980,6 @@ static int clone_output_init(struct clone *clone, struct output *output,
 {
 	Display *dpy = display->dpy;
 	int depth;
-
-	if (rr_output == 0)
-		return -ENOENT;
 
 	DBG(("%s(%s, %s)\n", __func__, DisplayString(dpy), name));
 
@@ -1424,10 +1488,9 @@ static int add_display(struct context *ctx, Display *dpy)
 				       &display->shm_opcode,
 				       &display->has_shm_pixmap);
 
-	if (!XRRQueryExtension(dpy, &display->rr_event, &display->rr_error)) {
-		fprintf(stderr, "RandR extension not supported by %s\n", DisplayString(dpy));
-		return -EINVAL;
-	}
+	display->rr_active = XRRQueryExtension(dpy, &display->rr_event, &display->rr_error);
+	if (XineramaQueryExtension(dpy, &display->xinerama_event, &display->xinerama_error))
+		display->xinerama_active = XineramaIsActive(dpy);
 
 	display->invisible_cursor = display_load_invisible_cursor(display);
 	display->cursor = None;
@@ -1449,6 +1512,7 @@ static int display_open(struct context *ctx, const char *name)
 	/* Prevent cloning the same display twice */
 	for (n = 0; n < ctx->ndisplay; n++) {
 		if (strcmp(DisplayString(dpy), DisplayString(ctx->display[n].dpy)) == 0) {
+			DBG(("%s %s is already connected\n", __func__, name));
 			XCloseDisplay(dpy);
 			return -EBUSY;
 		}
@@ -1639,12 +1703,14 @@ static struct display *last_display(struct context *ctx)
 	return &ctx->display[ctx->ndisplay-1];
 }
 
-static int last_display_add_clones(struct context *ctx)
+static int last_display_add_clones__randr(struct context *ctx)
 {
 	struct display *display = last_display(ctx);
 	XRRScreenResources *res;
 	char buf[80];
 	int i, ret;
+
+	DBG(("%s(%s)\n", __func__, DisplayString(display->dpy)));
 
 	display_init_randr_hpd(display);
 
@@ -1655,16 +1721,23 @@ static int last_display_add_clones(struct context *ctx)
 	for (i = 0; i < res->noutput; i++) {
 		XRROutputInfo *o = XRRGetOutputInfo(display->dpy, res, res->outputs[i]);
 		struct clone *clone = add_clone(ctx);
+		RROutput id;
 
 		clone->depth = 24;
 		clone->next = display->clone;
 		display->clone = clone;
 
-		sprintf(buf, "VIRTUAL%d", ctx->nclone);
-		ret = clone_output_init(clone, &clone->src, ctx->display, buf, claim_virtual(ctx->display, buf));
-		if (ret) {
+		id = claim_virtual(ctx->display, buf, ctx->nclone);
+		if (id == 0) {
 			fprintf(stderr, "Failed to find available VirtualHead \"%s\" for \"%s\" on display \"%s\"\n",
 				buf, o->name, DisplayString(display->dpy));
+			return -ENOSPC;
+		}
+
+		ret = clone_output_init(clone, &clone->src, ctx->display, buf, id);
+		if (ret) {
+			fprintf(stderr, "Failed to add output \"%s\" on display \"%s\"\n",
+				buf, DisplayString(ctx->display->dpy));
 			return ret;
 		}
 
@@ -1682,7 +1755,7 @@ static int last_display_add_clones(struct context *ctx)
 			return ret;
 		}
 
-		ret = clone_update_modes(clone);
+		ret = clone_update_modes__randr(clone);
 		if (ret) {
 			fprintf(stderr, "Failed to clone output \"%s\" from display \"%s\"\n",
 				o->name, DisplayString(display->dpy));
@@ -1695,11 +1768,143 @@ static int last_display_add_clones(struct context *ctx)
 	return 0;
 }
 
+static int last_display_add_clones__xinerama(struct context *ctx)
+{
+	struct display *display = last_display(ctx);
+	Display *dpy = display->dpy;
+	XineramaScreenInfo *xi;
+	char buf[80];
+	int n, count, ret;
+
+	DBG(("%s(%s)\n", __func__, DisplayString(display->dpy)));
+
+	count = 0;
+	xi = XineramaQueryScreens(dpy, &count);
+	for (n = 0; n < count; n++) {
+		struct clone *clone = add_clone(ctx);
+		RROutput id;
+
+		clone->depth = 24;
+		clone->next = display->clone;
+		display->clone = clone;
+
+		id = claim_virtual(ctx->display, buf, ctx->nclone);
+		if (id == 0) {
+			fprintf(stderr, "Failed to find available VirtualHead \"%s\" for Xinerama screen %d on display \"%s\"\n",
+				buf, n, DisplayString(dpy));
+		}
+		ret = clone_output_init(clone, &clone->src, ctx->display, buf, id);
+		if (ret) {
+			fprintf(stderr, "Failed to add Xinerama screen %d on display \"%s\"\n",
+				n, DisplayString(ctx->display->dpy));
+			return ret;
+		}
+
+		sprintf(buf, "XINERAMA%d", n);
+		ret = clone_output_init(clone, &clone->dst, display, buf, 0);
+		if (ret) {
+			fprintf(stderr, "Failed to add Xinerama screen %d on display \"%s\"\n",
+				n, DisplayString(dpy));
+			return ret;
+		}
+
+		ret = clone_init_depth(clone);
+		if (ret) {
+			fprintf(stderr, "Failed to negotiate image format for display \"%s\"\n",
+				DisplayString(display->dpy));
+			return ret;
+		}
+
+		/* Replace the modes on the local VIRTUAL output with the remote Screen */
+		clone->width = xi[n].width;
+		clone->height = xi[n].height;
+		clone->dst.x = xi[n].x_org;
+		clone->dst.y = xi[n].y_org;
+		ret = clone_update_modes__fixed(clone);
+		if (ret) {
+			fprintf(stderr, "Failed to clone Xinerama screen %d from display \"%s\"\n",
+				n, DisplayString(display->dpy));
+			return ret;
+		}
+	}
+	XFree(xi);
+	return 0;
+}
+
+static int last_display_add_clones__display(struct context *ctx)
+{
+	struct display *display = last_display(ctx);
+	struct clone *clone = add_clone(ctx);
+	Display *dpy = display->dpy;
+	Screen *scr;
+	char buf[80];
+	int n, ret;
+	RROutput id;
+
+	DBG(("%s(%s)\n", __func__, DisplayString(display->dpy)));
+
+	clone->depth = 24;
+	clone->next = display->clone;
+	display->clone = clone;
+
+	id = claim_virtual(ctx->display, buf, ctx->nclone);
+	if (id == 0) {
+		fprintf(stderr, "Failed to find available VirtualHead \"%s\" for on display \"%s\"\n",
+			buf, DisplayString(dpy));
+	}
+	ret = clone_output_init(clone, &clone->src, ctx->display, buf, id);
+	if (ret) {
+		fprintf(stderr, "Failed to add display \"%s\"\n",
+			DisplayString(ctx->display->dpy));
+		return ret;
+	}
+
+	sprintf(buf, "WHOLE%d", n);
+	ret = clone_output_init(clone, &clone->dst, display, buf, 0);
+	if (ret) {
+		fprintf(stderr, "Failed to add display \"%s\"\n",
+			DisplayString(dpy));
+		return ret;
+	}
+
+	ret = clone_init_depth(clone);
+	if (ret) {
+		fprintf(stderr, "Failed to negotiate image format for display \"%s\"\n",
+			DisplayString(display->dpy));
+		return ret;
+	}
+
+	/* Replace the modes on the local VIRTUAL output with the remote Screen */
+	scr = ScreenOfDisplay(dpy, DefaultScreen(dpy));
+	clone->width = scr->width;
+	clone->height = scr->height;
+	clone->dst.x = 0;
+	clone->dst.y = 0;
+	ret = clone_update_modes__fixed(clone);
+	if (ret) {
+		fprintf(stderr, "Failed to clone display \"%s\"\n",
+			DisplayString(display->dpy));
+		return ret;
+	}
+
+	return 0;
+}
+
+static int last_display_add_clones(struct context *ctx)
+{
+	struct display *display = last_display(ctx);
+
+	if (display->rr_active)
+		return last_display_add_clones__randr(ctx);
+
+	if (display->xinerama_active)
+		return last_display_add_clones__xinerama(ctx);
+
+	return last_display_add_clones__display(ctx);
+}
+
 static int last_display_clone(struct context *ctx, int fd)
 {
-	if (fd < 0)
-		return fd;
-
 	fd = add_fd(ctx, fd);
 	if (fd < 0)
 		return fd;
@@ -2056,6 +2261,10 @@ int main(int argc, char **argv)
 	if (ret)
 		return ret;
 
+	if ((ctx.display->rr_event | ctx.display->rr_error) == 0) {
+		fprintf(stderr, "RandR extension not supported by %s\n", DisplayString(ctx.display->dpy));
+		return EINVAL;
+	}
 	XRRSelectInput(ctx.display->dpy, ctx.display->root, RRScreenChangeNotifyMask);
 	XFixesSelectCursorInput(ctx.display->dpy, ctx.display->root, XFixesDisplayCursorNotifyMask);
 
@@ -2168,7 +2377,7 @@ int main(int argc, char **argv)
 			do {
 				XNextEvent(ctx.display[i].dpy, &e);
 
-				if (e.type == ctx.display[i].rr_event + RRNotify) {
+				if (ctx.display[i].rr_event && e.type == ctx.display[i].rr_event + RRNotify) {
 					XRRNotifyEvent *re = (XRRNotifyEvent *)&e;
 					if (re->subtype == RRNotify_OutputChange) {
 						XRROutputPropertyNotifyEvent *ro = (XRROutputPropertyNotifyEvent *)re;

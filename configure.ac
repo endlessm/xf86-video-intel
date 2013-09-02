@@ -166,7 +166,7 @@ fi
 PKG_CHECK_MODULES(X11, [x11 xrender xext pixman-1], [x11=yes], [x11=no])
 AM_CONDITIONAL(HAVE_X11, test x$x11 = xyes)
 
-PKG_CHECK_MODULES(TOOL, [xrandr xdamage xfixes xcursor xtst xrender xext x11 pixman-1], [tools=yes], [tools=no])
+PKG_CHECK_MODULES(TOOL, [xinerama xrandr xdamage xfixes xcursor xtst xrender xext x11 pixman-1], [tools=yes], [tools=no])
 AM_CONDITIONAL(BUILD_TOOLS, test x$tools = xyes)
 
 AH_TOP([#include "xorg-server.h"])
