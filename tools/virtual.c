@@ -1686,7 +1686,6 @@ static int bumblebee_open(struct context *ctx)
 		goto err;
 	}
 	buf[len] = '\0';
-	close(fd);
 
 	DBG(("%s query result '%s'\n", __func__, buf));
 
@@ -1697,6 +1696,13 @@ static int bumblebee_open(struct context *ctx)
 	while (buf[len] != '\n' && buf[len] != '\0')
 		len++;
 	buf[len] = '\0';
+
+	/* XXX We must keep the control socket open whilst we want to keep
+	 * the display around.
+	 *
+	 * So what we need to do is listen for new bumblee Xservers and
+	 * bind only for their duration.
+	 */
 
 	return display_open(ctx, buf+7);
 
