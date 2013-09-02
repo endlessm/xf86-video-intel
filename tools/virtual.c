@@ -1061,6 +1061,8 @@ static void display_load_visible_cursor(struct display *display, XFixesCursorIma
 	DBG(("%s marking cursor changed\n", DisplayString(display->dpy)));
 	display->cursor_moved++;
 	display->cursor_visible += display->cursor != display->invisible_cursor;
+
+	context_enable_timer(display->ctx);
 }
 
 static void display_cursor_move(struct display *display, int x, int y, int visible)
@@ -1073,6 +1075,8 @@ static void display_cursor_move(struct display *display, int x, int y, int visib
 		display->cursor_x = x;
 		display->cursor_y = y;
 	}
+
+	context_enable_timer(display->ctx);
 }
 
 static void display_flush_cursor(struct display *display)
