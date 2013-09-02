@@ -107,7 +107,6 @@ struct output {
 	char *name;
 	RROutput rr_output;
 	RRCrtc rr_crtc;
-	XShmSegmentInfo shm;
 	Window window;
 	Picture win_picture;
 	Picture pix_picture;
@@ -117,6 +116,7 @@ struct output {
 	long serial;
 	int use_shm;
 	int use_shm_pixmap;
+	XShmSegmentInfo shm;
 
 	XRenderPictFormat *use_render;
 
@@ -212,7 +212,7 @@ can_use_shm(Display *dpy,
 		return 0;
 
 	shm.readOnly = 0;
-	shm.shmaddr = shmat (shm.shmid, NULL, 0);
+	shm.shmaddr = shmat(shm.shmid, NULL, 0);
 	if (shm.shmaddr == (char *) -1) {
 		shmctl(shm.shmid, IPC_RMID, NULL);
 		return 0;
@@ -665,7 +665,6 @@ static void init_image(struct clone *clone)
 		image->bits_per_pixel = 16;
 		break;
 	}
-	image->obdata = (char *)&clone->shm;
 
 	ret = XInitImage(image);
 	assert(ret);
@@ -678,7 +677,7 @@ static void output_init_xfer(struct clone *clone, struct output *output)
 		if (output->pixmap)
 			XFreePixmap(output->dpy, output->pixmap);
 		output->pixmap = XShmCreatePixmap(output->dpy, output->window,
-						  clone->shm.shmaddr, &clone->shm,
+						  clone->shm.shmaddr, &output->shm,
 						  clone->width, clone->height, clone->depth);
 		if (output->pix_picture) {
 			XRenderFreePicture(output->dpy, output->pix_picture);
@@ -718,9 +717,9 @@ static int clone_init_xfer(struct clone *clone)
 		clone->height = 0;
 
 		if (clone->src.use_shm)
-			XShmDetach(clone->src.dpy, &clone->shm);
+			XShmDetach(clone->src.dpy, &clone->src.shm);
 		if (clone->dst.use_shm)
-			XShmDetach(clone->dst.dpy, &clone->shm);
+			XShmDetach(clone->dst.dpy, &clone->dst.shm);
 
 		if (clone->shm.shmaddr) {
 			shmdt(clone->shm.shmaddr);
@@ -755,16 +754,18 @@ static int clone_init_xfer(struct clone *clone)
 		return ENOMEM;
 	}
 
-	clone->shm.readOnly = 0;
-
 	init_image(clone);
 
 	if (clone->src.use_shm) {
-		XShmAttach(clone->src.dpy, &clone->shm);
+		clone->src.shm = clone->shm;
+		clone->dst.shm.readOnly = False;
+		XShmAttach(clone->src.dpy, &clone->src.shm);
 		XSync(clone->src.dpy, False);
 	}
 	if (clone->dst.use_shm) {
-		XShmAttach(clone->dst.dpy, &clone->shm);
+		clone->dst.shm = clone->shm;
+		clone->dst.shm.readOnly = True;
+		XShmAttach(clone->dst.dpy, &clone->dst.shm);
 		XSync(clone->dst.dpy, False);
 	}
 
@@ -1159,7 +1160,7 @@ static int clone_output_init(struct clone *clone, struct output *output,
 	return 0;
 }
 
-static void ximage_set_size(XImage *image, int width, int height)
+static void ximage_prepare(XImage *image, int width, int height)
 {
 	image->width = width;
 	image->height = height;
@@ -1170,6 +1171,9 @@ static void get_src(struct clone *c, const XRectangle *clip)
 {
 	DBG(("%s-%s get_src(%d,%d)x(%d,%d)\n", DisplayString(c->dst.dpy), c->dst.name,
 	     clip->x, clip->y, clip->width, clip->height));
+
+	c->image.obdata = (char *)&c->src.shm;
+
 	if (c->src.use_render) {
 		XRenderComposite(c->src.dpy, PictOpSrc,
 				 c->src.win_picture, 0, c->src.pix_picture,
@@ -1180,11 +1184,11 @@ static void get_src(struct clone *c, const XRectangle *clip)
 		if (c->src.use_shm_pixmap) {
 			XSync(c->src.dpy, False);
 		} else if (c->src.use_shm) {
-			ximage_set_size(&c->image, clip->width, clip->height);
+			ximage_prepare(&c->image, clip->width, clip->height);
 			XShmGetImage(c->src.dpy, c->src.pixmap, &c->image,
 				     clip->x, clip->y, AllPlanes);
 		} else {
-			ximage_set_size(&c->image, c->width, c->height);
+			ximage_prepare(&c->image, c->width, c->height);
 			XGetSubImage(c->src.dpy, c->src.pixmap,
 				     clip->x, clip->y, clip->width, clip->height,
 				     AllPlanes, ZPixmap,
@@ -1197,22 +1201,26 @@ static void get_src(struct clone *c, const XRectangle *clip)
 			  0, 0);
 		XSync(c->src.dpy, False);
 	} else if (c->src.use_shm) {
-		ximage_set_size(&c->image, clip->width, clip->height);
+		ximage_prepare(&c->image, clip->width, clip->height);
 		XShmGetImage(c->src.dpy, c->src.window, &c->image,
 			     clip->x, clip->y, AllPlanes);
 	} else {
-		ximage_set_size(&c->image, c->width, c->height);
+		ximage_prepare(&c->image, c->width, c->height);
 		XGetSubImage(c->src.dpy, c->src.window,
 			     clip->x, clip->y, clip->width, clip->height,
 			     AllPlanes, ZPixmap,
 			     &c->image, 0, 0);
 	}
+	c->src.display->flush = 0;
 }
 
 static void put_dst(struct clone *c, const XRectangle *clip)
 {
 	DBG(("%s-%s put_dst(%d,%d)x(%d,%d)\n", DisplayString(c->dst.dpy), c->dst.name,
 	     clip->x, clip->y, clip->width, clip->height));
+
+	c->image.obdata = (char *)&c->dst.shm;
+
 	if (c->dst.use_render) {
 		if (c->dst.use_shm_pixmap) {
 			DBG(("%s-%s using SHM pixmap composite\n",
@@ -1220,7 +1228,6 @@ static void put_dst(struct clone *c, const XRectangle *clip)
 		} else if (c->dst.use_shm) {
 			DBG(("%s-%s using SHM image composite\n",
 			     DisplayString(c->dst.dpy), c->dst.name));
-			ximage_set_size(&c->image, clip->width, clip->height);
 			XShmPutImage(c->dst.dpy, c->dst.pixmap, c->dst.gc, &c->image,
 				     0, 0,
 				     0, 0,
@@ -1229,7 +1236,6 @@ static void put_dst(struct clone *c, const XRectangle *clip)
 		} else {
 			DBG(("%s-%s using composite\n",
 			     DisplayString(c->dst.dpy), c->dst.name));
-			ximage_set_size(&c->image, c->width, c->height);
 			XPutImage(c->dst.dpy, c->dst.pixmap, c->dst.gc, &c->image,
 				  0, 0,
 				  0, 0,
@@ -1256,7 +1262,6 @@ static void put_dst(struct clone *c, const XRectangle *clip)
 	} else if (c->dst.use_shm) {
 		DBG(("%s-%s using SHM image\n",
 		     DisplayString(c->dst.dpy), c->dst.name));
-		ximage_set_size(&c->image, clip->width, clip->height);
 		c->dst.serial = NextRequest(c->dst.dpy);
 		XShmPutImage(c->dst.dpy, c->dst.window, c->dst.gc, &c->image,
 			     0, 0,
@@ -1266,7 +1271,6 @@ static void put_dst(struct clone *c, const XRectangle *clip)
 	} else {
 		DBG(("%s-%s using image\n",
 		     DisplayString(c->dst.dpy), c->dst.name));
-		ximage_set_size(&c->image, c->width, c->height);
 		XPutImage(c->dst.dpy, c->dst.window, c->dst.gc, &c->image,
 			  0, 0,
 			  clip->x, clip->y,
@@ -2607,7 +2611,9 @@ int main(int argc, char **argv)
 		for (i = 0; i < ctx.nclone; i++)
 			clone_update(&ctx.clones[i]);
 
-		if (ctx.timer_active && read(ctx.timer, &count, sizeof(count)) > 0 && count > 0) {
+		XPending(ctx.record);
+
+		if (ctx.timer_active && read(ctx.timer, &count, sizeof(count)) > 0) {
 			DBG(("%s timer expired (count=%ld)\n", DisplayString(ctx.display->dpy), (long)count));
 			ret = 0;
 
@@ -2619,8 +2625,6 @@ int main(int argc, char **argv)
 
 			ctx.timer_active = ret != 0;
 		}
-
-		XPending(ctx.record);
 	}
 
 	context_cleanup(&ctx);
