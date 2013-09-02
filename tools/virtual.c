@@ -88,6 +88,8 @@ struct display {
 	Cursor invisible_cursor;
 	Cursor visible_cursor;
 
+	XcursorImage cursor_image;
+	int cursor_serial;
 	int cursor_x;
 	int cursor_y;
 	int cursor_moved;
@@ -1001,26 +1003,47 @@ static Cursor display_load_invisible_cursor(struct display *display)
 	return XCreatePixmapCursor(display->dpy, bitmap, bitmap, &black, &black, 0, 0);
 }
 
+static Cursor display_get_visible_cursor(struct display *display)
+{
+	if (display->cursor_serial != display->cursor_image.size) {
+		DBG(("%s updating cursor\n", DisplayString(display->dpy)));
+
+		if (display->visible_cursor)
+			XFreeCursor(display->dpy, display->visible_cursor);
+
+		display->visible_cursor = XcursorImageLoadCursor(display->dpy, &display->cursor_image);
+		display->cursor_serial = display->cursor_image.size;
+	}
+
+	return display->visible_cursor;
+}
+
 static void display_load_visible_cursor(struct display *display, XFixesCursorImage *cur)
 {
-	XcursorImage image;
+	unsigned long *src; /* XXX deep sigh */
+	XcursorPixel *dst;
+	unsigned n;
 
-	memset(&image, 0, sizeof(image));
-	image.width = cur->width;
-	image.height = cur->height;
-	image.size = image.width;
-	if (image.height > image.size)
-		image.size = image.height;
-	image.xhot = cur->xhot;
-	image.yhot = cur->yhot;
-	image.pixels = (void *)cur->pixels;
+	if (cur->width != display->cursor_image.width ||
+	    cur->height != display->cursor_image.height)
+		display->cursor_image.pixels = realloc(display->cursor_image.pixels,
+						       4 * cur->width * cur->height);
+	if (display->cursor_image.pixels == NULL)
+		return;
 
-	if (display->visible_cursor)
-		XFreeCursor(display->dpy, display->visible_cursor);
+	display->cursor_image.width  = cur->width;
+	display->cursor_image.height = cur->height;
+	display->cursor_image.xhot = cur->xhot;
+	display->cursor_image.yhot = cur->yhot;
+	display->cursor_image.size++;
 
-	DBG(("%s updating cursor\n", DisplayString(display->dpy)));
-	display->visible_cursor = XcursorImageLoadCursor(display->dpy, &image);
+	n = cur->width*cur->height;
+	src = cur->pixels;
+	dst = display->cursor_image.pixels;
+	while (n--)
+		*dst++ = *src++;
 
+	DBG(("%s marking cursor changed\n", DisplayString(display->dpy)));
 	display->cursor_moved++;
 	display->cursor_visible += display->cursor != display->invisible_cursor;
 }
@@ -1058,7 +1081,7 @@ static void display_flush_cursor(struct display *display)
 
 	cursor = None;
 	if (display->cursor_visible)
-		cursor = display->visible_cursor;
+		cursor = display_get_visible_cursor(display);
 	if (cursor == None)
 		cursor = display->invisible_cursor;
 	if (cursor != display->cursor) {
