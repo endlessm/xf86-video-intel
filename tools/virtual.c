@@ -48,6 +48,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <signal.h>
 #include <getopt.h>
 #include <limits.h>
 #include <ctype.h>
@@ -2287,8 +2288,63 @@ static int first_display_sibling(struct context *ctx, int i)
 	return 1;
 }
 
+
 #define first_display_for_each_sibling(CTX, i) \
 	for (i = first_display_first_sibling(CTX); first_display_sibling(CTX, i); i++)
+
+static void context_cleanup(struct context *ctx)
+{
+	Display *dpy = ctx->display->dpy;
+	XRRScreenResources *res;
+	int i, j;
+
+	res = _XRRGetScreenResourcesCurrent(dpy, ctx->display->root);
+	if (res == NULL)
+		return;
+
+	for (i = 0; i < ctx->nclone; i++) {
+		struct clone *clone = &ctx->clones[i];
+		XRROutputInfo *output;
+
+		assert(clone->src.display == ctx->display);
+
+		output = XRRGetOutputInfo(dpy, res, clone->src.rr_output);
+		if (output == NULL)
+			continue;
+
+		if (output->crtc)
+			XRRSetCrtcConfig(dpy, res, output->crtc, CurrentTime,
+					 0, 0, None, RR_Rotate_0, NULL, 0);
+
+		for (j = 0; j < output->nmode; j++)
+			XRRDeleteOutputMode(dpy, clone->src.rr_output, output->modes[j]);
+
+		XRRFreeOutputInfo(output);
+	}
+
+	for (i = 0; i < res->nmode; i++) {
+		if (strncmp(res->modes[i].name, "VIRTUAL", 7) == 0) {
+			XRRDestroyMode(dpy, res->modes[i].id);
+			continue;
+		}
+
+		if (strcmp(res->modes[i].name, "ClaimVirtualHead") == 0) {
+			XRRDestroyMode(dpy, res->modes[i].id);
+			continue;
+		}
+	}
+
+	XRRFreeScreenResources(res);
+
+	XCloseDisplay(dpy);
+}
+
+static int done;
+
+static void signal_handler(int sig)
+{
+	done = sig;
+}
 
 int main(int argc, char **argv)
 {
@@ -2297,6 +2353,8 @@ int main(int argc, char **argv)
 	uint64_t count;
 	int daemonize = 1, bumblebee = 0, all = 0, singleton = 1;
 	int i, ret, open, fail;
+
+	signal(SIGPIPE, SIG_IGN);
 
 	while ((i = getopt(argc, argv, "abd:fhS")) != -1) {
 		switch (i) {
@@ -2432,8 +2490,12 @@ int main(int argc, char **argv)
 	if (daemonize && daemon(0, 0))
 		return EINVAL;
 
+	signal(SIGHUP, signal_handler);
+	signal(SIGINT, signal_handler);
+	signal(SIGTERM, signal_handler);
+
 	ctx.command_continuation = 0;
-	while (1) {
+	while (!done) {
 		XEvent e;
 		int reconfigure = 0;
 
@@ -2558,5 +2620,6 @@ int main(int argc, char **argv)
 		XPending(ctx.record);
 	}
 
-	return EINVAL;
+	context_cleanup(&ctx);
+	return 0;
 }
