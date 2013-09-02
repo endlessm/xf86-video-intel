@@ -690,6 +690,8 @@ static void context_update(struct context *ctx)
 	int context_changed = 0;
 	int i, n;
 
+	DBG(("%s\n", __func__));
+
 	res = XRRGetScreenResourcesCurrent(dpy, ctx->display->root);
 	if (res == NULL)
 		return;
@@ -709,6 +711,11 @@ static void context_update(struct context *ctx)
 		if (o->crtc)
 			c = XRRGetCrtcInfo(dpy, res, o->crtc);
 		if (c) {
+			DBG(("%s-%s: (x=%d, y=%d, rotation=%d, mode=%ld) -> (x=%d, y=%d, rotation=%d, mode=%ld)\n",
+			     DisplayString(ctx->display->dpy), output->name,
+			     output->x, output->y, output->rotation, output->mode.id,
+			     c->x, c->y, output->rotation, c->mode));
+
 			changed |= output->rotation |= c->rotation;
 			output->rotation = c->rotation;
 
@@ -721,6 +728,10 @@ static void context_update(struct context *ctx)
 			changed |= output->mode.id != mode;
 			mode = c->mode;
 			XRRFreeCrtcInfo(c);
+		} else {
+			DBG(("%s-%s: (x=%d, y=%d, rotation=%d, mode=%ld) -> off\n",
+			     DisplayString(ctx->display->dpy), output->name,
+			     output->x, output->y, output->rotation, output->mode.id));
 		}
 		output->rr_crtc = o->crtc;
 		XRRFreeOutputInfo(o);
@@ -739,12 +750,16 @@ static void context_update(struct context *ctx)
 			output->mode.id = 0;
 		}
 
+		DBG(("%s-%s changed? %d\n",
+		     DisplayString(ctx->clones[n].dst.display->dpy), ctx->clones[n].dst.name, changed));
+
 		if (changed)
 			clone_init_xfer(&ctx->clones[n]);
 		context_changed |= changed;
 	}
 	XRRFreeScreenResources(res);
 
+	DBG(("%s changed? %d\n", DisplayString(ctx->display->dpy), context_changed));
 	if (!context_changed)
 		return;
 
@@ -753,7 +768,7 @@ static void context_update(struct context *ctx)
 		struct clone *clone;
 		int x1, x2, y1, y2;
 
-		if (!display->rr_active == 0)
+		if (display->rr_active == 0)
 			continue;
 
 		x1 = y1 = INT_MAX;
@@ -994,6 +1009,7 @@ static int clone_output_init(struct clone *clone, struct output *output,
 	output->dpy = dpy;
 
 	output->rr_output = rr_output;
+	output->rotation = RR_Rotate_0;
 
 	output->window = display->root;
 	output->use_shm = display->has_shm;
