@@ -386,6 +386,7 @@ static RROutput claim_virtual(struct display *display, const char *name)
 	char buf[] = "ClaimVirtualHead";
 	Display *dpy = display->dpy;
 	XRRScreenResources *res;
+	XRROutputInfo *output;
 	XRRModeInfo mode;
 	RRMode id;
 	RROutput rr_output;
@@ -398,10 +399,14 @@ static RROutput claim_virtual(struct display *display, const char *name)
 		return 0;
 
 	for (i = rr_output = 0; rr_output == 0 && i < res->noutput; i++) {
-		XRROutputInfo *o = XRRGetOutputInfo(dpy, res, res->outputs[i]);
-		if (strcmp(o->name, name) == 0)
+		output = XRRGetOutputInfo(dpy, res, res->outputs[i]);
+		if (output == NULL)
+			continue;
+
+		if (strcmp(output->name, name) == 0)
 			rr_output = res->outputs[i];
-		XRRFreeOutputInfo(o);
+
+		XRRFreeOutputInfo(output);
 	}
 	for (i = id = 0; id == 0 && i < res->nmode; i++) {
 		if (strcmp(res->modes[i].name, buf) == 0)
@@ -428,6 +433,15 @@ static RROutput claim_virtual(struct display *display, const char *name)
 	res = XRRGetScreenResources(dpy, display->root);
 	if (res == NULL)
 		return 0;
+
+	/* Some else may have interrupted us and installed that new mode! */
+	output = XRRGetOutputInfo(dpy, res, rr_output);
+	if (output) {
+		if (output->crtc)
+			XRRSetCrtcConfig(dpy, res, output->crtc, CurrentTime,
+					 0, 0, None, RR_Rotate_0, NULL, 0);
+		XRRFreeOutputInfo(output);
+	}
 	XRRFreeScreenResources(res);
 
 	XRRDeleteOutputMode(dpy, rr_output, id);
