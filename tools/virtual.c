@@ -2527,12 +2527,14 @@ int main(int argc, char **argv)
 		if (ctx.timer_active && read(ctx.timer, &count, sizeof(count)) > 0 && count > 0) {
 			DBG(("%s timer expired (count=%ld)\n", DisplayString(ctx.display->dpy), (long)count));
 			ret = 0;
+
 			for (i = 0; i < ctx.nclone; i++)
 				ret |= clone_paint(&ctx.clones[i]);
-			ctx.timer_active = ret != 0;
 
 			for (i = 0; i < ctx.ndisplay; i++)
 				display_flush(&ctx.display[i]);
+
+			ctx.timer_active = ret != 0;
 		}
 
 		XPending(ctx.record);
