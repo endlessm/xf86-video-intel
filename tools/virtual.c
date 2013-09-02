@@ -2338,7 +2338,7 @@ int main(int argc, char **argv)
 					} else
 						open++;
 				}
-				if (all || (optind == argc && open == 0)) {
+				if (all || (optind == argc && !bumblebee)) {
 					first_display_for_each_sibling(&ctx, i) {
 						ret = first_display_send_command(&ctx, 5000, "C%s", ctx.command);
 						if (ret && ret != -EBUSY)
@@ -2347,7 +2347,7 @@ int main(int argc, char **argv)
 							open++;
 					}
 				}
-				if (bumblebee || (optind == argc && open == 0)) {
+				if (bumblebee || (optind == argc && !all)) {
 					ret = first_display_send_command(&ctx, 5000, "B");
 					if (ret && ret != -EBUSY) {
 						if (bumblebee)
@@ -2390,7 +2390,7 @@ int main(int argc, char **argv)
 		} else
 			open++;
 	}
-	if (all || (optind == argc && open == 0)) {
+	if (all || (optind == argc && !bumblebee)) {
 		first_display_for_each_sibling(&ctx, i) {
 			ret = last_display_clone(&ctx, display_open(&ctx, ctx.command));
 			if (ret && ret != -EBUSY)
@@ -2399,7 +2399,7 @@ int main(int argc, char **argv)
 				open++;
 		}
 	}
-	if (bumblebee || (optind == argc && open == 0)) {
+	if (bumblebee || (optind == argc && !all)) {
 		ret = last_display_clone(&ctx, bumblebee_open(&ctx));
 		if (ret && ret != -EBUSY) {
 			if (bumblebee)
