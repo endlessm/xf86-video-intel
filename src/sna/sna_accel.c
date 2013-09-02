@@ -5641,8 +5641,10 @@ sna_do_copy(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 		if (gc->subWindowMode == IncludeInferiors) {
 			DBG(("%s: window -- include inferiors\n", __FUNCTION__));
 
-			assert(!w->winSize.data);
-			box_intersect(&region.extents, &w->winSize.extents);
+			if (w->winSize.data)
+				RegionIntersect(&region, &region, &w->winSize);
+			else
+				box_intersect(&region.extents, &w->winSize.extents);
 			clip = &w->borderClip;
 		} else {
 			DBG(("%s: window -- clip by children\n", __FUNCTION__));
