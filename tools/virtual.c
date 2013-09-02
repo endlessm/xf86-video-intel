@@ -64,6 +64,7 @@
 struct display {
 	Display *dpy;
 	struct clone *clone;
+	struct context *ctx;
 
 	int damage_event, damage_error;
 	int xfixes_event, xfixes_error;
@@ -144,10 +145,17 @@ struct context {
 	int ndisplay;
 	int nfd;
 
+	int timer_active;
+
 	Atom singleton;
 	char command[1024];
 	int command_continuation;
 };
+
+static inline int is_power_of_2(unsigned long n)
+{
+	return n && ((n & (n - 1)) == 0);
+}
 
 static int xlib_vendor_is_xorg(Display *dpy)
 {
@@ -247,6 +255,100 @@ can_use_shm(Display *dpy,
 	shmdt(shm.shmaddr);
 
 	return has_shm;
+}
+
+static int timerfd(int hz)
+{
+	struct itimerspec it;
+	int fd;
+
+	fd = timerfd_create(CLOCK_MONOTONIC_COARSE, TFD_NONBLOCK);
+	if (fd < 0)
+		fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
+	if (fd < 0)
+		return -ETIME;
+
+	it.it_interval.tv_sec = 0;
+	it.it_interval.tv_nsec = 1000000000 / hz;
+	it.it_value = it.it_interval;
+	if (timerfd_settime(fd, 0, &it, NULL) < 0) {
+		close(fd);
+		return -ETIME;
+	}
+
+	return fd;
+}
+
+static int context_init(struct context *ctx)
+{
+	struct pollfd *pfd;
+
+	memset(ctx, 0, sizeof(*ctx));
+
+	ctx->pfd = malloc(2*sizeof(struct pollfd));
+	if (ctx->pfd == NULL)
+		return -ENOMEM;
+
+	ctx->clones = malloc(sizeof(struct clone));
+	if (ctx->clones == NULL)
+		return -ENOMEM;
+
+	ctx->display = malloc(sizeof(struct display));
+	if (ctx->display == NULL)
+		return -ENOMEM;
+
+	pfd = memset(&ctx->pfd[ctx->nfd++], 0, sizeof(struct pollfd));
+	pfd->fd = timerfd(60);
+	if (pfd->fd < 0)
+		return pfd->fd;
+	pfd->events = POLLIN;
+
+	return 0;
+}
+
+static void context_enable_timer(struct context *ctx)
+{
+	uint64_t count;
+
+	DBG(("%s timer active? %d\n", __func__, ctx->timer_active));
+
+	if (ctx->timer_active)
+		return;
+
+	read(ctx->timer, &count, sizeof(count));
+	ctx->timer_active = 1;
+}
+
+static int add_fd(struct context *ctx, int fd)
+{
+	struct pollfd *pfd;
+
+	if (fd < 0)
+		return fd;
+
+	if (is_power_of_2(ctx->nfd)) {
+		ctx->pfd = realloc(ctx->pfd, 2*ctx->nfd*sizeof(struct pollfd));
+		if (ctx->pfd == NULL)
+			return -ENOMEM;
+	}
+
+	pfd = memset(&ctx->pfd[ctx->nfd++], 0, sizeof(struct pollfd));
+	pfd->fd = fd;
+	pfd->events = POLLIN;
+	return 0;
+}
+
+
+static void display_mark_flush(struct display *display)
+{
+	DBG(("%s mark flush (flush=%d)\n",
+	     DisplayString(display->dpy), display->flush));
+
+	if (display->flush)
+		return;
+
+	context_enable_timer(display->ctx);
+	display->flush = 1;
 }
 
 static int mode_equal(const XRRModeInfo *a, const XRRModeInfo *b)
@@ -660,7 +762,7 @@ static int clone_init_xfer(struct clone *clone)
 	clone->damaged.y1 = clone->src.y;
 	clone->damaged.y2 = clone->src.y + clone->height;
 
-	clone->dst.display->flush = 1;
+	display_mark_flush(clone->dst.display);
 	return 0;
 }
 
@@ -925,6 +1027,8 @@ static void display_load_visible_cursor(struct display *display, XFixesCursorIma
 
 static void display_cursor_move(struct display *display, int x, int y, int visible)
 {
+	DBG(("%s cursor moved (visible=%d, (%d, %d))\n",
+	     DisplayString(display->dpy), visible, x, y));
 	display->cursor_moved++;
 	display->cursor_visible += visible;
 	if (visible) {
@@ -950,7 +1054,7 @@ static void display_flush_cursor(struct display *display)
 	}
 
 	XWarpPointer(display->dpy, None, display->root, 0, 0, 0, 0, x, y);
-	display->flush = 1;
+	display_mark_flush(display);
 
 	cursor = None;
 	if (display->cursor_visible)
@@ -1132,7 +1236,7 @@ static void put_dst(struct clone *c, const XRectangle *clip)
 		c->dst.serial = 0;
 	}
 
-	c->dst.display->flush = 1;
+	display_mark_flush(c->dst.display);
 }
 
 static int clone_paint(struct clone *c)
@@ -1204,10 +1308,17 @@ static void record_callback(XPointer closure, XRecordInterceptData *data)
 	struct context *ctx = (struct context *)closure;
 	int n;
 
+	DBG(("%s\n", __func__));
+
 	if (data->category == XRecordFromServer) {
 		const xEvent *e = (const xEvent *)data->data;
 
-		if (e->u.u.type == MotionNotify) {
+		DBG(("%s -- from server, event type %d, root %ld (ours? %d)\n",
+		     __func__, e->u.u.type, (long)e->u.keyButtonPointer.root,
+		     ctx->display->root == e->u.keyButtonPointer.root));
+
+		if (e->u.u.type == MotionNotify &&
+		    e->u.keyButtonPointer.root == ctx->display->root) {
 			for (n = 0; n < ctx->nclone; n++)
 				clone_move_cursor(&ctx->clones[n],
 						  e->u.keyButtonPointer.rootX,
@@ -1447,11 +1558,6 @@ static int clone_init_depth(struct clone *clone)
 	return 0;
 }
 
-static inline int is_power_of_2(unsigned long n)
-{
-	return n && ((n & (n - 1)) == 0);
-}
-
 static int add_display(struct context *ctx, Display *dpy)
 {
 	struct display *display;
@@ -1479,6 +1585,7 @@ static int add_display(struct context *ctx, Display *dpy)
 	display = memset(&ctx->display[ctx->ndisplay++], 0, sizeof(struct display));
 
 	display->dpy = dpy;
+	display->ctx = ctx;
 
 	display->root = DefaultRootWindow(dpy);
 	display->depth = DefaultDepth(dpy, DefaultScreen(dpy));
@@ -1577,74 +1684,6 @@ static int display_init_damage(struct display *display)
 	if (display->damage == 0)
 		return EACCES;
 
-	return 0;
-}
-
-static int timerfd(int hz)
-{
-	struct itimerspec it;
-	int fd;
-
-	fd = timerfd_create(CLOCK_MONOTONIC_COARSE, TFD_NONBLOCK);
-	if (fd < 0)
-		fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
-	if (fd < 0)
-		return -ETIME;
-
-	it.it_interval.tv_sec = 0;
-	it.it_interval.tv_nsec = 1000000000 / hz;
-	it.it_value = it.it_interval;
-	if (timerfd_settime(fd, 0, &it, NULL) < 0) {
-		close(fd);
-		return -ETIME;
-	}
-
-	return fd;
-}
-
-static int context_init(struct context *ctx)
-{
-	struct pollfd *pfd;
-
-	memset(ctx, 0, sizeof(*ctx));
-
-	ctx->pfd = malloc(2*sizeof(struct pollfd));
-	if (ctx->pfd == NULL)
-		return -ENOMEM;
-
-	ctx->clones = malloc(sizeof(struct clone));
-	if (ctx->clones == NULL)
-		return -ENOMEM;
-
-	ctx->display = malloc(sizeof(struct display));
-	if (ctx->display == NULL)
-		return -ENOMEM;
-
-	pfd = memset(&ctx->pfd[ctx->nfd++], 0, sizeof(struct pollfd));
-	pfd->fd = timerfd(60);
-	if (pfd->fd < 0)
-		return pfd->fd;
-	pfd->events = POLLIN;
-
-	return 0;
-}
-
-static int add_fd(struct context *ctx, int fd)
-{
-	struct pollfd *pfd;
-
-	if (fd < 0)
-		return fd;
-
-	if (is_power_of_2(ctx->nfd)) {
-		ctx->pfd = realloc(ctx->pfd, 2*ctx->nfd*sizeof(struct pollfd));
-		if (ctx->pfd == NULL)
-			return -ENOMEM;
-	}
-
-	pfd = memset(&ctx->pfd[ctx->nfd++], 0, sizeof(struct pollfd));
-	pfd->fd = fd;
-	pfd->events = POLLIN;
 	return 0;
 }
 
@@ -2148,7 +2187,7 @@ static void display_flush_send(struct display *display)
 
 	XSendEvent(display->dpy, display->root, False, 0, (XEvent *)&e);
 	display->send = 0;
-	display->flush = 1;
+	display_mark_flush(display);
 }
 
 static void display_flush(struct display *display)
@@ -2203,7 +2242,6 @@ int main(int argc, char **argv)
 	struct context ctx;
 	const char *src_name = NULL;
 	uint64_t count;
-	int enable_timer = 0;
 	int daemonize = 1, bumblebee = 0, all = 0, singleton = 1;
 	int i, ret, open, fail;
 
@@ -2346,8 +2384,8 @@ int main(int argc, char **argv)
 		XEvent e;
 		int reconfigure = 0;
 
-		DBG(("polling - enable timer? %d, nfd=%d\n", enable_timer, ctx.nfd));
-		ret = poll(ctx.pfd + !enable_timer, ctx.nfd - !enable_timer, -1);
+		DBG(("polling - enable timer? %d, nfd=%d\n", ctx.timer_active, ctx.nfd));
+		ret = poll(ctx.pfd + !ctx.timer_active, ctx.nfd - !ctx.timer_active, -1);
 		if (ret <= 0)
 			break;
 
@@ -2368,11 +2406,13 @@ int main(int argc, char **argv)
 					     de->area.x, de->area.y, de->area.width, de->area.height));
 					for (i = 0; i < ctx.nclone; i++)
 						clone_damage(&ctx.clones[i], &de->area);
-					if (!enable_timer)
-						enable_timer = read(ctx.timer, &count, sizeof(count)) > 0;
+					context_enable_timer(&ctx);
 					damaged++;
 				} else if (e.type == ctx.display->xfixes_event + XFixesCursorNotify) {
 					XFixesCursorImage *cur;
+
+					DBG(("%s cursor changed\n",
+					     DisplayString(ctx.display->dpy)));
 
 					cur = XFixesGetCursorImage(ctx.display->dpy);
 					if (cur == NULL)
@@ -2386,8 +2426,7 @@ int main(int argc, char **argv)
 					DBG(("%s screen changed (reconfigure pending? %d)\n",
 					     DisplayString(ctx.display->dpy), reconfigure));
 					reconfigure = 1;
-					if (!enable_timer)
-						enable_timer = read(ctx.timer, &count, sizeof(count)) > 0;
+					context_enable_timer(&ctx);
 				} else if (e.type == PropertyNotify) {
 					XPropertyEvent *pe = (XPropertyEvent *)&e;
 					if (pe->atom == ctx.singleton) {
@@ -2396,6 +2435,9 @@ int main(int argc, char **argv)
 					}
 				} else if (e.type == ClientMessage) {
 					XClientMessageEvent *cme;
+
+					DBG(("%s client message\n",
+					     DisplayString(ctx.display->dpy)));
 
 					cme = (XClientMessageEvent *)&e;
 					if (cme->message_type != ctx.singleton)
@@ -2447,17 +2489,18 @@ int main(int argc, char **argv)
 		for (i = 0; i < ctx.nclone; i++)
 			clone_update(&ctx.clones[i]);
 
-		if (enable_timer && read(ctx.timer, &count, sizeof(count)) > 0 && count > 0) {
+		if (ctx.timer_active && read(ctx.timer, &count, sizeof(count)) > 0 && count > 0) {
+			DBG(("%s timer expired (count=%ld)\n", DisplayString(ctx.display->dpy), (long)count));
 			ret = 0;
 			for (i = 0; i < ctx.nclone; i++)
 				ret |= clone_paint(&ctx.clones[i]);
-			enable_timer = ret != 0;
+			ctx.timer_active = ret != 0;
+
+			for (i = 0; i < ctx.ndisplay; i++)
+				display_flush(&ctx.display[i]);
 		}
 
 		XPending(ctx.record);
-
-		for (i = 0; i < ctx.ndisplay; i++)
-			display_flush(&ctx.display[i]);
 	}
 
 	return EINVAL;
