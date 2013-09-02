@@ -130,7 +130,7 @@ sna_output_dpms(xf86OutputPtr output, int dpms)
 static xf86OutputStatus
 sna_output_detect(xf86OutputPtr output)
 {
-	if (output->randr_output->numUserModes) {
+	if (output->randr_output && output->randr_output->numUserModes) {
 		xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(output->scrn);
 
 		if (xf86_config->output[xf86_config->num_output-1] == output)
