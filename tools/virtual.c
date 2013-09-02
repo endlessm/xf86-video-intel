@@ -2302,6 +2302,12 @@ int main(int argc, char **argv)
 	XRRSelectInput(ctx.display->dpy, ctx.display->root, RRScreenChangeNotifyMask);
 	XFixesSelectCursorInput(ctx.display->dpy, ctx.display->root, XFixesDisplayCursorNotifyMask);
 
+	ret = add_fd(&ctx, record_mouse(&ctx));
+	if (ret) {
+		fprintf(stderr, "XTEST extension not supported by display \"%s\"\n", DisplayString(ctx.display->dpy));
+		return -ret;
+	}
+
 	open = fail = 0;
 	for (i = optind; i < argc; i++) {
 		ret = last_display_clone(&ctx, display_open(&ctx, argv[i]));
@@ -2332,12 +2338,6 @@ int main(int argc, char **argv)
 	if (open == 0)
 		return fail ? ECONNREFUSED : 0;
 
-	ret = add_fd(&ctx, record_mouse(&ctx));
-	if (ret) {
-		fprintf(stderr, "XTEST extension not supported by display \"%s\"\n", DisplayString(ctx.display->dpy));
-		return -ret;
-	}
-
 	if (daemonize && daemon(0, 0))
 		return EINVAL;
 
@@ -2346,18 +2346,26 @@ int main(int argc, char **argv)
 		XEvent e;
 		int reconfigure = 0;
 
+		DBG(("polling - enable timer? %d, nfd=%d\n", enable_timer, ctx.nfd));
 		ret = poll(ctx.pfd + !enable_timer, ctx.nfd - !enable_timer, -1);
 		if (ret <= 0)
 			break;
 
+		/* pfd[0] is the timer, pfd[1] is the local display, pfd[2] is the mouse, pfd[3+] are the remotes */
+
+		DBG(("poll reports %d fd awake\n", ret));
 		if (ctx.pfd[1].revents) {
 			int damaged = 0;
 
+			DBG(("%s woken up\n", DisplayString(ctx.display[0].dpy)));
 			do {
 				XNextEvent(ctx.display->dpy, &e);
 
 				if (e.type == ctx.display->damage_event + XDamageNotify ) {
 					const XDamageNotifyEvent *de = (const XDamageNotifyEvent *)&e;
+					DBG(("%s damaged: (%d, %d)x(%d, %d)\n",
+					     DisplayString(ctx.display->dpy),
+					     de->area.x, de->area.y, de->area.width, de->area.height));
 					for (i = 0; i < ctx.nclone; i++)
 						clone_damage(&ctx.clones[i], &de->area);
 					if (!enable_timer)
@@ -2375,6 +2383,8 @@ int main(int argc, char **argv)
 
 					XFree(cur);
 				} else if (e.type == ctx.display->rr_event + RRScreenChangeNotify) {
+					DBG(("%s screen changed (reconfigure pending? %d)\n",
+					     DisplayString(ctx.display->dpy), reconfigure));
 					reconfigure = 1;
 					if (!enable_timer)
 						enable_timer = read(ctx.timer, &count, sizeof(count)) > 0;
@@ -2405,13 +2415,15 @@ int main(int argc, char **argv)
 		}
 
 		for (i = 1; ret && i < ctx.ndisplay; i++) {
-			if (ctx.pfd[i+1].revents == 0)
+			if (ctx.pfd[i+2].revents == 0)
 				continue;
 
+			DBG(("%s woken up\n", DisplayString(ctx.display[i].dpy)));
 			do {
 				XNextEvent(ctx.display[i].dpy, &e);
 
-				if (ctx.display[i].rr_event && e.type == ctx.display[i].rr_event + RRNotify) {
+				DBG(("%s received event %d\n", DisplayString(ctx.display[i].dpy), e.type));
+				if (ctx.display[i].rr_active && e.type == ctx.display[i].rr_event + RRNotify) {
 					XRRNotifyEvent *re = (XRRNotifyEvent *)&e;
 					if (re->subtype == RRNotify_OutputChange) {
 						XRROutputPropertyNotifyEvent *ro = (XRROutputPropertyNotifyEvent *)re;
@@ -2424,7 +2436,7 @@ int main(int argc, char **argv)
 						}
 					}
 				}
-			} while (XPending(ctx.display[i].dpy) || poll(&ctx.pfd[i+1], 1, 0) > 0);
+			} while (XPending(ctx.display[i].dpy) || poll(&ctx.pfd[i+2], 1, 0) > 0);
 
 			ret--;
 		}
