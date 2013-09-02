@@ -386,6 +386,7 @@ err:
 
 static int clone_update_modes__fixed(struct clone *clone)
 {
+	char mode_name[80];
 	XRRScreenResources *res;
 	XRROutputInfo *info;
 	XRRModeInfo mode;
@@ -421,6 +422,8 @@ static int clone_update_modes__fixed(struct clone *clone)
 	memset(&mode, 0, sizeof(mode));
 	mode.width = clone->width;
 	mode.height = clone->height;
+	mode.nameLength = sprintf(mode_name, "FAKE-%dx%d", mode.width, mode.height);
+	mode.name = mode_name;
 
 	id = 0;
 	for (j = 0; j < res->nmode; j++) {
