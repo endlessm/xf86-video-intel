@@ -760,7 +760,7 @@ __sna_dri_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		struct sna_pixmap *priv;
 		unsigned int flags;
 
-		flags = MOVE_WRITE;
+		flags = MOVE_WRITE | __MOVE_FORCE;
 		if (clip.data ||
 		    clip.extents.x1 > 0 ||
 		    clip.extents.x2 < pixmap->drawable.width ||
@@ -769,10 +769,10 @@ __sna_dri_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 			flags |= MOVE_READ;
 
 		priv = sna_pixmap_move_to_gpu(pixmap, flags);
-		if (priv)
+		if (priv) {
+			damage(pixmap, priv, region);
 			dst_bo = priv->gpu_bo;
-
-		damage(pixmap, priv, region);
+		}
 	} else
 		sync = false;
 
