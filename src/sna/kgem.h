@@ -648,7 +648,7 @@ static inline bool __kgem_bo_is_busy(struct kgem *kgem, struct kgem_bo *bo)
 static inline bool kgem_bo_is_render(struct kgem_bo *bo)
 {
 	DBG(("%s: handle=%d, rq? %d [%d]\n", __FUNCTION__,
-	     bo->handle, bo->rq != NULL, RQ_RING(bo->rq)));
+	     bo->handle, bo->rq != NULL, (int)RQ_RING(bo->rq)));
 	assert(bo->refcnt);
 	return bo->rq && RQ_RING(bo->rq) == I915_EXEC_RENDER;
 }

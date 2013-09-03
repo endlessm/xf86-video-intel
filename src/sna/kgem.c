@@ -2793,8 +2793,9 @@ void _kgem_submit(struct kgem *kgem)
 	batch_end = kgem_end_batch(kgem);
 	kgem_sna_flush(kgem);
 
-	DBG(("batch[%d/%d]: %d %d %d %d, nreloc=%d, nexec=%d, nfence=%d, aperture=%d\n",
-	     kgem->mode, kgem->ring, batch_end, kgem->nbatch, kgem->surface, kgem->batch_size,
+	DBG(("batch[%d/%d, flags=%x]: %d %d %d %d, nreloc=%d, nexec=%d, nfence=%d, aperture=%d\n",
+	     kgem->mode, kgem->ring, kgem->batch_flags,
+	     batch_end, kgem->nbatch, kgem->surface, kgem->batch_size,
 	     kgem->nreloc, kgem->nexec, kgem->nfence, kgem->aperture));
 
 	assert(kgem->nbatch <= kgem->batch_size);
@@ -3536,12 +3537,15 @@ struct kgem_bo *kgem_create_for_prime(struct kgem *kgem, int name, uint32_t size
 	VG_CLEAR(args);
 	args.fd = name;
 	args.flags = 0;
-	if (drmIoctl(kgem->fd, DRM_IOCTL_PRIME_FD_TO_HANDLE, &args))
+	if (drmIoctl(kgem->fd, DRM_IOCTL_PRIME_FD_TO_HANDLE, &args)) {
+		DBG(("%s(name=%d) fd-to-handle failed, ret=%d\n", __FUNCTION__, name, errno));
 		return NULL;
+	}
 
 	VG_CLEAR(tiling);
 	tiling.handle = args.handle;
 	if (drmIoctl(kgem->fd, DRM_IOCTL_I915_GEM_GET_TILING, &tiling)) {
+		DBG(("%s(name=%d) get-tiling failed, ret=%d\n", __FUNCTION__, name, errno));
 		gem_close(kgem->fd, args.handle);
 		return NULL;
 	}

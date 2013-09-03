@@ -62,7 +62,7 @@ static inline bool region_is_singular(RegionRec *r)
 
 #if HAS_DEBUG_FULL
 static const char *_debug_describe_region(char *buf, int max,
-					  RegionPtr region)
+					  const RegionRec *region)
 {
 	BoxPtr extents;
 	BoxPtr box;

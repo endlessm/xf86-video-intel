@@ -2580,12 +2580,12 @@ sna_output_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 	if (conn.connection == DRM_MODE_CONNECTED)
 		output->crtc = (void *)(uintptr_t)enc.crtc_id;
 
-	DBG(("%s: created output '%s' %d [%d]  (possible crtc:%x, possible clones:%x), edid=%d, dpms=%d, crtc=%d\n",
-	     __FUNCTION__, name, num, sna_output->id,
+	DBG(("%s: created output '%s' %d [%ld]  (possible crtc:%x, possible clones:%x), edid=%d, dpms=%d, crtc=%lu\n",
+	     __FUNCTION__, name, num, (long)sna_output->id,
 	     (uint32_t)output->possible_crtcs,
 	     (uint32_t)output->possible_clones,
 	     sna_output->edid_idx, sna_output->dpms_id,
-	     (uintptr_t)output->crtc));
+	     (unsigned long)(uintptr_t)output->crtc));
 
 	return true;
 
