@@ -3560,6 +3560,7 @@ struct kgem_bo *kgem_create_for_prime(struct kgem *kgem, int name, uint32_t size
 
 	bo->tiling = tiling.tiling_mode;
 	bo->reusable = false;
+	bo->domain = DOMAIN_NONE;
 
 	debug_alloc__bo(kgem, bo);
 	return bo;
