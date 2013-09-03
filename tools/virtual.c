@@ -2235,6 +2235,8 @@ static void display_flush_send(struct display *display)
 	     (long)NextRequest(display->dpy),
 	     display->shm_event));
 
+	display->send = 0;
+
 	if (display->shm_event == 0) {
 		XSync(display->dpy, False);
 		display->flush = 0;
@@ -2251,7 +2253,6 @@ static void display_flush_send(struct display *display)
 	e.offset = 0;
 
 	XSendEvent(display->dpy, display->root, False, 0, (XEvent *)&e);
-	display->send = 0;
 	display_mark_flush(display);
 }
 
