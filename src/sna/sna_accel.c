@@ -15205,8 +15205,8 @@ sna_visit_set_window_pixmap(WindowPtr window, pointer data)
 {
     struct sna_visit_set_pixmap_window *visit = data;
 
-    if (fbGetWindowPixmap(window) == visit->old) {
-	    window->drawable.pScreen->SetWindowPixmap(window, visit->new);
+    if (sna_get_window_pixmap(window) == visit->old) {
+	    sna_set_window_pixmap(window, visit->new);
 	    return WT_WALKCHILDREN;
     }
 
@@ -15260,10 +15260,7 @@ sna_set_screen_pixmap(PixmapPtr pixmap)
 
 	root = get_root_window(screen);
 	if (root) {
-		struct sna_visit_set_pixmap_window visit;
-
-		visit.old = old_front;
-		visit.new = pixmap;
+		struct sna_visit_set_pixmap_window visit = { old_front, pixmap };
 		TraverseTree(root, sna_visit_set_window_pixmap, &visit);
 		assert(fbGetWindowPixmap(root) == pixmap);
 	}
