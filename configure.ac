@@ -419,17 +419,6 @@ if test "x$ASYNC_SWAP" = "xyes"; then
 	xp_msg="$xp_msg async-swap"
 fi
 
-AC_ARG_ENABLE(wt,
-	      AS_HELP_STRING([--enable-wt],
-			     [Enable use of WT caching (experimental) [default=no]]),
-	      [WT="$enableval"],
-	      [WT="no"])
-AM_CONDITIONAL(USE_WT, test "x$WT" = "xyes")
-if test "x$WT" = "xyes"; then
-	AC_DEFINE(USE_WT,1,[Assume WriteThrough caching support])
-	xp_msg="$xp_msg wt-cache"
-fi
-
 AC_ARG_ENABLE(debug,
 	      AS_HELP_STRING([--enable-debug],
 			     [Enables internal debugging [default=no]]),

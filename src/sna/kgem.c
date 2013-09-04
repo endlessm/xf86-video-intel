@@ -829,14 +829,10 @@ static bool test_has_handle_lut(struct kgem *kgem)
 
 static bool test_has_wt(struct kgem *kgem)
 {
-#if defined(USE_WT)
 	if (DBG_NO_WT)
 		return false;
 
 	return gem_param(kgem, LOCAL_I915_PARAM_HAS_WT) > 0;
-#else
-	return false;
-#endif
 }
 
 static bool test_has_semaphores_enabled(struct kgem *kgem)
