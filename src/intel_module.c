@@ -207,14 +207,14 @@ static const SymTabRec intel_chipsets[] = {
 #define NUM_CHIPSETS (sizeof(intel_chipsets) / sizeof(intel_chipsets[0]))
 
 static const struct pci_id_match intel_device_match[] = {
-#if !KMS_ONLY
+#if UMS
 	INTEL_VGA_DEVICE(PCI_CHIP_I810, &intel_i81x_info),
 	INTEL_VGA_DEVICE(PCI_CHIP_I810_DC100, &intel_i81x_info),
 	INTEL_VGA_DEVICE(PCI_CHIP_I810_E, &intel_i81x_info),
 	INTEL_VGA_DEVICE(PCI_CHIP_I815, &intel_i81x_info),
 #endif
 
-#if !UMS_ONLY
+#if KMS
 	INTEL_I830_IDS(&intel_i830_info),
 	INTEL_I845G_IDS(&intel_i830_info),
 	INTEL_I85X_IDS(&intel_i855_info),
@@ -377,9 +377,8 @@ static Bool intel_driver_func(ScrnInfoPtr pScrn,
 	switch (op) {
 	case GET_REQUIRED_HW_INTERFACES:
 		flag = (CARD32*)ptr;
-#ifdef KMS_ONLY
 		(*flag) = 0;
-#else
+#if UMS
 		(*flag) = HW_IO | HW_MMIO;
 #endif
 #ifdef HW_SKIP_CONSOLE
@@ -394,7 +393,7 @@ static Bool intel_driver_func(ScrnInfoPtr pScrn,
 	}
 }
 
-#if !UMS_ONLY
+#if KMS
 extern XF86ConfigPtr xf86configptr;
 
 static XF86ConfDevicePtr
@@ -459,12 +458,12 @@ intel_scrn_create(DriverPtr		driver,
 		xf86SetEntityShared(entity_num);
 	xf86AddEntityToScreen(scrn, entity_num);
 
-#if !KMS_ONLY
+#if UMS
 	if ((unsigned)((struct intel_device_info *)match_data)->gen < 020)
 		return lg_i810_init(scrn);
 #endif
 
-#if !UMS_ONLY
+#if KMS
 	switch (get_accel_method()) {
 #if USE_SNA
 	case SNA: return sna_init_scrn(scrn, entity_num);
@@ -493,9 +492,7 @@ static Bool intel_pci_probe(DriverPtr		driver,
 			    intptr_t		match_data)
 {
 	if (intel_open_device(entity_num, pci, NULL) == -1) {
-#if KMS_ONLY
-		return FALSE;
-#else
+#if UMS
 		switch (pci->device_id) {
 		case PCI_CHIP_I810:
 		case PCI_CHIP_I810_DC100:
@@ -506,6 +503,8 @@ static Bool intel_pci_probe(DriverPtr		driver,
 		default:
 			return FALSE;
 		}
+#else
+		return FALSE;
 #endif
 	}
 
@@ -563,7 +562,7 @@ static const OptionInfoRec *
 intel_available_options(int chipid, int busid)
 {
 	switch (chipid) {
-#if !KMS_ONLY
+#if UMS
 	case PCI_CHIP_I810:
 	case PCI_CHIP_I810_DC100:
 	case PCI_CHIP_I810_E:
