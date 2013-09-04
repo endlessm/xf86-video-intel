@@ -1,3 +1,24 @@
+Snapshot 2.99.901 (2013-08-04)
+==============================
+What's this? A pre-release snapshot of an upcoming 3.0 major release?
+What could be the big new feature about to land? SNA by default!
+Not only that, we also have a preview of the XMir integration patches.
+
+Whilst we consider the SNA acceleration method to be ready to take over
+from UXA (the current acceleration method), it still remains possible to
+switch over to the old method with the following xorg.conf snippet:
+  Section "Device"
+    Identifier "Device0"
+    Driver "intel"
+    Option "AccelMethod" "UXA"
+  EndSection
+
+The promise of SNA is that it improves the user experience by providing a
+faster, more fluid, desktop, that is both more power efficient and less
+prone to crashes than UXA. If it still fails to meet your expections,
+please file bugs!
+
+
 Release 2.21.15 (2013-08-21)
 ============================
 Some build fixes for the BSDs and alternate compiler, and conflicting
