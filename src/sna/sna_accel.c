@@ -2831,21 +2831,55 @@ sna_pixmap_mark_active(struct sna *sna, struct sna_pixmap *priv)
 	return priv;
 }
 
-bool
+inline static struct sna_pixmap *
+__sna_pixmap_for_gpu(struct sna *sna, PixmapPtr pixmap, unsigned flags)
+{
+	struct sna_pixmap *priv;
+
+	if ((flags & __MOVE_FORCE) == 0 && wedged(sna))
+		return NULL;
+
+	priv = sna_pixmap(pixmap);
+	if (priv == NULL) {
+		DBG(("%s: not attached\n", __FUNCTION__));
+		if ((flags & __MOVE_DRI) == 0)
+			return NULL;
+
+		DBG(("%s: forcing the creation on the GPU\n", __FUNCTION__));
+
+		priv = sna_pixmap_attach(pixmap);
+		if (priv == NULL)
+			return NULL;
+
+		sna_damage_all(&priv->cpu_damage,
+			       pixmap->drawable.width,
+			       pixmap->drawable.height);
+
+		assert(priv->gpu_bo == NULL);
+		assert(priv->gpu_damage == NULL);
+	}
+
+	return priv;
+}
+
+struct sna_pixmap *
 sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int flags)
 {
 	struct sna *sna = to_sna_from_pixmap(pixmap);
-	struct sna_pixmap *priv = sna_pixmap(pixmap);
+	struct sna_pixmap *priv;
 	RegionRec i, r;
 
 	DBG(("%s: pixmap=%ld box=(%d, %d), (%d, %d), flags=%x\n",
 	     __FUNCTION__, pixmap->drawable.serialNumber,
 	     box->x1, box->y1, box->x2, box->y2, flags));
 
+	priv = __sna_pixmap_for_gpu(sna, pixmap, flags);
+	if (priv == NULL)
+		return NULL;
+
 	assert(box->x2 > box->x1 && box->y2 > box->y1);
 	assert_pixmap_damage(pixmap);
 	assert_pixmap_contains_box(pixmap, box);
-	assert(!wedged(sna));
 	assert(priv->gpu_damage == NULL || priv->gpu_bo);
 
 	if (priv->cow && (flags & MOVE_WRITE || priv->cpu_damage)) {
@@ -2863,7 +2897,7 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 		}
 
 		if (!sna_pixmap_undo_cow(sna, priv, cow))
-			return false;
+			return NULL;
 
 		if (priv->gpu_bo == NULL)
 			sna_damage_destroy(&priv->gpu_damage);
@@ -2921,7 +2955,7 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 		}
 
 		if (priv->gpu_bo == NULL)
-			return false;
+			return NULL;
 
 		DBG(("%s: created gpu bo\n", __FUNCTION__));
 	}
@@ -2978,7 +3012,7 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 							     box, n);
 				}
 				if (!ok)
-					return false;
+					return NULL;
 			}
 		}
 
@@ -3012,7 +3046,7 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 					     box, 1);
 		}
 		if (!ok)
-			return false;
+			return NULL;
 
 		sna_damage_subtract(&priv->cpu_damage, &r);
 	} else if (sna_damage_intersect(priv->cpu_damage, &r, &i)) {
@@ -3043,7 +3077,7 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 					     box, n);
 		}
 		if (!ok)
-			return false;
+			return NULL;
 
 		sna_damage_subtract(&priv->cpu_damage, &r);
 		RegionUninit(&i);
@@ -3071,7 +3105,7 @@ done:
 	}
 
 	assert(!priv->gpu_bo->proxy || (flags & MOVE_WRITE) == 0);
-	return sna_pixmap_mark_active(sna, priv) != NULL;
+	return sna_pixmap_mark_active(sna, priv);
 }
 
 struct kgem_bo *
@@ -3549,28 +3583,9 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 	     pixmap->usage_hint,
 	     flags));
 
-	if ((flags & __MOVE_FORCE) == 0 && wedged(sna))
+	priv = __sna_pixmap_for_gpu(sna, pixmap, flags);
+	if (priv == NULL)
 		return NULL;
-
-	priv = sna_pixmap(pixmap);
-	if (priv == NULL) {
-		DBG(("%s: not attached\n", __FUNCTION__));
-		if ((flags & __MOVE_DRI) == 0)
-			return NULL;
-
-		DBG(("%s: forcing the creation on the GPU\n", __FUNCTION__));
-
-		priv = sna_pixmap_attach(pixmap);
-		if (priv == NULL)
-			return NULL;
-
-		sna_damage_all(&priv->cpu_damage,
-			       pixmap->drawable.width,
-			       pixmap->drawable.height);
-
-		assert(priv->gpu_bo == NULL);
-		assert(priv->gpu_damage == NULL);
-	}
 
 	assert(priv->gpu_damage == NULL || priv->gpu_bo);
 
@@ -3583,7 +3598,7 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 
 	if (priv->cow && (flags & MOVE_WRITE || priv->cpu_damage)) {
 		if (!sna_pixmap_undo_cow(sna, priv, flags & MOVE_READ))
-			return false;
+			return NULL;
 
 		if (priv->gpu_bo == NULL)
 			sna_damage_destroy(&priv->gpu_damage);
