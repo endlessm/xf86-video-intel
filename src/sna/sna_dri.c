@@ -2085,33 +2085,6 @@ skip:
 	return TRUE;
 }
 
-#if USE_ASYNC_SWAP
-static Bool
-sna_dri_async_swap(ClientPtr client, DrawablePtr draw,
-		   DRI2BufferPtr front, DRI2BufferPtr back,
-		   DRI2SwapEventPtr func, void *data)
-{
-	struct sna *sna = to_sna_from_drawable(draw);
-	CARD64 target_msc = 0;
-	int pipe;
-
-	DBG(("%s()\n", __FUNCTION__));
-
-	if (!can_flip(sna, draw, front, back) ||
-	    (pipe = sna_dri_get_pipe(draw)) < 0 ||
-	    !sna_dri_schedule_flip(client, draw, front, back, pipe,
-				   &target_msc, 0, 0, func, data)) {
-		DBG(("%s: unable to flip, so blit\n", __FUNCTION__));
-		__sna_dri_copy_region(sna, draw, NULL, back, front, false);
-
-		DRI2SwapComplete(client, draw, 0, 0, 0,
-				 DRI2_BLIT_COMPLETE, func, data);
-		return false;
-	}
-	return TRUE;
-}
-#endif
-
 static uint64_t gettime_us(void)
 {
 	struct timespec tv;
@@ -2353,7 +2326,7 @@ bool sna_dri_open(struct sna *sna, ScreenPtr screen)
 
 #if USE_ASYNC_SWAP
 	info.version = 10;
-	info.AsyncSwap = sna_dri_async_swap;
+	info.scheduleSwap0 = 1;
 #endif
 
 	return DRI2ScreenInit(screen, &info);
