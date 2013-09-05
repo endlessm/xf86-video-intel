@@ -2620,12 +2620,11 @@ int main(int argc, char **argv)
 					XRRNotifyEvent *re = (XRRNotifyEvent *)&e;
 					if (re->subtype == RRNotify_OutputChange) {
 						XRROutputPropertyNotifyEvent *ro = (XRROutputPropertyNotifyEvent *)re;
-						int j;
+						struct clone *clone;
 
-						for (j = 0; j < ctx.nclone; j++) {
-							if (ctx.clones[j].dst.display == &ctx.display[i] &&
-							    ctx.clones[j].dst.rr_output == ro->output)
-								rr_update = ctx.clones[j].rr_update = 1;
+						for (clone = ctx.display[i].clone; clone; clone = clone->next) {
+							if (clone->dst.rr_output == ro->output)
+								rr_update = clone->rr_update = 1;
 						}
 					}
 				}
