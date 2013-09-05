@@ -1756,7 +1756,7 @@ static int display_init_damage(struct display *display)
 		return EINVAL;
 	}
 
-	display->damage = XDamageCreate(display->dpy, display->root, XDamageReportRawRectangles);
+	display->damage = XDamageCreate(display->dpy, display->root, XDamageReportBoundingBox);
 	if (display->damage == 0)
 		return EACCES;
 
@@ -1768,7 +1768,7 @@ static void display_reset_damage(struct display *display)
 {
 	Damage damage;
 
-	damage = XDamageCreate(display->dpy, display->root, XDamageReportRawRectangles);
+	damage = XDamageCreate(display->dpy, display->root, XDamageReportBoundingBox);
 	if (damage) {
 		XDamageDestroy(display->dpy, display->damage);
 		display->damage = damage;
