@@ -2041,7 +2041,7 @@ static int first_display_wait_for_ack(struct context *ctx, int timeout, int id)
 {
 	struct display *display = ctx->display;
 	struct pollfd pfd;
-	char expect[5];
+	char expect[6]; /* "1234R\0" */
 
 	sprintf(expect, "%04xR", id);
 	DBG(("%s: wait for act '%c%c%c%c%c'\n",
