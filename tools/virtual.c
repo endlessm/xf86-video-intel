@@ -127,6 +127,7 @@ struct output {
 
 struct clone {
 	struct clone *next;
+	struct clone *active;
 
 	struct output src, dst;
 
@@ -141,6 +142,7 @@ struct clone {
 struct context {
 	struct display *display;
 	struct clone *clones;
+	struct clone *active;
 	struct pollfd *pfd;
 #define timer pfd[0].fd
 	Display *record;
@@ -354,7 +356,6 @@ static int add_fd(struct context *ctx, int fd)
 	return 0;
 }
 
-
 static void display_mark_flush(struct display *display)
 {
 	DBG(("%s mark flush (flush=%d)\n",
@@ -381,7 +382,6 @@ static int mode_equal(const XRRModeInfo *a, const XRRModeInfo *b)
 		a->vTotal == b->vTotal &&
 		a->modeFlags == b->modeFlags);
 }
-
 
 static XRRModeInfo *lookup_mode(XRRScreenResources *res, int id)
 {
@@ -1008,6 +1008,17 @@ err:
 
 		XRRFreeScreenResources(res);
 	}
+
+	ctx->active = NULL;
+	for (n = 0; n < ctx->nclone; n++) {
+		struct clone *clone = &ctx->clones[n];
+
+		if (clone->dst.rr_crtc == 0)
+			continue;
+
+		clone->active = ctx->active;
+		ctx->active = clone;
+	}
 }
 
 static Cursor display_load_invisible_cursor(struct display *display)
@@ -1352,7 +1363,6 @@ static void usage(const char *arg0)
 static void record_callback(XPointer closure, XRecordInterceptData *data)
 {
 	struct context *ctx = (struct context *)closure;
-	int n;
 
 	DBG(("%s\n", __func__));
 
@@ -1365,8 +1375,10 @@ static void record_callback(XPointer closure, XRecordInterceptData *data)
 
 		if (e->u.u.type == MotionNotify &&
 		    e->u.keyButtonPointer.root == ctx->display->root) {
-			for (n = 0; n < ctx->nclone; n++)
-				clone_move_cursor(&ctx->clones[n],
+			struct clone *clone;
+
+			for (clone = ctx->active; clone; clone = clone->active)
+				clone_move_cursor(clone,
 						  e->u.keyButtonPointer.rootX,
 						  e->u.keyButtonPointer.rootY);
 		}
@@ -1889,6 +1901,9 @@ static int last_display_add_clones__xinerama(struct context *ctx)
 		struct clone *clone = add_clone(ctx);
 		RROutput id;
 
+		if (xi[n].width == 0 || xi[n].height == 0)
+			continue;
+
 		clone->depth = 24;
 		clone->next = display->clone;
 		display->clone = clone;
@@ -1925,12 +1940,16 @@ static int last_display_add_clones__xinerama(struct context *ctx)
 		clone->height = xi[n].height;
 		clone->dst.x = xi[n].x_org;
 		clone->dst.y = xi[n].y_org;
+		clone->dst.rr_crtc = -1;
 		ret = clone_update_modes__fixed(clone);
 		if (ret) {
 			fprintf(stderr, "Failed to clone Xinerama screen %d from display \"%s\"\n",
 				n, DisplayString(display->dpy));
 			return ret;
 		}
+
+		clone->active = ctx->active;
+		ctx->active = clone;
 	}
 	XFree(xi);
 	return 0;
@@ -1985,12 +2004,16 @@ static int last_display_add_clones__display(struct context *ctx)
 	clone->height = scr->height;
 	clone->dst.x = 0;
 	clone->dst.y = 0;
+	clone->dst.rr_crtc = -1;
 	ret = clone_update_modes__fixed(clone);
 	if (ret) {
 		fprintf(stderr, "Failed to clone display \"%s\"\n",
 			DisplayString(display->dpy));
 		return ret;
 	}
+
+	clone->active = ctx->active;
+	ctx->active = clone;
 
 	return 0;
 }
@@ -2510,6 +2533,7 @@ int main(int argc, char **argv)
 	while (!done) {
 		XEvent e;
 		int reconfigure = 0;
+		int rr_update = 0;
 
 		DBG(("polling - enable timer? %d, nfd=%d\n", ctx.timer_active, ctx.nfd));
 		ret = poll(ctx.pfd + !ctx.timer_active, ctx.nfd - !ctx.timer_active, -1);
@@ -2528,12 +2552,18 @@ int main(int argc, char **argv)
 
 				if (e.type == ctx.display->damage_event + XDamageNotify ) {
 					const XDamageNotifyEvent *de = (const XDamageNotifyEvent *)&e;
+					struct clone *clone;
+
 					DBG(("%s damaged: (%d, %d)x(%d, %d)\n",
 					     DisplayString(ctx.display->dpy),
 					     de->area.x, de->area.y, de->area.width, de->area.height));
-					for (i = 0; i < ctx.nclone; i++)
-						clone_damage(&ctx.clones[i], &de->area);
-					context_enable_timer(&ctx);
+
+					for (clone = ctx.active; clone; clone = clone->next)
+						clone_damage(clone, &de->area);
+
+					if (ctx.active)
+						context_enable_timer(&ctx);
+
 					damaged++;
 				} else if (e.type == ctx.display->xfixes_event + XFixesCursorNotify) {
 					XFixesCursorImage *cur;
@@ -2601,7 +2631,7 @@ int main(int argc, char **argv)
 						for (j = 0; j < ctx.nclone; j++) {
 							if (ctx.clones[j].dst.display == &ctx.display[i] &&
 							    ctx.clones[j].dst.rr_output == ro->output)
-								ctx.clones[j].rr_update = 1;
+								rr_update = ctx.clones[j].rr_update = 1;
 						}
 					}
 				}
@@ -2613,17 +2643,21 @@ int main(int argc, char **argv)
 		if (reconfigure)
 			context_update(&ctx);
 
-		for (i = 0; i < ctx.nclone; i++)
-			clone_update(&ctx.clones[i]);
+		if (rr_update) {
+			for (i = 0; i < ctx.nclone; i++)
+				clone_update(&ctx.clones[i]);
+		}
 
 		XPending(ctx.record);
 
 		if (ctx.timer_active && read(ctx.timer, &count, sizeof(count)) > 0) {
+			struct clone *clone;
+
 			DBG(("%s timer expired (count=%ld)\n", DisplayString(ctx.display->dpy), (long)count));
 			ret = 0;
 
-			for (i = 0; i < ctx.nclone; i++)
-				ret |= clone_paint(&ctx.clones[i]);
+			for (clone = ctx.active; clone; clone = clone->active)
+				ret |= clone_paint(clone);
 
 			for (i = 0; i < ctx.ndisplay; i++)
 				display_flush(&ctx.display[i]);
