@@ -1760,7 +1760,20 @@ static int display_init_damage(struct display *display)
 	if (display->damage == 0)
 		return EACCES;
 
+	display->flush = 1;
 	return 0;
+}
+
+static void display_reset_damage(struct display *display)
+{
+	Damage damage;
+
+	damage = XDamageCreate(display->dpy, display->root, XDamageReportRawRectangles);
+	if (damage) {
+		XDamageDestroy(display->dpy, display->damage);
+		display->damage = damage;
+		display->flush = 1;
+	}
 }
 
 static void display_init_randr_hpd(struct display *display)
@@ -2632,8 +2645,10 @@ int main(int argc, char **argv)
 			ret--;
 		}
 
-		if (reconfigure)
+		if (reconfigure) {
 			context_update(&ctx);
+			display_reset_damage(ctx.display);
+		}
 
 		if (rr_update) {
 			for (i = 0; i < ctx.nclone; i++)
