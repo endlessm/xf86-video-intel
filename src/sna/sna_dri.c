@@ -287,6 +287,8 @@ sna_dri_create_buffer(DrawablePtr draw,
 		if (bo == NULL)
 			return NULL;
 
+		assert(sna_pixmap(pixmap) != NULL);
+
 		bo = ref(bo);
 		bpp = pixmap->drawable.bitsPerPixel;
 		if (pixmap == sna->front)

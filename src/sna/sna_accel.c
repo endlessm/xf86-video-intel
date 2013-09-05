@@ -15265,6 +15265,12 @@ sna_set_screen_pixmap(PixmapPtr pixmap)
 	PixmapPtr old_front = screen->devPrivate;
 	WindowPtr root;
 
+	DBG(("%s: changing from pixmap=%ld to pixmap=%ld, (sna->front=%ld)\n",
+	     __FUNCTION__,
+	     old_front ? (long)old_front->drawable.serialNumber : 0,
+	     pixmap ? (long)pixmap->drawable.serialNumber : 0,
+	     to_sna_from_pixmap(pixmap)->front ? (long)to_sna_from_pixmap(pixmap)->front->drawable.serialNumber : 0));
+
 	assert(to_sna_from_pixmap(pixmap) == to_sna_from_screen(screen));
 	assert(to_sna_from_pixmap(pixmap)->front == old_front);
 
