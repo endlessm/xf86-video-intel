@@ -1068,7 +1068,7 @@ gen6_bind_bo(struct sna *sna,
 	ss[3] = (gen6_tiling_bits(bo->tiling) |
 		 (bo->pitch - 1) << GEN6_SURFACE_PITCH_SHIFT);
 	ss[4] = 0;
-	ss[5] = is_scanout ? 0 : 3 << 16;
+	ss[5] = (is_scanout || bo->io) ? 0 : 3 << 16;
 
 	kgem_bo_set_binding(bo, format | is_dst << 30 | is_scanout << 31, offset);
 

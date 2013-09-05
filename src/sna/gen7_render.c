@@ -1283,7 +1283,7 @@ gen7_bind_bo(struct sna *sna,
 		 (height - 1) << GEN7_SURFACE_HEIGHT_SHIFT);
 	ss[3] = (bo->pitch - 1) << GEN7_SURFACE_PITCH_SHIFT;
 	ss[4] = 0;
-	ss[5] = is_scanout ? 0 : is_hsw(sna) ? 5 << 16 : 3 << 16;
+	ss[5] = (is_scanout || bo->io) ? 0 : is_hsw(sna) ? 5 << 16 : 3 << 16;
 	ss[6] = 0;
 	ss[7] = 0;
 	if (is_hsw(sna))
