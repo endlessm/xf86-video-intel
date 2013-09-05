@@ -2544,8 +2544,6 @@ int main(int argc, char **argv)
 
 		DBG(("poll reports %d fd awake\n", ret));
 		if (ctx.pfd[1].revents) {
-			int damaged = 0;
-
 			DBG(("%s woken up\n", DisplayString(ctx.display[0].dpy)));
 			do {
 				XNextEvent(ctx.display->dpy, &e);
@@ -2563,8 +2561,6 @@ int main(int argc, char **argv)
 
 					if (ctx.active)
 						context_enable_timer(&ctx);
-
-					damaged++;
 				} else if (e.type == ctx.display->xfixes_event + XFixesCursorNotify) {
 					XFixesCursorImage *cur;
 
@@ -2608,11 +2604,6 @@ int main(int argc, char **argv)
 				}
 			} while (XPending(ctx.display->dpy) || poll(&ctx.pfd[1], 1, 0) > 0);
 
-			if (damaged) {
-				DBG(("%s clearing damage (after %d events)\n", DisplayString(ctx.display->dpy), damaged));
-				XDamageSubtract(ctx.display->dpy, ctx.display->damage, None, None);
-				ctx.display->flush = 1;
-			}
 			ret--;
 		}
 
@@ -2661,6 +2652,12 @@ int main(int argc, char **argv)
 
 			for (clone = ctx.active; clone; clone = clone->active)
 				ret |= clone_paint(clone);
+
+			if (ctx.active) {
+				DBG(("%s clearing damage\n", DisplayString(ctx.display->dpy)));
+				XDamageSubtract(ctx.display->dpy, ctx.display->damage, None, None);
+				ctx.display->flush = 1;
+			}
 
 			for (i = 0; i < ctx.ndisplay; i++)
 				display_flush(&ctx.display[i]);
