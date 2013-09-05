@@ -2608,8 +2608,11 @@ int main(int argc, char **argv)
 				}
 			} while (XPending(ctx.display->dpy) || poll(&ctx.pfd[1], 1, 0) > 0);
 
-			if (damaged)
+			if (damaged) {
+				DBG(("%s clearing damage (after %d events)\n", DisplayString(ctx.display->dpy), damaged));
 				XDamageSubtract(ctx.display->dpy, ctx.display->damage, None, None);
+				ctx.display->flush = 1;
+			}
 			ret--;
 		}
 
@@ -2662,6 +2665,7 @@ int main(int argc, char **argv)
 			for (i = 0; i < ctx.ndisplay; i++)
 				display_flush(&ctx.display[i]);
 
+			DBG(("%s timer still active? %d\n", DisplayString(ctx.display->dpy), ret != 0));
 			ctx.timer_active = ret != 0;
 		}
 	}
