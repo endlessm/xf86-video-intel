@@ -1071,9 +1071,10 @@ static void display_load_visible_cursor(struct display *display, XFixesCursorIma
 
 	DBG(("%s marking cursor changed\n", DisplayString(display->dpy)));
 	display->cursor_moved++;
-	display->cursor_visible += display->cursor != display->invisible_cursor;
-
-	context_enable_timer(display->ctx);
+	if (display->cursor != display->invisible_cursor) {
+		display->cursor_visible++;
+		context_enable_timer(display->ctx);
+	}
 }
 
 static void display_cursor_move(struct display *display, int x, int y, int visible)
@@ -1107,7 +1108,6 @@ static void display_flush_cursor(struct display *display)
 	}
 
 	XWarpPointer(display->dpy, None, display->root, 0, 0, 0, 0, x, y);
-	display_mark_flush(display);
 
 	cursor = None;
 	if (display->cursor_visible)
@@ -1118,6 +1118,8 @@ static void display_flush_cursor(struct display *display)
 		XDefineCursor(display->dpy, display->root, cursor);
 		display->cursor = cursor;
 	}
+
+	display_mark_flush(display);
 
 	display->cursor_moved = 0;
 	display->cursor_visible = 0;
