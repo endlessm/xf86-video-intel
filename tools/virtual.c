@@ -1760,7 +1760,6 @@ static int display_init_damage(struct display *display)
 	if (display->damage == 0)
 		return EACCES;
 
-	display->flush = 1;
 	return 0;
 }
 
@@ -1772,7 +1771,8 @@ static void display_reset_damage(struct display *display)
 	if (damage) {
 		XDamageDestroy(display->dpy, display->damage);
 		display->damage = damage;
-		display->flush = 1;
+		XFlush(display->dpy);
+		display->flush = 0;
 	}
 }
 
