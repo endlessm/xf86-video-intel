@@ -2648,14 +2648,14 @@ int main(int argc, char **argv)
 			DBG(("%s timer expired (count=%ld)\n", DisplayString(ctx.display->dpy), (long)count));
 			ret = 0;
 
-			for (clone = ctx.active; clone; clone = clone->active)
-				ret |= clone_paint(clone);
-
 			if (ctx.active) {
 				DBG(("%s clearing damage\n", DisplayString(ctx.display->dpy)));
 				XDamageSubtract(ctx.display->dpy, ctx.display->damage, None, None);
 				ctx.display->flush = 1;
 			}
+
+			for (clone = ctx.active; clone; clone = clone->active)
+				ret |= clone_paint(clone);
 
 			for (i = 0; i < ctx.ndisplay; i++)
 				display_flush(&ctx.display[i]);
