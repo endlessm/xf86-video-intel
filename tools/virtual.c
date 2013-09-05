@@ -2386,6 +2386,8 @@ static void context_cleanup(struct context *ctx)
 
 	XRRFreeScreenResources(res);
 
+	if (ctx->singleton)
+		XDeleteProperty(dpy, ctx->display->root, ctx->singleton);
 	XCloseDisplay(dpy);
 }
 
