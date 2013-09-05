@@ -2579,7 +2579,6 @@ int main(int argc, char **argv)
 					DBG(("%s screen changed (reconfigure pending? %d)\n",
 					     DisplayString(ctx.display->dpy), reconfigure));
 					reconfigure = 1;
-					context_enable_timer(&ctx);
 				} else if (e.type == PropertyNotify) {
 					XPropertyEvent *pe = (XPropertyEvent *)&e;
 					if (pe->atom == ctx.singleton) {
