@@ -15221,7 +15221,7 @@ sna_visit_set_window_pixmap(WindowPtr window, pointer data)
     struct sna_visit_set_pixmap_window *visit = data;
 
     if (sna_get_window_pixmap(window) == visit->old) {
-	    sna_set_window_pixmap(window, visit->new);
+	    window->drawable.pScreen->SetWindowPixmap(window, visit->new);
 	    return WT_WALKCHILDREN;
     }
 
