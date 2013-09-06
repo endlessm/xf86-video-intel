@@ -5008,6 +5008,139 @@ static bool use_shm_bo(struct sna *sna,
 	return false;
 }
 
+static bool
+sna_damage_contains_box__no_reduce__offset(struct sna_damage *damage,
+					   const BoxRec *extents,
+					   int16_t dx, int16_t dy)
+{
+	BoxRec _extents;
+
+	if (dx | dy) {
+		_extents.x1 = extents->x1 + dx;
+		_extents.x2 = extents->x2 + dx;
+		_extents.y1 = extents->y1 + dy;
+		_extents.y2 = extents->y2 + dy;
+		extents = &_extents;
+	}
+
+	return sna_damage_contains_box__no_reduce(damage, extents);
+}
+
+static bool
+sna_copy_boxes__inplace(struct sna *sna, RegionPtr region, int alu,
+			PixmapPtr src_pixmap, struct sna_pixmap *src_priv,
+			int dx, int dy,
+			PixmapPtr dst_pixmap, struct sna_pixmap *dst_priv)
+{
+	const BoxRec *box;
+	char *src;
+	int n;
+
+	assert(src_pixmap->drawable.bitsPerPixel == dst_pixmap->drawable.bitsPerPixel);
+
+	if (alu != GXcopy) {
+		DBG(("%s - no, complex alu [%d]\n", __FUNCTION__, alu));
+		return false;
+	}
+
+	if (!USE_INPLACE) {
+		DBG(("%s - no, compile time disabled\n", __FUNCTION__));
+		return false;
+	}
+
+	if (src_priv == NULL || src_priv->gpu_bo == NULL) {
+		DBG(("%s - no, no src GPU bo\n", __FUNCTION__));
+		return false;
+	}
+
+	if (dst_priv == src_priv) {
+		DBG(("%s - no, dst == src\n", __FUNCTION__));
+		return false;
+	}
+
+	switch (src_priv->gpu_bo->tiling) {
+	case I915_TILING_Y:
+		DBG(("%s - no, bad src tiling [Y]\n", __FUNCTION__));
+		return false;
+	case I915_TILING_X:
+		if (!sna->kgem.memcpy_from_tiled_x) {
+			DBG(("%s - no, bad src tiling [X]\n", __FUNCTION__));
+			return false;
+		}
+	default:
+		break;
+	}
+
+	if (!kgem_bo_can_map__cpu(&sna->kgem, src_priv->gpu_bo, false)) {
+		DBG(("%s - no, cannot map src for reads into the CPU\n", __FUNCTION__));
+		return false;
+	}
+
+	if (src_priv->gpu_damage == NULL ||
+	    !(DAMAGE_IS_ALL(src_priv->gpu_damage) ||
+	      sna_damage_contains_box__no_reduce__offset(src_priv->gpu_damage,
+							 &region->extents,
+							 dx, dy))) {
+		DBG(("%s - no, src is not damaged on the GPU\n", __FUNCTION__));
+		return false;
+	}
+
+	assert(sna_damage_contains_box(src_priv->gpu_damage, &region->extents) == PIXMAN_REGION_IN);
+	assert(sna_damage_contains_box(src_priv->cpu_damage, &region->extents) == PIXMAN_REGION_OUT);
+
+	src = kgem_bo_map__cpu(&sna->kgem, src_priv->gpu_bo);
+	if (src == NULL) {
+		DBG(("%s - no, map failed\n", __FUNCTION__));
+		return false;
+	}
+
+	if (dst_priv &&
+	    !sna_drawable_move_region_to_cpu(&dst_pixmap->drawable,
+					     region, MOVE_WRITE | MOVE_INPLACE_HINT)) {
+		DBG(("%s - no, dst sync failed\n", __FUNCTION__));
+		return false;
+	}
+
+	kgem_bo_sync__cpu_full(&sna->kgem, src_priv->gpu_bo, FORCE_FULL_SYNC);
+
+	box = RegionRects(region);
+	n = RegionNumRects(region);
+	if (src_priv->gpu_bo->tiling) {
+		DBG(("%s: copy from a tiled CPU map\n", __FUNCTION__));
+		do {
+			memcpy_from_tiled_x(&sna->kgem, src, dst_pixmap->devPrivate.ptr,
+					    src_pixmap->drawable.bitsPerPixel,
+					    src_priv->gpu_bo->pitch,
+					    dst_pixmap->devKind,
+					    box->x1 + dx, box->y1 + dy,
+					    box->x1, box->y1,
+					    box->x2 - box->x1, box->y2 - box->y1);
+			box++;
+		} while (--n);
+	} else {
+		DBG(("%s: copy from a linear CPU map\n", __FUNCTION__));
+		do {
+			memcpy_blt(src, dst_pixmap->devPrivate.ptr,
+				   src_pixmap->drawable.bitsPerPixel,
+				   src_priv->gpu_bo->pitch,
+				   dst_pixmap->devKind,
+				   box->x1 + dx, box->y1 + dy,
+				   box->x1, box->y1,
+				   box->x2 - box->x1, box->y2 - box->y1);
+			box++;
+		} while (--n);
+	}
+
+	if (!src_priv->shm) {
+		src_pixmap->devPrivate.ptr = src;
+		src_pixmap->devKind = src_priv->gpu_bo->pitch;
+		src_priv->mapped = true;
+		src_priv->cpu = true;
+	}
+
+	return true;
+}
+
 static void
 sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	       RegionPtr region, int dx, int dy,
@@ -5475,7 +5608,10 @@ fallback:
 				    src_priv->clear_color);
 			box++;
 		} while (--n);
-	} else {
+	} else if (!sna_copy_boxes__inplace(sna, region, alu,
+					    src_pixmap, src_priv,
+					    src_dx, src_dy,
+					    dst_pixmap, dst_priv)) {
 		FbBits *dst_bits, *src_bits;
 		int dst_stride, src_stride;
 
