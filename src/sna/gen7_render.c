@@ -2168,7 +2168,10 @@ static inline bool untiled_tlb_miss(struct kgem_bo *bo)
 
 static int prefer_blt_bo(struct sna *sna, struct kgem_bo *bo)
 {
-	if (RQ_IS_BLT(bo->rq))
+	if (bo->rq)
+		return RQ_IS_BLT(bo->rq);
+
+	if (sna->flags & SNA_POWERSAVE)
 		return true;
 
 	return bo->tiling == I915_TILING_NONE || (bo->scanout && !sna->kgem.has_wt);
@@ -2178,6 +2181,9 @@ inline static bool prefer_blt_ring(struct sna *sna,
 				   struct kgem_bo *bo,
 				   unsigned flags)
 {
+	if (sna->flags & SNA_POWERSAVE)
+		return true;
+
 	if (kgem_bo_is_render(bo))
 		return false;
 
@@ -2187,6 +2193,9 @@ inline static bool prefer_blt_ring(struct sna *sna,
 inline static bool prefer_render_ring(struct sna *sna,
 				      struct kgem_bo *bo)
 {
+	if (sna->flags & SNA_POWERSAVE)
+		return false;
+
 	if (sna->render_state.gen7.info->gt < 2)
 		return false;
 
