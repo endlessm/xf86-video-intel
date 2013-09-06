@@ -231,6 +231,8 @@ struct sna {
 #define SNA_FORCE_SHADOW	0x20
 #define SNA_FLUSH_GTT		0x40
 #define SNA_IS_HOSTED		0x80
+#define SNA_PERFORMANCE		0x100
+#define SNA_POWERSAVE		0x200
 #define SNA_REPROBE		0x80000000
 
 	unsigned cpu_features;
@@ -322,6 +324,13 @@ struct sna {
 	struct udev_monitor *uevent_monitor;
 	InputHandlerProc uevent_handler;
 #endif
+
+	struct {
+		int fd;
+		uint8_t offset;
+		uint8_t remain;
+		char event[256];
+	} acpi;
 
 	struct sna_render render;
 
@@ -938,6 +947,17 @@ box_intersect(BoxPtr a, const BoxRec *b)
 
 unsigned sna_cpu_detect(void);
 char *sna_cpu_features_to_string(unsigned features, char *line);
+
+/* sna_acpi.c */
+int sna_acpi_open(void);
+void sna_acpi_init(struct sna *sna);
+void _sna_acpi_wakeup(struct sna *sna);
+static inline void sna_acpi_wakeup(struct sna *sna, void *read_mask)
+{
+	if (sna->acpi.fd >= 0 && FD_ISSET(sna->acpi.fd, (fd_set*)read_mask))
+		_sna_acpi_wakeup(sna);
+}
+void sna_acpi_fini(struct sna *sna);
 
 void sna_threads_init(void);
 int sna_use_threads (int width, int height, int threshold);

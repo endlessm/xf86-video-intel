@@ -421,6 +421,7 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 		scrn->driverPrivate = sna;
 
 		sna->cpu_features = sna_cpu_detect();
+		sna->acpi.fd = sna_acpi_open();
 	}
 	sna = to_sna(scrn);
 	sna->scrn = scrn;
@@ -557,6 +558,8 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 	if (sna_option_cast_to_bool(sna, OPTION_DRI, TRUE))
 		sna->dri_available = !!xf86LoadSubModule(scrn, "dri2");
 
+	sna_acpi_init(sna);
+
 	return TRUE;
 
 cleanup:
@@ -600,6 +603,8 @@ sna_wakeup_handler(WAKEUPHANDLER_ARGS_DECL)
 	/* despite all appearances, result is just a signed int */
 	if ((int)result < 0)
 		return;
+
+	sna_acpi_wakeup(sna, read_mask);
 
 	sna->WakeupHandler(WAKEUPHANDLER_ARGS);
 
@@ -1016,6 +1021,7 @@ static void sna_free_screen(FREE_SCREEN_ARGS_DECL)
 	scrn->driverPrivate = (void *)((uintptr_t)sna->info | 1);
 
 	sna_mode_fini(sna);
+	sna_acpi_fini(sna);
 	free(sna);
 
 	intel_put_device(scrn);

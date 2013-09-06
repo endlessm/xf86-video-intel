@@ -47,6 +47,7 @@ libsna_la_SOURCES = \
 	rop.h \
 	sna.h \
 	sna_accel.c \
+	sna_acpi.c \
 	sna_blt.c \
 	sna_composite.c \
 	sna_cpu.c \
