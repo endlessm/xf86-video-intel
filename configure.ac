@@ -178,8 +178,9 @@ AC_ARG_WITH(xorg-module-dir,
             [moduledir="$withval"],
             [moduledir="$libdir/xorg/modules"])
 
-AC_ARG_ENABLE(dri, AS_HELP_STRING([--disable-dri],
-                                  [Disable DRI support [[default=auto]]]))
+AC_ARG_ENABLE(dri,
+	      AS_HELP_STRING([--disable-dri],
+			     [Disable DRI support [[default=auto]]]))
 
 AC_ARG_ENABLE(xvmc, AS_HELP_STRING([--disable-xvmc],
                                   [Disable XvMC support [[default=yes]]]),
@@ -326,6 +327,99 @@ fi
 AM_CONDITIONAL(DGA, test "x$DGA" = "xyes")
 AM_CONDITIONAL(XAA, test "x$XAA" = "xyes")
 
+AM_CONDITIONAL(KMS, test "x$KMS" = "xyes")
+if test "x$KMS" = "xyes"; then
+	AC_DEFINE(KMS,1,[Assume KMS support])
+fi
+AM_CONDITIONAL(UMS, test "x$UMS" = "xyes")
+if test "x$UMS" = "xyes"; then
+	AC_DEFINE(UMS,1,[Assume UMS support])
+fi
+
+
+DRI1=no
+if test "x$enable_dri" != "xno" -a "x$UMS" = "xyes"; then
+	PKG_CHECK_MODULES(DRI1, [xf86driproto], [DRI1="yes"], [DRI1="no"])
+        save_CFLAGS="$CFLAGS"
+        save_CPPFLAGS="$CPPFLAGS"
+        CFLAGS="$CFLAGS $XORG_CFLAGS $DRI_CFLAGS $DRM_CFLAGS"
+        CPPFLAGS="$CPPFLAGS $XORG_CFLAGS $DRI_CFLAGS $DRM_CFLAGS"
+        AC_CHECK_HEADERS([dri.h sarea.h dristruct.h], [DRI1="yes"], [DRI1="no"],
+                [/* for dri.h */
+                 #include <xf86str.h>
+                 /* for dristruct.h */
+                 #include <xorg-server.h>
+                 #ifdef HAVE_DRI_H
+                 # include <dri.h>
+                 #endif
+                 #ifdef HAVE_SAREA_H
+                 # include <sarea.h>
+                 #endif
+                ])
+        CFLAGS="$save_CFLAGS $DEBUGFLAGS"
+        CPPFLAGS="$save_CPPFLAGS"
+fi
+
+AC_MSG_CHECKING([whether to include DRI1 support])
+AC_MSG_RESULT([$DRI1])
+
+AM_CONDITIONAL(DRI1, test "x$DRI1" != "xno")
+if test "x$DRI1" != "xno"; then
+        AC_DEFINE(HAVE_DRI1,1,[Enable DRI1 driver support])
+	dri_msg="$dri_msg DRI1"
+else
+        DRI1_CFLAGS=""
+        DRI1_LIBS=""
+
+        if test "x$enable_dri" = "xyes" -a "x$UMS" = "xyes"; then
+                AC_MSG_ERROR([DRI1 requested but prerequisites not found])
+        fi
+fi
+
+DRI2=no
+if test "x$enable_dri" != "xno"; then
+	PKG_CHECK_MODULES(DRI2, [dri2proto >= 2.6], DRI2="yes", DRI2="no")
+	dridriverdir=`$PKG_CONFIG --variable=dridriverdir dri`
+	if test "x$dridriverdir" = "x"; then
+		dridriverdir="$libdir/dri"
+	fi
+	AC_DEFINE_DIR(DRI_DRIVER_PATH, dridriverdir, [Default DRI2 driver path])
+	if test "x$DRI2" != "xno"; then
+		save_CFLAGS=$CFLAGS
+		CFLAGS="$XORG_CFLAGS $DRM_CFLAGS $DRI_CFLAGS $DRI2_CFLAGS"
+		AC_CHECK_HEADERS([dri2.h], DRI2="yes", DRI2="no", [#include <dixstruct.h>])
+		CFLAGS=$save_CFLAGS
+	fi
+fi
+AC_MSG_CHECKING([whether to include DRI2 support])
+AM_CONDITIONAL(DRI2, test "x$DRI2" = "xyes")
+AC_MSG_RESULT([$DRI2])
+if test "x$enable_dri" = "xyes" -a "x$KMS" = "xyes"; then
+	AC_MSG_ERROR([DRI2 requested but prerequisites not found])
+fi
+if test "x$DRI2" != "xno"; then
+        AC_DEFINE(HAVE_DRI2,1,[Enable DRI2 driver support])
+	dri_msg="$dri_msg DRI2"
+else
+	# UXA doesn't build without DRI2 headers, too late to fix
+	UXA=no
+fi
+
+if test "$XVMC" = "yes"; then
+	PKG_CHECK_MODULES(XVMCLIB, [xvmc dri2proto x11], [], [XVMC="no"])
+	PKG_CHECK_MODULES(XCB, [x11-xcb xcb-dri2 xcb-aux], [], [XVMC="no"])
+fi
+AC_MSG_CHECKING([whether to include XvMC support])
+AC_MSG_RESULT([$XVMC])
+AM_CONDITIONAL(XVMC, test "x$XVMC" = "xyes")
+if test "x$XVMC" = "xyes"; then
+	AC_DEFINE(ENABLE_XVMC,1,[Enable XvMC support])
+	xvmc_msg=" yes"
+else
+	xvmc_msg=" no"
+fi
+
+
 AC_ARG_WITH(default-accel,
 	    AS_HELP_STRING([--with-default-accel],
 			   [Select the default acceleration method [default=sna if enabled, otherwise uxa]]),
@@ -445,91 +539,6 @@ AC_SEARCH_LIBS(clock_gettime, rt, [CLOCK_GETTIME_LIBS=$LIBS])
 AC_SUBST(CLOCK_GETTIME_LIBS)
 
 sdkdir=`$PKG_CONFIG --variable=sdkdir xorg-server`
-
-DRI1=no
-if test "x$enable_dri" != "xno" -a "x$UMS" = "xyes"; then
-	PKG_CHECK_MODULES(DRI1, [xf86driproto], [DRI1="yes"], [DRI1="no"])
-        save_CFLAGS="$CFLAGS"
-        save_CPPFLAGS="$CPPFLAGS"
-        CFLAGS="$CFLAGS $XORG_CFLAGS $DRI_CFLAGS $DRM_CFLAGS"
-        CPPFLAGS="$CPPFLAGS $XORG_CFLAGS $DRI_CFLAGS $DRM_CFLAGS"
-        AC_CHECK_HEADERS([dri.h sarea.h dristruct.h], [DRI1="yes"], [DRI1="no"],
-                [/* for dri.h */
-                 #include <xf86str.h>
-                 /* for dristruct.h */
-                 #include <xorg-server.h>
-                 #ifdef HAVE_DRI_H
-                 # include <dri.h>
-                 #endif
-                 #ifdef HAVE_SAREA_H
-                 # include <sarea.h>
-                 #endif
-                ])
-        CFLAGS="$save_CFLAGS $DEBUGFLAGS"
-        CPPFLAGS="$save_CPPFLAGS"
-fi
-
-AC_MSG_CHECKING([whether to include DRI1 support])
-AC_MSG_RESULT([$DRI1])
-
-AM_CONDITIONAL(DRI1, test "x$DRI1" != "xno")
-if test "x$DRI1" != "xno"; then
-        AC_DEFINE(HAVE_DRI1,1,[Enable DRI1 driver support])
-	dri_msg="$dri_msg DRI1"
-else
-        DRI1_CFLAGS=""
-        DRI1_LIBS=""
-
-        if test "x$enable_dri" = "xyes" -a "x$UMS" = "xyes"; then
-                AC_MSG_ERROR([DRI1 requested but prerequisites not found])
-        fi
-fi
-
-DRI2=no
-if test "x$enable_dri" != "xno"; then
-	PKG_CHECK_MODULES(DRI2, [dri2proto >= 2.6], DRI2="yes", DRI2="no")
-	dridriverdir=`$PKG_CONFIG --variable=dridriverdir dri`
-	if test "x$dridriverdir" = "x"; then
-		dridriverdir="$libdir/dri"
-	fi
-	AC_DEFINE_DIR(DRI_DRIVER_PATH, dridriverdir, [Default DRI2 driver path])
-	if test "x$DRI2" != "xno"; then
-		save_CFLAGS=$CFLAGS
-		CFLAGS="$XORG_CFLAGS $DRM_CFLAGS $DRI_CFLAGS $DRI2_CFLAGS"
-		AC_CHECK_HEADERS([dri2.h], DRI2="yes", DRI2="no", [#include <dixstruct.h>])
-		CFLAGS=$save_CFLAGS
-	fi
-fi
-AC_MSG_CHECKING([whether to include DRI2 support])
-AM_CONDITIONAL(DRI2, test "x$DRI2" = "xyes")
-AC_MSG_RESULT([$DRI2])
-if test "x$DRI2" != "xno"; then
-        AC_DEFINE(HAVE_DRI2,1,[Enable DRI2 driver support])
-	dri_msg="$dri_msg DRI2"
-fi
-
-if test "$XVMC" = "yes"; then
-	PKG_CHECK_MODULES(XVMCLIB, [xvmc dri2proto x11], [], [XVMC="no"])
-	PKG_CHECK_MODULES(XCB, [x11-xcb xcb-dri2 xcb-aux], [], [XVMC="no"])
-fi
-AC_MSG_CHECKING([whether to include XvMC support])
-AC_MSG_RESULT([$XVMC])
-AM_CONDITIONAL(XVMC, test "x$XVMC" = "xyes")
-if test "x$XVMC" = "xyes"; then
-	AC_DEFINE(ENABLE_XVMC,1,[Enable XvMC support])
-	xvmc_msg=" yes"
-else
-	xvmc_msg=" no"
-fi
-
-AM_CONDITIONAL(KMS, test "x$KMS" = "xyes")
-if test "x$KMS" = "xyes"; then
-	AC_DEFINE(KMS,1,[Assume KMS support])
-fi
-AM_CONDITIONAL(UMS, test "x$UMS" = "xyes")
-if test "x$UMS" = "xyes"; then
-	AC_DEFINE(UMS,1,[Assume UMS support])
-fi
 
 AM_CONDITIONAL(DEBUG, test "x$DEBUG" != "xno")
 AM_CONDITIONAL(FULL_DEBUG, test "x$DEBUG" = "xfull")
