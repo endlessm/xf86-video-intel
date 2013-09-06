@@ -130,6 +130,10 @@ sna_output_dpms(xf86OutputPtr output, int dpms)
 static xf86OutputStatus
 sna_output_detect(xf86OutputPtr output)
 {
+	DBG(("%s(%s) has user modes? %d\n",
+	     __FUNCTION__, output->name,
+	     output->randr_output && output->randr_output->numUserModes));
+
 	if (output->randr_output && output->randr_output->numUserModes) {
 		xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(output->scrn);
 
