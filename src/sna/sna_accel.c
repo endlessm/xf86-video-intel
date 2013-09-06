@@ -1447,23 +1447,38 @@ static inline bool pixmap_inplace(struct sna *sna,
 	if (FORCE_INPLACE)
 		return FORCE_INPLACE > 0;
 
-	if (wedged(sna) && !priv->pinned)
+	if (wedged(sna) && !priv->pinned) {
+		DBG(("%s: no, wedged and unpinned; pull pixmap back to CPU\n", __FUNCTION__));
 		return false;
-
-	if (priv->gpu_bo && kgem_bo_is_busy(priv->gpu_bo)) {
-		if ((flags & (MOVE_WRITE | MOVE_READ)) == (MOVE_WRITE | MOVE_READ))
-			return false;
-
-		if ((flags & MOVE_READ) == 0)
-			return !priv->pinned;
 	}
 
-	if (priv->mapped)
+	if (priv->gpu_bo && kgem_bo_is_busy(priv->gpu_bo)) {
+		if ((flags & (MOVE_WRITE | MOVE_READ)) == (MOVE_WRITE | MOVE_READ)) {
+			DBG(("%s: no, GPU bo is busy\n", __FUNCTION__));
+			return false;
+		}
+
+		if ((flags & MOVE_READ) == 0) {
+			DBG(("%s: %s, GPU bo is busy, but not reading\n", __FUNCTION__, priv->pinned ? "no" : "yes"));
+			return !priv->pinned;
+		}
+	}
+
+	if (priv->mapped) {
+		DBG(("%s: %s, already mapped\n", __FUNCTION__, has_coherent_map(sna, priv->gpu_bo, flags) ? "yes" : "no"));
 		return has_coherent_map(sna, priv->gpu_bo, flags);
+	}
+
+	if (priv->cpu_bo && priv->cpu) {
+		DBG(("%s: no, has CPU bo and was last active on CPU, presume future CPU activity\n", __FUNCTION__));
+		return false;
+	}
 
 	if (flags & MOVE_READ &&
-	    (priv->cpu || priv->cpu_damage || priv->gpu_damage == NULL))
+	    (priv->cpu || priv->cpu_damage || priv->gpu_damage == NULL)) {
+		DBG(("%s:, no, reading and has CPU damage\n", __FUNCTION__));
 		return false;
+	}
 
 	return (pixmap->devKind * pixmap->drawable.height >> 12) >
 		sna->kgem.half_cpu_cache_pages;
@@ -2204,6 +2219,11 @@ static inline bool region_inplace(struct sna *sna,
 		assert(priv->gpu_bo);
 		assert(priv->cpu == false || (priv->mapped && IS_CPU_MAP(priv->gpu_bo->map)));
 		return true;
+	}
+
+	if (priv->cpu_bo && priv->cpu) {
+		DBG(("%s: no, has CPU bo and was last active on CPU, presume future CPU activity\n", __FUNCTION__));
+		return false;
 	}
 
 	DBG(("%s: (%dx%d), inplace? %d\n",
