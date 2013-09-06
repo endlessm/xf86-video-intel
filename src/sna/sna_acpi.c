@@ -33,6 +33,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include <dirent.h>
 #include <fcntl.h>
 #include <errno.h>
 
@@ -135,22 +136,57 @@ void _sna_acpi_wakeup(struct sna *sna)
 	} while (n);
 }
 
-static int read_state(const char *path)
+static int read_power_state(const char *path)
 {
-	char buf[80];
-	int i, fd;
+	DIR *dir;
+	struct dirent *de;
+	int i = -1;
 
-	fd = open(path, 0);
-	if (fd < 0)
+	DBG(("%s: searching '%s'\n", __FUNCTION__, path));
+
+	dir = opendir(path);
+	if (dir == NULL)
 		return -1;
 
-	i = read(fd, buf, sizeof(buf)-1);
-	if (i > 0) {
-		buf[i] = '\0';
-		i = atoi(buf);
-	}
+	while ((de = readdir(dir))) {
+		char buf[1024];
+		int fd;
 
-	close(fd);
+		if (*de->d_name == '.')
+			continue;
+
+		DBG(("%s: checking '%s'\n", __FUNCTION__, de->d_name));
+
+		snprintf(buf, sizeof(buf), "%s/%s/type", path, de->d_name);
+		fd = open(buf, 0);
+		if (fd < 0)
+			continue;
+
+		i = read(fd, buf, sizeof(buf));
+		buf[i > 0 ? i - 1: 0] = '\0';
+		close(fd);
+
+		DBG(("%s: %s is of type '%s'\n", __FUNCTION__, de->d_name, buf));
+
+		if (strcmp(buf, "Mains"))
+			continue;
+
+		snprintf(buf, sizeof(buf), "%s/%s/online", path, de->d_name);
+		fd = open(buf, 0);
+		if (fd < 0)
+			continue;
+
+		i = read(fd, buf, sizeof(buf));
+		buf[i > 0 ? i - 1: 0] = '\0';
+		if (i > 0)
+			i = atoi(buf);
+		DBG(("%s: %s is online? '%s'\n", __FUNCTION__, de->d_name, buf));
+		close(fd);
+
+		break;
+	}
+	closedir(dir);
+
 	return i;
 }
 
@@ -169,7 +205,7 @@ void sna_acpi_init(struct sna *sna)
 	sna->acpi.offset = 0;
 
 	/* Read initial states */
-	if (read_state("/sys/class/power_supply/ACAD/online") == 0) {
+	if (read_power_state("/sys/class/power_supply") == 0) {
 		DBG(("%s: AC adapter is currently offline\n", __FUNCTION__));
 		sna->flags |= SNA_POWERSAVE;
 	}
