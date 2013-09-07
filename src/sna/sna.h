@@ -290,7 +290,6 @@ struct sna {
 	EntityInfoPtr pEnt;
 	struct pci_device *PciInfo;
 	const struct intel_device_info *info;
-	xmir_screen *xmir;
 
 	ScreenBlockHandlerProcPtr BlockHandler;
 	ScreenWakeupHandlerProcPtr WakeupHandler;
@@ -436,24 +435,14 @@ CARD32 sna_render_format_for_depth(int depth);
 void sna_debug_flush(struct sna *sna);
 
 static inline bool
-get_window_deltas(PixmapPtr pixmap, int16_t *x, int16_t *y)
-{
-#ifdef COMPOSITE
-	*x = -pixmap->screen_x;
-	*y = -pixmap->screen_y;
-	return pixmap->screen_x | pixmap->screen_y;
-#else
-	*x = *y = 0;
-	return false;
-#endif
-}
-
-static inline bool
 get_drawable_deltas(DrawablePtr drawable, PixmapPtr pixmap, int16_t *x, int16_t *y)
 {
 #ifdef COMPOSITE
-	if (drawable->type == DRAWABLE_WINDOW)
-		return get_window_deltas(pixmap, x, y);
+	if (drawable->type == DRAWABLE_WINDOW) {
+		*x = -pixmap->screen_x;
+		*y = -pixmap->screen_y;
+		return pixmap->screen_x | pixmap->screen_y;
+	}
 #endif
 	*x = *y = 0;
 	return false;
@@ -976,19 +965,5 @@ void sna_image_composite(pixman_op_t        op,
 			 int16_t            dst_y,
 			 uint16_t           width,
 			 uint16_t           height);
-
-/* sna_xmir.c */
-
-#if XMIR
-bool sna_xmir_create(struct sna *sna);
-bool sna_xmir_pre_init(struct sna *sna);
-void sna_xmir_init(struct sna *sna, ScreenPtr screen);
-void sna_xmir_post_damage(struct sna *sna);
-#else
-inline static bool sna_xmir_create(struct sna *sna) { return true; }
-inline static bool sna_xmir_pre_init(struct sna *sna) { return true; }
-inline static void sna_xmir_init(struct sna *sna, ScreenPtr screen) { }
-inline static void sna_xmir_post_damage(struct sna *sna) { }
-#endif
 
 #endif /* _SNA_H */
