@@ -2782,6 +2782,10 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 	scrn->virtualY = height;
 	scrn->displayWidth = width;
 
+	/* Only update the CRTCs if we are in control */
+	if (!scrn->vtSema)
+		return TRUE;
+
 	for (i = 0; i < xf86_config->num_crtc; i++) {
 		xf86CrtcPtr crtc = xf86_config->crtc[i];
 
