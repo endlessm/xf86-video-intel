@@ -435,14 +435,24 @@ CARD32 sna_render_format_for_depth(int depth);
 void sna_debug_flush(struct sna *sna);
 
 static inline bool
+get_window_deltas(PixmapPtr pixmap, int16_t *x, int16_t *y)
+{
+#ifdef COMPOSITE
+	*x = -pixmap->screen_x;
+	*y = -pixmap->screen_y;
+	return pixmap->screen_x | pixmap->screen_y;
+#else
+	*x = *y = 0;
+	return false;
+#endif
+}
+
+static inline bool
 get_drawable_deltas(DrawablePtr drawable, PixmapPtr pixmap, int16_t *x, int16_t *y)
 {
 #ifdef COMPOSITE
-	if (drawable->type == DRAWABLE_WINDOW) {
-		*x = -pixmap->screen_x;
-		*y = -pixmap->screen_y;
-		return pixmap->screen_x | pixmap->screen_y;
-	}
+	if (drawable->type == DRAWABLE_WINDOW)
+		return get_window_deltas(pixmap, x, y);
 #endif
 	*x = *y = 0;
 	return false;
