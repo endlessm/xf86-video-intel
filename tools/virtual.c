@@ -62,6 +62,8 @@
 #define DBG(x)
 #endif
 
+#define FORCE_FULL_REDRAW 0
+
 struct display {
 	Display *dpy;
 	struct clone *clone;
@@ -1328,6 +1330,13 @@ static int clone_paint(struct clone *c)
 	     (long)c->dst.serial, (long)LastKnownRequestProcessed(c->dst.dpy)));
 	if (c->dst.serial > LastKnownRequestProcessed(c->dst.dpy))
 		return EAGAIN;
+
+	if (FORCE_FULL_REDRAW) {
+		c->damaged.x1 = c->src.x;
+		c->damaged.y1 = c->src.y;
+		c->damaged.x2 = c->src.x + c->width;
+		c->damaged.y2 = c->src.y + c->height;
+	}
 
 	clip.x = c->damaged.x1;
 	clip.y = c->damaged.y1;
