@@ -2163,6 +2163,9 @@ inline static bool can_switch_to_render(struct sna *sna,
 
 static inline bool untiled_tlb_miss(struct kgem_bo *bo)
 {
+	if (kgem_bo_is_render(bo))
+		return false;
+
 	return bo->tiling == I915_TILING_NONE && bo->pitch >= 4096;
 }
 
@@ -2177,15 +2180,26 @@ static int prefer_blt_bo(struct sna *sna, struct kgem_bo *bo)
 	return bo->tiling == I915_TILING_NONE || (bo->scanout && !sna->kgem.has_wt);
 }
 
-inline static bool prefer_blt_ring(struct sna *sna,
-				   struct kgem_bo *bo,
-				   unsigned flags)
+inline static bool force_blt_ring(struct sna *sna)
 {
 	if (sna->flags & SNA_POWERSAVE)
 		return true;
 
-	if (kgem_bo_is_render(bo))
+	if (sna->kgem.mode == KGEM_RENDER)
 		return false;
+
+	if (sna->render_state.gen7.info->gt < 2)
+		return true;
+
+	return false;
+}
+
+inline static bool prefer_blt_ring(struct sna *sna,
+				   struct kgem_bo *bo,
+				   unsigned flags)
+{
+	assert(!force_blt_ring(sna));
+	assert(!kgem_bo_is_render(bo));
 
 	return can_switch_to_blt(sna, bo, flags);
 }
@@ -2453,6 +2467,9 @@ prefer_blt_composite(struct sna *sna, struct sna_composite_op *tmp)
 {
 	if (untiled_tlb_miss(tmp->dst.bo) ||
 	    untiled_tlb_miss(tmp->src.bo))
+		return true;
+
+	if (force_blt_ring(sna))
 		return true;
 
 	if (kgem_bo_is_render(tmp->dst.bo) ||
@@ -2899,6 +2916,9 @@ static inline bool prefer_blt_copy(struct sna *sna,
 	    untiled_tlb_miss(dst_bo))
 		return true;
 
+	if (force_blt_ring(sna))
+		return true;
+
 	if (kgem_bo_is_render(dst_bo) ||
 	    kgem_bo_is_render(src_bo))
 		return false;
@@ -3305,11 +3325,14 @@ gen7_emit_fill_state(struct sna *sna, const struct sna_composite_op *op)
 static inline bool prefer_blt_fill(struct sna *sna,
 				   struct kgem_bo *bo)
 {
-	if (kgem_bo_is_render(bo))
-		return false;
-
 	if (untiled_tlb_miss(bo))
 		return true;
+
+	if (force_blt_ring(sna))
+		return true;
+
+	if (kgem_bo_is_render(bo))
+		return false;
 
 	if (prefer_render_ring(sna, bo))
 		return false;
