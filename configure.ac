@@ -394,13 +394,14 @@ fi
 AC_MSG_CHECKING([whether to include DRI2 support])
 AM_CONDITIONAL(DRI2, test "x$DRI2" = "xyes")
 AC_MSG_RESULT([$DRI2])
-if test "x$enable_dri" = "xyes" -a "x$KMS" = "xyes"; then
-	AC_MSG_ERROR([DRI2 requested but prerequisites not found])
-fi
 if test "x$DRI2" != "xno"; then
         AC_DEFINE(HAVE_DRI2,1,[Enable DRI2 driver support])
 	dri_msg="$dri_msg DRI2"
 else
+	if test "x$enable_dri" = "xyes" -a "x$KMS" = "xyes"; then
+		AC_MSG_ERROR([DRI2 requested but prerequisites not found])
+	fi
+
 	# UXA doesn't build without DRI2 headers, too late to fix
 	UXA=no
 fi
