@@ -67,6 +67,8 @@ int gen4_vertex_finish(struct sna *sna)
 
 	/* Note: we only need dword alignment (currently) */
 
+	hint = CREATE_GTT_MAP;
+
 	bo = sna->render.vbo;
 	if (bo) {
 		for (i = 0; i < sna->render.nvertex_reloc; i++) {
@@ -88,11 +90,15 @@ int gen4_vertex_finish(struct sna *sna)
 		sna->render.vb_id = 0;
 
 		kgem_bo_destroy(&sna->kgem, bo);
+		hint |= CREATE_CACHED | CREATE_NO_THROTTLE;
+	} else {
+		if (kgem_is_idle(&sna->kgem)) {
+			sna->render.vertices = sna->render.vertex_data;
+			sna->render.vertex_size = ARRAY_SIZE(sna->render.vertex_data);
+			return 0;
+		}
 	}
 
-	hint = CREATE_GTT_MAP;
-	if (bo)
-		hint |= CREATE_CACHED | CREATE_NO_THROTTLE;
 
 	size = 256*1024;
 	assert(!sna->render.active);
@@ -186,18 +192,44 @@ void gen4_vertex_close(struct sna *sna)
 			bo = NULL;
 			sna->kgem.nbatch += sna->render.vertex_used;
 		} else {
-			bo = kgem_create_linear(&sna->kgem,
-						4*sna->render.vertex_used,
-						CREATE_NO_THROTTLE);
-			if (bo && !kgem_bo_write(&sna->kgem, bo,
-						 sna->render.vertex_data,
-						 4*sna->render.vertex_used)) {
-				kgem_bo_destroy(&sna->kgem, bo);
-				bo = NULL;
+			sna->render.vbo = kgem_create_linear(&sna->kgem,
+							     256*1024, CREATE_GTT_MAP | CREATE_NO_RETIRE | CREATE_CACHED);
+			if (sna->render.vbo)
+				sna->render.vertices = kgem_bo_map(&sna->kgem, sna->render.vbo);
+			if (sna->render.vertices != NULL) {
+				int size;
+
+				assert(sizeof(float)*sna->render.vertex_used <=
+				       __kgem_bo_size(sna->render.vbo));
+				memcpy(sna->render.vertices,
+				       sna->render.vertex_data,
+				       sizeof(float)*sna->render.vertex_used);
+
+				size = __kgem_bo_size(sna->render.vbo)/4;
+				if (size >= UINT16_MAX)
+					size = UINT16_MAX - 1;
+
+				sna->render.vertex_size = size;
+
+				bo = sna->render.vbo;
+			} else {
+				if (sna->render.vbo) {
+					kgem_bo_destroy(&sna->kgem, sna->render.vbo);
+					sna->render.vbo = NULL;
+				}
+				bo = kgem_create_linear(&sna->kgem,
+							4*sna->render.vertex_used,
+							CREATE_NO_THROTTLE);
+				if (bo && !kgem_bo_write(&sna->kgem, bo,
+							 sna->render.vertex_data,
+							 4*sna->render.vertex_used)) {
+					kgem_bo_destroy(&sna->kgem, bo);
+					bo = NULL;
+				}
+				DBG(("%s: new vbo: %d\n", __FUNCTION__,
+				     sna->render.vertex_used));
+				free_bo = bo;
 			}
-			DBG(("%s: new vbo: %d\n", __FUNCTION__,
-			     sna->render.vertex_used));
-			free_bo = bo;
 		}
 	}
 
