@@ -77,6 +77,7 @@ struct gt_info {
 		int max_vs_entries;
 		int max_gs_entries;
 	} urb;
+	int gt;
 };
 
 static const struct gt_info gt1_info = {
@@ -85,6 +86,7 @@ static const struct gt_info gt1_info = {
 	.max_gs_threads = 21,
 	.max_wm_threads = 40,
 	.urb = { 32, 256, 256 },
+	.gt = 1,
 };
 
 static const struct gt_info gt2_info = {
@@ -93,6 +95,7 @@ static const struct gt_info gt2_info = {
 	.max_gs_threads = 60,
 	.max_wm_threads = 80,
 	.urb = { 64, 256, 256 },
+	.gt = 2,
 };
 
 static const uint32_t ps_kernel_packed[][4] = {
@@ -1889,6 +1892,24 @@ inline static bool can_switch_to_blt(struct sna *sna,
 	return kgem_ring_is_idle(&sna->kgem, KGEM_BLT);
 }
 
+inline static bool can_switch_to_render(struct sna *sna,
+					struct kgem_bo *bo)
+{
+	if (sna->kgem.ring == KGEM_RENDER)
+		return true;
+
+	if (NO_RING_SWITCH)
+		return false;
+
+	if (!sna->kgem.has_semaphores)
+		return false;
+
+	if (bo && !RQ_IS_BLT(bo->rq) && !bo->scanout)
+		return true;
+
+	return !kgem_ring_is_idle(&sna->kgem, KGEM_RENDER);
+}
+
 static inline bool untiled_tlb_miss(struct kgem_bo *bo)
 {
 	if (kgem_bo_is_render(bo))
@@ -1908,14 +1929,40 @@ static int prefer_blt_bo(struct sna *sna, struct kgem_bo *bo)
 	return bo->tiling == I915_TILING_NONE || bo->scanout;
 }
 
-inline static bool prefer_blt_ring(struct sna *sna,
-				   struct kgem_bo *bo,
-				   unsigned flags)
+inline static bool force_blt_ring(struct sna *sna)
 {
 	if (sna->flags & SNA_POWERSAVE)
 		return true;
 
+	if (sna->kgem.mode == KGEM_RENDER)
+		return false;
+
+	if (sna->render_state.gen6.info->gt < 2)
+		return true;
+
+	return false;
+}
+
+inline static bool prefer_blt_ring(struct sna *sna,
+				   struct kgem_bo *bo,
+				   unsigned flags)
+{
+	assert(!force_blt_ring(sna));
+	assert(!kgem_bo_is_render(bo));
+
 	return can_switch_to_blt(sna, bo, flags);
+}
+
+inline static bool prefer_render_ring(struct sna *sna,
+				      struct kgem_bo *bo)
+{
+	if (sna->flags & SNA_POWERSAVE)
+		return false;
+
+	if (sna->render_state.gen6.info->gt < 2)
+		return false;
+
+	return can_switch_to_render(sna, bo);
 }
 
 static bool
@@ -2171,8 +2218,14 @@ prefer_blt_composite(struct sna *sna, struct sna_composite_op *tmp)
 	    untiled_tlb_miss(tmp->src.bo))
 		return true;
 
+	if (force_blt_ring(sna))
+		return true;
+
 	if (kgem_bo_is_render(tmp->dst.bo) ||
 	    kgem_bo_is_render(tmp->src.bo))
+		return false;
+
+	if (prefer_render_ring(sna, tmp->dst.bo))
 		return false;
 
 	if (!prefer_blt_ring(sna, tmp->dst.bo, 0))
@@ -2636,8 +2689,14 @@ static inline bool prefer_blt_copy(struct sna *sna,
 	    untiled_tlb_miss(dst_bo))
 		return true;
 
+	if (force_blt_ring(sna))
+		return true;
+
 	if (kgem_bo_is_render(dst_bo) ||
 	    kgem_bo_is_render(src_bo))
+		return false;
+
+	if (prefer_render_ring(sna, dst_bo))
 		return false;
 
 	if (!prefer_blt_ring(sna, dst_bo, flags))
@@ -3051,11 +3110,17 @@ static inline bool prefer_blt_fill(struct sna *sna,
 	if (PREFER_RENDER)
 		return PREFER_RENDER < 0;
 
+	if (untiled_tlb_miss(bo))
+		return true;
+
+	if (force_blt_ring(sna))
+		return true;
+
 	if (kgem_bo_is_render(bo))
 		return false;
 
-	if (untiled_tlb_miss(bo))
-		return true;
+	if (prefer_render_ring(sna, bo))
+		return false;
 
 	if (!prefer_blt_ring(sna, bo, 0))
 		return false;
@@ -3159,6 +3224,7 @@ gen6_render_fill_boxes(struct sna *sna,
 	assert(GEN6_SAMPLER(tmp.u.gen6.flags) == FILL_SAMPLER);
 	assert(GEN6_VERTEX(tmp.u.gen6.flags) == FILL_VERTEX);
 
+	kgem_set_mode(&sna->kgem, KGEM_RENDER, dst_bo);
 	if (!kgem_check_bo(&sna->kgem, dst_bo, NULL)) {
 		kgem_submit(&sna->kgem);
 		assert(kgem_check_bo(&sna->kgem, dst_bo, NULL));
@@ -3338,6 +3404,7 @@ gen6_render_fill(struct sna *sna, uint8_t alu,
 	assert(GEN6_SAMPLER(op->base.u.gen6.flags) == FILL_SAMPLER);
 	assert(GEN6_VERTEX(op->base.u.gen6.flags) == FILL_VERTEX);
 
+	kgem_set_mode(&sna->kgem, KGEM_RENDER, dst_bo);
 	if (!kgem_check_bo(&sna->kgem, dst_bo, NULL)) {
 		kgem_submit(&sna->kgem);
 		assert(kgem_check_bo(&sna->kgem, dst_bo, NULL));
@@ -3418,6 +3485,7 @@ gen6_render_fill_one(struct sna *sna, PixmapPtr dst, struct kgem_bo *bo,
 	assert(GEN6_SAMPLER(tmp.u.gen6.flags) == FILL_SAMPLER);
 	assert(GEN6_VERTEX(tmp.u.gen6.flags) == FILL_VERTEX);
 
+	kgem_set_mode(&sna->kgem, KGEM_RENDER, bo);
 	if (!kgem_check_bo(&sna->kgem, bo, NULL)) {
 		kgem_submit(&sna->kgem);
 		if (!kgem_check_bo(&sna->kgem, bo, NULL)) {
@@ -3504,6 +3572,7 @@ gen6_render_clear(struct sna *sna, PixmapPtr dst, struct kgem_bo *bo)
 	assert(GEN6_SAMPLER(tmp.u.gen6.flags) == FILL_SAMPLER);
 	assert(GEN6_VERTEX(tmp.u.gen6.flags) == FILL_VERTEX);
 
+	kgem_set_mode(&sna->kgem, KGEM_RENDER, bo);
 	if (!kgem_check_bo(&sna->kgem, bo, NULL)) {
 		kgem_submit(&sna->kgem);
 		if (!kgem_check_bo(&sna->kgem, bo, NULL)) {
