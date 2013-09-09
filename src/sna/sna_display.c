@@ -3396,7 +3396,7 @@ static bool sna_emit_wait_for_scanline_hsw(struct sna *sna,
 	 * always comes in pairs. Don't ask me why. */
 	switch (pipe) {
 	default: assert(0);
-	case 0: event = 0; break;
+	case 0: event = 0 << 19; break;
 	case 1: event = 1 << 19; break;
 	case 2: event = 4 << 19; break;
 	}
@@ -3405,7 +3405,7 @@ static bool sna_emit_wait_for_scanline_hsw(struct sna *sna,
 
 	switch (pipe) {
 	default: assert(0);
-	case 0: event = 0; break;
+	case 0: event = 1 << 0; break;
 	case 1: event = 1 << 8; break;
 	case 2: event = 1 << 14; break;
 	}
