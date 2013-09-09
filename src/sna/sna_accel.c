@@ -5109,8 +5109,8 @@ sna_copy_boxes__inplace(struct sna *sna, RegionPtr region, int alu,
 		return false;
 	}
 
-	assert(sna_damage_contains_box(src_priv->gpu_damage, &region->extents, dx, dy) == PIXMAN_REGION_IN);
-	assert(sna_damage_contains_box(src_priv->cpu_damage, &region->extents, dx, dy) == PIXMAN_REGION_OUT);
+	assert(sna_damage_contains_box__offset(src_priv->gpu_damage, &region->extents, dx, dy) == PIXMAN_REGION_IN);
+	assert(sna_damage_contains_box__offset(src_priv->cpu_damage, &region->extents, dx, dy) == PIXMAN_REGION_OUT);
 
 	src = kgem_bo_map__cpu(&sna->kgem, src_priv->gpu_bo);
 	if (src == NULL) {
