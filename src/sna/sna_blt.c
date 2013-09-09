@@ -3000,7 +3000,7 @@ bool sna_blt_copy_boxes(struct sna *sna, uint8_t alu,
 
 	if (kgem->nexec > 1 && __kgem_ring_empty(kgem)) {
 		_kgem_submit(kgem);
-	} else if (kgem->gen >= 060 && kgem_check_batch(kgem, 3)) {
+	} else if (kgem->gen >= 060 && src_bo == dst_bo && kgem_check_batch(kgem, 3)) {
 		uint32_t *b = kgem->batch + kgem->nbatch;
 		b[0] = XY_SETUP_CLIP;
 		b[1] = b[2] = 0;
