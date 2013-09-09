@@ -3381,6 +3381,8 @@ sna_covering_crtc(struct sna *sna, const BoxRec *box, xf86CrtcPtr desired)
 	return best_crtc;
 }
 
+#define MI_LOAD_REGISTER_IMM			(0x22<<23)
+
 static bool sna_emit_wait_for_scanline_hsw(struct sna *sna,
 					   xf86CrtcPtr crtc,
 					   int pipe, int y1, int y2,
@@ -3389,8 +3391,25 @@ static bool sna_emit_wait_for_scanline_hsw(struct sna *sna,
 	uint32_t event;
 	uint32_t *b;
 
+	if (!sna->kgem.has_secure_batches)
+		return false;
+
 	b = kgem_get_batch(&sna->kgem);
-	sna->kgem.nbatch += 5;
+	sna->kgem.nbatch += 17;
+
+	switch (pipe) {
+	default: assert(0);
+	case 0: event = 1 << 0; break;
+	case 1: event = 1 << 8; break;
+	case 2: event = 1 << 14; break;
+	}
+
+	b[0] = MI_LOAD_REGISTER_IMM | 1;
+	b[1] = 0x44050; /* DERRMR */
+	b[2] = ~event;
+	b[3] = MI_LOAD_REGISTER_IMM | 1;
+	b[4] = 0xa188; /* FORCEWAKE_MT */
+	b[5] = 2 << 16 | 2;
 
 	/* The documentation says that the LOAD_SCAN_LINES command
 	 * always comes in pairs. Don't ask me why. */
@@ -3400,8 +3419,8 @@ static bool sna_emit_wait_for_scanline_hsw(struct sna *sna,
 	case 1: event = 1 << 19; break;
 	case 2: event = 4 << 19; break;
 	}
-	b[2] = b[0] = MI_LOAD_SCAN_LINES_INCL | event;
-	b[3] = b[1] = (y1 << 16) | (y2-1);
+	b[8] = b[6] = MI_LOAD_SCAN_LINES_INCL | event;
+	b[9] = b[7] = (y1 << 16) | (y2-1);
 
 	switch (pipe) {
 	default: assert(0);
@@ -3409,12 +3428,17 @@ static bool sna_emit_wait_for_scanline_hsw(struct sna *sna,
 	case 1: event = 1 << 8; break;
 	case 2: event = 1 << 14; break;
 	}
-	b[4] = MI_WAIT_FOR_EVENT | event;
+	b[10] = MI_WAIT_FOR_EVENT | event;
+
+	b[11] = MI_LOAD_REGISTER_IMM | 1;
+	b[12] = 0xa188; /* FORCEWAKE_MT */
+	b[13] = 2 << 16;
+	b[14] = MI_LOAD_REGISTER_IMM | 1;
+	b[15] = 0x44050; /* DERRMR */
+	b[16] = ~0;
 
 	return true;
 }
-
-#define MI_LOAD_REGISTER_IMM			(0x22<<23)
 
 static bool sna_emit_wait_for_scanline_ivb(struct sna *sna,
 					   xf86CrtcPtr crtc,
