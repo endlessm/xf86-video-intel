@@ -238,7 +238,7 @@ bool sna_glyphs_create(struct sna *sna)
 					      CACHE_PICTURE_SIZE,
 					      CACHE_PICTURE_SIZE,
 					      depth,
-					      SNA_CREATE_GLYPHS);
+					      SNA_CREATE_SCRATCH);
 		if (!pixmap) {
 			DBG(("%s: failed to allocate pixmap for Glyph cache\n",
 			     __FUNCTION__));

@@ -1238,14 +1238,6 @@ static PixmapPtr sna_create_pixmap(ScreenPtr screen,
 		else
 			goto fallback;
 
-	case SNA_CREATE_GLYPHS:
-		if (flags & KGEM_CAN_CREATE_GPU)
-			return sna_pixmap_create_scratch(screen,
-							 width, height, depth,
-							 -I915_TILING_Y);
-		else
-			goto fallback;
-
 	case SNA_CREATE_SCRATCH:
 		if (flags & KGEM_CAN_CREATE_GPU)
 			return sna_pixmap_create_scratch(screen,

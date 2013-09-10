@@ -1200,6 +1200,10 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 	DBG(("%s: can blt to cpu? %d\n", __FUNCTION__,
 	     kgem->can_blt_cpu));
 
+	kgem->can_render_y = gen != 021 && (gen >> 3) != 4;
+	DBG(("%s: can render to Y-tiled surfaces? %d\n", __FUNCTION__,
+	     kgem->can_render_y));
+
 	kgem->has_secure_batches = test_has_secure_batches(kgem);
 	DBG(("%s: can use privileged batchbuffers? %d\n", __FUNCTION__,
 	     kgem->has_secure_batches));
@@ -3656,6 +3660,9 @@ int kgem_choose_tiling(struct kgem *kgem, int tiling, int width, int height, int
 
 	if (tiling < 0)
 		return tiling;
+
+	if (tiling == I915_TILING_Y && !kgem->can_render_y)
+		tiling = I915_TILING_X;
 
 	if (tiling && (height == 1 || width == 1)) {
 		DBG(("%s: disabling tiling [%dx%d] for single row/col\n",
