@@ -182,9 +182,16 @@ void gen4_vertex_close(struct sna *sna)
 
 		}
 	} else {
-		if (sna->kgem.nbatch + sna->render.vertex_used <= sna->kgem.surface) {
+		int size;
+
+		size  = sna->kgem.nbatch;
+		size += sna->kgem.batch_size - sna->kgem.surface;
+		size += sna->render.vertex_used;
+
+		if (size <= 1024) {
 			DBG(("%s: copy to batch: %d @ %d\n", __FUNCTION__,
 			     sna->render.vertex_used, sna->kgem.nbatch));
+			assert(sna->kgem.nbatch + sna->render.vertex_used <= sna->kgem.surface);
 			memcpy(sna->kgem.batch + sna->kgem.nbatch,
 			       sna->render.vertex_data,
 			       sna->render.vertex_used * 4);
@@ -192,31 +199,37 @@ void gen4_vertex_close(struct sna *sna)
 			bo = NULL;
 			sna->kgem.nbatch += sna->render.vertex_used;
 		} else {
-			sna->render.vbo = kgem_create_linear(&sna->kgem,
-							     256*1024, CREATE_GTT_MAP | CREATE_NO_RETIRE | CREATE_CACHED);
-			if (sna->render.vbo)
-				sna->render.vertices = kgem_bo_map(&sna->kgem, sna->render.vbo);
-			if (sna->render.vertices != NULL) {
-				int size;
+			size = 256 * 1024;
+			do {
+				bo = kgem_create_linear(&sna->kgem, size,
+							CREATE_GTT_MAP | CREATE_NO_RETIRE | CREATE_NO_THROTTLE | CREATE_CACHED);
+			} while (bo == NULL && (size>>=1) > sizeof(float)*sna->render.vertex_used);
 
-				assert(sizeof(float)*sna->render.vertex_used <=
-				       __kgem_bo_size(sna->render.vbo));
+			sna->render.vertices = NULL;
+			if (bo)
+				sna->render.vertices = kgem_bo_map(&sna->kgem, bo);
+			if (sna->render.vertices != NULL) {
+				DBG(("%s: new vbo: %d / %d\n", __FUNCTION__,
+				     sna->render.vertex_used, __kgem_bo_size(bo)/4));
+
+				assert(sizeof(float)*sna->render.vertex_used <= __kgem_bo_size(bo));
 				memcpy(sna->render.vertices,
 				       sna->render.vertex_data,
 				       sizeof(float)*sna->render.vertex_used);
 
-				size = __kgem_bo_size(sna->render.vbo)/4;
+				size = __kgem_bo_size(bo)/4;
 				if (size >= UINT16_MAX)
 					size = UINT16_MAX - 1;
 
+				sna->render.vbo = bo;
 				sna->render.vertex_size = size;
-
-				bo = sna->render.vbo;
 			} else {
-				if (sna->render.vbo) {
-					kgem_bo_destroy(&sna->kgem, sna->render.vbo);
-					sna->render.vbo = NULL;
-				}
+				DBG(("%s: tmp vbo: %d\n", __FUNCTION__,
+				     sna->render.vertex_used));
+
+				if (bo)
+					kgem_bo_destroy(&sna->kgem, bo);
+
 				bo = kgem_create_linear(&sna->kgem,
 							4*sna->render.vertex_used,
 							CREATE_NO_THROTTLE);
@@ -226,8 +239,10 @@ void gen4_vertex_close(struct sna *sna)
 					kgem_bo_destroy(&sna->kgem, bo);
 					bo = NULL;
 				}
-				DBG(("%s: new vbo: %d\n", __FUNCTION__,
-				     sna->render.vertex_used));
+
+				assert(sna->render.vbo == NULL);
+				sna->render.vertices = sna->render.vertex_data;
+				sna->render.vertex_size = ARRAY_SIZE(sna->render.vertex_data);
 				free_bo = bo;
 			}
 		}
