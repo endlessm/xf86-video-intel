@@ -16,9 +16,14 @@ stress_TESTS = \
 	render-copyarea-size \
 	render-copy-alphaless \
 	mixed-stress \
+	$(NULL)
+
+if DRI2
+stress_TESTS += \
 	dri2-swap \
 	dri2-race \
 	$(NULL)
+endif
 
 check_PROGRAMS = $(stress_TESTS)
 
@@ -34,9 +39,14 @@ libtest_la_SOURCES = \
 	test_image.c \
 	test_log.c \
 	test_render.c \
+	$(NULL)
+
+if DRI2
+libtest_la_SOURCES += \
 	dri2.c \
 	dri2.h \
 	$(NULL)
+endif
 
 vsync.avi: mkvsync.sh
 	./mkvsync.sh $@
