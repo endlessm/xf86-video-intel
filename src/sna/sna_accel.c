@@ -4157,8 +4157,7 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 		break;
 	}
 
-	if (!kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo,
-				  (priv->create & KGEM_CAN_CREATE_LARGE) == 0)) {
+	if (!kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, true)) {
 		DBG(("%s: no, cannot map through the CPU\n", __FUNCTION__));
 		return false;
 	}
