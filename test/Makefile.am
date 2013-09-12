@@ -20,8 +20,9 @@ stress_TESTS = \
 
 if DRI2
 stress_TESTS += \
-	dri2-swap \
 	dri2-race \
+	dri2-swap \
+	dri2-test \
 	$(NULL)
 endif
 

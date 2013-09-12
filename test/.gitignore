@@ -15,3 +15,6 @@ render-copy-alphaless
 mixed-stress
 lowlevel-blt-bench
 vsync.avi
+dri2-race
+dri2-swap
+dri2-test
