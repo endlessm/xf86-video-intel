@@ -51,6 +51,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifndef _I830_H_
 #define _I830_H_
 
+#include "xorg-server.h"
 #include "xf86_OSproc.h"
 #include "compiler.h"
 #include "xf86Pci.h"
@@ -63,6 +64,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <pciaccess.h>
 
 #define _XF86DRI_SERVER_
+#include "drm.h"
 #include "dri2.h"
 #include "intel_bufmgr.h"
 #include "i915_drm.h"

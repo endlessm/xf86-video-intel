@@ -48,9 +48,11 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <xf86drm.h>
 #include <i915_drm.h>
 #include <dri2.h>
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,12,99,901,0)
 #include <compositeext.h>
+#endif
 
-#if DRI2INFOREC_VERSION <= 2
+#if DRI2INFOREC_VERSION < 2
 #error DRI2 version supported by the Xserver is too old
 #endif
 
@@ -70,34 +72,6 @@ enum frame_event_type {
 	DRI2_FLIP_THROTTLE,
 };
 
-struct sna_dri_frame_event {
-	DrawablePtr draw;
-	ClientPtr client;
-	enum frame_event_type type;
-	int pipe;
-	int count;
-
-	/* for swaps & flips only */
-	DRI2SwapEventPtr event_complete;
-	void *event_data;
-	DRI2BufferPtr front;
-	DRI2BufferPtr back;
-	struct kgem_bo *bo;
-
-	struct sna_dri_frame_event *chain;
-
-	unsigned int fe_frame;
-	unsigned int fe_tv_sec;
-	unsigned int fe_tv_usec;
-
-	struct dri_bo {
-		struct kgem_bo *bo;
-		uint32_t name;
-	} scanout[2], cache;
-
-	int mode;
-};
-
 struct sna_dri_private {
 	PixmapPtr pixmap;
 	struct kgem_bo *bo;
@@ -106,16 +80,10 @@ struct sna_dri_private {
 	int refcnt;
 };
 
-static inline struct sna_dri_frame_event *
-to_frame_event(uintptr_t  data)
-{
-	 return (struct sna_dri_frame_event *)(data & ~1);
-}
-
 static inline struct sna_dri_private *
-get_private(DRI2Buffer2Ptr buffer)
+get_private(void *buffer)
 {
-	return (struct sna_dri_private *)(buffer+1);
+	return (struct sna_dri_private *)((DRI2Buffer2Ptr)buffer+1);
 }
 
 static inline struct kgem_bo *ref(struct kgem_bo *bo)
@@ -208,7 +176,7 @@ static inline void sna_pixmap_set_buffer(PixmapPtr pixmap, void *ptr)
 void
 sna_dri_pixmap_update_bo(struct sna *sna, PixmapPtr pixmap)
 {
-	DRI2Buffer2Ptr buffer;
+	DRI2BufferPtr buffer;
 	struct sna_dri_private *private;
 	struct kgem_bo *bo;
 
@@ -481,7 +449,7 @@ static void sna_dri_destroy_buffer(DrawablePtr draw, DRI2Buffer2Ptr buffer)
 	_sna_dri_destroy_buffer(to_sna_from_drawable(draw), buffer);
 }
 
-static void sna_dri_reference_buffer(DRI2Buffer2Ptr buffer)
+static void sna_dri_reference_buffer(DRI2BufferPtr buffer)
 {
 	get_private(buffer)->refcnt++;
 }
@@ -647,7 +615,7 @@ sna_dri_copy_fallback(struct sna *sna, int bpp,
 
 static struct kgem_bo *
 __sna_dri_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
-		      DRI2Buffer2Ptr src, DRI2Buffer2Ptr dst,
+		      DRI2BufferPtr src, DRI2BufferPtr dst,
 		      bool sync)
 {
 	PixmapPtr pixmap = get_drawable_pixmap(draw);
@@ -885,6 +853,41 @@ static inline int sna_wait_vblank(struct sna *sna, drmVBlank *vbl)
 }
 
 #if DRI2INFOREC_VERSION >= 4
+
+struct sna_dri_frame_event {
+	DrawablePtr draw;
+	ClientPtr client;
+	enum frame_event_type type;
+	int pipe;
+	int count;
+
+	/* for swaps & flips only */
+	DRI2SwapEventPtr event_complete;
+	void *event_data;
+	DRI2BufferPtr front;
+	DRI2BufferPtr back;
+	struct kgem_bo *bo;
+
+	struct sna_dri_frame_event *chain;
+
+	unsigned int fe_frame;
+	unsigned int fe_tv_sec;
+	unsigned int fe_tv_usec;
+
+	struct dri_bo {
+		struct kgem_bo *bo;
+		uint32_t name;
+	} scanout[2], cache;
+
+	int mode;
+};
+
+
+static inline struct sna_dri_frame_event *
+to_frame_event(uintptr_t  data)
+{
+	 return (struct sna_dri_frame_event *)(data & ~1);
+}
 
 static int
 sna_dri_get_pipe(DrawablePtr draw)
@@ -2253,6 +2256,8 @@ out_complete:
 	DRI2WaitMSCComplete(client, draw, target_msc, 0, 0);
 	return TRUE;
 }
+#else
+void sna_dri_destroy_window(WindowPtr win) { }
 #endif
 
 static bool has_i830_dri(void)
@@ -2260,12 +2265,79 @@ static bool has_i830_dri(void)
 	return access(DRI_DRIVER_PATH "/i830_dri.so", R_OK) == 0;
 }
 
+static int
+namecmp(const char *s1, const char *s2)
+{
+	char c1, c2;
+
+	if (!s1 || *s1 == 0) {
+		if (!s2 || *s2 == 0)
+			return 0;
+		else
+			return 1;
+	}
+
+	while (*s1 == '_' || *s1 == ' ' || *s1 == '\t')
+		s1++;
+
+	while (*s2 == '_' || *s2 == ' ' || *s2 == '\t')
+		s2++;
+
+	c1 = isupper(*s1) ? tolower(*s1) : *s1;
+	c2 = isupper(*s2) ? tolower(*s2) : *s2;
+	while (c1 == c2) {
+		if (c1 == '\0')
+			return 0;
+
+		s1++;
+		while (*s1 == '_' || *s1 == ' ' || *s1 == '\t')
+			s1++;
+
+		s2++;
+		while (*s2 == '_' || *s2 == ' ' || *s2 == '\t')
+			s2++;
+
+		c1 = isupper(*s1) ? tolower(*s1) : *s1;
+		c2 = isupper(*s2) ? tolower(*s2) : *s2;
+	}
+
+	return c1 - c2;
+}
+
+static bool is_bool(const char *str)
+{
+	if (str == NULL)
+		return true;
+
+	if (*str == '\0')
+		return true;
+
+	if (namecmp(str, "1") == 0)
+		return true;
+	if (namecmp(str, "on") == 0)
+		return true;
+	if (namecmp(str, "true") == 0)
+		return true;
+	if (namecmp(str, "yes") == 0)
+		return true;
+
+	if (namecmp(str, "0") == 0)
+		return true;
+	if (namecmp(str, "off") == 0)
+		return true;
+	if (namecmp(str, "false") == 0)
+		return true;
+	if (namecmp(str, "no") == 0)
+		return true;
+
+	return false;
+}
+
 static const char *dri_driver_name(struct sna *sna)
 {
 	const char *s = xf86GetOptValString(sna->Options, OPTION_DRI);
-	Bool dummy;
 
-	if (s == NULL || xf86getBoolValue(&dummy, s)) {
+	if (is_bool(s)) {
 		if (sna->kgem.gen < 030)
 			return has_i830_dri() ? "i830" : "i915";
 		else if (sna->kgem.gen < 040)
@@ -2309,7 +2381,14 @@ bool sna_dri_open(struct sna *sna, ScreenPtr screen)
 	DBG(("%s: loading dri driver '%s' [gen=%d] for device '%s'\n",
 	     __FUNCTION__, info.driverName, sna->kgem.gen, info.deviceName));
 
+#if DRI2INFOREC_VERSION == 2
+	/* The ABI between 2 and 3 was broken so we could get rid of
+	 * the multi-buffer alloc functions.  Make sure we indicate the
+	 * right version so DRI2 can reject us if it's version 3 or above. */
+	info.version = 2;
+#else
 	info.version = 3;
+#endif
 	info.CreateBuffer = sna_dri_create_buffer;
 	info.DestroyBuffer = sna_dri_destroy_buffer;
 

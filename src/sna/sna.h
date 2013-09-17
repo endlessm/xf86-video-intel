@@ -37,22 +37,16 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifndef _SNA_H_
 #define _SNA_H_
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
 #include <stdint.h>
 
-#include "compiler.h"
-
 #include <xorg-server.h>
+#include <xf86str.h>
 
 #include <xf86Crtc.h>
 #if XF86_CRTC_VERSION >= 5
 #define HAS_PIXMAP_SHARING 1
 #endif
 
-#include <xf86str.h>
 #include <windowstr.h>
 #include <glyphstr.h>
 #include <picturestr.h>
@@ -74,6 +68,8 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #if HAVE_UDEV
 #include <libudev.h>
 #endif
+
+#include "compiler.h"
 
 #if HAS_DEBUG_FULL
 #define DBG(x) ErrorF x

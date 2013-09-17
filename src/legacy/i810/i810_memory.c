@@ -35,6 +35,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  *
  */
 
+#include "xorg-server.h"
 #include "xf86.h"
 #include "xf86_OSproc.h"
 

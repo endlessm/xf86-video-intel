@@ -22,17 +22,25 @@
  *
  */
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
 
 #include <X11/Xlibint.h>
 #include <X11/extensions/record.h>
+#include <X11/extensions/XShm.h>
+#if HAVE_X11_EXTENSIONS_SHMPROTO_H
 #include <X11/extensions/shmproto.h>
+#elif HAVE_X11_EXTENSIONS_SHMSTR_H
+#include <X11/extensions/shmstr.h>
+#endif
 #include <X11/extensions/Xdamage.h>
 #include <X11/extensions/Xinerama.h>
 #include <X11/extensions/Xrandr.h>
 #include <X11/extensions/Xrender.h>
-#include <X11/extensions/XShm.h>
 #include <X11/Xcursor/Xcursor.h>
 #include <pixman.h>
 
@@ -282,7 +290,10 @@ static int timerfd(int hz)
 	struct itimerspec it;
 	int fd;
 
+	fd = -1;
+#ifdef CLOCK_MONOTONIC_COARSE
 	fd = timerfd_create(CLOCK_MONOTONIC_COARSE, TFD_NONBLOCK);
+#endif
 	if (fd < 0)
 		fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
 	if (fd < 0)
@@ -399,8 +410,8 @@ static XRRModeInfo *lookup_mode(XRRScreenResources *res, int id)
 
 static int clone_update_modes__randr(struct clone *clone)
 {
-	XRRScreenResources *from_res, *to_res;
-	XRROutputInfo *from_info, *to_info;
+	XRRScreenResources *from_res = NULL, *to_res = NULL;
+	XRROutputInfo *from_info = NULL, *to_info = NULL;
 	int i, j, ret = ENOENT;
 
 	assert(clone->src.rr_output);
@@ -499,8 +510,8 @@ err:
 static int clone_update_modes__fixed(struct clone *clone)
 {
 	char mode_name[80];
-	XRRScreenResources *res;
-	XRROutputInfo *info;
+	XRRScreenResources *res = NULL;
+	XRROutputInfo *info = NULL;
 	XRRModeInfo mode;
 	RRMode id;
 	int i, j, ret = ENOENT;
@@ -1604,6 +1615,7 @@ static int clone_init_depth(struct clone *clone)
 	DBG(("%s-%s wants depth %d\n",
 	     DisplayString(clone->dst.dpy), clone->dst.name, clone->depth));
 
+	ret = -1;
 	for (depth = clone->depth; depth <= 24; depth += 8) {
 		ret = display_init_render(clone->src.display, depth, &clone->src.use_render);
 		if (ret)
@@ -1986,7 +1998,7 @@ static int last_display_add_clones__display(struct context *ctx)
 	Display *dpy = display->dpy;
 	Screen *scr;
 	char buf[80];
-	int n, ret;
+	int ret;
 	RROutput id;
 
 	DBG(("%s(%s)\n", __func__, DisplayString(display->dpy)));
@@ -2007,7 +2019,7 @@ static int last_display_add_clones__display(struct context *ctx)
 		return ret;
 	}
 
-	sprintf(buf, "WHOLE%d", n);
+	sprintf(buf, "WHOLE");
 	ret = clone_output_init(clone, &clone->dst, display, buf, 0);
 	if (ret) {
 		fprintf(stderr, "Failed to add display \"%s\"\n",

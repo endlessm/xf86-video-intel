@@ -45,6 +45,13 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <stdio.h>
 #include <errno.h>
 
+#include "sna.h"
+#include "sna_module.h"
+#include "sna_video.h"
+
+#include "intel_driver.h"
+#include "intel_options.h"
+
 #include <xf86cmap.h>
 #include <xf86drm.h>
 #include <xf86RandR12.h>
@@ -52,13 +59,6 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <micmap.h>
 #include <mipict.h>
 
-#include "compiler.h"
-#include "sna.h"
-#include "sna_module.h"
-#include "sna_video.h"
-
-#include "intel_driver.h"
-#include "intel_options.h"
 
 #include <sys/ioctl.h>
 #include <sys/fcntl.h>
@@ -338,9 +338,73 @@ static void sna_setup_capabilities(ScrnInfoPtr scrn, int fd)
 #endif
 }
 
+static int
+namecmp(const char *s1, const char *s2)
+{
+	char c1, c2;
+
+	if (!s1 || *s1 == 0) {
+		if (!s2 || *s2 == 0)
+			return 0;
+		else
+			return 1;
+	}
+
+	while (*s1 == '_' || *s1 == ' ' || *s1 == '\t')
+		s1++;
+
+	while (*s2 == '_' || *s2 == ' ' || *s2 == '\t')
+		s2++;
+
+	c1 = isupper(*s1) ? tolower(*s1) : *s1;
+	c2 = isupper(*s2) ? tolower(*s2) : *s2;
+	while (c1 == c2) {
+		if (c1 == '\0')
+			return 0;
+
+		s1++;
+		while (*s1 == '_' || *s1 == ' ' || *s1 == '\t')
+			s1++;
+
+		s2++;
+		while (*s2 == '_' || *s2 == ' ' || *s2 == '\t')
+			s2++;
+
+		c1 = isupper(*s1) ? tolower(*s1) : *s1;
+		c2 = isupper(*s2) ? tolower(*s2) : *s2;
+	}
+
+	return c1 - c2;
+}
+
 static Bool sna_option_cast_to_bool(struct sna *sna, int id, Bool val)
 {
-	xf86getBoolValue(&val, xf86GetOptValString(sna->Options, id));
+	const char *str = xf86GetOptValString(sna->Options, id);
+
+	if (str == NULL)
+		return val;
+
+	if (*str == '\0')
+		return TRUE;
+
+	if (namecmp(str, "1") == 0)
+		return TRUE;
+	if (namecmp(str, "on") == 0)
+		return TRUE;
+	if (namecmp(str, "true") == 0)
+		return TRUE;
+	if (namecmp(str, "yes") == 0)
+		return TRUE;
+
+	if (namecmp(str, "0") == 0)
+		return FALSE;
+	if (namecmp(str, "off") == 0)
+		return FALSE;
+	if (namecmp(str, "false") == 0)
+		return FALSE;
+	if (namecmp(str, "no") == 0)
+		return FALSE;
+
 	return val;
 }
 

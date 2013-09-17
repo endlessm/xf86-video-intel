@@ -48,6 +48,7 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <time.h>
 #include <errno.h>
 
+#include "xorg-server.h"
 #include "xf86.h"
 #include "xf86_OSproc.h"
 
@@ -1530,6 +1531,7 @@ static int has_i830_dri(void)
 
 static const char *dri_driver_name(intel_screen_private *intel)
 {
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,7,99,901,0)
 	const char *s = xf86GetOptValString(intel->Options, OPTION_DRI);
 	Bool dummy;
 
@@ -1543,6 +1545,14 @@ static const char *dri_driver_name(intel_screen_private *intel)
 	}
 
 	return s;
+#else
+	if (INTEL_INFO(intel)->gen < 030)
+		return has_i830_dri() ? "i830" : "i915";
+	else if (INTEL_INFO(intel)->gen < 040)
+		return "i915";
+	else
+		return "i965";
+#endif
 }
 
 Bool I830DRI2ScreenInit(ScreenPtr screen)

@@ -28,9 +28,11 @@
 #include "config.h"
 #endif
 
+#include <xorg-server.h>
+#include <xorgVersion.h>
+
 #include <xf86.h>
 #include <xf86Parser.h>
-#include <xorgVersion.h>
 
 #if XORG_VERSION_CURRENT < XORG_VERSION_NUMERIC(1,6,99,0,0)
 #include <xf86Resources.h>

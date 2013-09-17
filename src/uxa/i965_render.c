@@ -34,6 +34,7 @@
 #endif
 
 #include <assert.h>
+#include "xorg-server.h"
 #include "xf86.h"
 #include "intel.h"
 #include "i830_reg.h"

@@ -40,6 +40,8 @@
 #include <sys/ioctl.h>
 
 #include <pciaccess.h>
+
+#include <xorg-server.h>
 #include <xf86.h>
 #include <xf86drm.h>
 #include <xf86drmMode.h>

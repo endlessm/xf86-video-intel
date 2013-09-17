@@ -38,6 +38,7 @@
 #include <poll.h>
 #include <sys/ioctl.h>
 
+#include "xorg-server.h"
 #include "xorgVersion.h"
 
 #include "intel.h"
@@ -46,7 +47,12 @@
 #include "xf86drm.h"
 #include "xf86drmMode.h"
 #include "X11/Xatom.h"
-#include "X11/extensions/dpmsconst.h"
+#if defined(HAVE_X11_EXTENSIONS_DPMSCONST_H)
+#include <X11/extensions/dpmsconst.h>
+#else
+#define DPMSModeOn 0
+#define DPMSModeOff 3
+#endif
 #include "xf86DDC.h"
 #include "fb.h"
 #include "uxa.h"

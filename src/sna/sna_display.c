@@ -39,20 +39,36 @@
 #include <poll.h>
 #include <ctype.h>
 
-#include <xorgVersion.h>
-#include <X11/Xatom.h>
-#include <X11/extensions/dpmsconst.h>
-#include <xf86drm.h>
-#include <xf86DDC.h> /* for xf86InterpretEDID */
-#include <xf86Opt.h> /* for xf86OptionPtr */
-
 #include "sna.h"
 #include "sna_reg.h"
 #include "fb/fbpict.h"
 
+#include <xf86Crtc.h>
+
+#if XF86_CRTC_VERSION >= 3
+#define HAS_GAMMA 1
+#else
+#define HAS_GAMMA 0
+#endif
+
+#include <X11/Xatom.h>
+#if defined(HAVE_X11_EXTENSIONS_DPMSCONST_H)
+#include <X11/extensions/dpmsconst.h>
+#else
+#define DPMSModeOn 0
+#define DPMSModeOff 3
+#endif
+#include <xf86drm.h>
+#include <xf86DDC.h> /* for xf86InterpretEDID */
+#include <xf86Opt.h> /* for xf86OptionPtr */
+
 #include "intel_options.h"
 
 #define KNOWN_MODE_FLAGS ((1<<14)-1)
+
+#ifndef MONITOR_EDID_COMPLETE_RAWDATA
+#define MONITOR_EDID_COMPLETE_RAWDATA 1
+#endif
 
 #ifndef DEFAULT_DPI
 #define DEFAULT_DPI 96
@@ -1426,11 +1442,13 @@ sna_crtc_set_mode_major(xf86CrtcPtr crtc, DisplayModePtr mode,
 	assert(mode->HDisplay <= sna->mode.kmode->max_width &&
 	       mode->VDisplay <= sna->mode.kmode->max_height);
 
+#if HAS_GAMMA
 	drmModeCrtcSetGamma(sna->kgem.fd, sna_crtc->id,
 			    crtc->gamma_size,
 			    crtc->gamma_red,
 			    crtc->gamma_green,
 			    crtc->gamma_blue);
+#endif
 
 	saved_kmode = sna_crtc->kmode;
 	saved_bo = sna_crtc->bo;
@@ -1634,7 +1652,9 @@ sna_crtc_set_scanout_pixmap(xf86CrtcPtr crtc, PixmapPtr pixmap)
 #endif
 
 static const xf86CrtcFuncsRec sna_crtc_funcs = {
+#if XF86_CRTC_VERSION >= 1
 	.dpms = sna_crtc_dpms,
+#endif
 	.set_mode_major = sna_crtc_set_mode_major,
 	.set_cursor_colors = sna_crtc_set_cursor_colors,
 	.set_cursor_position = sna_crtc_set_cursor_position,
@@ -1945,6 +1965,16 @@ done:
 }
 
 static DisplayModePtr
+default_modes(void)
+{
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,6,99,900,0)
+	return xf86GetDefaultModes();
+#else
+	return xf86GetDefaultModes(0, 0);
+#endif
+}
+
+static DisplayModePtr
 sna_output_panel_edid(xf86OutputPtr output, DisplayModePtr modes)
 {
 	xf86MonPtr mon = output->MonInfo;
@@ -1966,7 +1996,7 @@ sna_output_panel_edid(xf86OutputPtr output, DisplayModePtr modes)
 	max_vrefresh = max(max_vrefresh, 60.0);
 	max_vrefresh *= (1 + SYNC_TOLERANCE);
 
-	m = xf86GetDefaultModes();
+	m = default_modes();
 	xf86ValidateModesSize(output->scrn, m, max_x, max_y, 0);
 
 	for (i = m; i; i = i->next) {
@@ -2945,6 +2975,7 @@ enum { /* XXX copied from hw/xfree86/modes/xf86Crtc.c */
 	OPTION_DEFAULT_MODES,
 };
 
+#if HAS_GAMMA
 static void set_gamma(uint16_t *curve, int size, double value)
 {
 	int i;
@@ -2954,7 +2985,7 @@ static void set_gamma(uint16_t *curve, int size, double value)
 		curve[i] = 256*(size-1)*pow(i/(double)(size-1), value);
 }
 
-static void set_initial_gamma(xf86OutputPtr output, xf86CrtcPtr crtc)
+static void output_set_gamma(xf86OutputPtr output, xf86CrtcPtr crtc)
 {
 	XF86ConfMonitorPtr mon = output->conf_monitor;
 
@@ -2982,6 +3013,60 @@ static void set_initial_gamma(xf86OutputPtr output, xf86CrtcPtr crtc)
 		set_gamma(crtc->gamma_blue, crtc->gamma_size,
 			  mon->mon_gamma_blue);
 }
+
+static void crtc_init_gamma(xf86CrtcPtr crtc)
+{
+	uint16_t *gamma;
+
+	/* Initialize the gamma ramps */
+	gamma = NULL;
+	if (crtc->gamma_size == 256)
+		gamma = crtc->gamma_red;
+	if (gamma == NULL)
+		gamma = malloc(3 * 256 * sizeof(uint16_t));
+	if (gamma) {
+		struct sna *sna = to_sna(crtc->scrn);
+		struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
+		struct drm_mode_crtc_lut lut;
+		bool gamma_set = false;
+
+		lut.crtc_id = sna_crtc->id;
+		lut.gamma_size = 256;
+		lut.red = (uintptr_t)(gamma);
+		lut.green = (uintptr_t)(gamma + 256);
+		lut.blue = (uintptr_t)(gamma + 2 * 256);
+		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETGAMMA, &lut) == 0) {
+			gamma_set =
+				gamma[256 - 1] &&
+				gamma[2*256 - 1] &&
+				gamma[3*256 - 1];
+		}
+
+		DBG(("%s: CRTC:%d, pipe=%d: gamma set?=%d\n",
+		     __FUNCTION__, sna_crtc->id, sna_crtc->pipe,
+		     gamma_set));
+		if (!gamma_set) {
+			int i;
+
+			for (i = 0; i < 256; i++) {
+				gamma[i] = i << 8;
+				gamma[256 + i] = i << 8;
+				gamma[2*256 + i] = i << 8;
+			}
+		}
+
+		if (gamma != crtc->gamma_red) {
+			free(crtc->gamma_red);
+			crtc->gamma_red = gamma;
+			crtc->gamma_green = gamma + 256;
+			crtc->gamma_blue = gamma + 2*256;
+		}
+	}
+}
+#else
+static void output_set_gamma(xf86OutputPtr output, xf86CrtcPtr crtc) { }
+static void crtc_init_gamma(xf86CrtcPtr crtc) { }
+#endif
 
 static bool sna_probe_initial_configuration(struct sna *sna)
 {
@@ -3036,7 +3121,6 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 		xf86CrtcPtr crtc = config->crtc[i];
 		struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
 		struct drm_mode_crtc mode;
-		uint16_t *gamma;
 
 		if (sna_crtc == NULL)
 			continue;
@@ -3044,46 +3128,7 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 		crtc->enabled = FALSE;
 		crtc->desiredMode.status = MODE_NOMODE;
 
-		/* Initialize the gamma ramps */
-		gamma = NULL;
-		if (crtc->gamma_size == 256)
-			gamma = crtc->gamma_red;
-		if (gamma == NULL)
-			gamma = malloc(3 * 256 * sizeof(uint16_t));
-		if (gamma) {
-			struct drm_mode_crtc_lut lut;
-			bool gamma_set = false;
-
-			lut.crtc_id = sna_crtc->id;
-			lut.gamma_size = 256;
-			lut.red = (uintptr_t)(gamma);
-			lut.green = (uintptr_t)(gamma + 256);
-			lut.blue = (uintptr_t)(gamma + 2 * 256);
-			if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETGAMMA, &lut) == 0) {
-				gamma_set =
-					gamma[256 - 1] &&
-					gamma[2*256 - 1] &&
-					gamma[3*256 - 1];
-			}
-
-			DBG(("%s: CRTC:%d, pipe=%d: gamma set?=%d\n",
-			     __FUNCTION__, sna_crtc->id, sna_crtc->pipe,
-			     gamma_set));
-			if (!gamma_set) {
-				for (j = 0; j < 256; j++) {
-					gamma[j] = j << 8;
-					gamma[256 + j] = j << 8;
-					gamma[2*256 + j] = j << 8;
-				}
-			}
-
-			if (gamma != crtc->gamma_red) {
-				free(crtc->gamma_red);
-				crtc->gamma_red = gamma;
-				crtc->gamma_green = gamma + 256;
-				crtc->gamma_blue = gamma + 2*256;
-			}
-		}
+		crtc_init_gamma(crtc);
 
 		/* Retrieve the current mode */
 		VG_CLEAR(mode);
@@ -3145,7 +3190,7 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 					output->mm_width = (crtc->desiredMode.HDisplay * 254) / (10*DEFAULT_DPI);
 				}
 
-				set_initial_gamma(output, crtc);
+				output_set_gamma(output, crtc);
 
 				M = calloc(1, sizeof(DisplayModeRec));
 				if (M) {
@@ -3700,7 +3745,9 @@ void sna_mode_update(struct sna *sna)
 		if (sna_crtc == NULL)
 			continue;
 
+#if XF86_CRTC_VERSION >= 3
 		assert(sna_crtc->bo == NULL || crtc->active);
+#endif
 		expected = sna_crtc->bo ? fb_id(sna_crtc->bo) : 0;
 
 		VG_CLEAR(mode);

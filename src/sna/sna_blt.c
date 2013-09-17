@@ -44,6 +44,10 @@
 #define NO_BLT_FILL 0
 #define NO_BLT_FILL_BOXES 0
 
+#ifndef PICT_TYPE_BGRA
+#define PICT_TYPE_BGRA 8
+#endif
+
 static const uint8_t copy_ROP[] = {
 	ROP_0,                  /* GXclear */
 	ROP_DSa,                /* GXand */

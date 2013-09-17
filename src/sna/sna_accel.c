@@ -29,11 +29,12 @@
 #include "config.h"
 #endif
 
-#include "intel_options.h"
 #include "sna.h"
 #include "sna_reg.h"
 #include "sna_video.h"
 #include "rop.h"
+
+#include "intel_options.h"
 
 #include <X11/fonts/font.h>
 #include <X11/fonts/fontstruct.h>

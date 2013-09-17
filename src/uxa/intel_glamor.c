@@ -31,6 +31,7 @@
 #include "config.h"
 #endif
 
+#include "xorg-server.h"
 #include <xf86.h>
 #define GLAMOR_FOR_XORG  1
 #include <glamor.h>

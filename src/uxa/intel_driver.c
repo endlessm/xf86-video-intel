@@ -45,6 +45,7 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <stdio.h>
 #include <errno.h>
 
+#include "xorg-server.h"
 #include "xf86.h"
 #include "xf86_OSproc.h"
 #include "xf86cmap.h"
@@ -54,7 +55,6 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "micmap.h"
 #include "shadowfb.h"
 #include <X11/extensions/randr.h>
-#include <X11/extensions/dpmsconst.h>
 #include "fb.h"
 #include "miscstruct.h"
 #include "dixstruct.h"
@@ -225,8 +225,12 @@ static Bool I830GetEarlyOptions(ScrnInfoPtr scrn)
 static Bool intel_option_cast_string_to_bool(intel_screen_private *intel,
 					     int id, Bool val)
 {
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,7,99,901,0)
 	xf86getBoolValue(&val, xf86GetOptValString(intel->Options, id));
 	return val;
+#else
+	return val;
+#endif
 }
 
 static void intel_check_dri_option(ScrnInfoPtr scrn)

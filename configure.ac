@@ -169,7 +169,43 @@ AM_CONDITIONAL(HAVE_X11, test "x$x11" = "xyes")
 PKG_CHECK_MODULES(TOOL, [xinerama xrandr xdamage xfixes xcursor xtst xrender xext x11 pixman-1], [tools="yes"], [tools="no"])
 AM_CONDITIONAL(BUILD_TOOLS, test "x$tools" = "xyes")
 
-AH_TOP([#include "xorg-server.h"])
+if test "x$tools" = "xyes"; then
+  AC_CHECK_HEADER(sys/ipc.h)
+  AC_CHECK_HEADER(sys/shm.h)
+
+  if test "$ac_cv_header_sys_ipc_h" = "yes" -a "$ac_cv_header_sys_shm_h" = "yes"; then
+      AC_MSG_CHECKING(whether shmctl IPC_RMID allowes subsequent attaches)
+      AC_TRY_RUN([
+		  #include <sys/types.h>
+		  #include <sys/ipc.h>
+		  #include <sys/shm.h>
+		  int main()
+		  {
+		      char *shmaddr;
+		      int id = shmget (IPC_PRIVATE, 4, IPC_CREAT | 0600);
+		      if (id == -1) return 2;
+		      shmaddr = shmat (id, 0, 0);
+		      shmctl (id, IPC_RMID, 0);
+		      if ((char*) shmat (id, 0, 0) == (char*) -1) {
+			  shmdt (shmaddr);
+			  return 1;
+		      }
+		      shmdt (shmaddr);
+		      shmdt (shmaddr);
+		      return 0;
+		  }
+		  ],
+		  AC_DEFINE(IPC_RMID_DEFERRED_RELEASE, 1,
+			    [Define to 1 if shared memory segments are released deferred.])
+		  AC_MSG_RESULT(yes),
+		  AC_MSG_RESULT(no),
+		  AC_MSG_RESULT(assuming no))
+      fi
+
+      AC_CHECK_HEADERS([X11/extensions/XShm.h X11/extensions/shmproto.h X11/extensions/shmstr.h], [], [],
+		       [#include <X11/Xlibint.h>
+			#include <X11/Xproto.h>])
+fi
 
 # Define a configure option for an alternate module directory
 AC_ARG_WITH(xorg-module-dir,
@@ -221,6 +257,16 @@ if pkg-config --exists 'pixman-1 >= 0.24.0'; then
 	AC_DEFINE([HAS_PIXMAN_TRIANGLES], 1, [Enable pixman triangle rasterisation])
 fi
 
+# Store the list of server defined optional extensions in REQUIRED_MODULES
+XORG_DRIVER_CHECK_EXT(RANDR, randrproto)
+XORG_DRIVER_CHECK_EXT(RENDER, renderproto)
+XORG_DRIVER_CHECK_EXT(XF86DRI, xextproto x11)
+XORG_DRIVER_CHECK_EXT(DPMSExtension, xextproto)
+
+# Obtain compiler/linker options for the driver dependencies
+PKG_CHECK_MODULES(DRM, [libdrm >= 2.4.20]) # libdrm_intel is checked separately
+PKG_CHECK_MODULES(PCIACCESS, [pciaccess >= 0.10])
+
 AC_ARG_ENABLE(sna,
 	      AS_HELP_STRING([--enable-sna],
 			     [Enable SandyBridge's New Acceleration (SNA) [default=auto]]),
@@ -231,9 +277,6 @@ if test "x$SNA" != "xno"; then
 	AC_DEFINE(USE_SNA, 1, [Enable SNA support])
 	AC_CHECK_HEADERS([sys/sysinfo.h], AC_CHECK_MEMBERS([struct sysinfo.totalram], [], [], [[#include <sys/sysinfo.h>]]))
 fi
-AC_MSG_CHECKING([whether to include SNA support])
-AM_CONDITIONAL(SNA, test "x$SNA" != "xno")
-AC_MSG_RESULT([$SNA])
 
 AC_ARG_ENABLE(uxa,
 	      AS_HELP_STRING([--enable-uxa],
@@ -254,18 +297,12 @@ if test "x$UXA" != "xno"; then
 	required_pixman_version=0.24
 	UXA=yes
 fi
-AC_MSG_CHECKING([whether to include UXA support])
-AC_MSG_RESULT([$UXA])
-AM_CONDITIONAL(UXA, test "x$UXA" != "xno")
 
-AC_MSG_CHECKING([whether to include GLAMOR support])
 AC_ARG_ENABLE(glamor,
 	      AS_HELP_STRING([--enable-glamor],
 			     [Enable glamor, a new GL-based acceleration [default=no]]),
 	      [GLAMOR="$enableval"],
 	      [GLAMOR="no"])
-AC_MSG_RESULT([$GLAMOR])
-AM_CONDITIONAL(GLAMOR, test "x$GLAMOR" != "xno")
 if test "x$GLAMOR" != "xno"; then
 	PKG_CHECK_MODULES(LIBGLAMOR, [glamor >= 0.3.1])
 	PKG_CHECK_MODULES(LIBGLAMOR_EGL, [glamor-egl])
@@ -387,7 +424,10 @@ if test "x$enable_dri" != "xno"; then
 	if test "x$DRI2" != "xno"; then
 		save_CFLAGS=$CFLAGS
 		CFLAGS="$XORG_CFLAGS $DRM_CFLAGS $DRI_CFLAGS $DRI2_CFLAGS"
-		AC_CHECK_HEADERS([dri2.h], DRI2="yes", DRI2="no", [#include <dixstruct.h>])
+		AC_CHECK_HEADERS([dri2.h], DRI2="yes", DRI2="no", [
+#include <dixstruct.h>
+#include <drm.h>
+])
 		CFLAGS=$save_CFLAGS
 	fi
 fi
@@ -405,6 +445,20 @@ else
 	# UXA doesn't build without DRI2 headers, too late to fix
 	UXA=no
 fi
+
+AC_CHECK_HEADERS([X11/extensions/dpmsconst.h])
+
+AC_MSG_CHECKING([whether to include UXA support])
+AC_MSG_RESULT([$UXA])
+AM_CONDITIONAL(UXA, test "x$UXA" != "xno")
+
+AC_MSG_CHECKING([whether to include GLAMOR support])
+AC_MSG_RESULT([$GLAMOR])
+AM_CONDITIONAL(GLAMOR, test "x$GLAMOR" != "xno")
+
+AC_MSG_CHECKING([whether to include SNA support])
+AM_CONDITIONAL(SNA, test "x$SNA" != "xno")
+AC_MSG_RESULT([$SNA])
 
 if test "$XVMC" = "yes"; then
 	PKG_CHECK_MODULES(XVMCLIB, [xvmc dri2proto x11], [], [XVMC="no"])
@@ -524,16 +578,6 @@ AC_ARG_ENABLE(valgrind,
 			     [Enables valgrindified ioctls for debugging [default=no]]),
               [VG="$enableval"],
               [VG="no"])
-
-# Store the list of server defined optional extensions in REQUIRED_MODULES
-XORG_DRIVER_CHECK_EXT(RANDR, randrproto)
-XORG_DRIVER_CHECK_EXT(RENDER, renderproto)
-XORG_DRIVER_CHECK_EXT(XF86DRI, xextproto x11)
-XORG_DRIVER_CHECK_EXT(DPMSExtension, xextproto)
-
-# Obtain compiler/linker options for the driver dependencies
-PKG_CHECK_MODULES(DRM, [libdrm >= 2.4.20]) # libdrm_intel is checked separately
-PKG_CHECK_MODULES(PCIACCESS, [pciaccess >= 0.10])
 
 LIBS=""
 AC_SEARCH_LIBS(clock_gettime, rt, [CLOCK_GETTIME_LIBS=$LIBS])
