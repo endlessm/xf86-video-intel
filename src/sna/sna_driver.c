@@ -294,12 +294,20 @@ static void sna_selftest(void)
 	sna_damage_selftest();
 }
 
+static bool has_vsync(struct sna *sna)
+{
+	if (sna->flags & SNA_IS_HOSTED)
+		return false;
+
+	return true;
+}
+
 static bool has_pageflipping(struct sna *sna)
 {
 	drm_i915_getparam_t gp;
 	int v;
 
-	if (sna->flags & (SNA_IS_HOSTED | SNA_NO_WAIT))
+	if (sna->flags & SNA_IS_HOSTED)
 		return false;
 
 	v = 0;
@@ -508,13 +516,23 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 
 	if (!xf86ReturnOptValBool(sna->Options, OPTION_SWAPBUFFERS_WAIT, TRUE))
 		sna->flags |= SNA_NO_WAIT;
-	if (xf86ReturnOptValBool(sna->Options, OPTION_TRIPLE_BUFFER, TRUE))
-		sna->flags |= SNA_TRIPLE_BUFFER;
-	if (has_pageflipping(sna)) {
-		if (xf86ReturnOptValBool(sna->Options, OPTION_TEAR_FREE, FALSE))
-			sna->flags |= SNA_TEAR_FREE;
-	} else
+
+	if (!has_vsync(sna) ||
+	    !xf86ReturnOptValBool(sna->Options, OPTION_VSYNC, TRUE))
+		sna->flags |= SNA_NO_VSYNC;
+
+	if (!has_pageflipping(sna) ||
+	    !xf86ReturnOptValBool(sna->Options, OPTION_PAGEFLIP, TRUE))
 		sna->flags |= SNA_NO_FLIP;
+
+	if ((sna->flags & (SNA_NO_VSYNC | SNA_NO_FLIP | SNA_NO_WAIT)) == 0 &&
+	    xf86ReturnOptValBool(sna->Options, OPTION_TRIPLE_BUFFER, TRUE))
+		sna->flags |= SNA_TRIPLE_BUFFER;
+
+	if ((sna->flags & (SNA_NO_VSYNC | SNA_NO_FLIP)) == 0 &&
+	    xf86ReturnOptValBool(sna->Options, OPTION_TEAR_FREE, FALSE))
+		sna->flags |= SNA_TEAR_FREE;
+
 	if (xf86ReturnOptValBool(sna->Options, OPTION_CRTC_PIXMAPS, FALSE))
 		sna->flags |= SNA_FORCE_SHADOW;
 

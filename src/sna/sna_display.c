@@ -3627,6 +3627,9 @@ sna_wait_for_scanline(struct sna *sna,
 	assert(to_sna_crtc(crtc)->bo != NULL);
 	assert(pixmap == sna->front);
 
+	if (sna->flags & SNA_NO_VSYNC)
+		return false;
+
 	/*
 	 * Make sure we don't wait for a scanline that will
 	 * never occur

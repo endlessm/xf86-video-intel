@@ -303,7 +303,7 @@ sna_dri_create_buffer(DrawablePtr draw,
 	case DRI2BufferBackLeft:
 		if (draw->width  == sna->front->drawable.width &&
 		    draw->height == sna->front->drawable.height &&
-		    (sna->flags & SNA_NO_FLIP) == 0)
+		    (sna->flags & (SNA_NO_WAIT | SNA_NO_FLIP)) == 0)
 			flags |= CREATE_SCANOUT;
 	case DRI2BufferBackRight:
 	case DRI2BufferFrontRight:
@@ -1079,6 +1079,8 @@ can_flip(struct sna * sna,
 {
 	WindowPtr win = (WindowPtr)draw;
 	PixmapPtr pixmap;
+
+	assert((sna->flags & SNA_NO_WAIT) == 0);
 
 	if (draw->type == DRAWABLE_PIXMAP)
 		return false;
@@ -1967,7 +1969,9 @@ sna_dri_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 	assert(sna_pixmap_from_drawable(draw)->flush);
 
 	/* Drawable not displayed... just complete the swap */
-	pipe = sna_dri_get_pipe(draw);
+	pipe = -1;
+	if (sna->flags & SNA_NO_WAIT)
+		pipe = sna_dri_get_pipe(draw);
 	if (pipe == -1) {
 		DBG(("%s: off-screen, immediate update\n", __FUNCTION__));
 		goto blit;

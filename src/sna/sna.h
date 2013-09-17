@@ -226,7 +226,8 @@ struct sna {
 	unsigned flags;
 #define SNA_NO_WAIT		0x1
 #define SNA_NO_FLIP		0x2
-#define SNA_TRIPLE_BUFFER	0x4
+#define SNA_NO_VSYNC		0x4
+#define SNA_TRIPLE_BUFFER	0x8
 #define SNA_TEAR_FREE		0x10
 #define SNA_FORCE_SHADOW	0x20
 #define SNA_FLUSH_GTT		0x40
