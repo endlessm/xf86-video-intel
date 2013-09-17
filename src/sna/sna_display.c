@@ -1892,6 +1892,9 @@ sna_output_attach_edid(xf86OutputPtr output)
 	blob.length = sna_output->edid_len;
 
 	blob.blob_id = sna_output->prop_values[sna_output->edid_idx];
+	DBG(("%s: attaching EDID id=%d, current=%d\n",
+	     __FUNCTION__, blob.blob_id, sna_output->edid_blob_id));
+
 	if (blob.blob_id == sna_output->edid_blob_id) {
 		if (output->MonInfo) {
 			/* XXX the property keeps on disappearing... */
@@ -2601,12 +2604,16 @@ cleanup:
  * can have more than one output hanging off the same encoder.
  */
 static void
-sna_mode_compute_possible_clones(ScrnInfoPtr scrn)
+sna_mode_compute_possible_outputs(ScrnInfoPtr scrn)
 {
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(scrn);
+	unsigned crtc_mask;
 	int i, j;
 
-	assert(config->num_output <= 32);
+	assert(config->num_output < 32);
+	assert(config->num_crtc < 32);
+
+	crtc_mask = (1 << (config->num_crtc + 1)) - 1;
 
 	/* Convert from encoder numbering to output numbering */
 	for (i = 0; i < config->num_output; i++) {
@@ -2620,6 +2627,8 @@ sna_mode_compute_possible_clones(ScrnInfoPtr scrn)
 		}
 
 		output->possible_clones = clones;
+		output->possible_crtcs &= crtc_mask;
+
 		DBG(("%s: updated output '%s' %d [%d] (possible crtc:%x, possible clones:%x)\n",
 		     __FUNCTION__, output->name, i, to_connector_id(output),
 		     (uint32_t)output->possible_crtcs,
@@ -3231,7 +3240,7 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 				return false;
 
 		if (!xf86IsEntityShared(scrn->entityList[0]))
-			sna_mode_compute_possible_clones(scrn);
+			sna_mode_compute_possible_outputs(scrn);
 	} else {
 		if (num_fake == 0)
 			num_fake = 1;
