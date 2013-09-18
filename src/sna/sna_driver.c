@@ -744,8 +744,13 @@ sna_uevent_init(ScrnInfoPtr scrn)
 	/* RandR will be disabled if Xinerama is active, and so generating
 	 * RR hotplug events is then verboten.
 	 */
+#if HAS_DIXREGISTERPRIVATEKEY
 	if (!dixPrivateKeyRegistered(rrPrivKey))
 		return;
+#else
+	if (rrPrivKey == 0)
+		return;
+#endif
 
 	if (!xf86GetOptValBool(sna->Options, OPTION_HOTPLUG, &hotplug))
 		from = X_DEFAULT, hotplug = TRUE;
