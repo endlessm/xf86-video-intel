@@ -2095,6 +2095,8 @@ sna_output_dpms_backlight(xf86OutputPtr output, int oldmode, int mode)
 	if (!sna_output->backlight_iface)
 		return;
 
+	DBG(("%s(%s) -- %d -> %d\n", __FUNCTION__, output->name, oldmode, mode));
+
 	if (mode == DPMSModeOn) {
 		/* If we're going from off->on we may need to turn on the backlight. */
 		if (oldmode != DPMSModeOn)
@@ -2114,7 +2116,7 @@ sna_output_dpms(xf86OutputPtr output, int dpms)
 	struct sna *sna = to_sna(output->scrn);
 	struct sna_output *sna_output = output->driver_private;
 
-	DBG(("%s: dpms=%d\n", __FUNCTION__, dpms));
+	DBG(("%s(%s): dpms=%d\n", __FUNCTION__, output->name, dpms));
 
 	/* Record the value of the backlight before turning
 	 * off the display, and reset if after turning it on.
