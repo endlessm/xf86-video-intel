@@ -2612,7 +2612,7 @@ sna_mode_compute_possible_outputs(ScrnInfoPtr scrn)
 	assert(config->num_output < 32);
 	assert(config->num_crtc < 32);
 
-	crtc_mask = (1 << (config->num_crtc + 1)) - 1;
+	crtc_mask = (1 << config->num_crtc) - 1;
 
 	/* Convert from encoder numbering to output numbering */
 	for (i = 0; i < config->num_output; i++) {
