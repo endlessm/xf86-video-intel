@@ -1894,8 +1894,7 @@ sna_output_attach_edid(xf86OutputPtr output)
 	blob.blob_id = sna_output->prop_values[sna_output->edid_idx];
 	DBG(("%s: attaching EDID id=%d, current=%d\n",
 	     __FUNCTION__, blob.blob_id, sna_output->edid_blob_id));
-
-	if (blob.blob_id == sna_output->edid_blob_id) {
+	if (blob.blob_id == sna_output->edid_blob_id && 0) { /* sigh */
 		if (output->MonInfo) {
 			/* XXX the property keeps on disappearing... */
 			RRChangeOutputProperty(output->randr_output,
