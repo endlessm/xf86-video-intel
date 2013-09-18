@@ -745,7 +745,7 @@ mode_to_kmode(struct drm_mode_modeinfo *kmode, DisplayModePtr mode)
 static void
 sna_crtc_force_outputs_on(xf86CrtcPtr crtc)
 {
-	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(crtc->scrn);
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(crtc->scrn);
 	int i;
 
 	/* DPMS handling by the kernel is inconsistent, so after setting a
@@ -755,8 +755,8 @@ sna_crtc_force_outputs_on(xf86CrtcPtr crtc)
 	 * So force DPMS to be on for all connected outputs, and restore
 	 * the backlight.
 	 */
-	for (i = 0; i < xf86_config->num_output; i++) {
-		xf86OutputPtr output = xf86_config->output[i];
+	for (i = 0; i < config->num_output; i++) {
+		xf86OutputPtr output = config->output[i];
 
 		if (output->crtc != crtc)
 			continue;
@@ -775,7 +775,7 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 {
 	struct sna *sna = to_sna(crtc->scrn);
 	struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
-	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(crtc->scrn);
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(crtc->scrn);
 	struct drm_mode_crtc arg;
 	uint32_t output_ids[16];
 	int output_count = 0;
@@ -783,10 +783,10 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 
 	DBG(("%s\n", __FUNCTION__));
 
-	assert(xf86_config->num_output < ARRAY_SIZE(output_ids));
+	assert(config->num_output < ARRAY_SIZE(output_ids));
 
-	for (i = 0; i < xf86_config->num_output; i++) {
-		xf86OutputPtr output = xf86_config->output[i];
+	for (i = 0; i < config->num_output; i++) {
+		xf86OutputPtr output = config->output[i];
 
 		if (output->crtc != crtc)
 			continue;
@@ -914,8 +914,10 @@ static void
 sna_crtc_disable(xf86CrtcPtr crtc)
 {
 	struct sna *sna = to_sna(crtc->scrn);
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(crtc->scrn);
 	struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
 	struct drm_mode_crtc arg;
+	int i;
 
 	if (sna_crtc == NULL)
 		return;
@@ -933,16 +935,23 @@ sna_crtc_disable(xf86CrtcPtr crtc)
 		sna_crtc->bo = NULL;
 	}
 
+	for (i = 0; i < config->num_output; i++) {
+		xf86OutputPtr output = config->output[i];
+
+		if (output->crtc == crtc)
+			to_sna_output(output)->dpms_mode = DPMSModeOff;
+	}
+
 	sna_crtc->dpms_mode = DPMSModeOff;
 }
 
 static void update_flush_interval(struct sna *sna)
 {
-	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
 	int i, max_vrefresh = 0;
 
-	for (i = 0; i < xf86_config->num_crtc; i++) {
-		xf86CrtcPtr crtc = xf86_config->crtc[i];
+	for (i = 0; i < config->num_crtc; i++) {
+		xf86CrtcPtr crtc = config->crtc[i];
 
 		if (to_sna_crtc(crtc) == NULL)
 			continue;
@@ -1004,7 +1013,7 @@ static struct kgem_bo *sna_create_bo_for_fbcon(struct sna *sna,
  */
 void sna_copy_fbcon(struct sna *sna)
 {
-	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
 	struct drm_mode_fb_cmd fbcon;
 	PixmapRec scratch;
 	struct sna_pixmap *priv;
@@ -1027,8 +1036,8 @@ void sna_copy_fbcon(struct sna *sna)
 	/* Scan the connectors for a framebuffer and assume that is the fbcon */
 	VG_CLEAR(fbcon);
 	fbcon.fb_id = 0;
-	for (i = 0; i < xf86_config->num_crtc; i++) {
-		struct sna_crtc *crtc = to_sna_crtc(xf86_config->crtc[i]);
+	for (i = 0; i < config->num_crtc; i++) {
+		struct sna_crtc *crtc = to_sna_crtc(config->crtc[i]);
 		struct drm_mode_crtc mode;
 
 		if (!crtc)
@@ -1388,11 +1397,11 @@ sna_crtc_damage(xf86CrtcPtr crtc)
 
 static char *outputs_for_crtc(xf86CrtcPtr crtc, char *outputs, int max)
 {
-	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(crtc->scrn);
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(crtc->scrn);
 	int len, i;
 
-	for (i = len = 0; i < xf86_config->num_output; i++) {
-		xf86OutputPtr output = xf86_config->output[i];
+	for (i = len = 0; i < config->num_output; i++) {
+		xf86OutputPtr output = config->output[i];
 
 		if (output->crtc != crtc)
 			continue;
@@ -2116,6 +2125,9 @@ sna_output_dpms(xf86OutputPtr output, int dpms)
 	struct sna *sna = to_sna(output->scrn);
 	struct sna_output *sna_output = output->driver_private;
 
+	if (sna_output->dpms_mode == dpms)
+		return;
+
 	DBG(("%s(%s): dpms=%d\n", __FUNCTION__, output->name, dpms));
 
 	/* Record the value of the backlight before turning
@@ -2130,10 +2142,11 @@ sna_output_dpms(xf86OutputPtr output, int dpms)
 					  sna_output->dpms_mode,
 					  dpms);
 
-	drmModeConnectorSetProperty(sna->kgem.fd,
-				    sna_output->id,
-				    sna_output->dpms_id,
-				    dpms);
+	if (output->crtc)
+		drmModeConnectorSetProperty(sna->kgem.fd,
+					    sna_output->id,
+					    sna_output->dpms_id,
+					    dpms);
 
 	if (dpms != DPMSModeOff)
 		sna_output_dpms_backlight(output,
@@ -2528,6 +2541,7 @@ sna_output_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 	sna_output->num_props = conn.count_props;
 	sna_output->prop_ids = malloc(sizeof(uint32_t)*conn.count_props);
 	sna_output->prop_values = malloc(sizeof(uint64_t)*conn.count_props);
+	sna_output->dpms_mode = DPMSModeOff;
 
 	conn.count_modes = 1;
 	conn.modes_ptr = (uintptr_t)&dummy;
@@ -2767,7 +2781,7 @@ static void copy_front(struct sna *sna, PixmapPtr old, PixmapPtr new)
 static Bool
 sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 {
-	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(scrn);
 	struct sna *sna = to_sna(scrn);
 	ScreenPtr screen = scrn->pScreen;
 	PixmapPtr new_front;
@@ -2797,10 +2811,10 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 		   "resizing framebuffer to %dx%d\n",
 		   width, height);
 
-	for (i = 0; i < xf86_config->num_crtc; i++) {
+	for (i = 0; i < config->num_crtc; i++) {
 		struct sna_crtc *crtc;
 
-		crtc = to_sna_crtc(xf86_config->crtc[i]);
+		crtc = to_sna_crtc(config->crtc[i]);
 		if (crtc == NULL)
 			continue;
 
@@ -2825,8 +2839,8 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 	if (!scrn->vtSema)
 		return TRUE;
 
-	for (i = 0; i < xf86_config->num_crtc; i++) {
-		xf86CrtcPtr crtc = xf86_config->crtc[i];
+	for (i = 0; i < config->num_crtc; i++) {
+		xf86CrtcPtr crtc = config->crtc[i];
 
 		if (!crtc->enabled || to_sna_crtc(crtc) == NULL)
 			continue;
@@ -3306,7 +3320,7 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 void
 sna_mode_close(struct sna *sna)
 {
-	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
 	int i;
 
 	/* In order to workaround a kernel bug in not honouring O_NONBLOCK,
@@ -3319,10 +3333,10 @@ sna_mode_close(struct sna *sna)
 	if (sna->flags & SNA_IS_HOSTED)
 		return;
 
-	for (i = 0; i < xf86_config->num_crtc; i++) {
+	for (i = 0; i < config->num_crtc; i++) {
 		struct sna_crtc *crtc;
 
-		crtc = to_sna_crtc(xf86_config->crtc[i]);
+		crtc = to_sna_crtc(config->crtc[i]);
 		if (crtc == NULL)
 			continue;
 
@@ -3368,7 +3382,7 @@ static int sna_box_area(const BoxRec *box)
 xf86CrtcPtr
 sna_covering_crtc(struct sna *sna, const BoxRec *box, xf86CrtcPtr desired)
 {
-	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
 	xf86CrtcPtr best_crtc;
 	int best_coverage, c;
 
@@ -3384,8 +3398,8 @@ sna_covering_crtc(struct sna *sna, const BoxRec *box, xf86CrtcPtr desired)
 
 	best_crtc = NULL;
 	best_coverage = 0;
-	for (c = 0; c < xf86_config->num_crtc; c++) {
-		xf86CrtcPtr crtc = xf86_config->crtc[c];
+	for (c = 0; c < config->num_crtc; c++) {
+		xf86CrtcPtr crtc = config->crtc[c];
 		BoxRec cover_box;
 		int coverage;
 
@@ -3730,15 +3744,15 @@ sna_wait_for_scanline(struct sna *sna,
 
 void sna_mode_update(struct sna *sna)
 {
-	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
 	int i;
 
 	if (sna->flags & SNA_IS_HOSTED)
 		return;
 
 	/* Validate CRTC attachments and force consistency upon the kernel */
-	for (i = 0; i < xf86_config->num_crtc; i++) {
-		xf86CrtcPtr crtc = xf86_config->crtc[i];
+	for (i = 0; i < config->num_crtc; i++) {
+		xf86CrtcPtr crtc = config->crtc[i];
 		struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
 		struct drm_mode_crtc mode;
 		uint32_t expected;
@@ -3765,7 +3779,46 @@ void sna_mode_update(struct sna *sna)
 			sna_crtc_disable(crtc);
 	}
 
+	for (i = 0; i < config->num_output; i++) {
+		xf86OutputPtr output = config->output[i];
+		struct sna_output *sna_output;
+
+		if (output->crtc)
+			continue;
+
+		sna_output = to_sna_output(output);
+		if (sna_output == NULL)
+			continue;
+
+		sna_output->dpms_mode = DPMSModeOff;
+	}
+
 	update_flush_interval(sna);
+}
+
+void sna_mode_reset(struct sna *sna)
+{
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	int i;
+
+	if (sna->flags & SNA_IS_HOSTED)
+		return;
+
+	for (i = 0; i < config->num_crtc; i++) {
+		struct sna_crtc *sna_crtc = to_sna_crtc(config->crtc[i]);
+		if (sna_crtc == NULL)
+			continue;
+
+		sna_crtc->dpms_mode = DPMSModeOff;
+	}
+
+	for (i = 0; i < config->num_output; i++) {
+		struct sna_output *sna_output = to_sna_output(config->output[i]);
+		if (sna_output == NULL)
+			continue;
+
+		sna_output->dpms_mode = DPMSModeOff;
+	}
 }
 
 static void

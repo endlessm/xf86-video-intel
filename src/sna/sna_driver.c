@@ -820,6 +820,8 @@ static void sna_leave_vt(VT_FUNC_ARGS_DECL)
 
 	xf86_hide_cursors(scrn);
 
+	sna_mode_reset(to_sna(scrn));
+
 	if (intel_put_master(scrn))
 		xf86DrvMsg(scrn->scrnIndex, X_WARNING,
 			   "drmDropMaster failed: %s\n", strerror(errno));
