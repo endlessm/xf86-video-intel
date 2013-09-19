@@ -632,9 +632,6 @@ static int gen4_get_rectangles__flush(struct sna *sna,
 	if (!kgem_check_reloc_and_exec(&sna->kgem, 2))
 		return 0;
 
-	if (op->need_magic_ca_pass && sna->render.vbo)
-		return 0;
-
 	if (sna->render.vertex_offset) {
 		gen4_vertex_flush(sna);
 		if (gen4_magic_ca_pass(sna, op))
