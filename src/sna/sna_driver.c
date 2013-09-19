@@ -59,7 +59,6 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <micmap.h>
 #include <mipict.h>
 
-
 #include <sys/ioctl.h>
 #include <sys/fcntl.h>
 #include "i915_drm.h"

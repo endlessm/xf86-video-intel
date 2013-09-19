@@ -1,6 +1,7 @@
 #ifndef INTEL_OPTIONS_H
 #define INTEL_OPTIONS_H
 
+#include <xorg-server.h>
 #include <xf86.h>
 #include <xf86Opt.h>
 

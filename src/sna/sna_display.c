@@ -60,7 +60,6 @@
 #endif
 #include <xf86drm.h>
 #include <xf86DDC.h> /* for xf86InterpretEDID */
-#include <xf86Opt.h> /* for xf86OptionPtr */
 
 #include "intel_options.h"
 
