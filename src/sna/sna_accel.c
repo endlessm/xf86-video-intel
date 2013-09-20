@@ -13255,6 +13255,7 @@ sna_glyph_blt(DrawablePtr drawable, GCPtr gc,
 	int16_t dx, dy;
 	uint32_t br00;
 	uint16_t unwind_batch, unwind_reloc;
+	unsigned hint;
 
 	uint8_t rop = transparent ? copy_ROP[gc->alu] : ROP_S;
 
@@ -13266,7 +13267,12 @@ sna_glyph_blt(DrawablePtr drawable, GCPtr gc,
 		return false;
 	}
 
-	bo = sna_drawable_use_bo(drawable, PREFER_GPU, &clip->extents, &damage);
+	if (!transparent && clip->data == NULL)
+		hint = PREFER_GPU | IGNORE_CPU;
+	else
+		hint = PREFER_GPU;
+
+	bo = sna_drawable_use_bo(drawable, hint, &clip->extents, &damage);
 	if (bo == NULL)
 		return false;
 
@@ -13812,8 +13818,7 @@ fallback:
 
 		if (!sna_gc_move_to_cpu(gc, drawable, &region))
 			goto out;
-		if (!sna_drawable_move_region_to_cpu(drawable, &region,
-						     MOVE_READ | MOVE_WRITE))
+		if (!sna_drawable_move_region_to_cpu(drawable, &region, MOVE_WRITE))
 			goto out_gc;
 
 		DBG(("%s: fallback -- fbImageGlyphBlt\n", __FUNCTION__));
@@ -13895,8 +13900,7 @@ fallback:
 
 		if (!sna_gc_move_to_cpu(gc, drawable, &region))
 			goto out;
-		if (!sna_drawable_move_region_to_cpu(drawable, &region,
-						     MOVE_READ | MOVE_WRITE))
+		if (!sna_drawable_move_region_to_cpu(drawable, &region, MOVE_WRITE))
 			goto out_gc;
 
 		DBG(("%s: fallback -- fbImageGlyphBlt\n", __FUNCTION__));
@@ -13928,6 +13932,9 @@ sna_reversed_glyph_blt(DrawablePtr drawable, GCPtr gc,
 	int16_t dx, dy;
 	uint8_t rop = transparent ? copy_ROP[gc->alu] : ROP_S;
 	uint16_t unwind_batch, unwind_reloc;
+
+	DBG(("%s: pixmap=%ld, bo=%d, damage=%p, fg=%08x, bg=%08x\n",
+	     __FUNCTION__, pixmap->drawable.serialNumber, bo->handle, damage, fg, bg));
 
 	if (bo->tiling == I915_TILING_Y) {
 		DBG(("%s: converting bo from Y-tiling\n", __FUNCTION__));
@@ -14151,6 +14158,7 @@ sna_image_glyph(DrawablePtr drawable, GCPtr gc,
 	RegionRec region;
 	struct sna_damage **damage;
 	struct kgem_bo *bo;
+	unsigned hint;
 
 	if (n == 0)
 		return;
@@ -14199,7 +14207,11 @@ sna_image_glyph(DrawablePtr drawable, GCPtr gc,
 	if (sna_font_too_large(gc->font))
 		goto fallback;
 
-	if ((bo = sna_drawable_use_bo(drawable, PREFER_GPU,
+	if (region.data == NULL)
+		hint = IGNORE_CPU | PREFER_GPU;
+	else
+		hint = PREFER_GPU;
+	if ((bo = sna_drawable_use_bo(drawable, hint,
 				      &region.extents, &damage)) &&
 	    sna_reversed_glyph_blt(drawable, gc, x, y, n, info, base,
 				   bo, damage, &region,
@@ -14210,8 +14222,7 @@ fallback:
 	DBG(("%s: fallback\n", __FUNCTION__));
 	if (!sna_gc_move_to_cpu(gc, drawable, &region))
 		goto out;
-	if (!sna_drawable_move_region_to_cpu(drawable, &region,
-					     MOVE_READ | MOVE_WRITE))
+	if (!sna_drawable_move_region_to_cpu(drawable, &region, MOVE_WRITE))
 		goto out_gc;
 
 	DBG(("%s: fallback -- fbImageGlyphBlt\n", __FUNCTION__));
