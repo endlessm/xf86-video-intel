@@ -5133,6 +5133,11 @@ sna_copy_boxes__inplace(struct sna *sna, RegionPtr region, int alu,
 					    box->x2 - box->x1, box->y2 - box->y1);
 			box++;
 		} while (--n);
+
+		if (!src_priv->shm) {
+			src_pixmap->devPrivate.ptr = NULL;
+			src_priv->mapped = false;
+		}
 	} else {
 		DBG(("%s: copy from a linear CPU map\n", __FUNCTION__));
 		do {
@@ -5145,13 +5150,13 @@ sna_copy_boxes__inplace(struct sna *sna, RegionPtr region, int alu,
 				   box->x2 - box->x1, box->y2 - box->y1);
 			box++;
 		} while (--n);
-	}
 
-	if (!src_priv->shm) {
-		src_pixmap->devPrivate.ptr = src;
-		src_pixmap->devKind = src_priv->gpu_bo->pitch;
-		src_priv->mapped = true;
-		src_priv->cpu = true;
+		if (!src_priv->shm) {
+			src_pixmap->devPrivate.ptr = src;
+			src_pixmap->devKind = src_priv->gpu_bo->pitch;
+			src_priv->mapped = true;
+			src_priv->cpu = true;
+		}
 	}
 
 	return true;
@@ -14603,10 +14608,10 @@ static int sna_create_gc(GCPtr gc)
 }
 
 static bool
-sna_get_image_blt(PixmapPtr pixmap,
-		  RegionPtr region,
-		  char *dst,
-		  unsigned flags)
+sna_get_image__blt(PixmapPtr pixmap,
+		   RegionPtr region,
+		   char *dst,
+		   unsigned flags)
 {
 	struct sna_pixmap *priv = sna_pixmap(pixmap);
 	struct sna *sna = to_sna_from_pixmap(pixmap);
@@ -14697,10 +14702,10 @@ sna_get_image_blt(PixmapPtr pixmap,
 }
 
 static bool
-sna_get_image_inplace(PixmapPtr pixmap,
-		      RegionPtr region,
-		      char *dst,
-		      unsigned flags)
+sna_get_image__inplace(PixmapPtr pixmap,
+		       RegionPtr region,
+		       char *dst,
+		       unsigned flags)
 {
 	struct sna_pixmap *priv = sna_pixmap(pixmap);
 	struct sna *sna = to_sna_from_pixmap(pixmap);
@@ -14751,6 +14756,11 @@ sna_get_image_inplace(PixmapPtr pixmap,
 				    0, 0,
 				    region->extents.x2 - region->extents.x1,
 				    region->extents.y2 - region->extents.y1);
+		if (!priv->shm) {
+			pixmap->devPrivate.ptr = NULL;
+			priv->mapped = false;
+			priv->cpu = false;
+		}
 	} else {
 		DBG(("%s: download through a linear CPU map\n", __FUNCTION__));
 		memcpy_blt(src, dst,
@@ -14762,13 +14772,12 @@ sna_get_image_inplace(PixmapPtr pixmap,
 			   0, 0,
 			   region->extents.x2 - region->extents.x1,
 			   region->extents.y2 - region->extents.y1);
-	}
-
-	if (!priv->shm) {
-		pixmap->devPrivate.ptr = src;
-		pixmap->devKind = priv->gpu_bo->pitch;
-		priv->mapped = true;
-		priv->cpu = true;
+		if (!priv->shm) {
+			pixmap->devPrivate.ptr = src;
+			pixmap->devKind = priv->gpu_bo->pitch;
+			priv->mapped = true;
+			priv->cpu = true;
+		}
 	}
 
 	return true;
@@ -14812,10 +14821,10 @@ sna_get_image(DrawablePtr drawable,
 		region.extents.y2 = region.extents.y1 + h;
 		region.data = NULL;
 
-		if (sna_get_image_blt(pixmap, &region, dst, flags))
+		if (sna_get_image__blt(pixmap, &region, dst, flags))
 			return;
 
-		if (sna_get_image_inplace(pixmap, &region, dst, flags))
+		if (sna_get_image__inplace(pixmap, &region, dst, flags))
 			return;
 
 		if (!sna_drawable_move_region_to_cpu(&pixmap->drawable,
