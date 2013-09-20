@@ -5087,7 +5087,7 @@ sna_copy_boxes__inplace(struct sna *sna, RegionPtr region, int alu,
 		break;
 	}
 
-	if (!kgem_bo_can_map__cpu(&sna->kgem, src_priv->gpu_bo, false)) {
+	if (!kgem_bo_can_map__cpu(&sna->kgem, src_priv->gpu_bo, FORCE_FULL_SYNC)) {
 		DBG(("%s - no, cannot map src for reads into the CPU\n", __FUNCTION__));
 		return false;
 	}
@@ -14722,7 +14722,7 @@ sna_get_image_inplace(PixmapPtr pixmap,
 		break;
 	}
 
-	if (!kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, false))
+	if (!kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, FORCE_FULL_SYNC))
 		return false;
 
 	if (priv->gpu_damage == NULL ||
