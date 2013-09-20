@@ -1684,6 +1684,8 @@ static int add_display(struct context *ctx, Display *dpy)
 	display->invisible_cursor = display_load_invisible_cursor(display);
 	display->cursor = None;
 
+	display_cursor_move(display, 0, 0, 0);
+
 	return ConnectionNumber(dpy);
 }
 
