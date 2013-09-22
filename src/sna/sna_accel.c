@@ -13287,26 +13287,32 @@ sna_glyph_blt(DrawablePtr drawable, GCPtr gc,
 		}
 	}
 
-	get_drawable_deltas(drawable, pixmap, &dx, &dy);
+	if (get_drawable_deltas(drawable, pixmap, &dx, &dy))
+		RegionTranslate(clip, dx, dy);
 	_x += drawable->x + dx;
 	_y += drawable->y + dy;
 
-	RegionTranslate(clip, dx, dy);
 	extents = RegionRects(clip);
 	last_extents = extents + RegionNumRects(clip);
 
-	if (!transparent) /* emulate miImageGlyphBlt */
-		sna_blt_fill_boxes(sna, GXcopy,
-				   bo, drawable->bitsPerPixel,
-				   bg, extents, RegionNumRects(clip));
+	if (!transparent) { /* emulate miImageGlyphBlt */
+		if (!sna_blt_fill_boxes(sna, GXcopy,
+					bo, drawable->bitsPerPixel,
+					bg, extents, last_extents - extents)) {
+			RegionTranslate(clip, -dx, -dy);
+			return false;
+		}
+	}
 
 	kgem_set_mode(&sna->kgem, KGEM_BLT, bo);
 	if (!kgem_check_batch(&sna->kgem, 16) ||
 	    !kgem_check_bo_fenced(&sna->kgem, bo) ||
 	    !kgem_check_reloc(&sna->kgem, 1)) {
 		kgem_submit(&sna->kgem);
-		if (!kgem_check_bo_fenced(&sna->kgem, bo))
+		if (!kgem_check_bo_fenced(&sna->kgem, bo)) {
+			RegionTranslate(clip, -dx, -dy);
 			return false;
+		}
 		_kgem_set_mode(&sna->kgem, KGEM_BLT);
 	}
 
@@ -13753,8 +13759,8 @@ out:
 
 static void
 sna_image_text8(DrawablePtr drawable, GCPtr gc,
-	       int x, int y,
-	       int count, char *chars)
+		int x, int y,
+		int count, char *chars)
 {
 	struct sna_font *priv = gc->font->devPrivates[sna_font_key];
 	CharInfoPtr info[255];
@@ -13834,8 +13840,8 @@ out:
 
 static void
 sna_image_text16(DrawablePtr drawable, GCPtr gc,
-	       int x, int y,
-	       int count, unsigned short *chars)
+		int x, int y,
+		int count, unsigned short *chars)
 {
 	struct sna_font *priv = gc->font->devPrivates[sna_font_key];
 	CharInfoPtr info[255];
@@ -13947,26 +13953,32 @@ sna_reversed_glyph_blt(DrawablePtr drawable, GCPtr gc,
 		}
 	}
 
-	get_drawable_deltas(drawable, pixmap, &dx, &dy);
+	if (get_drawable_deltas(drawable, pixmap, &dx, &dy))
+		RegionTranslate(clip, dx, dy);
 	_x += drawable->x + dx;
 	_y += drawable->y + dy;
 
-	RegionTranslate(clip, dx, dy);
 	extents = RegionRects(clip);
 	last_extents = extents + RegionNumRects(clip);
 
-	if (!transparent) /* emulate miImageGlyphBlt */
-		sna_blt_fill_boxes(sna, GXcopy,
-				   bo, drawable->bitsPerPixel,
-				   bg, extents, RegionNumRects(clip));
+	if (!transparent) { /* emulate miImageGlyphBlt */
+		if (!sna_blt_fill_boxes(sna, GXcopy,
+					bo, drawable->bitsPerPixel,
+					bg, extents, last_extents - extents)) {
+			RegionTranslate(clip, -dx, -dy);
+			return false;
+		}
+	}
 
 	kgem_set_mode(&sna->kgem, KGEM_BLT, bo);
 	if (!kgem_check_batch(&sna->kgem, 16) ||
 	    !kgem_check_bo_fenced(&sna->kgem, bo) ||
 	    !kgem_check_reloc(&sna->kgem, 1)) {
 		kgem_submit(&sna->kgem);
-		if (!kgem_check_bo_fenced(&sna->kgem, bo))
+		if (!kgem_check_bo_fenced(&sna->kgem, bo)) {
+			RegionTranslate(clip, -dx, -dy);
 			return false;
+		}
 		_kgem_set_mode(&sna->kgem, KGEM_BLT);
 	}
 
