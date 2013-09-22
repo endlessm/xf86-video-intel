@@ -452,6 +452,7 @@ static int clone_update_modes__randr(struct clone *clone)
 	clone->src.rr_crtc = 0;
 
 	/* Create matching modes for the real output on the virtual */
+	XGrabServer(clone->src.dpy);
 	for (i = 0; i < from_info->nmode; i++) {
 		XRRModeInfo *mode, *old;
 		RRMode id;
@@ -492,6 +493,7 @@ static int clone_update_modes__randr(struct clone *clone)
 
 		XRRAddOutputMode(clone->src.dpy, clone->src.rr_output, id);
 	}
+	XUngrabServer(clone->src.dpy);
 	ret = 0;
 
 err:
@@ -525,6 +527,8 @@ static int clone_update_modes__fixed(struct clone *clone)
 	info = XRRGetOutputInfo(clone->src.dpy, res, clone->src.rr_output);
 	if (info == NULL)
 		goto err;
+
+	XGrabServer(clone->src.dpy);
 
 	/* Clear all current UserModes on the output, including any active ones */
 	if (info->crtc) {
@@ -560,12 +564,14 @@ static int clone_update_modes__fixed(struct clone *clone)
 
 	XRRAddOutputMode(clone->src.dpy, clone->src.rr_output, id);
 
+	XUngrabServer(clone->src.dpy);
 	ret = 0;
 err:
 	if (info)
 		XRRFreeOutputInfo(info);
 	if (res)
 		XRRFreeScreenResources(res);
+
 	return ret;
 }
 
@@ -577,14 +583,15 @@ static RROutput claim_virtual(struct display *display, char *output_name, int nc
 	XRROutputInfo *output;
 	XRRModeInfo mode;
 	RRMode id;
-	RROutput rr_output;
+	RROutput rr_output = 0;
 	int i;
 
 	DBG(("%s(%d)\n", __func__, nclone));
+	XGrabServer(dpy);
 
 	res = _XRRGetScreenResourcesCurrent(dpy, display->root);
 	if (res == NULL)
-		return 0;
+		goto out;
 
 	sprintf(output_name, "VIRTUAL%d", nclone);
 
@@ -606,7 +613,7 @@ static RROutput claim_virtual(struct display *display, char *output_name, int nc
 
 	DBG(("%s(%s): rr_output=%ld\n", __func__, output_name, (long)rr_output));
 	if (rr_output == 0)
-		return 0;
+		goto out;
 
 	/* Set any mode on the VirtualHead to make the Xserver allocate another */
 	memset(&mode, 0, sizeof(mode));
@@ -622,7 +629,7 @@ static RROutput claim_virtual(struct display *display, char *output_name, int nc
 	/* Force a redetection for the ddx to spot the new outputs */
 	res = XRRGetScreenResources(dpy, display->root);
 	if (res == NULL)
-		return 0;
+		goto out;
 
 	/* Some else may have interrupted us and installed that new mode! */
 	output = XRRGetOutputInfo(dpy, res, rr_output);
@@ -636,6 +643,9 @@ static RROutput claim_virtual(struct display *display, char *output_name, int nc
 
 	XRRDeleteOutputMode(dpy, rr_output, id);
 	XRRDestroyMode(dpy, id);
+
+out:
+	XUngrabServer(dpy);
 
 	return rr_output;
 }
@@ -837,7 +847,7 @@ static void context_update(struct context *ctx)
 			c = XRRGetCrtcInfo(dpy, res, o->crtc);
 		if (c) {
 			DBG(("%s-%s: (x=%d, y=%d, rotation=%d, mode=%ld) -> (x=%d, y=%d, rotation=%d, mode=%ld)\n",
-			     DisplayString(ctx->display->dpy), output->name,
+			     DisplayString(dpy), output->name,
 			     output->x, output->y, output->rotation, output->mode.id,
 			     c->x, c->y, output->rotation, c->mode));
 
@@ -855,7 +865,7 @@ static void context_update(struct context *ctx)
 			XRRFreeCrtcInfo(c);
 		} else {
 			DBG(("%s-%s: (x=%d, y=%d, rotation=%d, mode=%ld) -> off\n",
-			     DisplayString(ctx->display->dpy), output->name,
+			     DisplayString(dpy), output->name,
 			     output->x, output->y, output->rotation, output->mode.id));
 		}
 		output->rr_crtc = o->crtc;
@@ -884,7 +894,7 @@ static void context_update(struct context *ctx)
 	}
 	XRRFreeScreenResources(res);
 
-	DBG(("%s changed? %d\n", DisplayString(ctx->display->dpy), context_changed));
+	DBG(("%s changed? %d\n", DisplayString(dpy), context_changed));
 	if (!context_changed)
 		return;
 
@@ -933,6 +943,7 @@ static void context_update(struct context *ctx)
 		if (res == NULL)
 			continue;
 
+		XGrabServer(display->dpy);
 		for (clone = display->clone; clone; clone = clone->next) {
 			struct output *src = &clone->src;
 			struct output *dst = &clone->dst;
@@ -1018,6 +1029,7 @@ err:
 					 &dst->rr_output, 1);
 			dst->rr_crtc = rr_crtc;
 		}
+		XUngrabServer(display->dpy);
 
 		XRRFreeScreenResources(res);
 	}
@@ -2375,6 +2387,8 @@ static void context_cleanup(struct context *ctx)
 	if (res == NULL)
 		return;
 
+	XGrabServer(dpy);
+
 	for (i = 0; i < ctx->nclone; i++) {
 		struct clone *clone = &ctx->clones[i];
 		XRROutputInfo *output;
@@ -2407,6 +2421,7 @@ static void context_cleanup(struct context *ctx)
 		}
 	}
 
+	XUngrabServer(dpy);
 	XRRFreeScreenResources(res);
 
 	if (ctx->singleton)
