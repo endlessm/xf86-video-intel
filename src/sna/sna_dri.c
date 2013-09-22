@@ -1973,7 +1973,7 @@ sna_dri_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 
 	/* Drawable not displayed... just complete the swap */
 	pipe = -1;
-	if (sna->flags & SNA_NO_WAIT)
+	if ((sna->flags & SNA_NO_WAIT) == 0)
 		pipe = sna_dri_get_pipe(draw);
 	if (pipe == -1) {
 		DBG(("%s: off-screen, immediate update\n", __FUNCTION__));

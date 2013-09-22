@@ -579,18 +579,22 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 
 	if (!xf86ReturnOptValBool(sna->Options, OPTION_SWAPBUFFERS_WAIT, TRUE))
 		sna->flags |= SNA_NO_WAIT;
+	DBG(("%s: swapbuffer wait? %s\n", __FUNCTION__, sna->flags & SNA_NO_WAIT ? "disabled" : "enabled"));
 
 	if (!has_vsync(sna) ||
 	    !xf86ReturnOptValBool(sna->Options, OPTION_VSYNC, TRUE))
 		sna->flags |= SNA_NO_VSYNC;
+	DBG(("%s: vsync? %s\n", __FUNCTION__, sna->flags & SNA_NO_VSYNC ? "disabled" : "enabled"));
 
 	if (!has_pageflipping(sna) ||
 	    !xf86ReturnOptValBool(sna->Options, OPTION_PAGEFLIP, TRUE))
 		sna->flags |= SNA_NO_FLIP;
+	DBG(("%s: page flips? %s\n", __FUNCTION__, sna->flags & SNA_NO_FLIP ? "disabled" : "enabled"));
 
 	if ((sna->flags & (SNA_NO_VSYNC | SNA_NO_FLIP | SNA_NO_WAIT)) == 0 &&
 	    xf86ReturnOptValBool(sna->Options, OPTION_TRIPLE_BUFFER, TRUE))
 		sna->flags |= SNA_TRIPLE_BUFFER;
+	DBG(("%s: triple buffer? %s\n", __FUNCTION__, sna->flags & SNA_TRIPLE_BUFFER ? "enabled" : "disabled"));
 
 	if ((sna->flags & (SNA_NO_VSYNC | SNA_NO_FLIP)) == 0 &&
 	    xf86ReturnOptValBool(sna->Options, OPTION_TEAR_FREE, FALSE))
