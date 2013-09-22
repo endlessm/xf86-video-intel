@@ -2305,7 +2305,7 @@ static void gen3_vertex_close(struct sna *sna)
 			sna->render.vertices = sna->render.vertex_data;
 			sna->render.vertex_size = ARRAY_SIZE(sna->render.vertex_data);
 			free_bo = bo;
-		} else if (IS_CPU_MAP(bo->map)) {
+		} else if (sna->render.vertices == MAP(bo->map__cpu)) {
 			DBG(("%s: converting CPU map to GTT\n", __FUNCTION__));
 			sna->render.vertices = kgem_bo_map__gtt(&sna->kgem, bo);
 			if (sna->render.vertices == NULL) {

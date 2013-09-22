@@ -108,7 +108,7 @@ read_boxes_inplace__cpu(struct kgem *kgem,
 	assert(kgem_bo_can_map__cpu(kgem, bo, false));
 	assert(bo->tiling != I915_TILING_Y);
 
-	src = __kgem_bo_map__cpu(kgem, bo);
+	src = kgem_bo_map__cpu(kgem, bo);
 	if (src == NULL)
 		return false;
 
@@ -131,7 +131,6 @@ read_boxes_inplace__cpu(struct kgem *kgem,
 			box++;
 		} while (--n);
 	}
-	__kgem_bo_unmap__cpu(kgem, bo, src);
 
 	return true;
 }
@@ -574,7 +573,7 @@ write_boxes_inplace__tiled(struct kgem *kgem,
 
 	assert(bo->tiling == I915_TILING_X);
 
-	dst = __kgem_bo_map__cpu(kgem, bo);
+	dst = kgem_bo_map__cpu(kgem, bo);
 	if (dst == NULL)
 		return false;
 
@@ -586,7 +585,6 @@ write_boxes_inplace__tiled(struct kgem *kgem,
 				  box->x2 - box->x1, box->y2 - box->y1);
 		box++;
 	} while (--n);
-	__kgem_bo_unmap__cpu(kgem, bo, dst);
 
 	return true;
 }
