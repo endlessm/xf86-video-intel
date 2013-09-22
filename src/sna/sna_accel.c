@@ -13186,7 +13186,6 @@ struct sna_font {
 };
 #define GLYPH_INVALID (void *)1
 #define GLYPH_EMPTY (void *)2
-#define GLYPH_CLEAR (void *)3
 
 static Bool
 sna_realize_font(ScreenPtr screen, FontPtr font)
@@ -13362,9 +13361,6 @@ sna_glyph_blt(DrawablePtr drawable, GCPtr gc,
 			if (c->bits == GLYPH_EMPTY)
 				goto skip;
 
-			if (!transparent && c->bits == GLYPH_CLEAR)
-				goto skip;
-
 			len = (w8 * h + 7) >> 3 << 1;
 			x1 = x + c->metrics.leftSideBearing;
 			y1 = y - c->metrics.ascent;
@@ -13376,7 +13372,6 @@ sna_glyph_blt(DrawablePtr drawable, GCPtr gc,
 				goto skip;
 			if (x1 + w <= extents->x1 || y1 + h <= extents->y1)
 				goto skip;
-
 
 			if (!kgem_check_batch(&sna->kgem, 3+len)) {
 				_kgem_submit(&sna->kgem);
@@ -13417,9 +13412,7 @@ sna_glyph_blt(DrawablePtr drawable, GCPtr gc,
 			b[0] = br00 | (1 + len);
 			b[1] = (uint16_t)y1 << 16 | (uint16_t)x1;
 			b[2] = (uint16_t)(y1+h) << 16 | (uint16_t)(x1+w);
-			if (c->bits == GLYPH_CLEAR) {
-				memset(b+3, 0, len*4);
-			} else {
+			{
 				uint64_t *src = (uint64_t *)c->bits;
 				uint64_t *dst = (uint64_t *)(b + 3);
 				do  {
@@ -13544,7 +13537,7 @@ static bool sna_set_glyph(CharInfoPtr in, CharInfoPtr out)
 
 	if (clear) {
 		free(out->bits);
-		out->bits = GLYPH_CLEAR;
+		out->bits = GLYPH_EMPTY;
 	}
 
 	return true;
@@ -14043,7 +14036,7 @@ sna_reversed_glyph_blt(DrawablePtr drawable, GCPtr gc,
 				goto skip;
 			}
 
-			if (!transparent) {
+			{
 				int clear = 1, j = h;
 				uint8_t *g = glyph;
 
