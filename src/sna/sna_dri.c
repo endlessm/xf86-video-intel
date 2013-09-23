@@ -1468,7 +1468,6 @@ sna_dri_immediate_blit(struct sna *sna,
 static void
 sna_dri_flip_get_back(struct sna *sna, struct sna_dri_frame_event *info)
 {
-	struct dri_bo *c;
 	struct kgem_bo *bo;
 	uint32_t name;
 
@@ -1489,13 +1488,15 @@ sna_dri_flip_get_back(struct sna *sna, struct sna_dri_frame_event *info)
 
 	bo = NULL;
 	if (!list_is_empty(&info->cache)) {
-		c = list_first_entry(&info->cache, struct dri_bo, link);
-		bo = c->bo;
-		name = c->name;
-		DBG(("%s: reuse cache handle=%d,name=%d\n", __FUNCTION__,
-		     bo->handle, name));
-		list_move_tail(&c->link, &info->cache);
-		c->bo = NULL;
+		struct dri_bo *c = list_first_entry(&info->cache, struct dri_bo, link);
+		if (c->bo) {
+			bo = c->bo;
+			name = c->name;
+			DBG(("%s: reuse cache handle=%d,name=%d\n", __FUNCTION__,
+			     bo->handle, name));
+			list_move_tail(&c->link, &info->cache);
+			c->bo = NULL;
+		}
 	}
 	if (bo == NULL) {
 		DBG(("%s: allocating new backbuffer\n", __FUNCTION__));
