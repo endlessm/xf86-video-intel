@@ -93,6 +93,12 @@ static inline struct kgem_bo *ref(struct kgem_bo *bo)
 	return bo;
 }
 
+static inline void unref(struct kgem_bo *bo)
+{
+	assert(bo->refcnt > 1);
+	bo->refcnt--;
+}
+
 /* Prefer to enable TILING_Y if this buffer will never be a
  * candidate for pageflipping
  */
@@ -854,6 +860,12 @@ static inline int sna_wait_vblank(struct sna *sna, drmVBlank *vbl)
 
 #if DRI2INFOREC_VERSION >= 4
 
+struct dri_bo {
+	struct list link;
+	struct kgem_bo *bo;
+	uint32_t name;
+};
+
 struct sna_dri_frame_event {
 	DrawablePtr draw;
 	ClientPtr client;
@@ -874,14 +886,15 @@ struct sna_dri_frame_event {
 	unsigned int fe_tv_sec;
 	unsigned int fe_tv_usec;
 
-	struct dri_bo {
+	struct {
 		struct kgem_bo *bo;
 		uint32_t name;
-	} scanout[2], cache;
+	} scanout[2];
+
+	struct list cache;
 
 	int mode;
 };
-
 
 static inline struct sna_dri_frame_event *
 to_frame_event(uintptr_t  data)
@@ -1000,8 +1013,19 @@ sna_dri_frame_event_info_free(struct sna *sna,
 		kgem_bo_destroy(&sna->kgem, info->scanout[0].bo);
 	}
 
-	if (info->cache.bo)
-		kgem_bo_destroy(&sna->kgem, info->cache.bo);
+	while (!list_is_empty(&info->cache)) {
+		struct dri_bo *c;
+
+		c = list_first_entry(&info->cache, struct dri_bo, link);
+		list_del(&c->link);
+
+		if (c->bo) {
+			assert(c->bo->refcnt == 1);
+			kgem_bo_destroy(&sna->kgem, c->bo);
+		}
+
+		free(c);
+	}
 
 	if (info->bo)
 		kgem_bo_destroy(&sna->kgem, info->bo);
@@ -1439,33 +1463,39 @@ sna_dri_immediate_blit(struct sna *sna,
 	return ret;
 }
 
-
 static void
 sna_dri_flip_get_back(struct sna *sna, struct sna_dri_frame_event *info)
 {
+	struct dri_bo *c;
 	struct kgem_bo *bo;
 	uint32_t name;
 
-	DBG(("%s: scanout=(%d, %d), back=%d, cache=%d\n",
+	DBG(("%s: scanout=(%d, %d), back=%d, cache?=%d\n",
 	     __FUNCTION__,
 	     info->scanout[0].bo ? info->scanout[0].bo->handle : 0,
 	     info->scanout[1].bo ? info->scanout[1].bo->handle : 0,
 	     get_private(info->back)->bo->handle,
-	     info->cache.bo ? info->cache.bo->handle : 0));
+	     !list_is_empty(&info->cache)));
 
 	bo = get_private(info->back)->bo;
 	assert(bo->refcnt);
 	assert(bo->flush);
-	if (!(bo == info->scanout[0].bo || bo == info->scanout[1].bo))
+	if (!(bo == info->scanout[0].bo || bo == info->scanout[1].bo)) {
+		DBG(("%s: reuse unattached back\n", __FUNCTION__));
 		return;
+	}
 
-	bo = info->cache.bo;
-	name = info->cache.name;
-	if (bo == NULL ||
-	    bo == info->scanout[0].bo ||
-	    bo == info->scanout[1].bo) {
-		struct kgem_bo *old_bo = bo;
-
+	bo = NULL;
+	if (!list_is_empty(&info->cache)) {
+		c = list_first_entry(&info->cache, struct dri_bo, link);
+		bo = c->bo;
+		name = c->name;
+		DBG(("%s: reuse cache handle=%d,name=%d\n", __FUNCTION__,
+		     bo->handle, name));
+		list_move_tail(&c->link, &info->cache);
+		c->bo = NULL;
+	}
+	if (bo == NULL) {
 		DBG(("%s: allocating new backbuffer\n", __FUNCTION__));
 		bo = kgem_create_2d(&sna->kgem,
 				    info->draw->width,
@@ -1481,25 +1511,19 @@ sna_dri_flip_get_back(struct sna *sna, struct sna_dri_frame_event *info)
 			kgem_bo_destroy(&sna->kgem, bo);
 			return;
 		}
-
-		if (old_bo) {
-			DBG(("%s: discarding old backbuffer\n", __FUNCTION__));
-			kgem_bo_destroy(&sna->kgem, old_bo);
-		}
 	}
 
-	info->cache.bo = get_private(info->back)->bo;
-	info->cache.name = info->back->name;
-	assert(info->cache.bo->refcnt);
-	assert(info->cache.name);
+	assert(!(bo == info->scanout[0].bo || bo == info->scanout[1].bo));
+	assert(name);
 
+	unref(get_private(info->back)->bo);
 	get_private(info->back)->bo = bo;
 	info->back->name = name;
 
 	assert(get_private(info->back)->bo != info->scanout[0].bo);
 	assert(get_private(info->back)->bo != info->scanout[1].bo);
 
-	assert(bo->refcnt);
+	assert(bo->refcnt == 1);
 	assert(bo->flush);
 }
 
@@ -1587,14 +1611,40 @@ static void sna_dri_flip_event(struct sna *sna,
 	     flip->fe_tv_usec,
 	     flip->type));
 
-	if (flip->cache.bo == NULL) {
-		flip->cache = flip->scanout[1];
-		flip->scanout[1].bo = NULL;
-	}
 	if (flip->scanout[1].bo) {
-		kgem_bo_destroy(&sna->kgem, flip->scanout[1].bo);
+		struct dri_bo *c = NULL;
+
+		DBG(("%s: retiring previous scanout handle=%d,name=%d\n",
+		     __FUNCTION__,
+		     flip->scanout[1].bo->handle,
+		     flip->scanout[1].name));
+
+		if (flip->scanout[1].bo != flip->scanout[0].bo) {
+			assert(flip->scanout[1].bo->refcnt == 1);
+
+			if (!list_is_empty(&flip->cache))
+				c = list_last_entry(&flip->cache, struct dri_bo, link);
+			if (c) {
+				if (c->bo == NULL)
+					_list_del(&c->link);
+				else
+					c = NULL;
+			}
+			if (c == NULL)
+				c = malloc(sizeof(*c));
+			if (c != NULL) {
+				c->bo = flip->scanout[1].bo;
+				c->name = flip->scanout[1].name;
+				list_add(&c->link, &flip->cache);
+			}
+		}
+
+		if (c == NULL)
+			kgem_bo_destroy(&sna->kgem, flip->scanout[1].bo);
+
 		flip->scanout[1].bo = NULL;
 	}
+
 	if (sna->dri.flip_pending == flip)
 		sna->dri.flip_pending = NULL;
 
@@ -1771,6 +1821,7 @@ sna_dri_schedule_flip(ClientPtr client, DrawablePtr draw,
 		if (info == NULL)
 			return false;
 
+		list_init(&info->cache);
 		info->type = use_triple_buffer(sna, client);
 		info->draw = draw;
 		info->client = client;
@@ -1822,6 +1873,7 @@ out:
 	if (info == NULL)
 		return false;
 
+	list_init(&info->cache);
 	info->draw = draw;
 	info->client = client;
 	info->event_complete = func;
@@ -1993,6 +2045,7 @@ sna_dri_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 	if (!info)
 		goto blit;
 
+	list_init(&info->cache);
 	info->draw = draw;
 	info->client = client;
 	info->event_complete = func;
@@ -2202,6 +2255,7 @@ sna_dri_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc,
 	if (!info)
 		goto out_complete;
 
+	list_init(&info->cache);
 	info->draw = draw;
 	info->client = client;
 	info->type = DRI2_WAITMSC;
