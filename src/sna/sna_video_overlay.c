@@ -60,11 +60,12 @@ static XvFormatRec Formats[] = { {15}, {16}, {24} };
 
 static const XvAttributeRec Attributes[] = {
 	{XvSettable | XvGettable, 0, (1 << 24) - 1, (char *)"XV_COLORKEY"},
+	{XvSettable | XvGettable, 0, 1, (char *)"XV_ALWAYS_ON_TOP"},
 	{XvSettable | XvGettable, -128, 127, (char *)"XV_BRIGHTNESS"},
 	{XvSettable | XvGettable, 0, 255, (char *)"XV_CONTRAST"},
 	{XvSettable | XvGettable, 0, 1023, (char *)"XV_SATURATION"},
 	{XvSettable | XvGettable, -1, 1, (char *)"XV_PIPE"},
-#define NUM_ATTRIBUTES 5
+#define NUM_ATTRIBUTES 6
 
 	{XvSettable | XvGettable, 0, 0xffffff, (char *)"XV_GAMMA0"},
 	{XvSettable | XvGettable, 0, 0xffffff, (char *)"XV_GAMMA1"},

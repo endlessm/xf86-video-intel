@@ -54,6 +54,7 @@ static XvFormatRec formats[] = { {15}, {16}, {24} };
 static const XvImageRec images[] = { XVIMAGE_YUY2, XVIMAGE_UYVY, XVMC_RGB888, XVMC_RGB565 };
 static const XvAttributeRec attribs[] = {
 	{ XvSettable | XvGettable, 0, 0xffffff, (char *)"XV_COLORKEY" },
+	{ XvSettable | XvGettable, 0, 1, (char *)"XV_ALWAYS_ON_TOP" },
 };
 
 static int sna_video_sprite_stop(ClientPtr client,
