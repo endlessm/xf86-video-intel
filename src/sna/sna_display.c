@@ -3083,6 +3083,20 @@ static void output_set_gamma(xf86OutputPtr output, xf86CrtcPtr crtc) { }
 static void crtc_init_gamma(xf86CrtcPtr crtc) { }
 #endif
 
+static const char *preferred_mode(xf86OutputPtr output)
+{
+	char *mode;
+
+	mode = xf86GetOptValString(output->options, OPTION_PREFERRED_MODE);
+	if (mode)
+		return mode;
+
+	if (output->scrn->display->modes && *output->scrn->display->modes)
+		return *output->scrn->display->modes;
+
+	return NULL;
+}
+
 static bool sna_probe_initial_configuration(struct sna *sna)
 {
 	ScrnInfoPtr scrn = sna->scrn;
@@ -3107,24 +3121,12 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 	/* First scan through all outputs and look for user overrides */
 	for (i = 0; i < config->num_output; i++) {
 		xf86OutputPtr output = config->output[i];
-		DisplayModePtr mode;
 
 		for (j = 0; j < ARRAY_SIZE(user_overrides); j++) {
 			if (xf86GetOptValString(output->options, user_overrides[j])) {
 				DBG(("%s: user placement [%d] for %s\n",
 				     __FUNCTION__,
 				     user_overrides[j],
-				     output->name));
-				return false;
-			}
-		}
-
-		for (mode = output->probed_modes;
-		     mode && mode->next != output->probed_modes;
-		     mode = mode->next) {
-			if (mode->type & M_T_USERPREF) {
-				DBG(("%s: user mode for %s\n",
-				     __FUNCTION__,
 				     output->name));
 				return false;
 			}
@@ -3189,6 +3191,11 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 
 			if (crtc->desiredMode.status == MODE_OK) {
 				DisplayModePtr M;
+				const char *pref;
+
+				pref = preferred_mode(output);
+				if (pref && strcmp(pref, crtc->desiredMode.name))
+					return false;
 
 				xf86DrvMsg(scrn->scrnIndex, X_PROBED,
 						"Output %s using initial mode %s on pipe %d\n",
@@ -3199,8 +3206,7 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 				output->crtc = crtc;
 				crtc->enabled = TRUE;
 
-				if (output->mm_width == 0 ||
-						output->mm_height == 0) {
+				if (output->mm_width == 0 || output->mm_height == 0) {
 					output->mm_height = (crtc->desiredMode.VDisplay * 254) / (10*DEFAULT_DPI);
 					output->mm_width = (crtc->desiredMode.HDisplay * 254) / (10*DEFAULT_DPI);
 				}
