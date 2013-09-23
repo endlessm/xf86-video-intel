@@ -479,6 +479,7 @@ damage_all:
 		sna_damage_add(&priv->gpu_damage, region);
 	}
 	priv->cpu = false;
+	priv->clear = false;
 }
 
 static void set_bo(PixmapPtr pixmap, struct kgem_bo *bo)
@@ -514,6 +515,7 @@ static void set_bo(PixmapPtr pixmap, struct kgem_bo *bo)
 	sna_damage_destroy(&priv->cpu_damage);
 	list_del(&priv->flush_list);
 	priv->cpu = false;
+	priv->clear = false;
 
 	assert(bo->refcnt);
 	if (priv->gpu_bo != bo) {
