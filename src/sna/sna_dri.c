@@ -1757,6 +1757,7 @@ sna_dri_schedule_flip(ClientPtr client, DrawablePtr draw,
 				     __FUNCTION__));
 				sna_dri_exchange_buffers(draw, front, back);
 				info->mode = 2;
+				current_msc = *target_msc;
 				goto new_back;
 			} else {
 				DBG(("%s: chaining flip\n", __FUNCTION__));
@@ -2014,7 +2015,8 @@ sna_dri_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 		bool sync = current_msc < *target_msc;
 		if (!sna_dri_immediate_blit(sna, info, sync, true))
 			sna_dri_frame_event_info_free(sna, draw, info);
-		*target_msc = current_msc + sync;
+		if (*target_msc)
+			*target_msc = current_msc + sync;
 		return TRUE;
 	}
 
