@@ -5063,7 +5063,7 @@ retry:
 	VG(VALGRIND_MAKE_MEM_DEFINED(mmap_arg.addr_ptr, bytes(bo)));
 
 	DBG(("%s: caching CPU vma for %d\n", __FUNCTION__, bo->handle));
-	return bo->map__cpu = (void *)(mmap_arg.addr_ptr);
+	return bo->map__cpu = (void *)(uintptr_t)mmap_arg.addr_ptr;
 }
 
 uint32_t kgem_bo_flink(struct kgem *kgem, struct kgem_bo *bo)
