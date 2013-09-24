@@ -4051,20 +4051,26 @@ try_upload_blt(PixmapPtr pixmap, RegionRec *region,
 	if (priv == NULL)
 		return false;
 
-	if (DAMAGE_IS_ALL(priv->cpu_damage) || priv->gpu_damage == NULL)
+	if (DAMAGE_IS_ALL(priv->cpu_damage) || priv->gpu_damage == NULL) {
+		DBG(("%s: no, no gpu damage\n", __FUNCTION__));
 		return false;
+	}
 
 	assert(priv->gpu_bo);
 	assert(priv->gpu_bo->proxy == NULL);
 
-	if (priv->cow || !__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo))
+	if (priv->cow || !__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo)) {
+		DBG(("%s: no, target is idle\n", __FUNCTION__));
 		return false;
+	}
 
 	if (priv->cpu_damage &&
 	    sna_damage_contains_box__no_reduce(priv->cpu_damage,
 					       &region->extents) &&
-	    !box_inplace(pixmap, &region->extents))
+	    !box_inplace(pixmap, &region->extents)) {
+		DBG(("%s: no, damage on CPU and too small\n", __FUNCTION__));
 		return false;
+	}
 
 	src_bo = kgem_create_map(&sna->kgem, bits, stride * h, true);
 	if (src_bo == NULL)
@@ -4088,8 +4094,10 @@ try_upload_blt(PixmapPtr pixmap, RegionRec *region,
 	assert(src_bo->rq == NULL);
 	kgem_bo_destroy(&sna->kgem, src_bo);
 
-	if (!ok)
+	if (!ok) {
+		DBG(("%s: copy failed!\n", __FUNCTION__));
 		return false;
+	}
 
 	if (!DAMAGE_IS_ALL(priv->gpu_damage)) {
 		assert(!priv->clear);
@@ -4105,9 +4113,12 @@ try_upload_blt(PixmapPtr pixmap, RegionRec *region,
 					      pixmap->drawable.width,
 					      pixmap->drawable.height);
 		}
-		if (DAMAGE_IS_ALL(priv->gpu_damage)) {
-			list_del(&priv->flush_list);
+		if (DAMAGE_IS_ALL(priv->gpu_damage))
 			sna_damage_destroy(&priv->cpu_damage);
+		else
+			sna_damage_subtract(&priv->cpu_damage, region);
+		if (priv->cpu_damage == NULL) {
+			list_del(&priv->flush_list);
 			sna_pixmap_free_cpu(sna, priv, priv->cpu);
 		}
 	}
@@ -4213,12 +4224,15 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 		} else {
 			sna_damage_add(&priv->gpu_damage, region);
 			sna_damage_reduce_all(&priv->gpu_damage,
-					pixmap->drawable.width,
-					pixmap->drawable.height);
+					      pixmap->drawable.width,
+					      pixmap->drawable.height);
 		}
-		if (DAMAGE_IS_ALL(priv->gpu_damage)) {
-			list_del(&priv->flush_list);
+		if (DAMAGE_IS_ALL(priv->gpu_damage))
 			sna_damage_destroy(&priv->cpu_damage);
+		else
+			sna_damage_subtract(&priv->cpu_damage, region);
+		if (priv->cpu_damage == NULL) {
+			list_del(&priv->flush_list);
 			sna_pixmap_free_cpu(sna, priv, priv->cpu);
 		}
 	}
