@@ -3195,6 +3195,11 @@ sna_drawable_use_bo(DrawablePtr drawable, unsigned flags, const BoxRec *box,
 	if (priv->cpu && (flags & (FORCE_GPU | IGNORE_CPU)) == 0)
 		flags &= ~PREFER_GPU;
 
+	if ((flags & (PREFER_GPU | IGNORE_CPU)) == IGNORE_CPU) {
+		if (box_inplace(pixmap, box))
+			flags |= PREFER_GPU;
+	}
+
 	DBG(("%s: flush=%d, shm=%d, cpu=%d => flags=%x\n",
 	     __FUNCTION__, priv->flush, priv->shm, priv->cpu, flags));
 
@@ -4690,6 +4695,9 @@ source_contains_region(struct sna_damage *damage,
 	if (DAMAGE_IS_ALL(damage))
 		return true;
 
+	if (damage == NULL)
+		return false;
+
 	box = region->extents;
 	box.x1 += dx;
 	box.x2 += dx;
@@ -4954,39 +4962,46 @@ sna_pixmap_is_gpu(PixmapPtr pixmap)
 }
 
 static int
-source_prefer_gpu(struct sna *sna, struct sna_pixmap *priv,
-		  RegionRec *region, int16_t dx, int16_t dy)
+copy_prefer_gpu(struct sna *sna,
+		struct sna_pixmap *dst_priv,
+		struct sna_pixmap *src_priv,
+		RegionRec *region,
+		int16_t dx, int16_t dy)
 {
-	if (priv == NULL) {
+	assert(dst_priv);
+
+	if (wedged(sna) && !dst_priv->pinned)
+		return 0;
+
+	if (src_priv == NULL) {
 		DBG(("%s: source unattached, use cpu\n", __FUNCTION__));
 		return 0;
 	}
 
-	if (priv->clear) {
+	if (src_priv->clear) {
 		DBG(("%s: source is clear, don't force use of GPU\n", __FUNCTION__));
 		return 0;
 	}
 
-	if (priv->gpu_damage &&
-	    (priv->cpu_damage == NULL ||
-	     !source_contains_region(priv->cpu_damage, region, dx, dy))) {
+	if (src_priv->gpu_damage &&
+	    !source_contains_region(src_priv->cpu_damage, region, dx, dy)) {
 		DBG(("%s: source has gpu damage, force gpu? %d\n",
-		     __FUNCTION__, priv->cpu_damage == NULL));
-		assert(priv->gpu_bo);
-		return priv->cpu_damage ? PREFER_GPU : PREFER_GPU | FORCE_GPU;
+		     __FUNCTION__, src_priv->cpu_damage == NULL));
+		assert(src_priv->gpu_bo);
+		return src_priv->cpu_damage ? PREFER_GPU : PREFER_GPU | FORCE_GPU;
 	}
 
-	if (priv->cpu_bo && kgem_bo_is_busy(priv->cpu_bo)) {
+	if (src_priv->cpu_bo && kgem_bo_is_busy(src_priv->cpu_bo)) {
 		DBG(("%s: source has busy CPU bo, force gpu\n", __FUNCTION__));
 		return PREFER_GPU | FORCE_GPU;
 	}
 
-	if (DAMAGE_IS_ALL(priv->cpu_damage))
-		return priv->cpu_bo && kgem_is_idle(&sna->kgem);
+	if (source_contains_region(src_priv->cpu_damage, region, dx, dy))
+		return src_priv->cpu_bo && kgem_is_idle(&sna->kgem);
 
 	DBG(("%s: source has GPU bo? %d\n",
-	     __FUNCTION__, priv->gpu_bo != NULL));
-	return priv->gpu_bo != NULL;
+	     __FUNCTION__, src_priv->gpu_bo != NULL));
+	return src_priv->gpu_bo != NULL;
 }
 
 static bool use_shm_bo(struct sna *sna,
@@ -5161,6 +5176,22 @@ sna_copy_boxes__inplace(struct sna *sna, RegionPtr region, int alu,
 	return true;
 }
 
+static void discard_cpu_damage(struct sna *sna, struct sna_pixmap *priv)
+{
+	DBG(("%s: discarding existing CPU damage\n", __FUNCTION__));
+	if (priv->gpu_bo && priv->gpu_bo->proxy) {
+		assert(priv->gpu_damage == NULL);
+		assert(!priv->pinned);
+		kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
+		priv->gpu_bo = NULL;
+	}
+	sna_damage_destroy(&priv->cpu_damage);
+	list_del(&priv->flush_list);
+
+	sna_pixmap_free_cpu(sna, priv, priv->cpu);
+	priv->cpu = false;
+}
+
 static void
 sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	       RegionPtr region, int dx, int dy,
@@ -5173,7 +5204,6 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	struct sna *sna = to_sna_from_pixmap(src_pixmap);
 	struct sna_damage **damage;
 	struct kgem_bo *bo;
-	unsigned hint;
 	int16_t src_dx, src_dy;
 	int16_t dst_dx, dst_dy;
 	BoxPtr box = RegionRects(region);
@@ -5233,26 +5263,6 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	if (dst_priv == NULL)
 		goto fallback;
 
-	hint = source_prefer_gpu(sna, src_priv, region, src_dx, src_dy) ?:
-		region_inplace(sna, dst_pixmap, region,
-			       dst_priv, alu_overwrites(alu) ? MOVE_WRITE : MOVE_READ | MOVE_WRITE);
-	if (dst_priv->cpu_damage && alu_overwrites(alu)) {
-		DBG(("%s: overwritting CPU damage\n", __FUNCTION__));
-		if (region_subsumes_damage(region, dst_priv->cpu_damage)) {
-			DBG(("%s: discarding existing CPU damage\n", __FUNCTION__));
-			if (dst_priv->gpu_bo && dst_priv->gpu_bo->proxy) {
-				assert(!dst_priv->pinned);
-				kgem_bo_destroy(&sna->kgem, dst_priv->gpu_bo);
-				dst_priv->gpu_bo = NULL;
-			}
-			sna_damage_destroy(&dst_priv->cpu_damage);
-			list_del(&dst_priv->flush_list);
-			dst_priv->cpu = false;
-		}
-	}
-	if (region->data == NULL && alu_overwrites(alu))
-		hint |= IGNORE_CPU;
-
 	/* XXX hack for firefox -- subsequent uses of src will be corrupt! */
 	if (src_priv &&
 	    COW(src_priv->cow) == COW(dst_priv->cow) &&
@@ -5262,9 +5272,24 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 		assert(src_priv->cpu_damage == NULL);
 		bo = dst_priv->gpu_bo;
 		damage = NULL;
-	} else
+	} else {
+		unsigned hint = copy_prefer_gpu(sna, dst_priv, src_priv, region, src_dx, src_dy);
+		if (replaces) {
+			discard_cpu_damage(sna, dst_priv);
+			hint |= REPLACES | IGNORE_CPU;
+		} else if (alu_overwrites(alu)) {
+			if (region->data == NULL)
+				hint |= IGNORE_CPU;
+			if (dst_priv->cpu_damage &&
+			    region_subsumes_damage(region,
+						   dst_priv->cpu_damage)) {
+				discard_cpu_damage(sna, dst_priv);
+				hint |= IGNORE_CPU;
+			}
+		}
 		bo = sna_drawable_use_bo(&dst_pixmap->drawable, hint,
 					 &region->extents, &damage);
+	}
 	if (bo) {
 		if (src_priv && src_priv->clear) {
 			DBG(("%s: applying src clear [%08x] to dst\n",
@@ -12909,22 +12934,18 @@ sna_poly_fill_rect(DrawablePtr draw, GCPtr gc, int n, xRectangle *rect)
 			RegionTranslate(&region, dx, dy);
 		}
 
-		if (priv->cpu_damage && (flags & 2) == 0) {
-			if (region_subsumes_damage(&region, priv->cpu_damage)) {
-				DBG(("%s: discarding existing CPU damage\n", __FUNCTION__));
-				if (priv->gpu_bo && priv->gpu_bo->proxy) {
-					assert(priv->gpu_damage == NULL);
-					assert(!priv->pinned);
-					kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
-					priv->gpu_bo = NULL;
-				}
-				sna_damage_destroy(&priv->cpu_damage);
-				list_del(&priv->flush_list);
+		if (region_subsumes_drawable(&region, &pixmap->drawable)) {
+			discard_cpu_damage(sna, priv);
+			hint |= IGNORE_CPU | REPLACES;
+		} else {
+			if ((flags & 2) == 0)
+				hint |= IGNORE_CPU;
+			if (priv->cpu_damage &&
+			    region_subsumes_damage(&region, priv->cpu_damage)) {
+				discard_cpu_damage(sna, priv);
+				hint |= IGNORE_CPU;
 			}
-			hint |= IGNORE_CPU;
 		}
-		if (region_subsumes_drawable(&region, &pixmap->drawable))
-			hint |= REPLACES;
 		if (priv->cpu_damage == NULL) {
 			if (priv->gpu_bo &&
 			    (hint & REPLACES || box_inplace(pixmap, &region.extents))) {
