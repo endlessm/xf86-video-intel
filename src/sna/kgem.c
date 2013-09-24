@@ -4571,8 +4571,10 @@ bool kgem_check_bo(struct kgem *kgem, ...)
 		if (bo->exec)
 			continue;
 
-		if (needs_semaphore(kgem, bo))
+		if (needs_semaphore(kgem, bo)) {
+			DBG(("%s: flushing for required semaphore\n", __FUNCTION__));
 			return false;
+		}
 
 		num_pages += num_pages(bo);
 		num_exec++;
@@ -4587,8 +4589,10 @@ bool kgem_check_bo(struct kgem *kgem, ...)
 	if (!num_pages)
 		return true;
 
-	if (kgem_flush(kgem, flush))
+	if (kgem_flush(kgem, flush)) {
+		DBG(("%s: opportunistic flushing\n", __FUNCTION__));
 		return false;
+	}
 
 	if (kgem->aperture > kgem->aperture_low &&
 	    kgem_ring_is_idle(kgem, kgem->ring)) {
@@ -4641,18 +4645,25 @@ bool kgem_check_bo_fenced(struct kgem *kgem, struct kgem_bo *bo)
 		return true;
 	}
 
-	if (needs_semaphore(kgem, bo))
+	if (needs_semaphore(kgem, bo)) {
+		DBG(("%s: flushing for required semaphore\n", __FUNCTION__));
 		return false;
+	}
 
-	if (kgem_flush(kgem, bo->flush))
+	if (kgem_flush(kgem, bo->flush)) {
+		DBG(("%s: opportunistic flushing\n", __FUNCTION__));
 		return false;
+	}
 
 	if (kgem->nexec >= KGEM_EXEC_SIZE(kgem) - 1)
 		return false;
 
 	if (kgem->aperture > kgem->aperture_low &&
-	    kgem_ring_is_idle(kgem, kgem->ring))
+	    kgem_ring_is_idle(kgem, kgem->ring)) {
+		DBG(("%s: current aperture usage (%d) is greater than low water mark (%d)\n",
+		     __FUNCTION__, kgem->aperture, kgem->aperture_low));
 		return false;
+	}
 
 	if (kgem->aperture + num_pages(bo) > kgem->aperture_high)
 		return false;
@@ -4703,8 +4714,10 @@ bool kgem_check_many_bo_fenced(struct kgem *kgem, ...)
 			continue;
 		}
 
-		if (needs_semaphore(kgem, bo))
+		if (needs_semaphore(kgem, bo)) {
+			DBG(("%s: flushing for required semaphore\n", __FUNCTION__));
 			return false;
+		}
 
 		assert_tiling(kgem, bo);
 		num_pages += num_pages(bo);
@@ -4731,12 +4744,17 @@ bool kgem_check_many_bo_fenced(struct kgem *kgem, ...)
 	}
 
 	if (num_pages) {
-		if (kgem_flush(kgem, flush))
+		if (kgem_flush(kgem, flush)) {
+			DBG(("%s: opportunistic flushing\n", __FUNCTION__));
 			return false;
+		}
 
 		if (kgem->aperture > kgem->aperture_low &&
-		    kgem_ring_is_idle(kgem, kgem->ring))
+		    kgem_ring_is_idle(kgem, kgem->ring)) {
+			DBG(("%s: current aperture usage (%d) is greater than low water mark (%d)\n",
+			     __FUNCTION__, kgem->aperture, kgem->aperture_low));
 			return false;
+		}
 
 		if (num_pages + kgem->aperture > kgem->aperture_high)
 			return false;
