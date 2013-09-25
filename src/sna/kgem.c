@@ -1777,8 +1777,10 @@ inline static void kgem_bo_remove_from_active(struct kgem *kgem,
 
 	list_del(&bo->list);
 	assert(bo->rq != NULL);
-	if (bo->rq == (void *)kgem)
+	if (bo->rq == (void *)kgem) {
+		assert(bo->exec == NULL);
 		list_del(&bo->request);
+	}
 	assert(list_is_empty(&bo->vma));
 }
 
@@ -1940,6 +1942,10 @@ void kgem_bo_undo(struct kgem *kgem, struct kgem_bo *bo)
 	bo->refcnt++;
 	kgem_reset(kgem);
 	bo->refcnt--;
+
+	assert(kgem->nreloc == 0);
+	assert(kgem->nexec == 0);
+	assert(bo->exec == NULL);
 }
 
 static void __kgem_bo_destroy(struct kgem *kgem, struct kgem_bo *bo)
@@ -2172,6 +2178,7 @@ static bool __kgem_retire_rq(struct kgem *kgem, struct kgem_request *rq)
 	}
 
 	assert(rq->bo->rq == NULL);
+	assert(rq->bo->exec == NULL);
 	assert(list_is_empty(&rq->bo->request));
 
 	if (--rq->bo->refcnt == 0) {
@@ -3288,8 +3295,10 @@ retry_large:
 				goto discard;
 
 			list_del(&bo->list);
-			if (bo->rq == (void *)kgem)
+			if (bo->rq == (void *)kgem) {
+				assert(bo->exec == NULL);
 				list_del(&bo->request);
+			}
 
 			bo->delta = 0;
 			assert_tiling(kgem, bo);
@@ -3851,6 +3860,7 @@ __kgem_bo_create_as_display(struct kgem *kgem, int size, int tiling, int pitch)
 	bo->domain = DOMAIN_NONE;
 
 	if (__kgem_busy(kgem, bo->handle)) {
+		assert(bo->exec == NULL);
 		list_add(&bo->request, &kgem->flushing);
 		bo->rq = (void *)kgem;
 	}
@@ -4063,6 +4073,7 @@ large_inactive:
 				assert(!bo->scanout);
 				assert(for_cpu ? bo->map__cpu : bo->map__gtt);
 				assert(bo->rq == NULL);
+				assert(bo->exec == NULL);
 				assert(list_is_empty(&bo->request));
 				assert(bo->flush == false);
 				assert_tiling(kgem, bo);
