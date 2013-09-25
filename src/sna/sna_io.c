@@ -1438,6 +1438,7 @@ bool sna_replace(struct sna *sna,
 	struct kgem *kgem = &sna->kgem;
 	void *dst;
 
+	assert(bo);
 	DBG(("%s(handle=%d, %dx%d, bpp=%d, tiling=%d) busy?=%d\n",
 	     __FUNCTION__, bo->handle,
 	     pixmap->drawable.width,

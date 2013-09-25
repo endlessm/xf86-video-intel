@@ -2250,7 +2250,7 @@ fill:
 	tmp->dst.bo = sna_drawable_use_bo(dst->pDrawable, hint,
 					  &dst_box, &tmp->damage);
 
-	if (hint & REPLACES)
+	if (tmp->dst.bo && hint & REPLACES)
 		kgem_bo_undo(&sna->kgem, tmp->dst.bo);
 
 	ret = false;
