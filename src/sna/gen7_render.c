@@ -2518,7 +2518,13 @@ gen7_render_composite(struct sna *sna,
 		return true;
 
 	if (gen7_composite_fallback(sna, src, mask, dst))
-		return false;
+		return (mask == NULL &&
+			sna_blt_composite(sna, op,
+					src, dst,
+					src_x, src_y,
+					dst_x, dst_y,
+					width, height,
+					tmp, true));
 
 	if (need_tiling(sna, width, height))
 		return sna_tiling_composite(op, src, mask, dst,
