@@ -4865,6 +4865,8 @@ sna_self_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	int alu = gc ? gc->alu : GXcopy;
 	int16_t tx, ty;
 
+	assert(pixmap == get_drawable_pixmap(dst));
+
 	assert(RegionNumRects(region));
 	if (((dx | dy) == 0 && alu == GXcopy))
 		return;
@@ -4914,8 +4916,14 @@ sna_self_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 
 		if (!DAMAGE_IS_ALL(priv->gpu_damage)) {
 			assert(!priv->clear);
-			RegionTranslate(region, tx, ty);
-			sna_damage_add(&priv->gpu_damage, region);
+			if (priv->cpu_bo == NULL) {
+				sna_damage_all(&priv->gpu_damage,
+						pixmap->drawable.width,
+						pixmap->drawable.height);
+			} else {
+				RegionTranslate(region, tx, ty);
+				sna_damage_add(&priv->gpu_damage, region);
+			}
 		}
 		assert_pixmap_damage(pixmap);
 	} else {
