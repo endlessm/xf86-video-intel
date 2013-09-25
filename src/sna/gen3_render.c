@@ -3119,52 +3119,6 @@ gen3_composite_picture(struct sna *sna,
 				    x, y, w, h, dst_x, dst_y);
 }
 
-static inline bool
-source_use_blt(struct sna *sna, PicturePtr picture)
-{
-	/* If it is a solid, try to use the BLT paths */
-	if (!picture->pDrawable)
-		return picture->pSourcePict->type == SourcePictTypeSolidFill;
-
-	if (picture->pDrawable->width  == 1 &&
-	    picture->pDrawable->height == 1 &&
-	    picture->repeat)
-		return true;
-
-	if (too_large(picture->pDrawable->width, picture->pDrawable->height))
-		return true;
-
-	return !is_gpu(sna, picture->pDrawable, PREFER_GPU_RENDER);
-}
-
-static bool
-try_blt(struct sna *sna,
-	PicturePtr dst,
-	PicturePtr src,
-	int width, int height)
-{
-	if (sna->kgem.mode != KGEM_RENDER) {
-		DBG(("%s: already performing BLT\n", __FUNCTION__));
-		return true;
-	}
-
-	if (too_large(width, height)) {
-		DBG(("%s: operation too large for 3D pipe (%d, %d)\n",
-		     __FUNCTION__, width, height));
-		return true;
-	}
-
-	if (too_large(dst->pDrawable->width, dst->pDrawable->height)) {
-		DBG(("%s: target too large for 3D pipe (%d, %d)\n",
-		     __FUNCTION__,
-		     dst->pDrawable->width, dst->pDrawable->height));
-		return true;
-	}
-
-	/* is the source picture only in cpu memory e.g. a shm pixmap? */
-	return source_use_blt(sna, src);
-}
-
 static void
 gen3_align_vertex(struct sna *sna,
 		  const struct sna_composite_op *op)
@@ -3530,7 +3484,6 @@ gen3_render_composite(struct sna *sna,
 	 * 3D -> 2D context switch.
 	 */
 	if (mask == NULL &&
-	    try_blt(sna, dst, src, width, height) &&
 	    sna_blt_composite(sna,
 			      op, src, dst,
 			      src_x, src_y,
