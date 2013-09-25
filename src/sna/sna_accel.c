@@ -5825,7 +5825,7 @@ sna_do_copy(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	region.extents.y2 = clamp(region.extents.y2, sy - dy);
 
 	src_extents = region.extents;
-	expose = gc->fExpose;
+	expose = true;
 
 	if (region.extents.x1 < src->x)
 		region.extents.x1 = src->x;
@@ -5888,7 +5888,7 @@ sna_do_copy(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 
 	/* Pixmap sources generate a NoExposed (we return NULL to do this) */
 	clip = NULL;
-	if (expose)
+	if (expose && gc->fExpose)
 		clip = miHandleExposures(src, dst, gc,
 					 sx - src->x, sy - src->y,
 					 width, height,
