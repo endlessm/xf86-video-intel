@@ -3021,7 +3021,6 @@ void kgem_clean_scanout_cache(struct kgem *kgem)
 		assert(bo->scanout);
 		assert(bo->delta);
 		assert(!bo->refcnt);
-		assert(bo->exec == NULL);
 		assert(bo->proxy == NULL);
 
 		if (bo->exec || __kgem_busy(kgem, bo->handle))
