@@ -2019,7 +2019,7 @@ static void __kgem_bo_destroy(struct kgem *kgem, struct kgem_bo *bo)
 	assert(bo->exec == NULL);
 	assert(list_is_empty(&bo->request));
 
-	if (bo->map__cpu == NULL) {
+	if (bo->map__cpu == NULL || bucket(bo) >= NUM_CACHE_BUCKETS) {
 		if (!kgem_bo_set_purgeable(kgem, bo))
 			goto destroy;
 
@@ -3896,7 +3896,6 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 
 	if (tiling < 0)
 		exact = true, tiling = -tiling;
-
 
 	DBG(("%s(%dx%d, bpp=%d, tiling=%d, exact=%d, inactive=%d, cpu-mapping=%d, gtt-mapping=%d, scanout?=%d, prime?=%d, temp?=%d)\n", __FUNCTION__,
 	     width, height, bpp, tiling, exact,
