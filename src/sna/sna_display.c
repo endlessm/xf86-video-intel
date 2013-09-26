@@ -3855,8 +3855,7 @@ sna_crtc_redisplay__fallback(xf86CrtcPtr crtc, RegionPtr region)
 	PictFormatPtr format;
 	PicturePtr src, dst;
 	PixmapPtr pixmap;
-	BoxPtr b;
-	int n, error;
+	int error;
 	void *ptr;
 
 	DBG(("%s: compositing transformed damage boxes\n", __FUNCTION__));
@@ -3907,25 +3906,29 @@ sna_crtc_redisplay__fallback(xf86CrtcPtr crtc, RegionPtr region)
 		goto free_src;
 
 	kgem_bo_sync__gtt(&sna->kgem, sna_crtc->bo);
-	n = REGION_NUM_RECTS(region);
-	b = REGION_RECTS(region);
-	do {
-		BoxRec box;
 
-		box = *b++;
-		transformed_box(&box, crtc);
+	if (sigtrap_get() == 0) { /* paranoia */
+		const BoxRec *b = REGION_RECTS(region);
+		int n = REGION_NUM_RECTS(region);
+		do {
+			BoxRec box;
 
-		DBG(("%s: (%d, %d)x(%d, %d) -> (%d, %d), (%d, %d)\n",
-		     __FUNCTION__,
-		     b[-1].x1, b[-1].y1, b[-1].x2-b[-1].x1, b[-1].y2-b[-1].y1,
-		     box.x1, box.y1, box.x2, box.y2));
+			box = *b++;
+			transformed_box(&box, crtc);
 
-		fbComposite(PictOpSrc, src, NULL, dst,
-			    box.x1, box.y1,
-			    0, 0,
-			    box.x1, box.y1,
-			    box.x2 - box.x1, box.y2 - box.y1);
-	} while (--n);
+			DBG(("%s: (%d, %d)x(%d, %d) -> (%d, %d), (%d, %d)\n",
+			     __FUNCTION__,
+			     b[-1].x1, b[-1].y1, b[-1].x2-b[-1].x1, b[-1].y2-b[-1].y1,
+			     box.x1, box.y1, box.x2, box.y2));
+
+			fbComposite(PictOpSrc, src, NULL, dst,
+				    box.x1, box.y1,
+				    0, 0,
+				    box.x1, box.y1,
+				    box.x2 - box.x1, box.y2 - box.y1);
+		} while (--n);
+		sigtrap_put();
+	}
 
 	FreePicture(dst, None);
 free_src:

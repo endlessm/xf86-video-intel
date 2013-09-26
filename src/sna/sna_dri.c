@@ -611,14 +611,17 @@ sna_dri_copy_fallback(struct sna *sna, int bpp,
 	DBG(("%s: src(%d, %d), dst(%d, %d) x %d\n",
 	     __FUNCTION__, sx, sy, dx, dy, n));
 
-	do {
-		memcpy_blt(src, dst, bpp,
-			   src_bo->pitch, dst_bo->pitch,
-			   box->x1 + sx, box->y1 + sy,
-			   box->x1 + dx, box->y1 + dy,
-			   box->x2 - box->x1, box->y2 - box->y1);
-		box++;
-	} while (--n);
+	if (sigtrap_get() == 0) {
+		do {
+			memcpy_blt(src, dst, bpp,
+				   src_bo->pitch, dst_bo->pitch,
+				   box->x1 + sx, box->y1 + sy,
+				   box->x1 + dx, box->y1 + dy,
+				   box->x2 - box->x1, box->y2 - box->y1);
+			box++;
+		} while (--n);
+		sigtrap_put();
+	}
 }
 
 static struct kgem_bo *

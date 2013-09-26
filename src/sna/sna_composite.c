@@ -541,45 +541,49 @@ sna_composite_fb(CARD8 op,
 		    region->extents.y1 + sy >= 0 &&
 		    region->extents.x2 + sx <= src->pDrawable->width &&
 		    region->extents.y2 + sy <= src->pDrawable->height) {
-			BoxPtr box = RegionRects(region);
-			int nbox = RegionNumRects(region);
+			sigtrap_assert();
+			if (sigtrap_get() == 0) {
+				BoxPtr box = RegionRects(region);
+				int nbox = RegionNumRects(region);
 
-			sx += src->pDrawable->x;
-			sy += src->pDrawable->y;
-			if (get_drawable_deltas(src->pDrawable, src_pixmap, &tx, &ty))
-				sx += tx, sy += ty;
+				sx += src->pDrawable->x;
+				sy += src->pDrawable->y;
+				if (get_drawable_deltas(src->pDrawable, src_pixmap, &tx, &ty))
+					sx += tx, sy += ty;
 
-			assert(region->extents.x1 + sx >= 0);
-			assert(region->extents.x2 + sx <= src_pixmap->drawable.width);
-			assert(region->extents.y1 + sy >= 0);
-			assert(region->extents.y2 + sy <= src_pixmap->drawable.height);
+				assert(region->extents.x1 + sx >= 0);
+				assert(region->extents.x2 + sx <= src_pixmap->drawable.width);
+				assert(region->extents.y1 + sy >= 0);
+				assert(region->extents.y2 + sy <= src_pixmap->drawable.height);
 
-			get_drawable_deltas(dst->pDrawable, dst_pixmap, &tx, &ty);
+				get_drawable_deltas(dst->pDrawable, dst_pixmap, &tx, &ty);
 
-			assert(nbox);
-			do {
-				assert(box->x1 + sx >= 0);
-				assert(box->x2 + sx <= src_pixmap->drawable.width);
-				assert(box->y1 + sy >= 0);
-				assert(box->y2 + sy <= src_pixmap->drawable.height);
+				assert(nbox);
+				do {
+					assert(box->x1 + sx >= 0);
+					assert(box->x2 + sx <= src_pixmap->drawable.width);
+					assert(box->y1 + sy >= 0);
+					assert(box->y2 + sy <= src_pixmap->drawable.height);
 
-				assert(box->x1 + tx >= 0);
-				assert(box->x2 + tx <= dst_pixmap->drawable.width);
-				assert(box->y1 + ty >= 0);
-				assert(box->y2 + ty <= dst_pixmap->drawable.height);
+					assert(box->x1 + tx >= 0);
+					assert(box->x2 + tx <= dst_pixmap->drawable.width);
+					assert(box->y1 + ty >= 0);
+					assert(box->y2 + ty <= dst_pixmap->drawable.height);
 
-				assert(box->x2 > box->x1 && box->y2 > box->y1);
+					assert(box->x2 > box->x1 && box->y2 > box->y1);
 
-				memcpy_blt(src_pixmap->devPrivate.ptr,
-					   dst_pixmap->devPrivate.ptr,
-					   dst_pixmap->drawable.bitsPerPixel,
-					   src_pixmap->devKind,
-					   dst_pixmap->devKind,
-					   box->x1 + sx, box->y1 + sy,
-					   box->x1 + tx, box->y1 + ty,
-					   box->x2 - box->x1, box->y2 - box->y1);
-				box++;
-			} while (--nbox);
+					memcpy_blt(src_pixmap->devPrivate.ptr,
+						   dst_pixmap->devPrivate.ptr,
+						   dst_pixmap->drawable.bitsPerPixel,
+						   src_pixmap->devKind,
+						   dst_pixmap->devKind,
+						   box->x1 + sx, box->y1 + sy,
+						   box->x1 + tx, box->y1 + ty,
+						   box->x2 - box->x1, box->y2 - box->y1);
+					box++;
+				} while (--nbox);
+				sigtrap_put();
+			}
 
 			return;
 		}
@@ -589,12 +593,17 @@ sna_composite_fb(CARD8 op,
 	mask_image = image_from_pict(mask, FALSE, &msk_xoff, &msk_yoff);
 	dest_image = image_from_pict(dst, TRUE, &dst_xoff, &dst_yoff);
 
-	if (src_image && dest_image && !(mask && !mask_image))
-		sna_image_composite(op, src_image, mask_image, dest_image,
-				    src_x + src_xoff, src_y + src_yoff,
-				    msk_x + msk_xoff, msk_y + msk_yoff,
-				    dst_x + dst_xoff, dst_y + dst_yoff,
-				    width, height);
+	if (src_image && dest_image && !(mask && !mask_image)) {
+		sigtrap_assert();
+		if (sigtrap_get() == 0) {
+			sna_image_composite(op, src_image, mask_image, dest_image,
+					    src_x + src_xoff, src_y + src_yoff,
+					    msk_x + msk_xoff, msk_y + msk_yoff,
+					    dst_x + dst_xoff, dst_y + dst_yoff,
+					    width, height);
+			sigtrap_put();
+		}
+	}
 
 	free_pixman_pict(src, src_image);
 	free_pixman_pict(mask, mask_image);
@@ -739,6 +748,7 @@ fallback:
 			 width,  height);
 out:
 	REGION_UNINIT(NULL, &region);
+	sigtrap_assert();
 }
 
 static bool
@@ -1051,65 +1061,70 @@ fallback:
 
 	assert(pixmap->devPrivate.ptr);
 
-	if (op <= PictOpSrc) {
-		int nbox = RegionNumRects(&region);
-		BoxPtr box = RegionRects(&region);
-		uint32_t pixel;
+	sigtrap_assert();
+	if (sigtrap_get() == 0) {
+		if (op <= PictOpSrc) {
+			int nbox = RegionNumRects(&region);
+			BoxPtr box = RegionRects(&region);
+			uint32_t pixel;
 
-		if (op == PictOpClear)
-			pixel = 0;
-		else if (!sna_get_pixel_from_rgba(&pixel,
-						  color->red,
-						  color->green,
-						  color->blue,
-						  color->alpha,
-						  dst->format))
-			goto fallback_composite;
+			if (op == PictOpClear)
+				pixel = 0;
+			else if (!sna_get_pixel_from_rgba(&pixel,
+							  color->red,
+							  color->green,
+							  color->blue,
+							  color->alpha,
+							  dst->format))
+				goto fallback_composite;
 
-		if (pixel == 0 &&
-		    box->x2 - box->x1 == pixmap->drawable.width &&
-		    box->y2 - box->y1 == pixmap->drawable.height) {
-			memset(pixmap->devPrivate.ptr, 0,
-			       pixmap->devKind*pixmap->drawable.height);
-		} else do {
-			DBG(("%s: fallback fill: (%d, %d)x(%d, %d) %08x\n",
-			     __FUNCTION__,
-			     box->x1, box->y1,
-			     box->x2 - box->x1,
-			     box->y2 - box->y1,
-			     pixel));
+			if (pixel == 0 &&
+			    box->x2 - box->x1 == pixmap->drawable.width &&
+			    box->y2 - box->y1 == pixmap->drawable.height) {
+				memset(pixmap->devPrivate.ptr, 0,
+				       pixmap->devKind*pixmap->drawable.height);
+			} else do {
+				DBG(("%s: fallback fill: (%d, %d)x(%d, %d) %08x\n",
+				     __FUNCTION__,
+				     box->x1, box->y1,
+				     box->x2 - box->x1,
+				     box->y2 - box->y1,
+				     pixel));
 
-			pixman_fill(pixmap->devPrivate.ptr,
-				    pixmap->devKind/sizeof(uint32_t),
-				    pixmap->drawable.bitsPerPixel,
-				    box->x1, box->y1,
-				    box->x2 - box->x1,
-				    box->y2 - box->y1,
-				    pixel);
-			box++;
-		} while (--nbox);
-	} else {
-		PicturePtr src;
+				pixman_fill(pixmap->devPrivate.ptr,
+					    pixmap->devKind/sizeof(uint32_t),
+					    pixmap->drawable.bitsPerPixel,
+					    box->x1, box->y1,
+					    box->x2 - box->x1,
+					    box->y2 - box->y1,
+					    pixel);
+				box++;
+			} while (--nbox);
+		} else {
+			PicturePtr src;
 
 fallback_composite:
-		DBG(("%s: fallback -- fbComposite()\n", __FUNCTION__));
-		src = CreateSolidPicture(0, color, &error);
-		if (src) {
-			do {
-				fbComposite(op, src, NULL, dst,
-					    0, 0,
-					    0, 0,
-					    rects->x, rects->y,
-					    rects->width, rects->height);
-				rects++;
-			} while (--num_rects);
-			FreePicture(src, 0);
+			DBG(("%s: fallback -- fbComposite()\n", __FUNCTION__));
+			src = CreateSolidPicture(0, color, &error);
+			if (src) {
+				do {
+					fbComposite(op, src, NULL, dst,
+						    0, 0,
+						    0, 0,
+						    rects->x, rects->y,
+						    rects->width, rects->height);
+					rects++;
+				} while (--num_rects);
+				FreePicture(src, 0);
+			}
 		}
+		sigtrap_put();
 	}
 
 done:
 	DamageRegionProcessPending(&pixmap->drawable);
 
 	pixman_region_fini(&region);
+	sigtrap_assert();
 	return;
 }

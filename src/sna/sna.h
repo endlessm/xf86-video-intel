@@ -69,6 +69,9 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <libudev.h>
 #endif
 
+#include <signal.h>
+#include <setjmp.h>
+
 #include "compiler.h"
 
 #if HAS_DEBUG_FULL
@@ -972,5 +975,17 @@ void sna_image_composite(pixman_op_t        op,
 			 int16_t            dst_y,
 			 uint16_t           width,
 			 uint16_t           height);
+
+extern jmp_buf sigjmp;
+extern volatile sig_atomic_t sigtrap;
+
+#define sigtrap_assert() assert(sigtrap == 0)
+#define sigtrap_get() sigsetjmp(sigjmp, ++sigtrap)
+
+static inline void sigtrap_put(void)
+{
+	--sigtrap;
+	sigtrap_assert();
+}
 
 #endif /* _SNA_H */

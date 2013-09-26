@@ -1627,21 +1627,25 @@ next:
 		if (dst_image == NULL)
 			goto out_free_src;
 
-		if (mask_format) {
-			pixman_composite_glyphs(op, src_image, dst_image,
-						mask_format->format | (mask_format->depth << 24),
-						src_x + src_dx + region.extents.x1 - dst_x,
-						src_y + src_dy + region.extents.y1 - dst_y,
-						region.extents.x1, region.extents.y1,
-						region.extents.x1 + dst_dx, region.extents.y1 + dst_dy,
-						region.extents.x2 - region.extents.x1,
-						region.extents.y2 - region.extents.y1,
-						cache, count, pglyphs);
-		} else {
-			pixman_composite_glyphs_no_mask(op, src_image, dst_image,
-							src_x + src_dx - dst_x, src_y + src_dy - dst_y,
-							dst_dx, dst_dy,
+		sigtrap_assert();
+		if (sigtrap_get() == 0) {
+			if (mask_format) {
+				pixman_composite_glyphs(op, src_image, dst_image,
+							mask_format->format | (mask_format->depth << 24),
+							src_x + src_dx + region.extents.x1 - dst_x,
+							src_y + src_dy + region.extents.y1 - dst_y,
+							region.extents.x1, region.extents.y1,
+							region.extents.x1 + dst_dx, region.extents.y1 + dst_dy,
+							region.extents.x2 - region.extents.x1,
+							region.extents.y2 - region.extents.y1,
 							cache, count, pglyphs);
+			} else {
+				pixman_composite_glyphs_no_mask(op, src_image, dst_image,
+								src_x + src_dx - dst_x, src_y + src_dy - dst_y,
+								dst_dx, dst_dy,
+								cache, count, pglyphs);
+			}
+			sigtrap_put();
 		}
 
 		free_pixman_pict(dst, dst_image);
@@ -1706,86 +1710,90 @@ out:
 			src_y -= y - dst->pDrawable->y;
 		}
 
-		do {
-			n = list->len;
-			x += list->xOff;
-			y += list->yOff;
-			while (n--) {
-				GlyphPtr g = *glyphs++;
-				pixman_image_t *glyph_image;
+		sigtrap_assert();
+		if (sigtrap_get() == 0) {
+			do {
+				n = list->len;
+				x += list->xOff;
+				y += list->yOff;
+				while (n--) {
+					GlyphPtr g = *glyphs++;
+					pixman_image_t *glyph_image;
 
-				if (!glyph_valid(g))
-					goto next_glyph;
+					if (!glyph_valid(g))
+						goto next_glyph;
 
-				glyph_image = sna_glyph_get_image(g, screen);
-				if (glyph_image == NULL)
-					goto next_glyph;
+					glyph_image = sna_glyph_get_image(g, screen);
+					if (glyph_image == NULL)
+						goto next_glyph;
 
-				if (mask_format) {
-					DBG(("%s: glyph to mask (%d, %d)x(%d, %d)\n",
-					     __FUNCTION__,
-					     x - g->info.x,
-					     y - g->info.y,
-					     g->info.width,
-					     g->info.height));
+					if (mask_format) {
+						DBG(("%s: glyph to mask (%d, %d)x(%d, %d)\n",
+						     __FUNCTION__,
+						     x - g->info.x,
+						     y - g->info.y,
+						     g->info.width,
+						     g->info.height));
 
-					if (list->format == mask_format) {
-						assert(pixman_image_get_format(glyph_image) == pixman_image_get_format(mask_image));
-						pixman_image_composite(PictOpAdd,
-								       glyph_image,
-								       NULL,
-								       mask_image,
-								       0, 0,
-								       0, 0,
-								       x - g->info.x,
-								       y - g->info.y,
-								       g->info.width,
-								       g->info.height);
+						if (list->format == mask_format) {
+							assert(pixman_image_get_format(glyph_image) == pixman_image_get_format(mask_image));
+							pixman_image_composite(PictOpAdd,
+									       glyph_image,
+									       NULL,
+									       mask_image,
+									       0, 0,
+									       0, 0,
+									       x - g->info.x,
+									       y - g->info.y,
+									       g->info.width,
+									       g->info.height);
+						} else {
+							pixman_image_composite(PictOpAdd,
+									       sna->render.white_image,
+									       glyph_image,
+									       mask_image,
+									       0, 0,
+									       0, 0,
+									       x - g->info.x,
+									       y - g->info.y,
+									       g->info.width,
+									       g->info.height);
+						}
 					} else {
-						pixman_image_composite(PictOpAdd,
-								       sna->render.white_image,
+						int xi = x - g->info.x;
+						int yi = y - g->info.y;
+
+						DBG(("%s: glyph to dst (%d, %d)x(%d, %d)/[(%d, %d)x(%d, %d)], src (%d, %d) [op=%d]\n",
+						     __FUNCTION__,
+						     xi, yi,
+						     g->info.width, g->info.height,
+						     dst->pDrawable->x,
+						     dst->pDrawable->y,
+						     dst->pDrawable->width,
+						     dst->pDrawable->height,
+						     src_x + xi,
+						     src_y + yi,
+						     op));
+
+						pixman_image_composite(op,
+								       src_image,
 								       glyph_image,
-								       mask_image,
+								       dst_image,
+								       src_x + xi,
+								       src_y + yi,
 								       0, 0,
-								       0, 0,
-								       x - g->info.x,
-								       y - g->info.y,
+								       xi, yi,
 								       g->info.width,
 								       g->info.height);
 					}
-				} else {
-					int xi = x - g->info.x;
-					int yi = y - g->info.y;
-
-					DBG(("%s: glyph to dst (%d, %d)x(%d, %d)/[(%d, %d)x(%d, %d)], src (%d, %d) [op=%d]\n",
-					     __FUNCTION__,
-					     xi, yi,
-					     g->info.width, g->info.height,
-					     dst->pDrawable->x,
-					     dst->pDrawable->y,
-					     dst->pDrawable->width,
-					     dst->pDrawable->height,
-					     src_x + xi,
-					     src_y + yi,
-					     op));
-
-					pixman_image_composite(op,
-							       src_image,
-							       glyph_image,
-							       dst_image,
-							       src_x + xi,
-							       src_y + yi,
-							       0, 0,
-							       xi, yi,
-							       g->info.width,
-							       g->info.height);
-				}
 next_glyph:
-				x += g->info.xOff;
-				y += g->info.yOff;
-			}
-			list++;
-		} while (--nlist);
+					x += g->info.xOff;
+					y += g->info.yOff;
+				}
+				list++;
+			} while (--nlist);
+			sigtrap_put();
+		}
 
 		if (mask_format) {
 			DBG(("%s: glyph mask composite src=(%d+%d,%d+%d) dst=(%d, %d)x(%d, %d)\n",

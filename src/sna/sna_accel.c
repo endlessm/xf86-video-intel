@@ -397,6 +397,25 @@ static void assert_pixmap_damage(PixmapPtr p)
 #endif
 #endif
 
+jmp_buf sigjmp;
+volatile sig_atomic_t sigtrap;
+
+static int sigtrap_handler(int sig)
+{
+	if (sigtrap) {
+		/* XXX rate-limited squawk? */
+		sigtrap = 0;
+		siglongjmp(sigjmp, sig);
+	}
+
+	return 0;
+}
+
+static void sigtrap_init(void)
+{
+	OsRegisterSigWrapper(sigtrap_handler);
+}
+
 inline static bool
 sna_fill_init_blt(struct sna_fill_op *fill,
 		  struct sna *sna,
@@ -1837,6 +1856,7 @@ _sna_pixmap_move_to_cpu(PixmapPtr pixmap, unsigned int flags)
 
 	assert(flags & (MOVE_READ | MOVE_WRITE));
 	assert_pixmap_damage(pixmap);
+	sigtrap_assert();
 
 	priv = sna_pixmap(pixmap);
 	if (priv == NULL) {
@@ -2126,6 +2146,7 @@ done:
 	assert(pixmap->devKind);
 	assert_pixmap_damage(pixmap);
 	assert(has_coherent_ptr(sna, sna_pixmap(pixmap)));
+	sigtrap_assert();
 	return true;
 }
 
@@ -2256,6 +2277,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 		assert_drawable_contains_box(drawable, &region->extents);
 	}
 	assert(flags & (MOVE_WRITE | MOVE_READ));
+	sigtrap_assert();
 
 	if (box_empty(&region->extents))
 		return true;
@@ -2744,6 +2766,7 @@ out:
 	assert(pixmap->devKind);
 	assert_pixmap_damage(pixmap);
 	assert(has_coherent_ptr(sna, sna_pixmap(pixmap)));
+	sigtrap_assert();
 	return true;
 }
 
@@ -2765,6 +2788,8 @@ sna_drawable_move_to_cpu(DrawablePtr drawable, unsigned flags)
 	     drawable->x, drawable->y,
 	     drawable->width, drawable->height,
 	     dx, dy, flags));
+
+	sigtrap_assert();
 
 	region.extents.x1 = drawable->x + dx;
 	region.extents.y1 = drawable->y + dy;
@@ -2841,6 +2866,7 @@ static inline struct sna_pixmap *
 sna_pixmap_mark_active(struct sna *sna, struct sna_pixmap *priv)
 {
 	assert(priv->gpu_bo);
+	sigtrap_assert();
 	DBG(("%s: pixmap=%ld, handle=%u\n", __FUNCTION__,
 	     priv->pixmap->drawable.serialNumber,
 	     priv->gpu_bo->handle));
@@ -2888,6 +2914,8 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 	DBG(("%s: pixmap=%ld box=(%d, %d), (%d, %d), flags=%x\n",
 	     __FUNCTION__, pixmap->drawable.serialNumber,
 	     box->x1, box->y1, box->x2, box->y2, flags));
+
+	sigtrap_assert();
 
 	priv = __sna_pixmap_for_gpu(sna, pixmap, flags);
 	if (priv == NULL)
@@ -3606,6 +3634,8 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 	     pixmap->usage_hint,
 	     flags));
 
+	sigtrap_assert();
+
 	priv = __sna_pixmap_for_gpu(sna, pixmap, flags);
 	if (priv == NULL)
 		return NULL;
@@ -3829,6 +3859,8 @@ static bool must_check sna_gc_move_to_cpu(GCPtr gc,
 	long changes = sgc->changes;
 
 	DBG(("%s, changes=%lx\n", __FUNCTION__, changes));
+
+	sigtrap_assert();
 
 	assert(gc->ops == (GCOps *)&sna_gc_ops);
 	gc->ops = (GCOps *)&sna_gc_ops__cpu;
@@ -4091,12 +4123,16 @@ try_upload_blt(PixmapPtr pixmap, RegionRec *region,
 	     __FUNCTION__, x, y, w, h,
 	     RegionNumRects(region)));
 
-	ok = sna->render.copy_boxes(sna, GXcopy,
-				    pixmap, src_bo, -x, -y,
-				    pixmap, priv->gpu_bo, 0, 0,
-				    RegionRects(region),
-				    RegionNumRects(region),
-				    COPY_LAST);
+	if (sigtrap_get() == 0) {
+		ok = sna->render.copy_boxes(sna, GXcopy,
+					    pixmap, src_bo, -x, -y,
+					    pixmap, priv->gpu_bo, 0, 0,
+					    RegionRects(region),
+					    RegionNumRects(region),
+					    COPY_LAST);
+		sigtrap_put();
+	} else
+		ok = false;
 
 	kgem_bo_sync__cpu(&sna->kgem, src_bo);
 	assert(src_bo->rq == NULL);
@@ -4201,6 +4237,9 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 
 	DBG(("%s: upload(%d, %d, %d, %d) x %d\n", __FUNCTION__, x, y, w, h, n));
 
+	if (sigtrap_get())
+		return false;
+
 	if (priv->gpu_bo->tiling) {
 		do {
 			memcpy_to_tiled_x(&sna->kgem, bits, dst,
@@ -4222,6 +4261,8 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 			box++;
 		} while (--n);
 	}
+
+	sigtrap_put();
 
 	if (!DAMAGE_IS_ALL(priv->gpu_damage)) {
 		assert(!priv->clear);
@@ -4289,11 +4330,13 @@ sna_put_zpixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 					     region, MOVE_WRITE))
 		return false;
 
-	DBG(("%s: upload(%d, %d, %d, %d)\n", __FUNCTION__, x, y, w, h));
+	if (sigtrap_get())
+		return false;
 
 	/* Region is pre-clipped and translated into pixmap space */
 	box = RegionRects(region);
 	n = RegionNumRects(region);
+	DBG(("%s: upload(%d, %d, %d, %d) x %d boxes\n", __FUNCTION__, x, y, w, h, n));
 	do {
 		DBG(("%s: copy box (%d, %d)->(%d, %d)x(%d, %d)\n",
 		     __FUNCTION__,
@@ -4324,6 +4367,7 @@ sna_put_zpixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 		box++;
 	} while (--n);
 
+	sigtrap_put();
 	assert_pixmap_damage(pixmap);
 	return true;
 }
@@ -4698,10 +4742,13 @@ fallback:
 					      drawable_gc_flags(drawable, gc, false)))
 		goto out_gc;
 
-	DBG(("%s: fbPutImage(%d, %d, %d, %d)\n",
-	     __FUNCTION__, x, y, w, h));
-	fbPutImage(drawable, gc, depth, x, y, w, h, left, format, bits);
-	FALLBACK_FLUSH(drawable);
+	if (sigtrap_get() == 0) {
+		DBG(("%s: fbPutImage(%d, %d, %d, %d)\n",
+		     __FUNCTION__, x, y, w, h));
+		fbPutImage(drawable, gc, depth, x, y, w, h, left, format, bits);
+		FALLBACK_FLUSH(drawable);
+		sigtrap_put();
+	}
 out_gc:
 	sna_gc_move_to_gpu(gc);
 out:
@@ -4941,30 +4988,36 @@ fallback:
 			goto out;
 
 		if (alu == GXcopy && pixmap->drawable.bitsPerPixel >= 8) {
-			FbBits *dst_bits, *src_bits;
-			int stride = pixmap->devKind;
-			int bpp = pixmap->drawable.bitsPerPixel;
-			int i;
+			if (sigtrap_get() == 0) {
+				FbBits *dst_bits, *src_bits;
+				int stride = pixmap->devKind;
+				int bpp = pixmap->drawable.bitsPerPixel;
+				int i;
 
-			dst_bits = (FbBits *)
-				((char *)pixmap->devPrivate.ptr +
-				 ty * stride + tx * bpp / 8);
-			src_bits = (FbBits *)
-				((char *)pixmap->devPrivate.ptr +
-				 dy * stride + dx * bpp / 8);
+				dst_bits = (FbBits *)
+					((char *)pixmap->devPrivate.ptr +
+					 ty * stride + tx * bpp / 8);
+				src_bits = (FbBits *)
+					((char *)pixmap->devPrivate.ptr +
+					 dy * stride + dx * bpp / 8);
 
-			for (i = 0; i < n; i++)
-				memmove_box(src_bits, dst_bits,
-					    bpp, stride, box+i,
-					    dx, dy);
+				for (i = 0; i < n; i++)
+					memmove_box(src_bits, dst_bits,
+						    bpp, stride, box+i,
+						    dx, dy);
+				sigtrap_put();
+			}
 		} else {
 			if (gc && !sna_gc_move_to_cpu(gc, dst, region))
 				goto out;
 
-			get_drawable_deltas(src, pixmap, &tx, &ty);
-			miCopyRegion(src, dst, gc,
-				     region, dx - tx, dy - ty,
-				     fbCopyNtoN, 0, NULL);
+			if (sigtrap_get() == 0) {
+				get_drawable_deltas(src, pixmap, &tx, &ty);
+				miCopyRegion(src, dst, gc,
+					     region, dx - tx, dy - ty,
+					     fbCopyNtoN, 0, NULL);
+				sigtrap_put();
+			}
 
 			if (gc)
 				sna_gc_move_to_gpu(gc);
@@ -5770,9 +5823,12 @@ fallback:
 			if (!sna_gc_move_to_cpu(gc, dst, region))
 				return;
 
-			miCopyRegion(src, dst, gc,
-				     region, dx, dy,
-				     fbCopyNtoN, 0, NULL);
+			if (sigtrap_get() == 0) {
+				miCopyRegion(src, dst, gc,
+					     region, dx, dy,
+					     fbCopyNtoN, 0, NULL);
+				sigtrap_put();
+			}
 
 			sna_gc_move_to_gpu(gc);
 		}
@@ -5943,10 +5999,13 @@ sna_fallback_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 			goto out_gc;
 	}
 
-	miCopyRegion(src, dst, gc,
-		     region, dx, dy,
-		     fbCopyNtoN, 0, NULL);
-	FALLBACK_FLUSH(dst);
+	if (sigtrap_get() == 0) {
+		miCopyRegion(src, dst, gc,
+			     region, dx, dy,
+			     fbCopyNtoN, 0, NULL);
+		FALLBACK_FLUSH(dst);
+		sigtrap_put();
+	}
 out_gc:
 	sna_gc_move_to_gpu(gc);
 }
@@ -6978,9 +7037,12 @@ fallback:
 					     drawable_gc_flags(drawable, gc, n > 1)))
 		goto out_gc;
 
-	DBG(("%s: fbFillSpans\n", __FUNCTION__));
-	fbFillSpans(drawable, gc, n, pt, width, sorted);
-	FALLBACK_FLUSH(drawable);
+	if (sigtrap_get() == 0) {
+		DBG(("%s: fbFillSpans\n", __FUNCTION__));
+		fbFillSpans(drawable, gc, n, pt, width, sorted);
+		FALLBACK_FLUSH(drawable);
+		sigtrap_put();
+	}
 out_gc:
 	sna_gc_move_to_gpu(gc);
 out:
@@ -7018,9 +7080,12 @@ fallback:
 					     drawable_gc_flags(drawable, gc, n > 1)))
 		goto out_gc;
 
-	DBG(("%s: fbSetSpans\n", __FUNCTION__));
-	fbSetSpans(drawable, gc, src, pt, width, n, sorted);
-	FALLBACK_FLUSH(drawable);
+	if (sigtrap_get() == 0) {
+		DBG(("%s: fbSetSpans\n", __FUNCTION__));
+		fbSetSpans(drawable, gc, src, pt, width, n, sorted);
+		FALLBACK_FLUSH(drawable);
+		sigtrap_put();
+	}
 out_gc:
 	sna_gc_move_to_gpu(gc);
 out:
@@ -7514,13 +7579,16 @@ fallback:
 					     drawable_gc_flags(dst, gc, false)))
 		goto out_gc;
 
-	DBG(("%s: fbCopyPlane(%d, %d, %d, %d, %d,%d) %x\n",
-	     __FUNCTION__, src_x, src_y, w, h, dst_x, dst_y, (unsigned)bit));
-	ret = miDoCopy(src, dst, gc,
-		       src_x, src_y, w, h, dst_x, dst_y,
-		       src->bitsPerPixel > 1 ? fbCopyNto1 : fbCopy1toN,
-		       bit, 0);
-	FALLBACK_FLUSH(dst);
+	if (sigtrap_get() == 0) {
+		DBG(("%s: fbCopyPlane(%d, %d, %d, %d, %d,%d) %x\n",
+		     __FUNCTION__, src_x, src_y, w, h, dst_x, dst_y, (unsigned)bit));
+		ret = miDoCopy(src, dst, gc,
+			       src_x, src_y, w, h, dst_x, dst_y,
+			       src->bitsPerPixel > 1 ? fbCopyNto1 : fbCopy1toN,
+			       bit, 0);
+		FALLBACK_FLUSH(dst);
+		sigtrap_put();
+	}
 out_gc:
 	sna_gc_move_to_gpu(gc);
 out:
@@ -7725,9 +7793,12 @@ fallback:
 					     MOVE_READ | MOVE_WRITE))
 		goto out_gc;
 
-	DBG(("%s: fbPolyPoint\n", __FUNCTION__));
-	fbPolyPoint(drawable, gc, mode, n, pt, flags);
-	FALLBACK_FLUSH(drawable);
+	if (sigtrap_get() == 0) {
+		DBG(("%s: fbPolyPoint\n", __FUNCTION__));
+		fbPolyPoint(drawable, gc, mode, n, pt, flags);
+		FALLBACK_FLUSH(drawable);
+		sigtrap_put();
+	}
 out_gc:
 	sna_gc_move_to_gpu(gc);
 out:
@@ -8766,10 +8837,12 @@ fallback:
 							       !(data.flags & 4 && n == 2))))
 		goto out_gc;
 
-	DBG(("%s: fbPolyLine\n", __FUNCTION__));
-	fbPolyLine(drawable, gc, mode, n, pt);
-	FALLBACK_FLUSH(drawable);
-
+	if (sigtrap_get() == 0) {
+		DBG(("%s: fbPolyLine\n", __FUNCTION__));
+		fbPolyLine(drawable, gc, mode, n, pt);
+		FALLBACK_FLUSH(drawable);
+		sigtrap_put();
+	}
 out_gc:
 	sna_gc_move_to_gpu(gc);
 out:
@@ -9616,10 +9689,12 @@ fallback:
 							       !(data.flags & 4 && n == 1))))
 		goto out_gc;
 
-	DBG(("%s: fbPolySegment\n", __FUNCTION__));
-	fbPolySegment(drawable, gc, n, seg);
-	FALLBACK_FLUSH(drawable);
-
+	if (sigtrap_get() == 0) {
+		DBG(("%s: fbPolySegment\n", __FUNCTION__));
+		fbPolySegment(drawable, gc, n, seg);
+		FALLBACK_FLUSH(drawable);
+		sigtrap_put();
+	}
 out_gc:
 	sna_gc_move_to_gpu(gc);
 out:
@@ -10225,9 +10300,12 @@ fallback:
 					     drawable_gc_flags(drawable, gc, true)))
 		goto out_gc;
 
-	DBG(("%s: miPolyRectangle\n", __FUNCTION__));
-	miPolyRectangle(drawable, gc, n, r);
-	FALLBACK_FLUSH(drawable);
+	if (sigtrap_get() == 0) {
+		DBG(("%s: miPolyRectangle\n", __FUNCTION__));
+		miPolyRectangle(drawable, gc, n, r);
+		FALLBACK_FLUSH(drawable);
+		sigtrap_put();
+	}
 out_gc:
 	sna_gc_move_to_gpu(gc);
 out:
@@ -10424,10 +10502,12 @@ fallback:
 					     drawable_gc_flags(drawable, gc, true)))
 		goto out_gc;
 
-	DBG(("%s -- fbPolyArc\n", __FUNCTION__));
-	fbPolyArc(drawable, gc, n, arc);
-	FALLBACK_FLUSH(drawable);
-
+	if (sigtrap_get() == 0) {
+		DBG(("%s -- fbPolyArc\n", __FUNCTION__));
+		fbPolyArc(drawable, gc, n, arc);
+		FALLBACK_FLUSH(drawable);
+		sigtrap_put();
+	}
 out_gc:
 	sna_gc_move_to_gpu(gc);
 out:
@@ -10778,9 +10858,12 @@ fallback:
 					     drawable_gc_flags(draw, gc, true)))
 		goto out_gc;
 
-	DBG(("%s: fallback -- miFillPolygon -> sna_fill_spans__cpu\n",
-	     __FUNCTION__));
-	miFillPolygon(draw, gc, shape, mode, n, pt);
+	if (sigtrap_get() == 0) {
+		DBG(("%s: fallback -- miFillPolygon -> sna_fill_spans__cpu\n",
+		     __FUNCTION__));
+		miFillPolygon(draw, gc, shape, mode, n, pt);
+		sigtrap_put();
+	}
 out_gc:
 	sna_gc_move_to_gpu(gc);
 out:
@@ -13051,9 +13134,12 @@ fallback:
 					     drawable_gc_flags(draw, gc, n > 1)))
 		goto out_gc;
 
-	DBG(("%s: fallback - fbPolyFillRect\n", __FUNCTION__));
-	fbPolyFillRect(draw, gc, n, rect);
-	FALLBACK_FLUSH(draw);
+	if (sigtrap_get() == 0) {
+		DBG(("%s: fallback - fbPolyFillRect\n", __FUNCTION__));
+		fbPolyFillRect(draw, gc, n, rect);
+		FALLBACK_FLUSH(draw);
+		sigtrap_put();
+	}
 out_gc:
 	sna_gc_move_to_gpu(gc);
 out:
@@ -13220,10 +13306,12 @@ fallback:
 					     drawable_gc_flags(draw, gc, true)))
 		goto out_gc;
 
-	DBG(("%s: fallback -- miPolyFillArc -> sna_fill_spans__cpu\n",
-	     __FUNCTION__));
-
-	miPolyFillArc(draw, gc, n, arc);
+	if (sigtrap_get() == 0) {
+		DBG(("%s: fallback -- miPolyFillArc -> sna_fill_spans__cpu\n",
+		     __FUNCTION__));
+		miPolyFillArc(draw, gc, n, arc);
+		sigtrap_put();
+	}
 out_gc:
 	sna_gc_move_to_gpu(gc);
 out:
@@ -13713,10 +13801,13 @@ fallback:
 						     MOVE_READ | MOVE_WRITE))
 			goto out_gc;
 
-		DBG(("%s: fallback -- fbPolyGlyphBlt\n", __FUNCTION__));
-		fbPolyGlyphBlt(drawable, gc, x, y, n,
-			       info, FONTGLYPHS(gc->font));
-		FALLBACK_FLUSH(drawable);
+		if (sigtrap_get() == 0) {
+			DBG(("%s: fallback -- fbPolyGlyphBlt\n", __FUNCTION__));
+			fbPolyGlyphBlt(drawable, gc, x, y, n,
+				       info, FONTGLYPHS(gc->font));
+			FALLBACK_FLUSH(drawable);
+			sigtrap_put();
+		}
 out_gc:
 		sna_gc_move_to_gpu(gc);
 	}
@@ -13788,10 +13879,13 @@ fallback:
 						     MOVE_READ | MOVE_WRITE))
 			goto out_gc;
 
-		DBG(("%s: fallback -- fbPolyGlyphBlt\n", __FUNCTION__));
-		fbPolyGlyphBlt(drawable, gc, x, y, n,
-			       info, FONTGLYPHS(gc->font));
-		FALLBACK_FLUSH(drawable);
+		if (sigtrap_get() == 0) {
+			DBG(("%s: fallback -- fbPolyGlyphBlt\n", __FUNCTION__));
+			fbPolyGlyphBlt(drawable, gc, x, y, n,
+				       info, FONTGLYPHS(gc->font));
+			FALLBACK_FLUSH(drawable);
+			sigtrap_put();
+		}
 out_gc:
 		sna_gc_move_to_gpu(gc);
 	}
@@ -13870,10 +13964,13 @@ fallback:
 		if (!sna_drawable_move_region_to_cpu(drawable, &region, MOVE_WRITE))
 			goto out_gc;
 
-		DBG(("%s: fallback -- fbImageGlyphBlt\n", __FUNCTION__));
-		fbImageGlyphBlt(drawable, gc, x, y, n,
-				info, FONTGLYPHS(gc->font));
-		FALLBACK_FLUSH(drawable);
+		if (sigtrap_get() == 0) {
+			DBG(("%s: fallback -- fbImageGlyphBlt\n", __FUNCTION__));
+			fbImageGlyphBlt(drawable, gc, x, y, n,
+					info, FONTGLYPHS(gc->font));
+			FALLBACK_FLUSH(drawable);
+			sigtrap_put();
+		}
 out_gc:
 		sna_gc_move_to_gpu(gc);
 	}
@@ -13952,10 +14049,13 @@ fallback:
 		if (!sna_drawable_move_region_to_cpu(drawable, &region, MOVE_WRITE))
 			goto out_gc;
 
-		DBG(("%s: fallback -- fbImageGlyphBlt\n", __FUNCTION__));
-		fbImageGlyphBlt(drawable, gc, x, y, n,
-				info, FONTGLYPHS(gc->font));
-		FALLBACK_FLUSH(drawable);
+		if (sigtrap_get() == 0) {
+			DBG(("%s: fallback -- fbImageGlyphBlt\n", __FUNCTION__));
+			fbImageGlyphBlt(drawable, gc, x, y, n,
+					info, FONTGLYPHS(gc->font));
+			FALLBACK_FLUSH(drawable);
+			sigtrap_put();
+		}
 out_gc:
 		sna_gc_move_to_gpu(gc);
 	}
@@ -14280,10 +14380,12 @@ fallback:
 	if (!sna_drawable_move_region_to_cpu(drawable, &region, MOVE_WRITE))
 		goto out_gc;
 
-	DBG(("%s: fallback -- fbImageGlyphBlt\n", __FUNCTION__));
-	fbImageGlyphBlt(drawable, gc, x, y, n, info, base);
-	FALLBACK_FLUSH(drawable);
-
+	if (sigtrap_get() == 0) {
+		DBG(("%s: fallback -- fbImageGlyphBlt\n", __FUNCTION__));
+		fbImageGlyphBlt(drawable, gc, x, y, n, info, base);
+		FALLBACK_FLUSH(drawable);
+		sigtrap_put();
+	}
 out_gc:
 	sna_gc_move_to_gpu(gc);
 out:
@@ -14360,10 +14462,12 @@ fallback:
 					     MOVE_READ | MOVE_WRITE))
 		goto out_gc;
 
-	DBG(("%s: fallback -- fbPolyGlyphBlt\n", __FUNCTION__));
-	fbPolyGlyphBlt(drawable, gc, x, y, n, info, base);
-	FALLBACK_FLUSH(drawable);
-
+	if (sigtrap_get() == 0) {
+		DBG(("%s: fallback -- fbPolyGlyphBlt\n", __FUNCTION__));
+		fbPolyGlyphBlt(drawable, gc, x, y, n, info, base);
+		FALLBACK_FLUSH(drawable);
+		sigtrap_put();
+	}
 out_gc:
 	sna_gc_move_to_gpu(gc);
 out:
@@ -14545,10 +14649,13 @@ sna_push_pixels(GCPtr gc, PixmapPtr bitmap, DrawablePtr drawable,
 					     drawable_gc_flags(drawable, gc, false)))
 		goto out_gc;
 
-	DBG(("%s: fallback, fbPushPixels(%d, %d, %d %d)\n",
-	     __FUNCTION__, w, h, x, y));
-	fbPushPixels(gc, bitmap, drawable, w, h, x, y);
-	FALLBACK_FLUSH(drawable);
+	if (sigtrap_get() == 0) {
+		DBG(("%s: fallback, fbPushPixels(%d, %d, %d %d)\n",
+		     __FUNCTION__, w, h, x, y));
+		fbPushPixels(gc, bitmap, drawable, w, h, x, y);
+		FALLBACK_FLUSH(drawable);
+		sigtrap_put();
+	}
 out_gc:
 	sna_gc_move_to_gpu(gc);
 out:
@@ -14967,8 +15074,11 @@ sna_copy_window(WindowPtr win, DDXPointRec origin, RegionPtr src)
 		if (!sna_pixmap_move_to_cpu(pixmap, MOVE_READ | MOVE_WRITE))
 			return;
 
-		miCopyRegion(&pixmap->drawable, &pixmap->drawable,
-			     0, &dst, dx, dy, fbCopyNtoN, 0, NULL);
+		if (sigtrap_get() == 0) {
+			miCopyRegion(&pixmap->drawable, &pixmap->drawable,
+				     0, &dst, dx, dy, fbCopyNtoN, 0, NULL);
+			sigtrap_put();
+		}
 	} else {
 		sna_self_copy_boxes(&pixmap->drawable, &pixmap->drawable, NULL,
 				    &dst, dx, dy, 0, NULL);
@@ -15285,41 +15395,44 @@ fallback:
 			if (!sna_pixmap_move_to_cpu(dst, MOVE_READ | MOVE_WRITE | MOVE_INPLACE_HINT))
 				goto skip;
 
-			assert(src->drawable.bitsPerPixel == dst->drawable.bitsPerPixel);
-			do {
-				DBG(("%s: copy box (%d, %d)->(%d, %d)x(%d, %d)\n",
-				     __FUNCTION__,
-				     box->x1 + dirty->x, box->y1 + dirty->y,
-				     box->x1, box->y1,
-				     box->x2 - box->x1, box->y2 - box->y1));
+			if (sigtrap_get() == 0) {
+				assert(src->drawable.bitsPerPixel == dst->drawable.bitsPerPixel);
+				do {
+					DBG(("%s: copy box (%d, %d)->(%d, %d)x(%d, %d)\n",
+					     __FUNCTION__,
+					     box->x1 + dirty->x, box->y1 + dirty->y,
+					     box->x1, box->y1,
+					     box->x2 - box->x1, box->y2 - box->y1));
 
-				assert(box->x2 > box->x1);
-				assert(box->y2 > box->y1);
+					assert(box->x2 > box->x1);
+					assert(box->y2 > box->y1);
 
-				assert(box->x1 + dirty->x >= 0);
-				assert(box->y1 + dirty->y >= 0);
-				assert(box->x2 + dirty->x <= src->drawable.width);
-				assert(box->y2 + dirty->y <= src->drawable.height);
+					assert(box->x1 + dirty->x >= 0);
+					assert(box->y1 + dirty->y >= 0);
+					assert(box->x2 + dirty->x <= src->drawable.width);
+					assert(box->y2 + dirty->y <= src->drawable.height);
 
-				assert(box->x1 >= 0);
-				assert(box->y1 >= 0);
-				assert(box->x2 <= src->drawable.width);
-				assert(box->y2 <= src->drawable.height);
+					assert(box->x1 >= 0);
+					assert(box->y1 >= 0);
+					assert(box->x2 <= src->drawable.width);
+					assert(box->y2 <= src->drawable.height);
 
-				assert(has_coherent_ptr(sna, sna_pixmap(src)));
-				assert(has_coherent_ptr(sna, sna_pixmap(dst)));
-				memcpy_blt(src->devPrivate.ptr,
-					   dst->devPrivate.ptr,
-					   src->drawable.bitsPerPixel,
-					   src->devKind, dst->devKind,
-					   box->x1 + dirty->x,
-					   box->y1 + dirty->y,
-					   box->x1,
-					   box->y1,
-					   box->x2 - box->x1,
-					   box->y2 - box->y1);
-				box++;
-			} while (--n);
+					assert(has_coherent_ptr(sna, sna_pixmap(src)));
+					assert(has_coherent_ptr(sna, sna_pixmap(dst)));
+					memcpy_blt(src->devPrivate.ptr,
+						   dst->devPrivate.ptr,
+						   src->drawable.bitsPerPixel,
+						   src->devKind, dst->devKind,
+						   box->x1 + dirty->x,
+						   box->y1 + dirty->y,
+						   box->x1,
+						   box->y1,
+						   box->x2 - box->x1,
+						   box->y2 - box->y1);
+					box++;
+				} while (--n);
+				sigtrap_put();
+			}
 		} else {
 			if (!sna_pixmap_move_to_gpu(src, MOVE_READ | MOVE_ASYNC_HINT | __MOVE_FORCE))
 				goto fallback;
@@ -15725,6 +15838,7 @@ bool sna_accel_init(ScreenPtr screen, struct sna *sna)
 	     __FUNCTION__, backend, sna->render.prefer_gpu));
 
 	kgem_reset(&sna->kgem);
+	sigtrap_init();
 
 	xf86DrvMsg(sna->scrn->scrnIndex, X_INFO,
 		   "SNA initialized with %s backend\n",
@@ -15796,6 +15910,8 @@ void sna_accel_close(struct sna *sna)
 
 void sna_accel_block_handler(struct sna *sna, struct timeval **tv)
 {
+	sigtrap_assert();
+
 	if (sna->kgem.need_retire)
 		kgem_retire(&sna->kgem);
 
@@ -15877,9 +15993,12 @@ void sna_accel_wakeup_handler(struct sna *sna)
 		DBG(("%s: GPU idle, flushing\n", __FUNCTION__));
 		_kgem_submit(&sna->kgem);
 	}
+
+	sigtrap_assert();
 }
 
 void sna_accel_free(struct sna *sna)
 {
 	DBG(("%s\n", __FUNCTION__));
+	sigtrap_assert();
 }

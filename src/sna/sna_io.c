@@ -113,6 +113,11 @@ read_boxes_inplace__cpu(struct kgem *kgem,
 		return false;
 
 	kgem_bo_sync__cpu_full(kgem, bo, 0);
+
+	sigtrap_assert();
+	if (sigtrap_get())
+		return false;
+
 	if (bo->tiling == I915_TILING_X) {
 		assert(kgem->memcpy_from_tiled_x);
 		do {
@@ -132,6 +137,7 @@ read_boxes_inplace__cpu(struct kgem *kgem,
 		} while (--n);
 	}
 
+	sigtrap_put();
 	return true;
 }
 
@@ -156,6 +162,10 @@ static void read_boxes_inplace(struct kgem *kgem,
 
 	src = kgem_bo_map(kgem, bo);
 	if (src == NULL)
+		return;
+
+	sigtrap_assert();
+	if (sigtrap_get())
 		return;
 
 	assert(src != dst);
@@ -183,6 +193,8 @@ static void read_boxes_inplace(struct kgem *kgem,
 			   box->x2 - box->x1, box->y2 - box->y1);
 		box++;
 	} while (--n);
+
+	sigtrap_put();
 }
 
 static bool download_inplace(struct kgem *kgem,
@@ -578,6 +590,11 @@ write_boxes_inplace__tiled(struct kgem *kgem,
 		return false;
 
 	kgem_bo_sync__cpu(kgem, bo);
+
+	sigtrap_assert();
+	if (sigtrap_get())
+		return false;
+
 	do {
 		memcpy_to_tiled_x(kgem, src, dst, bpp, stride, bo->pitch,
 				  box->x1 + src_dx, box->y1 + src_dy,
@@ -586,6 +603,7 @@ write_boxes_inplace__tiled(struct kgem *kgem,
 		box++;
 	} while (--n);
 
+	sigtrap_put();
 	return true;
 }
 
@@ -615,6 +633,10 @@ static bool write_boxes_inplace(struct kgem *kgem,
 
 	assert(dst != src);
 
+	sigtrap_assert();
+	if (sigtrap_get())
+		return false;
+
 	do {
 		DBG(("%s: (%d, %d) -> (%d, %d) x (%d, %d) [bpp=%d, src_pitch=%d, dst_pitch=%d]\n", __FUNCTION__,
 		     box->x1 + src_dx, box->y1 + src_dy,
@@ -641,6 +663,8 @@ static bool write_boxes_inplace(struct kgem *kgem,
 			   box->x2 - box->x1, box->y2 - box->y1);
 		box++;
 	} while (--n);
+
+	sigtrap_put();
 	return true;
 }
 
@@ -794,37 +818,41 @@ tile:
 						goto fallback;
 					}
 
-					c = clipped;
-					for (n = 0; n < nbox; n++) {
-						*c = box[n];
-						if (!box_intersect(c, &tile))
-							continue;
+					if (sigtrap_get() == 0) {
+						c = clipped;
+						for (n = 0; n < nbox; n++) {
+							*c = box[n];
+							if (!box_intersect(c, &tile))
+								continue;
 
-						DBG(("%s: box(%d, %d), (%d, %d), src=(%d, %d), dst=(%d, %d)\n",
-						     __FUNCTION__,
-						     c->x1, c->y1,
-						     c->x2, c->y2,
-						     src_dx, src_dy,
-						     c->x1 - tile.x1,
-						     c->y1 - tile.y1));
-						memcpy_blt(src, ptr, tmp.drawable.bitsPerPixel,
-							   stride, src_bo->pitch,
-							   c->x1 + src_dx,
-							   c->y1 + src_dy,
-							   c->x1 - tile.x1,
-							   c->y1 - tile.y1,
-							   c->x2 - c->x1,
-							   c->y2 - c->y1);
-						c++;
-					}
+							DBG(("%s: box(%d, %d), (%d, %d), src=(%d, %d), dst=(%d, %d)\n",
+							     __FUNCTION__,
+							     c->x1, c->y1,
+							     c->x2, c->y2,
+							     src_dx, src_dy,
+							     c->x1 - tile.x1,
+							     c->y1 - tile.y1));
+							memcpy_blt(src, ptr, tmp.drawable.bitsPerPixel,
+								   stride, src_bo->pitch,
+								   c->x1 + src_dx,
+								   c->y1 + src_dy,
+								   c->x1 - tile.x1,
+								   c->y1 - tile.y1,
+								   c->x2 - c->x1,
+								   c->y2 - c->y1);
+							c++;
+						}
 
-					if (c != clipped)
-						n = sna->render.copy_boxes(sna, GXcopy,
-									   &tmp, src_bo, -tile.x1, -tile.y1,
-									   dst, dst_bo, dst_dx, dst_dy,
-									   clipped, c - clipped, 0);
-					else
-						n = 1;
+						if (c != clipped)
+							n = sna->render.copy_boxes(sna, GXcopy,
+										   &tmp, src_bo, -tile.x1, -tile.y1,
+										   dst, dst_bo, dst_dx, dst_dy,
+										   clipped, c - clipped, 0);
+						else
+							n = 1;
+						sigtrap_put();
+					} else
+						n = 0;
 
 					kgem_bo_destroy(&sna->kgem, src_bo);
 
@@ -1408,21 +1436,26 @@ indirect_replace(struct sna *sna,
 	if (!src_bo)
 		return false;
 
-	memcpy_blt(src, ptr, pixmap->drawable.bitsPerPixel,
-		   stride, src_bo->pitch,
-		   0, 0,
-		   0, 0,
-		   pixmap->drawable.width,
-		   pixmap->drawable.height);
+	sigtrap_assert();
+	if (sigtrap_get() == 0) {
+		memcpy_blt(src, ptr, pixmap->drawable.bitsPerPixel,
+			   stride, src_bo->pitch,
+			   0, 0,
+			   0, 0,
+			   pixmap->drawable.width,
+			   pixmap->drawable.height);
 
-	box.x1 = box.y1 = 0;
-	box.x2 = pixmap->drawable.width;
-	box.y2 = pixmap->drawable.height;
+		box.x1 = box.y1 = 0;
+		box.x2 = pixmap->drawable.width;
+		box.y2 = pixmap->drawable.height;
 
-	ret = sna->render.copy_boxes(sna, GXcopy,
-				     pixmap, src_bo, 0, 0,
-				     pixmap, bo, 0, 0,
-				     &box, 1, 0);
+		ret = sna->render.copy_boxes(sna, GXcopy,
+					     pixmap, src_bo, 0, 0,
+					     pixmap, bo, 0, 0,
+					     &box, 1, 0);
+		sigtrap_put();
+	} else
+		ret = false;
 
 	kgem_bo_destroy(kgem, src_bo);
 
@@ -1485,14 +1518,17 @@ bool sna_replace(struct sna *sna,
 			goto done;
 	}
 
+	sigtrap_assert();
 	if (kgem_bo_is_mappable(kgem, bo) &&
-	    (dst = kgem_bo_map(kgem, bo)) != NULL) {
+	    (dst = kgem_bo_map(kgem, bo)) != NULL &&
+	    sigtrap_get() == 0) {
 		memcpy_blt(src, dst, pixmap->drawable.bitsPerPixel,
 			   stride, bo->pitch,
 			   0, 0,
 			   0, 0,
 			   pixmap->drawable.width,
 			   pixmap->drawable.height);
+		sigtrap_put();
 	} else {
 		BoxRec box;
 

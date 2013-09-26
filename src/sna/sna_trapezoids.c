@@ -2411,10 +2411,13 @@ trapezoids_inplace_fallback(struct sna *sna,
 		dx += dst->pDrawable->x;
 		dy += dst->pDrawable->y;
 
-		for (; ntrap; ntrap--, traps++)
-			pixman_rasterize_trapezoid(image,
-						   (pixman_trapezoid_t *)traps,
-						   dx, dy);
+		if (sigtrap_get() == 0) {
+			for (; ntrap; ntrap--, traps++)
+				pixman_rasterize_trapezoid(image,
+							   (pixman_trapezoid_t *)traps,
+							   dx, dy);
+			sigtrap_put();
+		}
 
 		pixman_image_unref(image);
 	}
@@ -2800,15 +2803,18 @@ composite_aligned_boxes(struct sna *sna,
 			pixman_region_init_rects(&region, boxes, num_boxes);
 			RegionIntersect(&region, &region, &clip);
 
-			b = REGION_RECTS(&region);
-			count = REGION_NUM_RECTS(&region);
-			for (i = 0; i < count; i++) {
-				fbComposite(op, src, NULL, dst,
-					    src_x + b[i].x1 - boxes[0].x1,
-					    src_y + b[i].y1 - boxes[0].y1,
-					    0, 0,
-					    b[i].x1, b[i].y1,
-					    b[i].x2 - b[i].x1, b[i].y2 - b[i].y1);
+			if (sigtrap_get() == 0) {
+				b = REGION_RECTS(&region);
+				count = REGION_NUM_RECTS(&region);
+				for (i = 0; i < count; i++) {
+					fbComposite(op, src, NULL, dst,
+						    src_x + b[i].x1 - boxes[0].x1,
+						    src_y + b[i].y1 - boxes[0].y1,
+						    0, 0,
+						    b[i].x1, b[i].y1,
+						    b[i].x2 - b[i].x1, b[i].y2 - b[i].y1);
+				}
+				sigtrap_put();
 			}
 			pixman_region_fini(&region);
 		} else {
@@ -6954,7 +6960,10 @@ sna_add_traps(PicturePtr picture, INT16 x, INT16 y, int n, xTrap *t)
 		if (!(image = image_from_pict(picture, false, &dx, &dy)))
 			return;
 
-		pixman_add_traps(image, x + dx, y + dy, n, (pixman_trap_t *)t);
+		if (sigtrap_get() == 0) {
+			pixman_add_traps(image, x + dx, y + dy, n, (pixman_trap_t *)t);
+			sigtrap_put();
+		}
 
 		free_pixman_pict(picture, image);
 	}

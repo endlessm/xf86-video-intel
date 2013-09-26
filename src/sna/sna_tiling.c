@@ -249,12 +249,15 @@ sna_tiling_composite_done(struct sna *sna,
 							      MOVE_READ))
 					goto done;
 
-				fbComposite(tile->op,
-					    tile->src, tile->mask, tile->dst,
-					    tile->src_x + x,  tile->src_y + y,
-					    tile->mask_x + x, tile->mask_y + y,
-					    tile->dst_x + x,  tile->dst_y + y,
-					    width, height);
+				if (sigtrap_get() == 0) {
+					fbComposite(tile->op,
+						    tile->src, tile->mask, tile->dst,
+						    tile->src_x + x,  tile->src_y + y,
+						    tile->mask_x + x, tile->mask_y + y,
+						    tile->dst_x + x,  tile->dst_y + y,
+						    width, height);
+					sigtrap_put();
+				}
 			}
 		}
 	}
@@ -499,12 +502,15 @@ sna_tiling_composite_spans_done(struct sna *sna,
 						if (!mask)
 							goto done;
 
-						fbComposite(tile->op,
-							    tile->src, mask, tile->dst,
-							    tile->src_x + x,  tile->src_y + y,
-							    0, 0,
-							    tile->dst_x + x,  tile->dst_y + y,
-							    width, height);
+						if (sigtrap_get() == 0) {
+							fbComposite(tile->op,
+								    tile->src, mask, tile->dst,
+								    tile->src_x + x,  tile->src_y + y,
+								    0, 0,
+								    tile->dst_x + x,  tile->dst_y + y,
+								    width, height);
+							sigtrap_put();
+						}
 
 						FreePicture(mask, 0);
 					}

@@ -1676,11 +1676,14 @@ do_fixup:
 
 	DBG(("%s: compositing tmp=(%d+%d, %d+%d)x(%d, %d)\n",
 	     __FUNCTION__, x, dx, y, dy, w, h));
-	sna_image_composite(PictOpSrc, src, NULL, dst,
-			    x + dx, y + dy,
-			    0, 0,
-			    0, 0,
-			    w, h);
+	if (sigtrap_get() == 0) {
+		sna_image_composite(PictOpSrc, src, NULL, dst,
+				    x + dx, y + dy,
+				    0, 0,
+				    0, 0,
+				    w, h);
+		sigtrap_put();
+	}
 	free_pixman_pict(picture, src);
 
 	/* Then convert to card format */
@@ -1883,11 +1886,14 @@ sna_render_picture_convert(struct sna *sna,
 			return 0;
 		}
 
-		pixman_image_composite(PictOpSrc, src, NULL, dst,
-				       box.x1, box.y1,
-				       0, 0,
-				       0, 0,
-				       w, h);
+		if (sigtrap_get() == 0) {
+			pixman_image_composite(PictOpSrc, src, NULL, dst,
+					       box.x1, box.y1,
+					       0, 0,
+					       0, 0,
+					       w, h);
+			sigtrap_put();
+		}
 		pixman_image_unref(dst);
 		pixman_image_unref(src);
 	}
