@@ -4021,6 +4021,7 @@ sna_crtc_redisplay(xf86CrtcPtr crtc, RegionPtr region)
 {
 	struct sna *sna = to_sna(crtc->scrn);
 	struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
+	struct sna_pixmap *priv = sna_pixmap(sna->front);
 	int16_t tx, ty;
 
 	DBG(("%s: crtc %d [pipe=%d], damage (%d, %d), (%d, %d) x %ld\n",
@@ -4030,6 +4031,17 @@ sna_crtc_redisplay(xf86CrtcPtr crtc, RegionPtr region)
 	     (long)RegionNumRects(region)));
 
 	assert(!wedged(sna));
+
+	if (priv->clear) {
+		DBG(("%s: clear damage boxes\n", __FUNCTION__));
+
+		RegionTranslate(region, -crtc->bounds.x1, -crtc->bounds.y1);
+		sna_blt_fill_boxes(sna, GXcopy,
+				   sna_crtc->bo, sna->front->drawable.bitsPerPixel,
+				   priv->clear_color,
+				   REGION_RECTS(region), REGION_NUM_RECTS(region));
+		return;
+	}
 
 	if (crtc->filter == NULL &&
 	    sna_transform_is_integer_translation(&crtc->crtc_to_framebuffer,
@@ -4048,7 +4060,7 @@ sna_crtc_redisplay(xf86CrtcPtr crtc, RegionPtr region)
 		 */
 
 		if (sna->render.copy_boxes(sna, GXcopy,
-					   sna->front, __sna_pixmap_get_bo(sna->front), 0, 0,
+					   sna->front, priv->gpu_bo, 0, 0,
 					   &tmp, sna_crtc->bo, -tx, -ty,
 					   REGION_RECTS(region), REGION_NUM_RECTS(region), 0))
 			return;
