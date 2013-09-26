@@ -3827,6 +3827,25 @@ void sna_mode_reset(struct sna *sna)
 	}
 }
 
+static void transformed_box(BoxRec *box, xf86CrtcPtr crtc)
+{
+	box->x1 -= crtc->filter_width >> 1;
+	box->x2 += crtc->filter_width >> 1;
+	box->y1 -= crtc->filter_height >> 1;
+	box->y2 += crtc->filter_height >> 1;
+
+	pixman_f_transform_bounds(&crtc->f_framebuffer_to_crtc, box);
+
+	if (box->x1 < 0)
+		box->x1 = 0;
+	if (box->y1 < 0)
+		box->y1 = 0;
+	if (box->x2 > crtc->mode.HDisplay)
+		box->x2 = crtc->mode.HDisplay;
+	if (box->y2 > crtc->mode.VDisplay)
+		box->y2 = crtc->mode.VDisplay;
+}
+
 static void
 sna_crtc_redisplay__fallback(xf86CrtcPtr crtc, RegionPtr region)
 {
@@ -3894,11 +3913,7 @@ sna_crtc_redisplay__fallback(xf86CrtcPtr crtc, RegionPtr region)
 		BoxRec box;
 
 		box = *b++;
-		box.x1 -= crtc->filter_width >> 1;
-		box.x2 += crtc->filter_width >> 1;
-		box.y1 -= crtc->filter_height >> 1;
-		box.y2 += crtc->filter_height >> 1;
-		pixman_f_transform_bounds(&crtc->f_framebuffer_to_crtc, & box);
+		transformed_box(&box, crtc);
 
 		DBG(("%s: (%d, %d)x(%d, %d) -> (%d, %d), (%d, %d)\n",
 		     __FUNCTION__,
@@ -3993,11 +4008,7 @@ sna_crtc_redisplay__composite(xf86CrtcPtr crtc, RegionPtr region)
 		BoxRec box;
 
 		box = *b++;
-		box.x1 -= crtc->filter_width >> 1;
-		box.x2 += crtc->filter_width >> 1;
-		box.y1 -= crtc->filter_height >> 1;
-		box.y2 += crtc->filter_height >> 1;
-		pixman_f_transform_bounds(&crtc->f_framebuffer_to_crtc, & box);
+		transformed_box(&box, crtc);
 
 		DBG(("%s: (%d, %d)x(%d, %d) -> (%d, %d), (%d, %d)\n",
 		     __FUNCTION__,
