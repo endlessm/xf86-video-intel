@@ -1367,6 +1367,7 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 	/* Convert the aperture thresholds to pages */
 	kgem->aperture_low /= PAGE_SIZE;
 	kgem->aperture_high /= PAGE_SIZE;
+	kgem->aperture_total /= PAGE_SIZE;
 
 	kgem->fence_max = gem_param(kgem, I915_PARAM_NUM_FENCES_AVAIL) - 2;
 	if ((int)kgem->fence_max < 0)
@@ -2921,6 +2922,14 @@ void _kgem_submit(struct kgem *kgem)
 					       kgem->reloc[i].read_domains,
 					       kgem->reloc[i].write_domain,
 					       (int)kgem->reloc[i].presumed_offset);
+				}
+
+				{
+					struct drm_i915_gem_get_aperture aperture;
+					if (drmIoctl(kgem->fd, DRM_IOCTL_I915_GEM_GET_APERTURE, &aperture) == 0)
+						ErrorF("Aperture size %lld, available %lld\n",
+						       (long long)aperture.aper_size,
+						       (long long)aperture.aper_available_size);
 				}
 
 				if (DEBUG_SYNC) {
@@ -4567,6 +4576,31 @@ inline static bool needs_semaphore(struct kgem *kgem, struct kgem_bo *bo)
 	return kgem->nreloc && bo->rq && RQ_RING(bo->rq) != kgem->ring;
 }
 
+static bool aperture_check(struct kgem *kgem, unsigned num_pages)
+{
+	if (kgem->aperture) {
+		struct drm_i915_gem_get_aperture aperture;
+
+		VG_CLEAR(aperture);
+		aperture.aper_available_size = kgem->aperture_high;
+		aperture.aper_available_size *= PAGE_SIZE;
+		(void)drmIoctl(kgem->fd, DRM_IOCTL_I915_GEM_GET_APERTURE, &aperture);
+
+		DBG(("%s: aperture required %ld bytes, available %ld bytes\n",
+		     __FUNCTION__,
+		     (long)num_pages * PAGE_SIZE,
+		     (long)aperture.aper_available_size));
+
+		/* Leave some space in case of alignment issues */
+		aperture.aper_available_size -= 4 * 1024 * 1024;
+
+		if (num_pages < aperture.aper_available_size / PAGE_SIZE)
+			return true;
+	}
+
+	return false;
+}
+
 bool kgem_check_bo(struct kgem *kgem, ...)
 {
 	va_list ap;
@@ -4615,7 +4649,7 @@ bool kgem_check_bo(struct kgem *kgem, ...)
 	if (num_pages + kgem->aperture > kgem->aperture_high) {
 		DBG(("%s: final aperture usage (%d) is greater than high water mark (%d)\n",
 		     __FUNCTION__, num_pages + kgem->aperture, kgem->aperture_high));
-		return false;
+		return aperture_check(kgem, num_pages);
 	}
 
 	if (kgem->nexec + num_exec >= KGEM_EXEC_SIZE(kgem)) {
@@ -4676,8 +4710,11 @@ bool kgem_check_bo_fenced(struct kgem *kgem, struct kgem_bo *bo)
 		return false;
 	}
 
-	if (kgem->aperture + num_pages(bo) > kgem->aperture_high)
-		return false;
+	if (kgem->aperture + num_pages(bo) > kgem->aperture_high) {
+		DBG(("%s: final aperture usage (%d) is greater than high water mark (%d)\n",
+		     __FUNCTION__, num_pages(bo) + kgem->aperture, kgem->aperture_high));
+		return aperture_check(kgem, num_pages(bo));
+	}
 
 	assert_tiling(kgem, bo);
 	if (kgem->gen < 040 && bo->tiling != I915_TILING_NONE) {
@@ -4767,8 +4804,11 @@ bool kgem_check_many_bo_fenced(struct kgem *kgem, ...)
 			return false;
 		}
 
-		if (num_pages + kgem->aperture > kgem->aperture_high)
-			return false;
+		if (num_pages + kgem->aperture > kgem->aperture_high) {
+			DBG(("%s: final aperture usage (%d) is greater than high water mark (%d)\n",
+			     __FUNCTION__, num_pages + kgem->aperture, kgem->aperture_high));
+			return aperture_check(kgem, num_pages);
+		}
 
 		if (kgem->nexec + num_exec >= KGEM_EXEC_SIZE(kgem))
 			return false;
