@@ -1230,6 +1230,7 @@ static PixmapPtr sna_create_pixmap(ScreenPtr screen,
 	if (wedged(sna))
 		flags &= ~KGEM_CAN_CREATE_GTT;
 
+	DBG(("%s: usage=%d, flags=%x\n", __FUNCTION__, usage, flags));
 	switch (usage) {
 	case CREATE_PIXMAP_USAGE_SCRATCH:
 		if (flags & KGEM_CAN_CREATE_GPU)
@@ -3804,6 +3805,9 @@ active:
 
 static bool must_check sna_validate_pixmap(DrawablePtr draw, PixmapPtr pixmap)
 {
+	DBG(("%s: target bpp=%d, source bpp=%d\n",
+	     __FUNCTION__, draw->bitsPerPixel, pixmap->drawable.bitsPerPixel));
+
 	if (draw->bitsPerPixel == pixmap->drawable.bitsPerPixel &&
 	    FbEvenTile(pixmap->drawable.width *
 		       pixmap->drawable.bitsPerPixel)) {
@@ -3873,9 +3877,11 @@ static bool must_check sna_gc_move_to_cpu(GCPtr gc,
 
 	switch (gc->fillStyle) {
 	case FillTiled:
+		DBG(("%s: moving tile to cpu\n", __FUNCTION__));
 		return sna_drawable_move_to_cpu(&gc->tile.pixmap->drawable, MOVE_READ);
 	case FillStippled:
 	case FillOpaqueStippled:
+		DBG(("%s: moving stipple to cpu\n", __FUNCTION__));
 		return sna_drawable_move_to_cpu(&gc->stipple->drawable, MOVE_READ);
 	default:
 		return true;
