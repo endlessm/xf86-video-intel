@@ -729,6 +729,9 @@ bool sna_write_boxes(struct sna *sna, PixmapPtr dst,
 				box, nbox))
 		return true;
 
+	if (wedged(sna))
+		return false;
+
 	can_blt = kgem_bo_can_blt(kgem, dst_bo) &&
 		(box[0].x2 - box[0].x1) * dst->drawable.bitsPerPixel < 8 * (MAXSHORT - 4);
 	extents = box[0];
