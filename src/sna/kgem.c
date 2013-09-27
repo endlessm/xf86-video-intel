@@ -4019,7 +4019,6 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 			assert(bo->pitch*kgem_aligned_height(kgem, height, bo->tiling) <= kgem_bo_size(bo));
 			assert_tiling(kgem, bo);
 			bo->refcnt = 1;
-			bo->flush = true;
 			return bo;
 		}
 
@@ -4385,12 +4384,6 @@ create:
 	if (!bo) {
 		gem_close(kgem->fd, handle);
 		return NULL;
-	}
-
-	if (bucket >= NUM_CACHE_BUCKETS) {
-		DBG(("%s: marking large bo for automatic flushing\n",
-		     __FUNCTION__));
-		bo->flush = true;
 	}
 
 	bo->unique_id = kgem_get_unique_id(kgem);
