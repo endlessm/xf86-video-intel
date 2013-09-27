@@ -264,6 +264,8 @@ gen2_emit_texture(struct sna *sna,
 	uint32_t texcoordtype;
 	uint32_t filter;
 
+	assert(channel->bo);
+
 	if (channel->is_affine)
 		texcoordtype = TEXCOORDTYPE_CARTESIAN;
 	else
@@ -2569,6 +2571,7 @@ gen2_render_composite_spans(struct sna *sna,
 	case 1:
 		break;
 	}
+	assert(tmp->base.src.bo || tmp->base.src.is_solid);
 
 	tmp->prim_emit = gen2_emit_composite_spans_primitive;
 	tmp->base.floats_per_vertex = 3;

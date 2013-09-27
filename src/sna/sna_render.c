@@ -897,8 +897,10 @@ sna_render_pixmap_partial(struct sna *sna,
 	DBG(("%s (%d, %d)x(%d, %d), pitch %d, max %d\n",
 	     __FUNCTION__, x, y, w, h, bo->pitch, sna->render.max_3d_pitch));
 
-	if (bo->pitch > sna->render.max_3d_pitch)
+	if (bo->pitch > sna->render.max_3d_pitch) {
+		DBG(("%s: pitch too great %d > %d\n", __FUNCTION__, bo->pitch, sna->render.max_3d_pitch));
 		return false;
+	}
 
 	box.x1 = x;
 	box.y1 = y;
@@ -981,7 +983,7 @@ sna_render_pixmap_partial(struct sna *sna,
 	return true;
 }
 
-static int
+static bool
 sna_render_picture_partial(struct sna *sna,
 			   PicturePtr picture,
 			   struct sna_composite_channel *channel,
@@ -1033,14 +1035,14 @@ sna_render_picture_partial(struct sna *sna,
 		priv = sna_pixmap_force_to_gpu(pixmap,
 					       MOVE_READ | MOVE_SOURCE_HINT);
 		if (priv == NULL)
-			return 0;
+			return false;
 
 		bo = priv->gpu_bo;
 	}
 
 	if (bo->pitch > sna->render.max_3d_pitch) {
 		DBG(("%s: pitch too great %d > %d\n", __FUNCTION__, bo->pitch, sna->render.max_3d_pitch));
-		return -1;
+		return false;
 	}
 
 	if (bo->tiling) {
@@ -1076,14 +1078,14 @@ sna_render_picture_partial(struct sna *sna,
 	if (w <= 0 || h <= 0 ||
 	    w > sna->render.max_3d_size ||
 	    h > sna->render.max_3d_size)
-		return 0;
+		return false;
 
 	/* How many tiles across are we? */
 	channel->bo = kgem_create_proxy(&sna->kgem, bo,
 					box.y1 * bo->pitch + offset,
 					h * bo->pitch);
 	if (channel->bo == NULL)
-		return 0;
+		return false;
 
 	if (channel->transform) {
 		memset(&channel->embedded_transform,
@@ -1109,7 +1111,7 @@ sna_render_picture_partial(struct sna *sna,
 	channel->scale[1] = 1.f/h;
 	channel->width  = w;
 	channel->height = h;
-	return 1;
+	return true;
 }
 
 int

@@ -1148,8 +1148,8 @@ can_flip(struct sna * sna,
 
 	pixmap = get_window_pixmap(win);
 	if (pixmap != sna->front) {
-		DBG(("%s: no, window is not attached to the front buffer\n",
-		     __FUNCTION__));
+		DBG(("%s: no, window (pixmap=%ld) is not attached to the front buffer (pixmap=%ld)\n",
+		     __FUNCTION__, pixmap->drawable.serialNumber, sna->front->drawable.serialNumber));
 		return false;
 	}
 
