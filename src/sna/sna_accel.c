@@ -15476,9 +15476,9 @@ static void sna_accel_flush(struct sna *sna)
 		sna_accel_disarm_timer(sna, FLUSH_TIMER);
 	sna->kgem.busy = busy;
 
-	if (priv) {
-		sna_pixmap_force_to_gpu(priv->pixmap,
-					MOVE_READ | MOVE_ASYNC_HINT);
+	if (priv &&
+	    sna_pixmap_force_to_gpu(priv->pixmap,
+				    MOVE_READ | MOVE_ASYNC_HINT)) {
 		kgem_scanout_flush(&sna->kgem, priv->gpu_bo);
 		assert(!priv->cpu);
 	}
