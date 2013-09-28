@@ -1,3 +1,41 @@
+Snapshot 2.99.903 (2013-09-28)
+==============================
+Lots more stabilization work, not yet peaceful enough to christen 3.0. We
+have everything ranging from build fixes for systems like Suse Linux
+Enterprise Desktop that like to backport hardware enablement to ancient
+packages, to fixes for hardware enabling, and some more performance tuning.
+
+ * Fix VSync on Haswell.
+   https://bugs.freedesktop.org/show_bug.cgi?id=69119
+
+ * Disable Y-tiling on gen4 - it too frequently leads to instability.
+   https://bugs.launchpad.net/ubuntu/+source/xserver-xorg-video-intel/+bug/1222203
+
+ * Disable same EDID detection based on property id - the kernel likes
+   to reuse ids leading to a failure to detect the right modes on a monitor
+   change.
+
+ * Avoid issuing multiple DPMS requests to the same encoder (alised to
+   multiple connectors) to avoid upsetting Haswell and leaving the
+   screens blank.
+
+ * Honour the user preferrence for the initial mode, even if they are
+   being silly
+   https://bugzilla.novell.com/show_bug.cgi?id=841696
+
+ * Clear the clear hint when apply DRI updates - to prevent some
+   screenshots from GL windows being left blank.
+   https://bugs.freedesktop.org/show_bug.cgi?id=69730
+
+ * Prevent a NULL dereference from trying to undo an non-existent buffer
+   https://bugs.launchpad.net/ubuntu/+source/xserver-xorg-video-intel/+bug/1228677
+
+ * Handle out-of-memory conditions far more gracefully. If the system is
+   hard against the memory wall, then the kernel will start issuing
+   SIGBUS even for CPU mmaps. Untrapped these will cause X to die.
+   https://bugs.freedesktop.org/show_bug.cgi?id=67889
+
+
 Snapshot 2.99.902 (2013-09-07)
 ==============================
 We do not condone or support Canonical in the course of action they have
