@@ -5658,7 +5658,7 @@ struct kgem_bo *kgem_create_buffer(struct kgem *kgem,
 			assert(bo->mmapped);
 			assert(bo->mmapped == MMAPPED_GTT || kgem->has_llc || bo->base.snoop);
 
-			if (!kgem->has_llc && (bo->write & ~flags) & KGEM_BUFFER_INPLACE) {
+			if ((bo->write & ~flags) & KGEM_BUFFER_INPLACE && !bo->base.snoop) {
 				DBG(("%s: skip write %x buffer, need %x\n",
 				     __FUNCTION__, bo->write, flags));
 				continue;
