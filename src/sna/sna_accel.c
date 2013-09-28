@@ -408,7 +408,7 @@ static int sigtrap_handler(int sig)
 		siglongjmp(sigjmp, sig);
 	}
 
-	return 0;
+	return -1;
 }
 
 static void sigtrap_init(void)
