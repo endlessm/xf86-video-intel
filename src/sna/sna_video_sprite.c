@@ -242,6 +242,7 @@ sna_video_sprite_show(struct sna *sna,
 	if (frame->bo->delta == 0) {
 		uint32_t offsets[4], pitches[4], handles[4];
 		uint32_t pixel_format;
+		bool purged = true;
 
 		handles[0] = frame->bo->handle;
 		pitches[0] = frame->pitch[0];
@@ -250,9 +251,11 @@ sna_video_sprite_show(struct sna *sna,
 		switch (frame->id) {
 		case FOURCC_RGB565:
 			pixel_format = DRM_FORMAT_RGB565;
+			purged = sna->scrn->depth != 16;
 			break;
 		case FOURCC_RGB888:
 			pixel_format = DRM_FORMAT_XRGB8888;
+			purged = sna->scrn->depth != 24;
 			break;
 		case FOURCC_UYVY:
 			pixel_format = DRM_FORMAT_UYVY;
@@ -277,6 +280,8 @@ sna_video_sprite_show(struct sna *sna,
 		}
 
 		frame->bo->scanout = true;
+		/* Don't allow the scanout to be cached if not suitable for front */
+		frame->bo->purged = purged;
 	}
 
 	assert(frame->bo->scanout);
