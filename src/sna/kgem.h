@@ -467,7 +467,7 @@ bool kgem_bo_write(struct kgem *kgem, struct kgem_bo *bo,
 		   const void *data, int length);
 
 int kgem_bo_fenced_size(struct kgem *kgem, struct kgem_bo *bo);
-void kgem_get_tile_size(struct kgem *kgem, int tiling,
+void kgem_get_tile_size(struct kgem *kgem, int tiling, int pitch,
 			int *tile_width, int *tile_height, int *tile_size);
 
 static inline int __kgem_buffer_size(struct kgem_bo *bo)

@@ -917,13 +917,10 @@ sna_render_pixmap_partial(struct sna *sna,
 	if (bo->tiling) {
 		int tile_width, tile_height, tile_size;
 
-		kgem_get_tile_size(&sna->kgem, bo->tiling,
+		kgem_get_tile_size(&sna->kgem, bo->tiling, bo->pitch,
 				   &tile_width, &tile_height, &tile_size);
 		DBG(("%s: tile size for tiling %d: %dx%d, size=%d\n",
 		     __FUNCTION__, bo->tiling, tile_width, tile_height, tile_size));
-
-		if (sna->kgem.gen < 033)
-			tile_width = bo->pitch;
 
 		/* Ensure we align to an even tile row */
 		box.y1 = box.y1 & ~(2*tile_height - 1);
@@ -1048,7 +1045,7 @@ sna_render_picture_partial(struct sna *sna,
 	if (bo->tiling) {
 		int tile_width, tile_height, tile_size;
 
-		kgem_get_tile_size(&sna->kgem, bo->tiling,
+		kgem_get_tile_size(&sna->kgem, bo->tiling, bo->pitch,
 				   &tile_width, &tile_height, &tile_size);
 
 		DBG(("%s: tiling=%d, size=%dx%d, chunk=%d\n",
@@ -1966,7 +1963,7 @@ sna_render_composite_redirect(struct sna *sna,
 		if (op->dst.bo->tiling) {
 			int tile_width, tile_height, tile_size;
 
-			kgem_get_tile_size(&sna->kgem, op->dst.bo->tiling,
+			kgem_get_tile_size(&sna->kgem, op->dst.bo->tiling, op->dst.bo->pitch,
 					   &tile_width, &tile_height, &tile_size);
 
 			box.y1 = box.y1 & ~(2*tile_height - 1);

@@ -1404,7 +1404,7 @@ inline static uint32_t kgem_pitch_alignment(struct kgem *kgem, unsigned flags)
 	return kgem->min_alignment;
 }
 
-void kgem_get_tile_size(struct kgem *kgem, int tiling,
+void kgem_get_tile_size(struct kgem *kgem, int tiling, int pitch,
 			int *tile_width, int *tile_height, int *tile_size)
 {
 	if (kgem->gen <= 030) {
@@ -1441,6 +1441,10 @@ void kgem_get_tile_size(struct kgem *kgem, int tiling,
 		*tile_size = 4096;
 		break;
 	}
+
+	/* Force offset alignment to tile-row */
+	if (tiling && kgem->gen < 033)
+		*tile_width = pitch;
 }
 
 static uint32_t kgem_surface_size(struct kgem *kgem,
