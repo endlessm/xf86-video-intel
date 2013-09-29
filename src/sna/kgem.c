@@ -713,7 +713,7 @@ total_ram_size(void)
 static unsigned
 cpu_cache_size__cpuid4(void)
 {
-	/* Deterministic Cache Parmaeters (Function 04h)":
+	/* Deterministic Cache Parameters (Function 04h)":
 	 *    When EAX is initialized to a value of 4, the CPUID instruction
 	 *    returns deterministic cache information in the EAX, EBX, ECX
 	 *    and EDX registers.  This function requires ECX be initialized
@@ -1520,7 +1520,7 @@ static uint32_t kgem_surface_size(struct kgem *kgem,
 	if (relaxed_fencing || tiling == I915_TILING_NONE)
 		return PAGE_ALIGN(size);
 
-	/*  We need to allocate a pot fence region for a tiled buffer. */
+	/* We need to allocate a pot fence region for a tiled buffer. */
 	if (kgem->gen < 030)
 		tile_width = 512 * 1024;
 	else
@@ -1631,7 +1631,7 @@ static void kgem_bo_binding_free(struct kgem *kgem, struct kgem_bo *bo)
 	b = bo->binding.next;
 	while (b) {
 		struct kgem_bo_binding *next = b->next;
-		free (b);
+		free(b);
 		b = next;
 	}
 }
