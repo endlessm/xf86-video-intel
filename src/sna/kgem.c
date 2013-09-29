@@ -1742,7 +1742,11 @@ static struct kgem_bo *kgem_bo_replace_io(struct kgem_bo *bo)
 		return bo;
 
 	assert(!bo->snoop);
-	base = malloc(sizeof(*base));
+	if (__kgem_freed_bo) {
+		base = __kgem_freed_bo;
+		__kgem_freed_bo = *(struct kgem_bo **)base;
+	} else
+		base = malloc(sizeof(*base));
 	if (base) {
 		DBG(("%s: transferring io handle=%d to bo\n",
 		     __FUNCTION__, bo->handle));
