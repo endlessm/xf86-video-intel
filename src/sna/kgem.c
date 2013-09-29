@@ -3913,7 +3913,7 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 	bucket = cache_bucket(size);
 
 	if (flags & CREATE_SCANOUT) {
-		struct kgem_bo *last = NULL;
+		struct kgem_bo *last = NULL, *first = NULL;
 
 		list_for_each_entry_reverse(bo, &kgem->scanout, list) {
 			assert(bo->scanout);
@@ -3924,8 +3924,11 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 			if (size > num_pages(bo) || num_pages(bo) > 2*size)
 				continue;
 
-			if (!check_scanout_size(kgem, bo, width, height))
+			if (!check_scanout_size(kgem, bo, width, height)) {
+				if (first == NULL)
+					first = bo;
 				continue;
+			}
 
 			if (bo->tiling != tiling ||
 			    (tiling != I915_TILING_NONE && bo->pitch != pitch)) {
@@ -3963,6 +3966,46 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 			assert_tiling(kgem, last);
 			last->refcnt = 1;
 			return last;
+		}
+
+		if (first) {
+			ScrnInfoPtr scrn =
+				container_of(kgem, struct sna, kgem)->scrn;
+
+			if (scrn->vtSema) {
+				DBG(("%s: recreate fb %dx%d@%d/%d\n",
+				     __FUNCTION__, width, height, scrn->depth, scrn->bitsPerPixel));
+
+				if (bo->tiling != tiling ||
+				    (tiling != I915_TILING_NONE && bo->pitch != pitch)) {
+					if (gem_set_tiling(kgem->fd, bo->handle,
+							   tiling, pitch)) {
+						bo->tiling = tiling;
+						bo->pitch = pitch;
+					}
+				}
+
+				if (bo->tiling == tiling && bo->pitch == pitch) {
+					struct drm_mode_fb_cmd arg;
+
+					VG_CLEAR(arg);
+					arg.width = width;
+					arg.height = height;
+					arg.pitch = bo->pitch;
+					arg.bpp = scrn->bitsPerPixel;
+					arg.depth = scrn->depth;
+					arg.handle = bo->handle;
+
+					drmIoctl(kgem->fd, DRM_IOCTL_MODE_RMFB, &bo->delta);
+					if (drmIoctl(kgem->fd, DRM_IOCTL_MODE_ADDFB, &arg)) {
+						bo->scanout = false;
+						kgem_bo_free(kgem, bo);
+					} else {
+						bo->delta = arg.fb_id;
+						return bo;
+					}
+				}
+			}
 		}
 
 		bo = __kgem_bo_create_as_display(kgem, size, tiling, pitch);
