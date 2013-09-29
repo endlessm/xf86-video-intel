@@ -92,7 +92,7 @@ struct sna_video {
 	/** YUV data buffers */
 	struct kgem_bo *old_buf[2];
 	struct kgem_bo *buf;
-	int width, height;
+	int width, height, format;
 
 	int alignment;
 	bool tiled;

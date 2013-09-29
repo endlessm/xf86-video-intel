@@ -98,7 +98,8 @@ sna_video_buffer(struct sna_video *video,
 
 	if (video->buf && video->buf->scanout) {
 		if (frame->width != video->width ||
-		    frame->height != video->height)
+		    frame->height != video->height ||
+		    frame->id != video->format)
 			sna_video_free_buffers(video);
 	}
 
@@ -115,6 +116,7 @@ sna_video_buffer(struct sna_video *video,
 
 	video->width  = frame->width;
 	video->height = frame->height;
+	video->format = frame->id;
 
 	return video->buf;
 }
