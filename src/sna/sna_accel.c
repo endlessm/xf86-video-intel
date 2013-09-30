@@ -1673,6 +1673,10 @@ sna_pixmap_undo_cow(struct sna *sna, struct sna_pixmap *priv, unsigned flags)
 			assert(clone->gpu_bo == cow->bo);
 			kgem_bo_destroy(&sna->kgem, clone->gpu_bo);
 			clone->gpu_bo = kgem_bo_reference(bo);
+			if (clone->mapped) {
+				clone->pixmap->devPrivate.ptr = NULL;
+				clone->mapped = false;
+			}
 		}
 		cow->bo = bo;
 		kgem_bo_destroy(&sna->kgem, bo);
