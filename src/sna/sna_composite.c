@@ -838,7 +838,10 @@ sna_composite_rectangles(CARD8		 op,
 		}
 	}
 
-	if (op == PictOpOver && sna_drawable_is_clear(dst->pDrawable))
+	/* Avoid reducing overlapping translucent rectangles */
+	if (op == PictOpOver &&
+	    num_rects == 1 &&
+	    sna_drawable_is_clear(dst->pDrawable))
 		op = PictOpSrc;
 
 	DBG(("%s: converted to op %d\n", __FUNCTION__, op));
