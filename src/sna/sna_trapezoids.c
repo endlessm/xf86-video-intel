@@ -303,7 +303,7 @@ floored_divrem(int a, int b)
 	struct quorem qr;
 	qr.quo = a/b;
 	qr.rem = a%b;
-	if (qr.rem && (a^b)<0) {
+	if (qr.rem < 0) {
 		qr.quo -= 1;
 		qr.rem += b;
 	}
@@ -319,7 +319,7 @@ floored_muldivrem(int32_t x, int32_t a, int32_t b)
 	int64_t xa = (int64_t)x*a;
 	qr.quo = xa/b;
 	qr.rem = xa%b;
-	if (qr.rem && (xa>=0) != (b>=0)) {
+	if (qr.rem < 0) {
 		qr.quo -= 1;
 		qr.rem += b;
 	}
@@ -341,6 +341,7 @@ cell_list_init(struct cell_list *cells, int x1, int x2)
 	cells->tail.x = INT_MAX;
 	cells->head.x = INT_MIN;
 	cells->head.next = &cells->tail;
+	cells->head.covered_height = 0;
 	cell_list_rewind(cells);
 	cells->count = 0;
 	cells->x1 = x1;
@@ -364,6 +365,7 @@ cell_list_reset(struct cell_list *cells)
 {
 	cell_list_rewind(cells);
 	cells->head.next = &cells->tail;
+	cells->head.covered_height = 0;
 	cells->count = 0;
 }
 
@@ -380,8 +382,8 @@ cell_list_alloc(struct cell_list *cells,
 	tail->next = cell;
 
 	cell->x = x;
-	cell->uncovered_area = 0;
 	cell->covered_height = 0;
+	cell->uncovered_area = 0;
 	return cell;
 }
 
@@ -402,10 +404,7 @@ cell_list_find(struct cell_list *cells, int x)
 		return &cells->tail;
 
 	if (x < cells->x1)
-		x = cells->x1;
-
-	if (tail->x == x)
-		return tail;
+		return &cells->head;
 
 	do {
 		if (tail->next->x > x)
@@ -555,7 +554,7 @@ polygon_add_edge(struct polygon *polygon,
 		 grid_scaled_y_t bottom,
 		 int dir)
 {
-	struct edge *e = &polygon->edges[polygon->num_edges++];
+	struct edge *e = &polygon->edges[polygon->num_edges];
 	grid_scaled_x_t dx = x2 - x1;
 	grid_scaled_y_t dy = y2 - y1;
 	grid_scaled_y_t ytop, ybot;
@@ -599,10 +598,10 @@ polygon_add_edge(struct polygon *polygon,
 			e->x.quo += x1;
 		}
 	}
+	e->x.rem -= dy; /* Bias the remainder for faster edge advancement. */
 
 	_polygon_insert_edge_into_its_y_bucket(polygon, e);
-
-	e->x.rem -= dy; /* Bias the remainder for faster edge advancement. */
+	polygon->num_edges++;
 }
 
 inline static void
@@ -887,7 +886,7 @@ nonzero_subrow(struct active_list *active, struct cell_list *coverages)
 {
 	struct edge *edge = active->head.next;
 	grid_scaled_x_t prev_x = INT_MIN;
-	int winding = 0, xstart = INT_MIN;
+	int winding = 0, xstart = edge->x.quo;
 
 	cell_list_rewind (coverages);
 
@@ -895,14 +894,11 @@ nonzero_subrow(struct active_list *active, struct cell_list *coverages)
 		struct edge *next = edge->next;
 
 		winding += edge->dir;
-		if (0 == winding) {
-			if (edge->next->x.quo != edge->x.quo) {
-				cell_list_add_subspan(coverages,
-						      xstart, edge->x.quo);
-				xstart = INT_MIN;
-			}
-		} else if (xstart < 0)
-			xstart = edge->x.quo;
+		if (0 == winding && edge->next->x.quo != edge->x.quo) {
+			cell_list_add_subspan(coverages,
+					      xstart, edge->x.quo);
+			xstart = edge->next->x.quo;
+		}
 
 		if (--edge->height_left) {
 			if (edge->dy) {
@@ -1159,7 +1155,8 @@ tor_blt(struct sna *sna,
 	box.x1 = xmin;
 
 	/* Form the spans from the coverages and areas. */
-	cover = 0;
+	cover = cells->head.covered_height*FAST_SAMPLES_X*2;
+	assert(cover >= 0);
 	for (cell = cells->head.next; cell != &cells->tail; cell = cell->next) {
 		int x = cell->x;
 
@@ -1316,13 +1313,10 @@ tor_render(struct sna *sna,
 			}
 		}
 
-		if (coverages->head.next != &coverages->tail) {
-			tor_blt(sna, op, clip, span, coverages,
-				i+ymin, j-i, xmin, xmax,
-				unbounded);
-			cell_list_reset(coverages);
-		} else if (unbounded)
-			tor_blt_empty(sna, op, clip, span, i+ymin, j-i, xmin, xmax);
+		tor_blt(sna, op, clip, span, coverages,
+			i+ymin, j-i, xmin, xmax,
+			unbounded);
+		cell_list_reset(coverages);
 
 		active->min_height -= FAST_SAMPLES_Y;
 	}
@@ -4079,9 +4073,9 @@ fallback:
 	return true;
 }
 
-static inline int pixman_fixed_to_grid (pixman_fixed_t v)
+static inline int pixman_fixed_to_grid(pixman_fixed_t v)
 {
-	return (v + ((1<<(16-FAST_SAMPLES_shift))-1)/2) >> (16 - FAST_SAMPLES_shift);
+	return (v + ((1<<(16-FAST_SAMPLES_shift-1))-1)) >> (16 - FAST_SAMPLES_shift);
 }
 
 static inline bool
@@ -4333,8 +4327,8 @@ mono_trapezoids_span_converter(struct sna *sna,
 		if (!xTrapezoidValid(&traps[n]))
 			continue;
 
-		if (pixman_fixed_to_int(traps[n].top) + dy >= mono.clip.extents.y2 ||
-		    pixman_fixed_to_int(traps[n].bottom) + dy < mono.clip.extents.y1)
+		if (pixman_fixed_integer_floor(traps[n].top) + dy >= mono.clip.extents.y2 ||
+		    pixman_fixed_integer_ceil(traps[n].bottom) + dy <= mono.clip.extents.y1)
 			continue;
 
 		mono_add_line(&mono, dx, dy,
@@ -4531,8 +4525,8 @@ span_thread(void *arg)
 	for (n = thread->ntrap, t = thread->traps; n--; t++) {
 		xTrapezoid tt;
 
-		if (pixman_fixed_to_int(t->top) >= y2 ||
-		    pixman_fixed_to_int(t->bottom) < y1)
+		if (pixman_fixed_integer_floor(t->top) >= y2 ||
+		    pixman_fixed_integer_ceil(t->bottom) <= y1)
 			continue;
 
 		if (!project_trapezoid_onto_grid(t, thread->dx, thread->dy, &tt))
@@ -4564,7 +4558,6 @@ trapezoid_span_converter(struct sna *sna,
 			 int ntrap, xTrapezoid *traps)
 {
 	struct sna_composite_spans_op tmp;
-	BoxRec extents;
 	pixman_region16_t clip;
 	int16_t dst_x, dst_y;
 	bool was_clear;
@@ -4594,12 +4587,14 @@ trapezoid_span_converter(struct sna *sna,
 
 	trapezoid_origin(&traps[0].left, &dst_x, &dst_y);
 
-	trapezoids_bounds(ntrap, traps, &extents);
-	if (extents.y1 >= extents.y2 || extents.x1 >= extents.x2)
+	trapezoids_bounds(ntrap, traps, &clip.extents);
+	if (clip.extents.y1 >= clip.extents.y2 ||
+	    clip.extents.x1 >= clip.extents.x2)
 		return true;
 
 #if 0
-	if (extents.y2 - extents.y1 < 64 && extents.x2 - extents.x1 < 64) {
+	if (clip.extents.y2 - clip.extents.y1 < 64 &&
+	    clip.extents.x2 - clip.extents.x1 < 64) {
 		DBG(("%s: fallback -- traps extents too small %dx%d\n",
 		     __FUNCTION__, extents.y2 - extents.y1, extents.x2 - extents.x1));
 		return false;
@@ -4607,16 +4602,18 @@ trapezoid_span_converter(struct sna *sna,
 #endif
 
 	DBG(("%s: extents (%d, %d), (%d, %d)\n",
-	     __FUNCTION__, extents.x1, extents.y1, extents.x2, extents.y2));
+	     __FUNCTION__,
+	     clip.extents.x1, clip.extents.y1,
+	     clip.extents.x2, clip.extents.y2));
 
 	if (!sna_compute_composite_region(&clip,
 					  src, NULL, dst,
-					  src_x + extents.x1 - dst_x,
-					  src_y + extents.y1 - dst_y,
+					  src_x + clip.extents.x1 - dst_x,
+					  src_y + clip.extents.y1 - dst_y,
 					  0, 0,
-					  extents.x1, extents.y1,
-					  extents.x2 - extents.x1,
-					  extents.y2 - extents.y1)) {
+					  clip.extents.x1, clip.extents.y1,
+					  clip.extents.x2 - clip.extents.x1,
+					  clip.extents.y2 - clip.extents.y1)) {
 		DBG(("%s: trapezoids do not intersect drawable clips\n",
 		     __FUNCTION__)) ;
 		return true;
@@ -4631,17 +4628,16 @@ trapezoid_span_converter(struct sna *sna,
 		return false;
 	}
 
-	extents = *RegionExtents(&clip);
 	dx = dst->pDrawable->x;
 	dy = dst->pDrawable->y;
 
 	DBG(("%s: after clip -- extents (%d, %d), (%d, %d), delta=(%d, %d) src -> (%d, %d)\n",
 	     __FUNCTION__,
-	     extents.x1, extents.y1,
-	     extents.x2, extents.y2,
+	     clip.extents.x1, clip.extents.y1,
+	     clip.extents.x2, clip.extents.y2,
 	     dx, dy,
-	     src_x + extents.x1 - dst_x - dx,
-	     src_y + extents.y1 - dst_y - dy));
+	     src_x + clip.extents.x1 - dst_x - dx,
+	     src_y + clip.extents.y1 - dst_y - dy));
 
 	was_clear = sna_drawable_is_clear(dst->pDrawable);
 	switch (op) {
@@ -4656,14 +4652,13 @@ trapezoid_span_converter(struct sna *sna,
 		break;
 	}
 
-	memset(&tmp, 0, sizeof(tmp));
 	if (!sna->render.composite_spans(sna, op, src, dst,
-					 src_x + extents.x1 - dst_x - dx,
-					 src_y + extents.y1 - dst_y - dy,
-					 extents.x1,  extents.y1,
-					 extents.x2 - extents.x1,
-					 extents.y2 - extents.y1,
-					 flags, &tmp)) {
+					 src_x + clip.extents.x1 - dst_x - dx,
+					 src_y + clip.extents.y1 - dst_y - dy,
+					 clip.extents.x1,  clip.extents.y1,
+					 clip.extents.x2 - clip.extents.x1,
+					 clip.extents.y2 - clip.extents.y1,
+					 flags, memset(&tmp, 0, sizeof(tmp)))) {
 		DBG(("%s: fallback -- composite spans render op not supported\n",
 		     __FUNCTION__));
 		return false;
@@ -4675,24 +4670,24 @@ trapezoid_span_converter(struct sna *sna,
 	num_threads = 1;
 	if (!NO_GPU_THREADS && tmp.thread_boxes &&
 	    thread_choose_span(&tmp, dst, maskFormat, &clip))
-		num_threads = sna_use_threads(extents.x2-extents.x1,
-					      extents.y2-extents.y1,
+		num_threads = sna_use_threads(clip.extents.x2-clip.extents.x1,
+					      clip.extents.y2-clip.extents.y1,
 					      16);
 	DBG(("%s: using %d threads\n", __FUNCTION__, num_threads));
 	if (num_threads == 1) {
 		struct tor tor;
 
-		if (!tor_init(&tor, &extents, 2*ntrap))
+		if (!tor_init(&tor, &clip.extents, 2*ntrap))
 			goto skip;
 
 		for (n = 0; n < ntrap; n++) {
 			xTrapezoid t;
 
-			if (!project_trapezoid_onto_grid(&traps[n], dx, dy, &t))
+			if (pixman_fixed_integer_floor(traps[n].top) + dst->pDrawable->y >= clip.extents.y2 ||
+			    pixman_fixed_integer_ceil(traps[n].bottom) + dst->pDrawable->y <= clip.extents.y1)
 				continue;
 
-			if (pixman_fixed_to_int(traps[n].top) + dst->pDrawable->y >= extents.y2 ||
-			    pixman_fixed_to_int(traps[n].bottom) + dst->pDrawable->y < extents.y1)
+			if (!project_trapezoid_onto_grid(&traps[n], dx, dy, &t))
 				continue;
 
 			tor_add_edge(&tor, &t, &t.left, 1);
@@ -4710,14 +4705,14 @@ trapezoid_span_converter(struct sna *sna,
 
 		DBG(("%s: using %d threads for span compositing %dx%d\n",
 		     __FUNCTION__, num_threads,
-		     extents.x2 - extents.x1,
-		     extents.y2 - extents.y1));
+		     clip.extents.x2 - clip.extents.x1,
+		     clip.extents.y2 - clip.extents.y1));
 
 		threads[0].sna = sna;
 		threads[0].op = &tmp;
 		threads[0].traps = traps;
 		threads[0].ntrap = ntrap;
-		threads[0].extents = extents;
+		threads[0].extents = clip.extents;
 		threads[0].clip = &clip;
 		threads[0].dx = dx;
 		threads[0].dy = dy;
@@ -4725,8 +4720,8 @@ trapezoid_span_converter(struct sna *sna,
 		threads[0].unbounded = !was_clear && maskFormat && !operator_is_bounded(op);
 		threads[0].span = thread_choose_span(&tmp, dst, maskFormat, &clip);
 
-		y = extents.y1;
-		h = extents.y2 - extents.y1;
+		y = clip.extents.y1;
+		h = clip.extents.y2 - clip.extents.y1;
 		h = (h + num_threads - 1) / num_threads;
 
 		for (n = 1; n < num_threads; n++) {
@@ -4738,7 +4733,6 @@ trapezoid_span_converter(struct sna *sna,
 		}
 
 		threads[0].extents.y1 = y;
-		threads[0].extents.y2 = extents.y2;
 		span_thread(&threads[0]);
 
 		sna_threads_wait();
