@@ -3160,9 +3160,9 @@ gen3_composite_set_target(struct sna *sna,
 	} else
 		sna_render_picture_extents(dst, &box);
 
-	op->dst.bo = sna_drawable_use_bo (dst->pDrawable,
-					  PREFER_GPU | FORCE_GPU | RENDER_GPU,
-					  &box, &op->damage);
+	op->dst.bo = sna_drawable_use_bo(dst->pDrawable,
+					 PREFER_GPU | FORCE_GPU | RENDER_GPU,
+					 &box, &op->damage);
 	if (op->dst.bo == NULL)
 		return false;
 
@@ -3493,7 +3493,7 @@ gen3_render_composite(struct sna *sna,
 		return true;
 
 	if (gen3_composite_fallback(sna, op, src, mask, dst))
-		return false;
+		goto fallback;
 
 	if (need_tiling(sna, width, height))
 		return sna_tiling_composite(op, src, mask, dst,
@@ -3517,7 +3517,7 @@ gen3_render_composite(struct sna *sna,
 		if (!sna_render_composite_redirect(sna, tmp,
 						   dst_x, dst_y, width, height,
 						   op > PictOpSrc || dst->pCompositeClip->data))
-			return false;
+			goto fallback;
 	}
 
 	tmp->u.gen3.num_constants = 0;
@@ -3819,7 +3819,14 @@ cleanup_src:
 cleanup_dst:
 	if (tmp->redirect.real_bo)
 		kgem_bo_destroy(&sna->kgem, tmp->dst.bo);
-	return false;
+fallback:
+	return (mask == NULL &&
+		sna_blt_composite(sna,
+				  op, src, dst,
+				  src_x, src_y,
+				  dst_x, dst_y,
+				  width, height,
+				  tmp, true));
 }
 
 static void
@@ -5910,7 +5917,7 @@ gen3_render_fill_boxes(struct sna *sna,
 			return false;
 		}
 	}
-	DBG(("%s: using shader for op=%d, format=%x, pixel=%x\n",
+	DBG(("%s: using shader for op=%d, format=%08x, pixel=%08x\n",
 	     __FUNCTION__, op, (int)format, pixel));
 
 	tmp.op = op;
