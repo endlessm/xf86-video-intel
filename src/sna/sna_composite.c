@@ -751,59 +751,6 @@ out:
 	sigtrap_assert();
 }
 
-static bool
-_pixman_region_init_clipped_rectangles(pixman_region16_t *region,
-				       unsigned int num_rects,
-				       xRectangle *rects,
-				       int tx, int ty,
-				       BoxPtr extents)
-{
-	pixman_box16_t stack_boxes[64], *boxes = stack_boxes;
-	pixman_bool_t ret;
-	unsigned int i, j;
-
-	if (num_rects > ARRAY_SIZE(stack_boxes)) {
-		boxes = malloc(sizeof(pixman_box16_t) * num_rects);
-		if (boxes == NULL)
-			return FALSE;
-	}
-
-	for (i = j = 0; i < num_rects; i++) {
-		boxes[j].x1 = rects[i].x + tx;
-		if (boxes[j].x1 < extents->x1)
-			boxes[j].x1 = extents->x1;
-
-		boxes[j].y1 = rects[i].y + ty;
-		if (boxes[j].y1 < extents->y1)
-			boxes[j].y1 = extents->y1;
-
-		boxes[j].x2 = bound(rects[i].x + tx, rects[i].width);
-		if (boxes[j].x2 > extents->x2)
-			boxes[j].x2 = extents->x2;
-
-		boxes[j].y2 = bound(rects[i].y + ty, rects[i].height);
-		if (boxes[j].y2 > extents->y2)
-			boxes[j].y2 = extents->y2;
-
-		if (boxes[j].x2 > boxes[j].x1 && boxes[j].y2 > boxes[j].y1)
-			j++;
-	}
-
-	ret = FALSE;
-	if (j)
-	    ret = pixman_region_init_rects(region, boxes, j);
-
-	if (boxes != stack_boxes)
-		free(boxes);
-
-	DBG(("%s: nrects=%d, region=(%d, %d), (%d, %d) x %d\n",
-	     __FUNCTION__, num_rects,
-	     region->extents.x1, region->extents.y1,
-	     region->extents.x2, region->extents.y2,
-	     j));
-	return ret;
-}
-
 void
 sna_composite_rectangles(CARD8		 op,
 			 PicturePtr	 dst,
@@ -817,9 +764,9 @@ sna_composite_rectangles(CARD8		 op,
 	struct kgem_bo *bo;
 	struct sna_damage **damage;
 	pixman_region16_t region;
-	pixman_box16_t *boxes;
+	pixman_box16_t stack_boxes[64], *boxes = stack_boxes, *b;
 	int16_t dst_x, dst_y;
-	int num_boxes, error;
+	int i, num_boxes, error;
 	unsigned hint;
 
 	DBG(("%s(op=%d, %08x x %d [(%d, %d)x(%d, %d) ...])\n",
@@ -890,31 +837,63 @@ sna_composite_rectangles(CARD8		 op,
 			break;
 		}
 	}
+
+	if (op == PictOpOver && sna_drawable_is_clear(dst->pDrawable))
+		op = PictOpSrc;
+
 	DBG(("%s: converted to op %d\n", __FUNCTION__, op));
 
-	if (!_pixman_region_init_clipped_rectangles(&region,
-						    num_rects, rects,
-						    dst->pDrawable->x,
-						    dst->pDrawable->y,
-						    &dst->pCompositeClip->extents))
-	{
-		DBG(("%s: allocation failed for region\n", __FUNCTION__));
-		return;
+	if (num_rects > ARRAY_SIZE(stack_boxes)) {
+		boxes = malloc(sizeof(pixman_box16_t) * num_rects);
+		if (boxes == NULL)
+			return;
 	}
 
-	DBG(("%s: drawable extents (%d, %d),(%d, %d) x %ld\n",
-	     __FUNCTION__,
-	     RegionExtents(&region)->x1, RegionExtents(&region)->y1,
-	     RegionExtents(&region)->x2, RegionExtents(&region)->y2,
-	     (long)RegionNumRects(&region)));
+	for (i = num_boxes = 0; i < num_rects; i++) {
+		boxes[num_boxes].x1 = rects[i].x + dst->pDrawable->x;
+		if (boxes[num_boxes].x1 < dst->pCompositeClip->extents.x1)
+			boxes[num_boxes].x1 = dst->pCompositeClip->extents.x1;
+
+		boxes[num_boxes].y1 = rects[i].y + dst->pDrawable->y;
+		if (boxes[num_boxes].y1 < dst->pCompositeClip->extents.y1)
+			boxes[num_boxes].y1 = dst->pCompositeClip->extents.y1;
+
+		boxes[num_boxes].x2 = bound(rects[i].x + dst->pDrawable->x, rects[i].width);
+		if (boxes[num_boxes].x2 > dst->pCompositeClip->extents.x2)
+			boxes[num_boxes].x2 = dst->pCompositeClip->extents.x2;
+
+		boxes[num_boxes].y2 = bound(rects[i].y + dst->pDrawable->y, rects[i].height);
+		if (boxes[num_boxes].y2 > dst->pCompositeClip->extents.y2)
+			boxes[num_boxes].y2 = dst->pCompositeClip->extents.y2;
+
+		DBG(("%s[%d] (%d, %d)x(%d, %d) -> (%d, %d), (%d, %d)\n",
+		     __FUNCTION__, i,
+		     rects[i].x, rects[i].y, rects[i].width, rects[i].height,
+		     boxes[num_boxes].x1, boxes[num_boxes].y1, boxes[num_boxes].x2, boxes[num_boxes].y2));
+
+		if (boxes[num_boxes].x2 > boxes[num_boxes].x1 &&
+		    boxes[num_boxes].y2 > boxes[num_boxes].y1)
+			num_boxes++;
+	}
+
+	if (num_boxes == 0)
+		return;
+
+	if (!pixman_region_init_rects(&region, boxes, num_boxes))
+		goto cleanup_boxes;
+
+	DBG(("%s: nrects=%d, region=(%d, %d), (%d, %d) x %d\n",
+	     __FUNCTION__, num_rects,
+	     region.extents.x1, region.extents.y1,
+	     region.extents.x2, region.extents.y2,
+	     num_boxes));
 
 	if (dst->pCompositeClip->data &&
 	    (!pixman_region_intersect(&region, &region, dst->pCompositeClip) ||
 	     region_is_empty(&region))) {
 		DBG(("%s: zero-intersection between rectangles and clip\n",
 		     __FUNCTION__));
-		pixman_region_fini(&region);
-		return;
+		goto cleanup_region;
 	}
 
 	DBG(("%s: clipped extents (%d, %d),(%d, %d) x %ld\n",
@@ -924,8 +903,9 @@ sna_composite_rectangles(CARD8		 op,
 	     (long)RegionNumRects(&region)));
 
 	pixmap = get_drawable_pixmap(dst->pDrawable);
-	if (get_drawable_deltas(dst->pDrawable, pixmap, &dst_x, &dst_y))
+	if (get_drawable_deltas(dst->pDrawable, pixmap, &dst_x, &dst_y)) {
 		pixman_region_translate(&region, dst_x, dst_y);
+	}
 
 	DBG(("%s: pixmap +(%d, %d) extents (%d, %d),(%d, %d)\n",
 	     __FUNCTION__, dst_x, dst_y,
@@ -955,7 +935,6 @@ sna_composite_rectangles(CARD8		 op,
 	 * manually append the damaged regions ourselves.
 	 */
 	DamageRegionAppend(&pixmap->drawable, &region);
-	boxes = pixman_region_rectangles(&region, &num_boxes);
 
 	/* If we going to be overwriting any CPU damage with a subsequent
 	 * operation, then we may as well delete it without moving it
@@ -1003,10 +982,47 @@ sna_composite_rectangles(CARD8		 op,
 	if (hint & REPLACES)
 		kgem_bo_undo(&sna->kgem, bo);
 
-	if (!sna->render.fill_boxes(sna, op, dst->format, color,
-				    pixmap, bo, boxes, num_boxes)) {
-		DBG(("%s: fallback - acceleration failed\n", __FUNCTION__));
-		goto fallback;
+	if (op <= PictOpSrc) {
+		b = pixman_region_rectangles(&region, &num_boxes);
+		if (!sna->render.fill_boxes(sna, op, dst->format, color,
+					    pixmap, bo, b, num_boxes)) {
+			DBG(("%s: fallback - acceleration failed\n", __FUNCTION__));
+			goto fallback;
+		}
+	} else if (dst->pCompositeClip->data == NULL) {
+		for (i = 0; i < num_boxes; i++) {
+			boxes[i].x1 += dst_x;
+			boxes[i].x2 += dst_x;
+			boxes[i].y1 += dst_y;
+			boxes[i].y2 += dst_y;
+		}
+		if (!sna->render.fill_boxes(sna, op, dst->format, color,
+					    pixmap, bo, boxes, num_boxes)) {
+			DBG(("%s: fallback - acceleration failed\n", __FUNCTION__));
+			goto fallback;
+		}
+	} else {
+		for (i = 0; i < num_boxes; i++) {
+			RegionRec tmp;
+
+			region.extents = boxes[i];
+			region.data = NULL;
+
+			if (pixman_region_intersect(&tmp, &tmp, dst->pCompositeClip)) {
+				pixman_region_translate(&tmp, dst_x, dst_y);
+				b = pixman_region_rectangles(&region, &num_boxes);
+				if (num_boxes)
+					error = !sna->render.fill_boxes(sna, op, dst->format, color,
+									pixmap, bo, b, num_boxes);
+
+				pixman_region_fini(&tmp);
+
+				if (error) {
+					DBG(("%s: fallback - acceleration failed\n", __FUNCTION__));
+					goto fallback;
+				}
+			}
+		}
 	}
 
 	if (damage)
@@ -1049,14 +1065,14 @@ sna_composite_rectangles(CARD8		 op,
 fallback:
 	DBG(("%s: fallback\n", __FUNCTION__));
 	if (op <= PictOpSrc)
-		error = MOVE_WRITE;
+		hint = MOVE_WRITE;
 	else
-		error = MOVE_WRITE | MOVE_READ;
-	if (!sna_drawable_move_region_to_cpu(&pixmap->drawable, &region, error))
+		hint = MOVE_WRITE | MOVE_READ;
+	if (!sna_drawable_move_region_to_cpu(&pixmap->drawable, &region, hint))
 		goto done;
 
 	if (dst->alphaMap &&
-	    !sna_drawable_move_to_cpu(dst->alphaMap->pDrawable, error))
+	    !sna_drawable_move_to_cpu(dst->alphaMap->pDrawable, hint))
 		goto done;
 
 	assert(pixmap->devPrivate.ptr);
@@ -1124,7 +1140,9 @@ fallback_composite:
 done:
 	DamageRegionProcessPending(&pixmap->drawable);
 
+cleanup_region:
 	pixman_region_fini(&region);
-	sigtrap_assert();
-	return;
+cleanup_boxes:
+	if (boxes != stack_boxes)
+		free(boxes);
 }
