@@ -15735,6 +15735,20 @@ static bool sna_picture_init(ScreenPtr screen)
 	return true;
 }
 
+static bool sna_option_accel_none(struct sna *sna)
+{
+	const char *s;
+
+	if (xf86ReturnOptValBool(sna->Options, OPTION_ACCEL_DISABLE, FALSE))
+		return true;
+
+	s = xf86GetOptValString(sna->Options, OPTION_ACCEL_METHOD);
+	if (s == NULL)
+		return false;
+
+	return strcasecmp(s, "none") == 0;
+}
+
 static bool sna_option_accel_blt(struct sna *sna)
 {
 	const char *s;
@@ -15823,7 +15837,10 @@ bool sna_accel_init(ScreenPtr screen, struct sna *sna)
 		return false;
 
 	backend = no_render_init(sna);
-	if (sna_option_accel_blt(sna) || sna->info->gen >= 0100)
+	if (sna_option_accel_none(sna)) {
+		backend = "disabled";
+		sna->kgem.wedged = true;
+	} else if (sna_option_accel_blt(sna) || sna->info->gen >= 0100)
 		(void)backend;
 	else if (sna->info->gen >= 070)
 		backend = gen7_render_init(sna, backend);
