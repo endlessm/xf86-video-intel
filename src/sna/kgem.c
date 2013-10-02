@@ -2407,7 +2407,7 @@ static void kgem_finish_buffers(struct kgem *kgem)
 		}
 
 		if (bo->mmapped) {
-			int used;
+			uint32_t used;
 
 			assert(!bo->need_io);
 
@@ -2417,6 +2417,7 @@ static void kgem_finish_buffers(struct kgem *kgem)
 			    (kgem->has_llc || bo->mmapped == MMAPPED_GTT || bo->base.snoop)) {
 				DBG(("%s: retaining upload buffer (%d/%d)\n",
 				     __FUNCTION__, bo->used, bytes(&bo->base)));
+				assert(used >= bo->used);
 				bo->used = used;
 				list_move(&bo->base.list,
 					  &kgem->active_buffers);
@@ -5985,6 +5986,7 @@ init:
 
 done:
 	bo->used = ALIGN(bo->used, UPLOAD_ALIGNMENT);
+	assert(bo->used && bo->used <= bytes(&bo->base));
 	assert(bo->mem);
 	*ret = (char *)bo->mem + offset;
 	return kgem_create_proxy(kgem, &bo->base, offset, size);
