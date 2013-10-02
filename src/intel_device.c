@@ -221,16 +221,36 @@ static char *find_render_node(int fd)
 }
 
 #ifdef XSERVER_PLATFORM_BUS
+
+#define ODEV_ATTRIB_PATH 0
+#define ODEV_ATTRIB_FD 4
+
 static char *get_path(struct xf86_platform_device *dev)
 {
 	const char *path = xf86_get_platform_device_attrib(dev, ODEV_ATTRIB_PATH);
 	return path ? strdup(path) : NULL;
 }
+
+static int get_fd(struct xf86_platform_device *dev)
+{
+	const char *str = xf86_get_platform_device_attrib(dev, ODEV_ATTRIB_FD);
+	if (str == NULL)
+		return -1;
+	return atoi(str);
+}
+
 #else
+
 static char *get_path(struct xf86_platform_device *dev)
 {
 	return NULL;
 }
+
+static int get_fd(struct xf86_platform_device *dev)
+{
+	return -1;
+}
+
 #endif
 
 int intel_open_device(int entity_num,
@@ -252,7 +272,9 @@ int intel_open_device(int entity_num,
 
 	local_path = get_path(platform);
 
-	fd = __intel_open_device(pci, &local_path);
+	fd = get_fd(platform);
+	if (fd == -1)
+		fd = __intel_open_device(pci, &local_path);
 	if (fd == -1)
 		goto err_path;
 
