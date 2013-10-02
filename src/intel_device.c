@@ -48,6 +48,10 @@
 #include <xf86_OSproc.h>
 #include <i915_drm.h>
 
+#ifdef XSERVER_PLATFORM_BUS
+#include <xf86platformBus.h>
+#endif
+
 #include "intel_driver.h"
 
 struct intel_device {
@@ -216,9 +220,22 @@ static char *find_render_node(int fd)
 	return NULL;
 }
 
+#ifdef XSERVER_PLATFORM_BUS
+static char *get_path(struct xf86_platform_device *dev)
+{
+	const char *path = xf86_get_platform_device_attrib(dev, ODEV_ATTRIB_PATH);
+	return path ? strdup(path) : NULL;
+}
+#else
+static char *get_path(struct xf86_platform_device *dev)
+{
+	return NULL;
+}
+#endif
+
 int intel_open_device(int entity_num,
 		      const struct pci_device *pci,
-		      const char *path)
+		      struct xf86_platform_device *platform)
 {
 	struct intel_device *dev;
 	char *local_path;
@@ -233,7 +250,7 @@ int intel_open_device(int entity_num,
 	if (dev)
 		return dev->fd;
 
-	local_path = path ? strdup(path) : NULL;
+	local_path = get_path(platform);
 
 	fd = __intel_open_device(pci, &local_path);
 	if (fd == -1)
