@@ -4568,7 +4568,7 @@ void _kgem_bo_destroy(struct kgem *kgem, struct kgem_bo *bo)
 	if (bo->proxy) {
 		_list_del(&bo->vma);
 		_list_del(&bo->request);
-		if (bo->io && bo->exec == NULL)
+		if (bo->io && bo->exec == NULL && bo->domain == DOMAIN_CPU)
 			_kgem_bo_delete_buffer(kgem, bo);
 		kgem_bo_unref(kgem, bo->proxy);
 		kgem_bo_binding_free(kgem, bo);
