@@ -118,6 +118,8 @@ struct intel_device_info {
 	int gen;
 };
 
+int intel_entity_get_devid(int index);
+
 void intel_detect_chipset(ScrnInfoPtr scrn, EntityInfoPtr ent);
 
 int intel_open_device(int entity_num,

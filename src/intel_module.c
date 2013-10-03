@@ -454,6 +454,22 @@ intel_scrn_create(DriverPtr		driver,
 {
 	ScrnInfoPtr scrn;
 
+	if (match_data == 0) {
+		int devid = intel_entity_get_devid(entity_num), i;
+		if (devid == 0)
+			return FALSE;
+
+		for (i = 0; intel_device_match[i].device_id != 0; i++) {
+			if (devid == intel_device_match[i].device_id) {
+				match_data = (intptr_t)&intel_device_match[i];
+				break;
+			}
+		}
+
+		if (match_data == 0)
+			return FALSE;
+	}
+
 	scrn = xf86AllocateScreen(driver, flags);
 	if (scrn == NULL)
 		return FALSE;

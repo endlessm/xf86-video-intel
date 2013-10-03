@@ -64,6 +64,31 @@ struct intel_device {
 
 static int intel_device_key = -1;
 
+static int __intel_get_device_id(int fd)
+{
+	struct drm_i915_getparam gp;
+	int devid;
+
+	gp.param = I915_PARAM_CHIPSET_ID;
+	gp.value = &devid;
+
+	if (ioctl(fd, DRM_IOCTL_I915_GETPARAM, &gp, sizeof(gp)))
+		return 0;
+
+	return devid;
+}
+
+int intel_entity_get_devid(int index)
+{
+	struct intel_device *dev;
+
+	dev = xf86GetEntityPrivate(index, intel_device_key)->ptr;
+	if (dev == NULL)
+		return 0;
+
+	return __intel_get_device_id(dev->fd);
+}
+
 static inline struct intel_device *intel_device(ScrnInfoPtr scrn)
 {
 	if (scrn->entityList == NULL)
@@ -376,18 +401,8 @@ const char *intel_get_client_name(ScrnInfoPtr scrn)
 int intel_get_device_id(ScrnInfoPtr scrn)
 {
 	struct intel_device *dev = intel_device(scrn);
-	struct drm_i915_getparam gp;
-	int devid;
-
 	assert(dev && dev->fd != -1);
-
-	gp.param = I915_PARAM_CHIPSET_ID;
-	gp.value = &devid;
-
-	if (ioctl(dev->fd, DRM_IOCTL_I915_GETPARAM, &gp, sizeof(gp)))
-		return 0;
-
-	return devid;
+	return __intel_get_device_id(dev->fd);
 }
 
 int intel_get_master(ScrnInfoPtr scrn)
