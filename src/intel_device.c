@@ -223,8 +223,16 @@ static char *find_render_node(int fd)
 #if defined(ODEV_ATTRIB_PATH)
 static char *get_path(struct xf86_platform_device *dev)
 {
-	const char *path = xf86_get_platform_device_attrib(dev, ODEV_ATTRIB_PATH);
-	return path ? strdup(path) : NULL;
+	const char *path;
+
+	if (dev == NULL)
+		return NULL;
+
+	path = xf86_get_platform_device_attrib(dev, ODEV_ATTRIB_PATH);
+	if (path == NULL)
+		return NULL;
+
+	return strdup(path);
 }
 
 #else
@@ -239,9 +247,15 @@ static char *get_path(struct xf86_platform_device *dev)
 #if defined(ODEV_ATTRIB_FD) && 0
 static int get_fd(struct xf86_platform_device *dev)
 {
-	const char *str = xf86_get_platform_device_attrib(dev, ODEV_ATTRIB_FD);
+	const char *str;
+
+	if (dev == NULL)
+		return -1;
+
+	str = xf86_get_platform_device_attrib(dev, ODEV_ATTRIB_FD);
 	if (str == NULL)
 		return -1;
+
 	return atoi(str);
 }
 
