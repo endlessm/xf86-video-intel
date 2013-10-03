@@ -525,7 +525,7 @@ intel_platform_probe(DriverPtr driver,
 	if (!dev->pdev)
 		return FALSE;
 
-	if (intel_open_device(entity_num, dev->pdev, dev))
+	if (intel_open_device(entity_num, dev->pdev, dev) == -1)
 		return FALSE;
 
 	/* Allow ourselves to act as a slaved output if not primary */
