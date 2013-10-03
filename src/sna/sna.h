@@ -288,7 +288,6 @@ struct sna {
 #define SNA_TILING_ALL (~0)
 
 	EntityInfoPtr pEnt;
-	struct pci_device *PciInfo;
 	const struct intel_device_info *info;
 
 	ScreenBlockHandlerProcPtr BlockHandler;

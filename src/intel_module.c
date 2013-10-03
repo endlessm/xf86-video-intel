@@ -258,23 +258,30 @@ static const struct pci_id_match intel_device_match[] = {
 };
 
 void
-intel_detect_chipset(ScrnInfoPtr scrn,
-		     EntityInfoPtr ent,
-		     struct pci_device *pci)
+intel_detect_chipset(ScrnInfoPtr scrn, EntityInfoPtr ent)
 {
 	MessageType from = X_PROBED;
 	const char *name = NULL;
+	int devid;
 	int i;
 
 	if (ent->device->chipID >= 0) {
 		xf86DrvMsg(scrn->scrnIndex, from = X_CONFIG,
 			   "ChipID override: 0x%04X\n",
 			   ent->device->chipID);
-		pci->device_id = ent->device->chipID;
+		devid = ent->device->chipID;
+	} else {
+		struct pci_device *pci;
+
+		pci = xf86GetPciInfoForEntity(ent->index);
+		if (pci != NULL)
+			devid = pci->device_id;
+		else
+			devid = intel_get_device_id(scrn);
 	}
 
 	for (i = 0; intel_chipsets[i].name != NULL; i++) {
-		if (pci->device_id == intel_chipsets[i].token) {
+		if (devid == intel_chipsets[i].token) {
 			name = intel_chipsets[i].name;
 			break;
 		}
@@ -283,20 +290,21 @@ intel_detect_chipset(ScrnInfoPtr scrn,
 		int gen = 0;
 
 		for (i = 0; intel_device_match[i].device_id != 0; i++) {
-			if (pci->device_id == intel_device_match[i].device_id) {
+			if (devid == intel_device_match[i].device_id) {
 				const struct intel_device_info *info = (void *)intel_device_match[i].match_data;
 				gen = info->gen >> 3;
 				break;
 			}
 		}
 
-		if(gen) {
+		if (gen) {
 			xf86DrvMsg(scrn->scrnIndex, from,
 				   "gen%d engineering sample\n", gen);
 		} else {
 			xf86DrvMsg(scrn->scrnIndex, X_WARNING,
 				   "Unknown chipset\n");
 		}
+
 		name = "unknown";
 	} else {
 		xf86DrvMsg(scrn->scrnIndex, from,

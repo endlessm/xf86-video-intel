@@ -3897,23 +3897,23 @@ static void gen7_render_fini(struct sna *sna)
 	kgem_bo_destroy(&sna->kgem, sna->render_state.gen7.general_bo);
 }
 
-static bool is_gt3(struct sna *sna)
+static bool is_gt3(struct sna *sna, int devid)
 {
 	assert(sna->kgem.gen == 075);
-	return sna->PciInfo->device_id & 0x20;
+	return devid & 0x20;
 }
 
-static bool is_gt2(struct sna *sna)
+static bool is_gt2(struct sna *sna, int devid)
 {
-	return sna->PciInfo->device_id & (is_hsw(sna)? 0x30 : 0x20);
+	return devid & (is_hsw(sna)? 0x30 : 0x20);
 }
 
-static bool is_mobile(struct sna *sna)
+static bool is_mobile(struct sna *sna, int devid)
 {
-	return (sna->PciInfo->device_id & 0xf) == 0x6;
+	return (devid & 0xf) == 0x6;
 }
 
-static bool gen7_render_setup(struct sna *sna)
+static bool gen7_render_setup(struct sna *sna, int devid)
 {
 	struct gen7_render_state *state = &sna->render_state.gen7;
 	struct sna_static_stream general;
@@ -3922,19 +3922,19 @@ static bool gen7_render_setup(struct sna *sna)
 
 	if (is_ivb(sna)) {
 		state->info = &ivb_gt_info;
-		if (sna->PciInfo->device_id & 0xf) {
+		if (devid & 0xf) {
 			state->info = &ivb_gt1_info;
-			if (is_gt2(sna))
+			if (is_gt2(sna, devid))
 				state->info = &ivb_gt2_info; /* XXX requires GT_MODE WiZ disabled */
 		}
 	} else if (is_byt(sna)) {
 		state->info = &byt_gt_info;
 	} else if (is_hsw(sna)) {
 		state->info = &hsw_gt_info;
-		if (sna->PciInfo->device_id & 0xf) {
-			if (is_gt3(sna))
+		if (devid & 0xf) {
+			if (is_gt3(sna, devid))
 				state->info = &hsw_gt3_info;
-			else if (is_gt2(sna))
+			else if (is_gt2(sna, devid))
 				state->info = &hsw_gt2_info;
 			else
 				state->info = &hsw_gt1_info;
@@ -4006,7 +4006,9 @@ static bool gen7_render_setup(struct sna *sna)
 
 const char *gen7_render_init(struct sna *sna, const char *backend)
 {
-	if (!gen7_render_setup(sna))
+	int devid = intel_get_device_id(sna->scrn);
+
+	if (!gen7_render_setup(sna, devid))
 		return backend;
 
 	sna->kgem.context_switch = gen7_render_context_switch;
@@ -4020,7 +4022,7 @@ const char *gen7_render_init(struct sna *sna, const char *backend)
 #if !NO_COMPOSITE_SPANS
 	sna->render.check_composite_spans = gen7_check_composite_spans;
 	sna->render.composite_spans = gen7_render_composite_spans;
-	if (is_mobile(sna) || is_gt2(sna) || is_byt(sna))
+	if (is_mobile(sna, devid) || is_gt2(sna, devid) || is_byt(sna))
 		sna->render.prefer_gpu |= PREFER_GPU_SPANS;
 #endif
 	sna->render.video = gen7_render_video;

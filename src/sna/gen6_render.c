@@ -3694,17 +3694,17 @@ static void gen6_render_fini(struct sna *sna)
 	kgem_bo_destroy(&sna->kgem, sna->render_state.gen6.general_bo);
 }
 
-static bool is_gt2(struct sna *sna)
+static bool is_gt2(struct sna *sna, int devid)
 {
-	return sna->PciInfo->device_id & 0x30;
+	return devid & 0x30;
 }
 
-static bool is_mobile(struct sna *sna)
+static bool is_mobile(struct sna *sna, int devid)
 {
-	return (sna->PciInfo->device_id & 0xf) == 0x6;
+	return (devid & 0xf) == 0x6;
 }
 
-static bool gen6_render_setup(struct sna *sna)
+static bool gen6_render_setup(struct sna *sna, int devid)
 {
 	struct gen6_render_state *state = &sna->render_state.gen6;
 	struct sna_static_stream general;
@@ -3712,7 +3712,7 @@ static bool gen6_render_setup(struct sna *sna)
 	int i, j, k, l, m;
 
 	state->info = &gt1_info;
-	if (is_gt2(sna))
+	if (is_gt2(sna, devid))
 		state->info = &gt2_info; /* XXX requires GT_MODE WiZ disabled */
 
 	sna_static_stream_init(&general);
@@ -3784,7 +3784,9 @@ static bool gen6_render_setup(struct sna *sna)
 
 const char *gen6_render_init(struct sna *sna, const char *backend)
 {
-	if (!gen6_render_setup(sna))
+	int devid = intel_get_device_id(sna->scrn);
+
+	if (!gen6_render_setup(sna, devid))
 		return backend;
 
 	sna->kgem.context_switch = gen6_render_context_switch;
@@ -3799,7 +3801,7 @@ const char *gen6_render_init(struct sna *sna, const char *backend)
 #if !NO_COMPOSITE_SPANS
 	sna->render.check_composite_spans = gen6_check_composite_spans;
 	sna->render.composite_spans = gen6_render_composite_spans;
-	if (is_mobile(sna))
+	if (is_mobile(sna, devid))
 		sna->render.prefer_gpu |= PREFER_GPU_SPANS;
 #endif
 	sna->render.video = gen6_render_video;

@@ -373,6 +373,23 @@ const char *intel_get_client_name(ScrnInfoPtr scrn)
 	return dev->render_node;
 }
 
+int intel_get_device_id(ScrnInfoPtr scrn)
+{
+	struct intel_device *dev = intel_device(scrn);
+	struct drm_i915_getparam gp;
+	int devid;
+
+	assert(dev && dev->fd != -1);
+
+	gp.param = I915_PARAM_CHIPSET_ID;
+	gp.value = &devid;
+
+	if (ioctl(dev->fd, DRM_IOCTL_I915_GETPARAM, &gp, sizeof(gp)))
+		return 0;
+
+	return devid;
+}
+
 int intel_get_master(ScrnInfoPtr scrn)
 {
 	struct intel_device *dev = intel_device(scrn);

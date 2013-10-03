@@ -186,7 +186,7 @@ static void PreInitCleanup(ScrnInfoPtr scrn)
 static void intel_check_chipset_option(ScrnInfoPtr scrn)
 {
 	intel_screen_private *intel = intel_get_screen_private(scrn);
-	intel_detect_chipset(scrn, intel->pEnt, intel->PciInfo);
+	intel_detect_chipset(scrn, intel->pEnt);
 }
 
 static Bool I830GetEarlyOptions(ScrnInfoPtr scrn)

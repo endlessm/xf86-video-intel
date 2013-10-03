@@ -501,8 +501,6 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 
 	scrn->displayWidth = 640;	/* default it */
 
-	sna->PciInfo = xf86GetPciInfoForEntity(sna->pEnt->index);
-
 	scrn->monitor = scrn->confScreen->monitor;
 	scrn->progClock = TRUE;
 	scrn->rgbBits = 8;
@@ -558,9 +556,11 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 
 	sna_setup_capabilities(scrn, fd);
 
-	intel_detect_chipset(scrn, sna->pEnt, sna->PciInfo);
+	intel_detect_chipset(scrn, pEnt);
 
-	kgem_init(&sna->kgem, fd, sna->PciInfo, sna->info->gen);
+	kgem_init(&sna->kgem, fd,
+		  xf86GetPciInfoForEntity(pEnt->index),
+		  sna->info->gen);
 	if (xf86ReturnOptValBool(sna->Options, OPTION_ACCEL_DISABLE, FALSE) ||
 	    !sna_option_cast_to_bool(sna, OPTION_ACCEL_METHOD, TRUE)) {
 		xf86DrvMsg(sna->scrn->scrnIndex, X_CONFIG,
@@ -939,6 +939,7 @@ sna_screen_init(SCREEN_INIT_ARGS_DECL)
 {
 	ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
 	struct sna *sna = to_sna(scrn);
+	struct pci_device *pci;
 	VisualPtr visuals;
 	DepthPtr depths;
 	int nvisuals;
@@ -956,7 +957,11 @@ sna_screen_init(SCREEN_INIT_ARGS_DECL)
 	if (!sna_register_all_privates())
 		return FALSE;
 
-	scrn->videoRam = agp_aperture_size(sna->PciInfo, sna->kgem.gen) / 1024;
+	pci = xf86GetPciInfoForEntity(sna->pEnt->index);
+	if (pci != NULL)
+		scrn->videoRam = agp_aperture_size(pci, sna->kgem.gen) / 1024;
+	else
+		scrn->videoRam = 256;
 
 	miClearVisualTypes();
 	if (!miSetVisualTypes(scrn->depth,

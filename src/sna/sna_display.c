@@ -476,11 +476,15 @@ has_device_backlight(xf86OutputPtr output, int *best_type)
 {
 	struct sna_output *sna_output = output->driver_private;
 	struct sna *sna = to_sna(output->scrn);
-	struct pci_device *pci = sna->PciInfo;
+	struct pci_device *pci;
 	char path[1024];
 	char *best_iface = NULL;
 	DIR *dir;
 	struct dirent *de;
+
+	pci = xf86GetPciInfoForEntity(sna->pEnt->index);
+	if (pci == NULL)
+		return NULL;
 
 	snprintf(path, sizeof(path),
 		 "/sys/bus/pci/devices/%04x:%02x:%02x.%d/backlight",

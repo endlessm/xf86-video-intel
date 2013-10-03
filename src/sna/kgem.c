@@ -891,7 +891,7 @@ static bool is_hw_supported(struct kgem *kgem,
 	 * hw acceleration.
 	 */
 
-	if (kgem->gen == 060 && dev->revision < 8) {
+	if (kgem->gen == 060 && dev && dev->revision < 8) {
 		/* pre-production SNB with dysfunctional BLT */
 		return false;
 	}
@@ -1283,7 +1283,9 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 	     kgem->aperture_low, kgem->aperture_low / (1024*1024),
 	     kgem->aperture_high, kgem->aperture_high / (1024*1024)));
 
-	kgem->aperture_mappable = agp_aperture_size(dev, gen);
+	kgem->aperture_mappable = 256 * 1024 * 1024;
+	if (dev != NULL)
+		kgem->aperture_mappable = agp_aperture_size(dev, gen);
 	if (kgem->aperture_mappable == 0 ||
 	    kgem->aperture_mappable > aperture.aper_size)
 		kgem->aperture_mappable = aperture.aper_size;
