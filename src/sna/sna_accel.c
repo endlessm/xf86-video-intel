@@ -15946,6 +15946,7 @@ void sna_accel_block_handler(struct sna *sna, struct timeval **tv)
 		_kgem_submit(&sna->kgem);
 	}
 
+restart:
 	if (sna_accel_do_flush(sna))
 		sna_accel_flush(sna);
 	assert(sna_accel_scanout(sna) == NULL ||
@@ -15977,9 +15978,11 @@ void sna_accel_block_handler(struct sna *sna, struct timeval **tv)
 		DBG(("%s: evaluating timers, active=%x\n",
 		     __FUNCTION__, sna->timer_active));
 
-		timeout = sna->timer_expire[0] - TIME;
+		timeout = sna->timer_expire[FLUSH_TIMER] - TIME;
 		DBG(("%s: flush timer expires in %d [%d]\n",
-		     __FUNCTION__, timeout, sna->timer_expire[0]));
+		     __FUNCTION__, timeout, sna->timer_expire[FLUSH_TIMER]));
+		if (timeout < 3)
+			goto restart;
 
 		if (*tv == NULL) {
 			*tv = &sna->timer_tv;
