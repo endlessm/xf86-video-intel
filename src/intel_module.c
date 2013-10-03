@@ -546,9 +546,6 @@ intel_platform_probe(DriverPtr driver,
 {
 	unsigned scrn_flags = 0;
 
-	if (!dev->pdev)
-		return FALSE;
-
 	if (intel_open_device(entity_num, dev->pdev, dev) == -1)
 		return FALSE;
 

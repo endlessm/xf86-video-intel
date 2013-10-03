@@ -183,6 +183,9 @@ static int __intel_open_device(const struct pci_device *pci, char **path)
 		char id[20];
 		int ret;
 
+		if (pci == NULL)
+			return -1;
+
 		snprintf(id, sizeof(id),
 			 "pci:%04x:%02x:%02x.%d",
 			 pci->domain, pci->bus, pci->dev, pci->func);
