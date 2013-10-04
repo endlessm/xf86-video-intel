@@ -10,6 +10,9 @@
 #define NO_SCAN_CONVERTER 0
 #define NO_GPU_THREADS 0
 
+#define NO_IMPRECISE 0
+#define NO_PRECISE 0
+
 bool
 composite_aligned_boxes(struct sna *sna,
 			CARD8 op,
@@ -57,28 +60,139 @@ mono_triangles_span_converter(struct sna *sna,
 			      int count, xTriangle *tri);
 
 bool
+imprecise_trapezoid_span_inplace(struct sna *sna,
+				 CARD8 op, PicturePtr src, PicturePtr dst,
+				 PictFormatPtr maskFormat, INT16 src_x, INT16 src_y,
+				 int ntrap, xTrapezoid *traps,
+				 bool fallback);
+
+bool
+imprecise_trapezoid_span_converter(struct sna *sna,
+				   CARD8 op, PicturePtr src, PicturePtr dst,
+				   PictFormatPtr maskFormat, unsigned int flags,
+				   INT16 src_x, INT16 src_y,
+				   int ntrap, xTrapezoid *traps);
+
+bool
+imprecise_trapezoid_mask_converter(CARD8 op, PicturePtr src, PicturePtr dst,
+				   PictFormatPtr maskFormat, INT16 src_x, INT16 src_y,
+				   int ntrap, xTrapezoid *traps);
+
+bool
+imprecise_trapezoid_span_fallback(CARD8 op, PicturePtr src, PicturePtr dst,
+				  PictFormatPtr maskFormat, INT16 src_x, INT16 src_y,
+				  int ntrap, xTrapezoid *traps);
+
+bool
+precise_trapezoid_span_inplace(struct sna *sna,
+				 CARD8 op, PicturePtr src, PicturePtr dst,
+				 PictFormatPtr maskFormat, INT16 src_x, INT16 src_y,
+				 int ntrap, xTrapezoid *traps,
+				 bool fallback);
+
+bool
+precise_trapezoid_span_converter(struct sna *sna,
+				   CARD8 op, PicturePtr src, PicturePtr dst,
+				   PictFormatPtr maskFormat, unsigned int flags,
+				   INT16 src_x, INT16 src_y,
+				   int ntrap, xTrapezoid *traps);
+
+bool
+precise_trapezoid_mask_converter(CARD8 op, PicturePtr src, PicturePtr dst,
+				   PictFormatPtr maskFormat, INT16 src_x, INT16 src_y,
+				   int ntrap, xTrapezoid *traps);
+
+bool
+precise_trapezoid_span_fallback(CARD8 op, PicturePtr src, PicturePtr dst,
+				  PictFormatPtr maskFormat, INT16 src_x, INT16 src_y,
+				  int ntrap, xTrapezoid *traps);
+
+static inline bool is_mono(PicturePtr dst, PictFormatPtr mask)
+{
+	return mask ? mask->depth < 8 : dst->polyEdge==PolyEdgeSharp;
+}
+
+static inline bool is_precise(PicturePtr dst, PictFormatPtr mask)
+{
+	return dst->polyMode == PolyModePrecise && !is_mono(dst, mask);
+}
+
+static inline bool
 trapezoid_span_inplace(struct sna *sna,
 		       CARD8 op, PicturePtr src, PicturePtr dst,
 		       PictFormatPtr maskFormat, INT16 src_x, INT16 src_y,
 		       int ntrap, xTrapezoid *traps,
-		       bool fallback);
+		       bool fallback)
+{
+	if (NO_SCAN_CONVERTER)
+		return false;
 
-bool
+	if (dst->alphaMap) {
+		DBG(("%s: fallback -- dst alphamap\n",
+		     __FUNCTION__));
+		return false;
+	}
+
+	if (!fallback && is_gpu(sna, dst->pDrawable, PREFER_GPU_SPANS)) {
+		DBG(("%s: fallback -- can not perform operation in place, destination busy\n",
+		     __FUNCTION__));
+
+		return false;
+	}
+
+	if (is_mono(dst, maskFormat))
+		return mono_trapezoid_span_inplace(sna, op, src, dst, src_x, src_y, ntrap, traps);
+	else if (is_precise(dst, maskFormat))
+		return precise_trapezoid_span_inplace(sna, op, src, dst, maskFormat, src_x, src_y, ntrap, traps, fallback);
+	else
+		return imprecise_trapezoid_span_inplace(sna, op, src, dst, maskFormat, src_x, src_y, ntrap, traps, fallback);
+}
+
+static inline bool
 trapezoid_span_converter(struct sna *sna,
 			 CARD8 op, PicturePtr src, PicturePtr dst,
 			 PictFormatPtr maskFormat, unsigned int flags,
 			 INT16 src_x, INT16 src_y,
-			 int ntrap, xTrapezoid *traps);
+			 int ntrap, xTrapezoid *traps)
+{
+	if (NO_SCAN_CONVERTER)
+		return false;
 
-bool
+	if (is_mono(dst, maskFormat))
+		return mono_trapezoids_span_converter(sna, op, src, dst, src_x, src_y, ntrap, traps);
+	else if (is_precise(dst, maskFormat))
+		return precise_trapezoid_span_converter(sna, op, src, dst, maskFormat, flags, src_x, src_y, ntrap, traps);
+	else
+		return imprecise_trapezoid_span_converter(sna, op, src, dst, maskFormat, flags, src_x, src_y, ntrap, traps);
+}
+
+static inline bool
 trapezoid_mask_converter(CARD8 op, PicturePtr src, PicturePtr dst,
 			 PictFormatPtr maskFormat, INT16 src_x, INT16 src_y,
-			 int ntrap, xTrapezoid *traps);
+			 int ntrap, xTrapezoid *traps)
+{
+	if (NO_SCAN_CONVERTER)
+		return false;
 
-bool
+	if (is_precise(dst, maskFormat))
+		return precise_trapezoid_mask_converter(op, src, dst, maskFormat, src_x, src_y, ntrap, traps);
+	else
+		return imprecise_trapezoid_mask_converter(op, src, dst, maskFormat, src_x, src_y, ntrap, traps);
+}
+
+static inline bool
 trapezoid_span_fallback(CARD8 op, PicturePtr src, PicturePtr dst,
 			PictFormatPtr maskFormat, INT16 src_x, INT16 src_y,
-			int ntrap, xTrapezoid *traps);
+			int ntrap, xTrapezoid *traps)
+{
+	if (NO_SCAN_CONVERTER)
+		return false;
+
+	if (is_precise(dst, maskFormat))
+		return precise_trapezoid_span_fallback(op, src, dst, maskFormat, src_x, src_y, ntrap, traps);
+	else
+		return imprecise_trapezoid_span_fallback(op, src, dst, maskFormat, src_x, src_y, ntrap, traps);
+}
 
 bool
 trap_span_converter(struct sna *sna,
@@ -207,18 +321,12 @@ xTriangleValid(const xTriangle *t)
 #define pixman_fixed_integer_floor(V) pixman_fixed_to_int(V)
 #define pixman_fixed_integer_ceil(V) pixman_fixed_to_int(pixman_fixed_ceil(V))
 
-static inline int pixman_fixed_to_grid(pixman_fixed_t v)
+static inline int pixman_fixed_to_fast(pixman_fixed_t v)
 {
 	return (v + ((1<<(16-FAST_SAMPLES_shift-1))-1)) >> (16 - FAST_SAMPLES_shift);
 }
 
-void trapezoids_bounds(int n, const xTrapezoid *t, BoxPtr box);
-
-static inline bool
-is_mono(PicturePtr dst, PictFormatPtr mask)
-{
-	return mask ? mask->depth < 8 : dst->polyEdge==PolyEdgeSharp;
-}
+bool trapezoids_bounds(int n, const xTrapezoid *t, BoxPtr box);
 
 #define TOR_INPLACE_SIZE 128
 

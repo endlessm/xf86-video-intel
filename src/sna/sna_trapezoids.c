@@ -70,7 +70,7 @@ line_x_for_y(const xLineFixed *l, xFixed y, bool ceil)
 	return l->p1.x + (xFixed) (ex / d);
 }
 
-void trapezoids_bounds(int n, const xTrapezoid *t, BoxPtr box)
+bool trapezoids_bounds(int n, const xTrapezoid *t, BoxPtr box)
 {
 	xFixed x1, y1, x2, y2;
 
@@ -134,6 +134,8 @@ void trapezoids_bounds(int n, const xTrapezoid *t, BoxPtr box)
 	box->x2 = pixman_fixed_to_int(x2);
 	box->y1 = pixman_fixed_integer_floor(y1);
 	box->y2 = pixman_fixed_integer_ceil(y2);
+
+	return box->x2 > box->x1 && box->y2 > box->y1;
 }
 
 static bool
@@ -461,11 +463,8 @@ trapezoid_spans_maybe_inplace(struct sna *sna,
 	if (NO_SCAN_CONVERTER)
 		return false;
 
-	if (dst->polyMode == PolyModePrecise && !is_mono(dst, maskFormat))
-		return false;
 	if (dst->alphaMap)
 		return false;
-
 	if (is_mono(dst, maskFormat))
 		goto out;
 
@@ -601,12 +600,12 @@ sna_composite_trapezoids(CARD8 op,
 		}
 	} else if (dst->polyMode != PolyModePrecise) {
 		for (n = 0; n < ntrap && rectilinear; n++) {
-			int lx1 = pixman_fixed_to_grid(traps[n].left.p1.x);
-			int lx2 = pixman_fixed_to_grid(traps[n].left.p2.x);
-			int rx1 = pixman_fixed_to_grid(traps[n].right.p1.x);
-			int rx2 = pixman_fixed_to_grid(traps[n].right.p2.x);
-			int top = pixman_fixed_to_grid(traps[n].top);
-			int bot = pixman_fixed_to_grid(traps[n].bottom);
+			int lx1 = pixman_fixed_to_fast(traps[n].left.p1.x);
+			int lx2 = pixman_fixed_to_fast(traps[n].left.p2.x);
+			int rx1 = pixman_fixed_to_fast(traps[n].right.p1.x);
+			int rx2 = pixman_fixed_to_fast(traps[n].right.p2.x);
+			int top = pixman_fixed_to_fast(traps[n].top);
+			int bot = pixman_fixed_to_fast(traps[n].bottom);
 
 			rectilinear &= lx1 == lx2 && rx1 == rx2;
 			pixel_aligned &= ((top | bot | lx1 | lx2 | rx1 | rx2) & FAST_SAMPLES_mask) == 0;

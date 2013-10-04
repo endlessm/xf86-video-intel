@@ -71,6 +71,7 @@ libsna_la_SOURCES = \
 	sna_trapezoids_boxes.c \
 	sna_trapezoids_imprecise.c \
 	sna_trapezoids_mono.c \
+	sna_trapezoids_precise.c \
 	sna_tiling.c \
 	sna_transform.c \
 	sna_threads.c \
