@@ -766,7 +766,7 @@ sna_composite_rectangles(CARD8		 op,
 	pixman_region16_t region;
 	pixman_box16_t stack_boxes[64], *boxes = stack_boxes, *b;
 	int16_t dst_x, dst_y;
-	int i, num_boxes, error;
+	int i, num_boxes;
 	unsigned hint;
 
 	DBG(("%s(op=%d, %08x x %d [(%d, %d)x(%d, %d) ...])\n",
@@ -1012,15 +1012,20 @@ sna_composite_rectangles(CARD8		 op,
 			region.data = NULL;
 
 			if (pixman_region_intersect(&tmp, &tmp, dst->pCompositeClip)) {
-				pixman_region_translate(&tmp, dst_x, dst_y);
-				b = pixman_region_rectangles(&region, &num_boxes);
-				if (num_boxes)
-					error = !sna->render.fill_boxes(sna, op, dst->format, color,
-									pixmap, bo, b, num_boxes);
+				int n = 0;
+
+				b = pixman_region_rectangles(&tmp, &n);
+				if (n) {
+					if (dst_x | dst_y)
+						pixman_region_translate(&tmp, dst_x, dst_y);
+
+					n = !sna->render.fill_boxes(sna, op, dst->format, color,
+								    pixmap, bo, b, n);
+				}
 
 				pixman_region_fini(&tmp);
 
-				if (error) {
+				if (n) {
 					DBG(("%s: fallback - acceleration failed\n", __FUNCTION__));
 					goto fallback;
 				}
@@ -1121,6 +1126,7 @@ fallback:
 			} while (--nbox);
 		} else {
 			PicturePtr src;
+			int error;
 
 fallback_composite:
 			DBG(("%s: fallback -- fbComposite()\n", __FUNCTION__));
