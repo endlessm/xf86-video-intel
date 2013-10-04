@@ -1616,10 +1616,12 @@ sna_pixmap_undo_cow(struct sna *sna, struct sna_pixmap *priv, unsigned flags)
 {
 	struct sna_cow *cow = COW(priv->cow);
 
-	DBG(("%s: pixmap=%ld, handle=%d, flags=%x\n",
+	DBG(("%s: pixmap=%ld, handle=%d [refcnt=%d], cow refcnt=%d, flags=%x\n",
 	     __FUNCTION__,
 	     priv->pixmap->drawable.serialNumber,
 	     priv->gpu_bo->handle,
+	     priv->gpu_bo->refcnt,
+	     cow->refcnt,
 	     flags));
 
 	assert(priv->gpu_bo == cow->bo);
@@ -1628,6 +1630,7 @@ sna_pixmap_undo_cow(struct sna *sna, struct sna_pixmap *priv, unsigned flags)
 	list_del(&priv->cow_list);
 
 	if (!--cow->refcnt) {
+		DBG(("%s: freeing cow\n", __FUNCTION__));
 		assert(list_is_empty(&cow->list));
 		free(cow);
 	} else if (IS_COW_OWNER(priv->cow) && priv->pinned) {

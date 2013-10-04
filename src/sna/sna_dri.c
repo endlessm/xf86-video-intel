@@ -488,6 +488,9 @@ static void set_bo(PixmapPtr pixmap, struct kgem_bo *bo)
 	struct sna_pixmap *priv = sna_pixmap(pixmap);
 	RegionRec region;
 
+	DBG(("%s: pixmap=%ld, handle=%d\n",
+	     __FUNCTION__, pixmap->drawable.serialNumber, bo->handle));
+
 	assert(pixmap->drawable.width * pixmap->drawable.bitsPerPixel <= 8*bo->pitch);
 	assert(pixmap->drawable.height * bo->pitch <= kgem_bo_size(bo));
 	assert(bo->proxy == NULL);
