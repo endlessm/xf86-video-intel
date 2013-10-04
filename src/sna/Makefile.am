@@ -66,7 +66,11 @@ libsna_la_SOURCES = \
 	sna_render_inline.h \
 	sna_reg.h \
 	sna_stream.c \
+	sna_trapezoids.h \
 	sna_trapezoids.c \
+	sna_trapezoids_boxes.c \
+	sna_trapezoids_imprecise.c \
+	sna_trapezoids_mono.c \
 	sna_tiling.c \
 	sna_transform.c \
 	sna_threads.c \
