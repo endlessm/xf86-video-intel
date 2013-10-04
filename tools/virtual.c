@@ -36,6 +36,8 @@
 #include <X11/extensions/shmproto.h>
 #elif HAVE_X11_EXTENSIONS_SHMSTR_H
 #include <X11/extensions/shmstr.h>
+#else
+#error Failed to find the right header for X11 MIT-SHM protocol definitions
 #endif
 #include <X11/extensions/Xdamage.h>
 #include <X11/extensions/Xinerama.h>
