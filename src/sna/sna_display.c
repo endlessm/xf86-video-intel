@@ -155,6 +155,14 @@ static bool sna_mode_has_pending_events(struct sna *sna)
 	return poll(&pfd, 1, 0) == 1;
 }
 
+static bool sna_mode_wait_for_event(struct sna *sna)
+{
+	struct pollfd pfd;
+	pfd.fd = sna->kgem.fd;
+	pfd.events = POLLIN;
+	return poll(&pfd, 1, -1) == 1;
+}
+
 #define BACKLIGHT_CLASS "/sys/class/backlight"
 
 /* Enough for 10 digits of backlight + '\n' + '\0' */
@@ -4228,7 +4236,8 @@ disable:
 		}
 
 		if (sna->mode.shadow) {
-			while (sna->mode.shadow_flip)
+			while (sna->mode.shadow_flip &&
+			       sna_mode_wait_for_event(sna))
 				sna_mode_wakeup(sna);
 			(void)sna->render.copy_boxes(sna, GXcopy,
 						     sna->front, new, 0, 0,
