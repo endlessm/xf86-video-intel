@@ -1019,10 +1019,14 @@ gen5_emit_vertex_elements(struct sna *sna,
 inline static void
 gen5_emit_pipe_flush(struct sna *sna)
 {
+#if 0
 	OUT_BATCH(GEN5_PIPE_CONTROL | (4 - 2));
 	OUT_BATCH(GEN5_PIPE_CONTROL_WC_FLUSH);
 	OUT_BATCH(0);
 	OUT_BATCH(0);
+#else
+	OUT_BATCH(MI_FLUSH | MI_INHIBIT_RENDER_CACHE_FLUSH);
+#endif
 }
 
 static void
