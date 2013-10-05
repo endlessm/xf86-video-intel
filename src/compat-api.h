@@ -162,4 +162,8 @@ static inline void FreePixmap(PixmapPtr pixmap)
 	if ((d)->pScreen->SourceValidate) (d)->pScreen->SourceValidate(d, x, y, w, h)
 #endif
 
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,14,99,2,0)
+#define DamageUnregister(d, dd) DamageUnregister(dd)
+#endif
+
 #endif
