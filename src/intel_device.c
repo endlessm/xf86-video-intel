@@ -238,10 +238,10 @@ static char *find_render_node(int fd)
 	if (master.st_rdev & 0x80)
 		return NULL;
 
-	sprintf(buf, "/dev/dri/renderD%d", (int)((master.st_rdev | 0x80) & 0xff));
+	sprintf(buf, "/dev/dri/renderD%d", (int)((master.st_rdev | 0x80) & 0xbf));
 	if (stat(buf, &render) == 0 &&
 	    master.st_mode == render.st_mode &&
-	    render.st_rdev == (master.st_rdev | 0x80))
+	    render.st_rdev == ((master.st_rdev | 0x80) & 0xbf))
 		return strdup(buf);
 #endif
 
