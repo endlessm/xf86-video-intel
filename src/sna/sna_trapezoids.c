@@ -197,9 +197,10 @@ trapezoids_inplace_fallback(struct sna *sna,
 
 		if (sigtrap_get() == 0) {
 			for (; ntrap; ntrap--, traps++)
-				pixman_rasterize_trapezoid(image,
-							   (pixman_trapezoid_t *)traps,
-							   dx, dy);
+				if (xTrapezoidValid(traps))
+					pixman_rasterize_trapezoid(image,
+								   (pixman_trapezoid_t *)traps,
+								   dx, dy);
 			sigtrap_put();
 		}
 
@@ -241,9 +242,10 @@ static void rasterize_traps_thread(void *arg)
 		return;
 
 	for (n = 0; n < thread->ntrap; n++)
-		pixman_rasterize_trapezoid(image,
-					   (pixman_trapezoid_t *)&thread->traps[n],
-					   -thread->bounds.x1, -thread->bounds.y1);
+		if (xTrapezoidValid(&thread->traps[n]))
+			pixman_rasterize_trapezoid(image,
+						   (pixman_trapezoid_t *)&thread->traps[n],
+						   -thread->bounds.x1, -thread->bounds.y1);
 
 	if (PIXMAN_FORMAT_DEPTH(thread->format) < 8) {
 		pixman_image_t *a8;
@@ -346,9 +348,10 @@ trapezoids_fallback(struct sna *sna,
 				}
 				if (image) {
 					for (; ntrap; ntrap--, traps++)
-						pixman_rasterize_trapezoid(image,
-									   (pixman_trapezoid_t *)traps,
-									   -bounds.x1, -bounds.y1);
+						if (xTrapezoidValid(traps))
+							pixman_rasterize_trapezoid(image,
+										   (pixman_trapezoid_t *)traps,
+										   -bounds.x1, -bounds.y1);
 					if (depth < 8) {
 						pixman_image_t *a8;
 
@@ -420,9 +423,10 @@ trapezoids_fallback(struct sna *sna,
 							 scratch->devKind);
 			if (image) {
 				for (; ntrap; ntrap--, traps++)
-					pixman_rasterize_trapezoid(image,
-								   (pixman_trapezoid_t *)traps,
-								   -bounds.x1, -bounds.y1);
+					if (xTrapezoidValid(traps))
+						pixman_rasterize_trapezoid(image,
+									   (pixman_trapezoid_t *)traps,
+									   -bounds.x1, -bounds.y1);
 				pixman_image_unref(image);
 			}
 		}
