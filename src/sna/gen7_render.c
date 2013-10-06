@@ -46,6 +46,7 @@
 #include "gen4_vertex.h"
 
 #define ALWAYS_FLUSH 0
+#define ALWAYS_STALL 0
 
 #define NO_COMPOSITE 0
 #define NO_COMPOSITE_SPANS 0
@@ -1107,6 +1108,8 @@ gen7_emit_state(struct sna *sna,
 
 	need_stall = gen7_emit_binding_table(sna, wm_binding_table);
 	need_stall &= gen7_emit_drawing_rectangle(sna, op);
+	if (ALWAYS_STALL)
+		need_stall = true;
 
 	if (ALWAYS_FLUSH || kgem_bo_is_dirty(op->src.bo) || kgem_bo_is_dirty(op->mask.bo)) {
 		gen7_emit_pipe_invalidate(sna);
