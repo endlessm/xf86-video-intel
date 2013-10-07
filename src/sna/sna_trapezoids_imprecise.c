@@ -467,7 +467,8 @@ polygon_init(struct polygon *polygon,
 	unsigned num_buckets =
 		EDGE_Y_BUCKET_INDEX(ymax+EDGE_Y_BUCKET_HEIGHT-1, ymin);
 
-	assert(ymax-ymin < 0x7FFFFFFFU - EDGE_Y_BUCKET_HEIGHT);
+	if (unlikely(ymax - ymin > 0x7FFFFFFFU - EDGE_Y_BUCKET_HEIGHT))
+		return false;
 
 	polygon->edges = polygon->edges_embedded;
 	polygon->y_buckets = polygon->y_buckets_embedded;
@@ -936,8 +937,8 @@ tor_init(struct tor *converter, const BoxRec *box, int num_edges)
 
 	active_list_reset(converter->active);
 	if (!polygon_init(converter->polygon, num_edges,
-			  box->y1 * FAST_SAMPLES_Y,
-			  box->y2 * FAST_SAMPLES_Y)) {
+			  (int)box->y1 * FAST_SAMPLES_Y,
+			  (int)box->y2 * FAST_SAMPLES_Y)) {
 		cell_list_fini(converter->coverages);
 		return false;
 	}
