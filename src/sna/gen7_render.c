@@ -1119,7 +1119,7 @@ gen7_emit_state(struct sna *sna,
 		sna->render_state.gen7.emit_flush = false;
 		need_stall = false;
 	}
-	if (sna->render_state.gen7.emit_flush) {
+	if (sna->render_state.gen7.emit_flush && GEN7_READS_DST(op->u.gen7.flags)) {
 		gen7_emit_pipe_flush(sna, need_stall);
 		need_stall = false;
 	}
