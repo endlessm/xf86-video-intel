@@ -255,9 +255,7 @@ struct tor {
     struct active_list	active[1];
     struct cell_list	coverages[1];
 
-    /* Clip box. */
-    int xmin, xmax;
-    int ymin, ymax;
+    BoxRec extents;
 };
 
 /* Compute the floored division a/b. Assumes / and % perform symmetric
@@ -362,16 +360,17 @@ cell_list_alloc(struct cell_list *cells,
 inline static struct cell *
 cell_list_find(struct cell_list *cells, int x)
 {
-	struct cell *tail = cells->cursor;
-
-	if (tail->x == x)
-		return tail;
+	struct cell *tail;
 
 	if (x >= cells->x2)
 		return &cells->tail;
 
 	if (x < cells->x1)
 		return &cells->head;
+
+	tail = cells->cursor;
+	if (tail->x == x)
+		return tail;
 
 	do {
 		if (tail->next->x > x)
@@ -459,13 +458,9 @@ polygon_fini(struct polygon *polygon)
 }
 
 static bool
-polygon_init(struct polygon *polygon,
-	     int num_edges,
-	     int ymin,
-	     int ymax)
+polygon_init(struct polygon *polygon, int num_edges, int ymin, int ymax)
 {
-	unsigned num_buckets =
-		EDGE_Y_BUCKET_INDEX(ymax+EDGE_Y_BUCKET_HEIGHT-1, ymin);
+	unsigned num_buckets = EDGE_Y_BUCKET_INDEX(ymax-1, ymin) + 1;
 
 	if (unlikely(ymax - ymin > 0x7FFFFFFFU - EDGE_Y_BUCKET_HEIGHT))
 		return false;
@@ -502,6 +497,7 @@ _polygon_insert_edge_into_its_y_bucket(struct polygon *polygon, struct edge *e)
 {
 	unsigned ix = EDGE_Y_BUCKET_INDEX(e->ytop, polygon->ymin);
 	struct edge **ptail = &polygon->y_buckets[ix];
+	assert(e->ytop < polygon->ymax);
 	e->next = *ptail;
 	*ptail = e;
 }
@@ -928,10 +924,7 @@ tor_init(struct tor *converter, const BoxRec *box, int num_edges)
 	       FAST_SAMPLES_X, FAST_SAMPLES_Y,
 	       num_edges));
 
-	converter->xmin = box->x1;
-	converter->ymin = box->y1;
-	converter->xmax = box->x2;
-	converter->ymax = box->y2;
+	converter->extents = *box;
 
 	if (!cell_list_init(converter->coverages, box->x1, box->x2))
 		return false;
@@ -1076,6 +1069,7 @@ tor_blt_span_mono_unbounded_clipped(struct sna *sna,
 
 static void
 tor_blt(struct sna *sna,
+	struct tor *converter,
 	struct sna_composite_spans_op *op,
 	pixman_region16_t *clip,
 	void (*span)(struct sna *sna,
@@ -1083,18 +1077,18 @@ tor_blt(struct sna *sna,
 		     pixman_region16_t *clip,
 		     const BoxRec *box,
 		     int coverage),
-	struct cell_list *cells,
 	int y, int height,
-	int xmin, int xmax,
 	int unbounded)
 {
+	struct cell_list *cells = converter->coverages;
 	struct cell *cell;
 	BoxRec box;
 	int cover;
 
-	box.y1 = y;
-	box.y2 = y + height;
-	box.x1 = xmin;
+	box.y1 = y + converter->extents.y1;
+	box.y2 = box.y1 + height;
+	assert(box.y2 <= converter->extents.y2);
+	box.x1 = converter->extents.x1;
 
 	/* Form the spans from the coverages and areas. */
 	cover = cells->head.covered_height*FAST_SAMPLES_X*2;
@@ -1102,8 +1096,8 @@ tor_blt(struct sna *sna,
 	for (cell = cells->head.next; cell != &cells->tail; cell = cell->next) {
 		int x = cell->x;
 
-		assert(x >= xmin);
-		assert(x < xmax);
+		assert(x >= converter->extents.x1);
+		assert(x < converter->extents.x2);
 		__DBG(("%s: cell=(%d, %d, %d), cover=%d, max=%d\n", __FUNCTION__,
 		       cell->x, cell->covered_height, cell->uncovered_area,
 		       cover, xmax));
@@ -1137,7 +1131,7 @@ tor_blt(struct sna *sna,
 		}
 	}
 
-	box.x2 = xmax;
+	box.x2 = converter->extents.x2;
 	if (box.x2 > box.x1 && (unbounded || cover)) {
 		__DBG(("%s: span (%d, %d)x(%d, %d) @ %d\n", __FUNCTION__,
 		       box.x1, box.y1,
@@ -1146,28 +1140,6 @@ tor_blt(struct sna *sna,
 		       cover));
 		span(sna, op, clip, &box, cover);
 	}
-}
-
-static void
-tor_blt_empty(struct sna *sna,
-	      struct sna_composite_spans_op *op,
-	      pixman_region16_t *clip,
-	      void (*span)(struct sna *sna,
-			   struct sna_composite_spans_op *op,
-			   pixman_region16_t *clip,
-			   const BoxRec *box,
-			   int coverage),
-	      int y, int height,
-	      int xmin, int xmax)
-{
-	BoxRec box;
-
-	box.x1 = xmin;
-	box.x2 = xmax;
-	box.y1 = y;
-	box.y2 = y + height;
-
-	span(sna, op, clip, &box, 0);
 }
 
 flatten static void
@@ -1182,14 +1154,11 @@ tor_render(struct sna *sna,
 			int coverage),
 	   int unbounded)
 {
-	int ymin = converter->ymin;
-	int xmin = converter->xmin;
-	int xmax = converter->xmax;
-	int i, j, h = converter->ymax - ymin;
 	struct polygon *polygon = converter->polygon;
 	struct cell_list *coverages = converter->coverages;
 	struct active_list *active = converter->active;
 	struct edge *buckets[FAST_SAMPLES_Y] = { 0 };
+	int16_t i, j, h = converter->extents.y2 - converter->extents.y1;
 
 	__DBG(("%s: unbounded=%d\n", __FUNCTION__, unbounded));
 
@@ -1201,15 +1170,23 @@ tor_render(struct sna *sna,
 
 		/* Determine if we can ignore this row or use the full pixel
 		 * stepper. */
-		if (!polygon->y_buckets[i]) {
+		if (polygon->y_buckets[i] == NULL) {
 			if (active->head.next == &active->tail) {
-				for (; !polygon->y_buckets[j]; j++)
+				for (; polygon->y_buckets[j] == NULL; j++)
 					;
 				__DBG(("%s: no new edges and no exisiting edges, skipping, %d -> %d\n",
 				       __FUNCTION__, i, j));
 
-				if (unbounded)
-					tor_blt_empty(sna, op, clip, span, i+ymin, j-i, xmin, xmax);
+				assert(j <= h);
+				if (unbounded) {
+					BoxRec box;
+
+					box = converter->extents;
+					box.y1 += i;
+					box.y2 = converter->extents.y1 + j;
+
+					span(sna, op, clip, &box, 0);
+				}
 				continue;
 			}
 
@@ -1228,6 +1205,7 @@ tor_render(struct sna *sna,
 				do_full_step -= FAST_SAMPLES_Y;
 				j++;
 			}
+			assert(j >= i + 1 && j <= h);
 			if (j != i + 1)
 				step_edges(active, j - (i + 1));
 
@@ -1249,9 +1227,8 @@ tor_render(struct sna *sna,
 			}
 		}
 
-		tor_blt(sna, op, clip, span, coverages,
-			i+ymin, j-i, xmin, xmax,
-			unbounded);
+		assert(j > i);
+		tor_blt(sna, converter, op, clip, span, i, j-i, unbounded);
 		cell_list_reset(coverages);
 	}
 }
@@ -1531,7 +1508,7 @@ inplace_end_subrows(struct active_list *active, uint8_t *row,
 static void
 tor_inplace(struct tor *converter, PixmapPtr scratch, int mono, uint8_t *buf)
 {
-	int i, j, h = converter->ymax;
+	int i, j, h = converter->extents.y2;
 	struct polygon *polygon = converter->polygon;
 	struct active_list *active = converter->active;
 	struct edge *buckets[FAST_SAMPLES_Y] = { 0 };
@@ -1541,8 +1518,8 @@ tor_inplace(struct tor *converter, PixmapPtr scratch, int mono, uint8_t *buf)
 
 	__DBG(("%s: mono=%d, buf?=%d\n", __FUNCTION__, mono, buf != NULL));
 	assert(!mono);
-	assert(converter->ymin == 0);
-	assert(converter->xmin == 0);
+	assert(converter->extents.y1 == 0);
+	assert(converter->extents.x1 == 0);
 	assert(scratch->drawable.depth == 8);
 
 	/* Render each pixel row. */
@@ -2005,6 +1982,7 @@ imprecise_trapezoid_span_converter(struct sna *sna,
 		y = clip.extents.y1;
 		h = clip.extents.y2 - clip.extents.y1;
 		h = (h + num_threads - 1) / num_threads;
+		num_threads = (clip.extents.y2 - clip.extents.y1 + h - 1) / h;
 
 		for (n = 1; n < num_threads; n++) {
 			threads[n] = threads[0];
@@ -2014,6 +1992,7 @@ imprecise_trapezoid_span_converter(struct sna *sna,
 			sna_threads_run(span_thread, &threads[n]);
 		}
 
+		assert(y < threads[0].extents.y2);
 		threads[0].extents.y1 = y;
 		span_thread(&threads[0]);
 
@@ -2862,6 +2841,7 @@ trapezoid_span_inplace__x8r8g8b8(CARD8 op,
 		y = region.extents.y1;
 		h = region.extents.y2 - region.extents.y1;
 		h = (h + num_threads - 1) / num_threads;
+		num_threads = (region.extents.y2 - region.extents.y1 + h - 1) / h;
 
 		for (n = 1; n < num_threads; n++) {
 			threads[n] = threads[0];
@@ -2871,8 +2851,8 @@ trapezoid_span_inplace__x8r8g8b8(CARD8 op,
 			sna_threads_run(inplace_x8r8g8b8_thread, &threads[n]);
 		}
 
+		assert(y < threads[0].extents.y2);
 		threads[0].extents.y1 = y;
-		threads[0].extents.y2 = region.extents.y2;
 		inplace_x8r8g8b8_thread(&threads[0]);
 
 		sna_threads_wait();
@@ -3132,6 +3112,7 @@ imprecise_trapezoid_span_inplace(struct sna *sna,
 		y = region.extents.y1;
 		h = region.extents.y2 - region.extents.y1;
 		h = (h + num_threads - 1) / num_threads;
+		num_threads = (region.extents.y2 - region.extents.y1 + h - 1) / h;
 
 		for (n = 1; n < num_threads; n++) {
 			threads[n] = threads[0];
@@ -3141,8 +3122,8 @@ imprecise_trapezoid_span_inplace(struct sna *sna,
 			sna_threads_run(inplace_thread, &threads[n]);
 		}
 
+		assert(y < threads[0].extents.y2);
 		threads[0].extents.y1 = y;
-		threads[0].extents.y2 = region.extents.y2;
 		inplace_thread(&threads[0]);
 
 		sna_threads_wait();

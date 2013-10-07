@@ -843,6 +843,7 @@ mono_trapezoids_span_converter(struct sna *sna,
 		y = extents.y1;
 		h = extents.y2 - extents.y1;
 		h = (h + num_threads - 1) / num_threads;
+		num_threads = (extents.y2 - extents.y1 + h - 1) / h;
 
 		for (n = 1; n < num_threads; n++) {
 			threads[n] = threads[0];

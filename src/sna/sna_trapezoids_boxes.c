@@ -1171,6 +1171,7 @@ composite_unaligned_boxes_inplace(struct sna *sna,
 
 			y = clip.extents.y1;
 			dy = (clip.extents.y2 - clip.extents.y1 + num_threads - 1) / num_threads;
+			num_threads = (clip.extents.y2 - clip.extents.y1 + dy - 1) / dy;
 
 			for (i = 1; i < num_threads; i++) {
 				thread[i] = thread[0];
@@ -1179,6 +1180,7 @@ composite_unaligned_boxes_inplace(struct sna *sna,
 				sna_threads_run(rectilinear_inplace_thread, &thread[i]);
 			}
 
+			assert(y < clip.extents.y2);
 			thread[0].y1 = y;
 			thread[0].y2 = clip.extents.y2;
 			rectilinear_inplace_thread(&thread[0]);
