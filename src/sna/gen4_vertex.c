@@ -45,7 +45,9 @@ void gen4_vertex_flush(struct sna *sna)
 	     sna->render.vertex_index - sna->render.vertex_start));
 
 	assert(sna->render.vertex_offset);
+	assert(sna->render.vertex_offset <= sna->kgem.nbatch);
 	assert(sna->render.vertex_index > sna->render.vertex_start);
+	assert(sna->render.vertex_used <= sna->render.vertex_size);
 
 	sna->kgem.batch[sna->render.vertex_offset] =
 		sna->render.vertex_index - sna->render.vertex_start;
@@ -62,6 +64,7 @@ int gen4_vertex_finish(struct sna *sna)
 	     sna->render.vertex_used, sna->render.vertex_size));
 	assert(sna->render.vertex_offset == 0);
 	assert(sna->render.vertex_used);
+	assert(sna->render.vertex_used <= sna->render.vertex_size);
 
 	sna_vertex_wait__locked(&sna->render);
 

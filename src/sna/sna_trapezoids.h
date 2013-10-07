@@ -62,7 +62,8 @@ mono_triangles_span_converter(struct sna *sna,
 bool
 imprecise_trapezoid_span_inplace(struct sna *sna,
 				 CARD8 op, PicturePtr src, PicturePtr dst,
-				 PictFormatPtr maskFormat, INT16 src_x, INT16 src_y,
+				 PictFormatPtr maskFormat, unsigned flags,
+				 INT16 src_x, INT16 src_y,
 				 int ntrap, xTrapezoid *traps,
 				 bool fallback);
 
@@ -75,18 +76,21 @@ imprecise_trapezoid_span_converter(struct sna *sna,
 
 bool
 imprecise_trapezoid_mask_converter(CARD8 op, PicturePtr src, PicturePtr dst,
-				   PictFormatPtr maskFormat, INT16 src_x, INT16 src_y,
+				   PictFormatPtr maskFormat, unsigned flags,
+				   INT16 src_x, INT16 src_y,
 				   int ntrap, xTrapezoid *traps);
 
 bool
 imprecise_trapezoid_span_fallback(CARD8 op, PicturePtr src, PicturePtr dst,
-				  PictFormatPtr maskFormat, INT16 src_x, INT16 src_y,
+				  PictFormatPtr maskFormat, unsigned flags,
+				  INT16 src_x, INT16 src_y,
 				  int ntrap, xTrapezoid *traps);
 
 bool
 precise_trapezoid_span_inplace(struct sna *sna,
 				 CARD8 op, PicturePtr src, PicturePtr dst,
-				 PictFormatPtr maskFormat, INT16 src_x, INT16 src_y,
+				 PictFormatPtr maskFormat, unsigned flags,
+				 INT16 src_x, INT16 src_y,
 				 int ntrap, xTrapezoid *traps,
 				 bool fallback);
 
@@ -99,13 +103,15 @@ precise_trapezoid_span_converter(struct sna *sna,
 
 bool
 precise_trapezoid_mask_converter(CARD8 op, PicturePtr src, PicturePtr dst,
-				   PictFormatPtr maskFormat, INT16 src_x, INT16 src_y,
+				   PictFormatPtr maskFormat, unsigned flags,
+				   INT16 src_x, INT16 src_y,
 				   int ntrap, xTrapezoid *traps);
 
 bool
 precise_trapezoid_span_fallback(CARD8 op, PicturePtr src, PicturePtr dst,
-				  PictFormatPtr maskFormat, INT16 src_x, INT16 src_y,
-				  int ntrap, xTrapezoid *traps);
+				PictFormatPtr maskFormat, unsigned flags,
+				INT16 src_x, INT16 src_y,
+				int ntrap, xTrapezoid *traps);
 
 static inline bool is_mono(PicturePtr dst, PictFormatPtr mask)
 {
@@ -120,7 +126,8 @@ static inline bool is_precise(PicturePtr dst, PictFormatPtr mask)
 static inline bool
 trapezoid_span_inplace(struct sna *sna,
 		       CARD8 op, PicturePtr src, PicturePtr dst,
-		       PictFormatPtr maskFormat, INT16 src_x, INT16 src_y,
+		       PictFormatPtr maskFormat, unsigned flags,
+		       INT16 src_x, INT16 src_y,
 		       int ntrap, xTrapezoid *traps,
 		       bool fallback)
 {
@@ -143,9 +150,9 @@ trapezoid_span_inplace(struct sna *sna,
 	if (is_mono(dst, maskFormat))
 		return mono_trapezoid_span_inplace(sna, op, src, dst, src_x, src_y, ntrap, traps);
 	else if (is_precise(dst, maskFormat))
-		return precise_trapezoid_span_inplace(sna, op, src, dst, maskFormat, src_x, src_y, ntrap, traps, fallback);
+		return precise_trapezoid_span_inplace(sna, op, src, dst, maskFormat, flags, src_x, src_y, ntrap, traps, fallback);
 	else
-		return imprecise_trapezoid_span_inplace(sna, op, src, dst, maskFormat, src_x, src_y, ntrap, traps, fallback);
+		return imprecise_trapezoid_span_inplace(sna, op, src, dst, maskFormat, flags, src_x, src_y, ntrap, traps, fallback);
 }
 
 static inline bool
@@ -168,30 +175,32 @@ trapezoid_span_converter(struct sna *sna,
 
 static inline bool
 trapezoid_mask_converter(CARD8 op, PicturePtr src, PicturePtr dst,
-			 PictFormatPtr maskFormat, INT16 src_x, INT16 src_y,
+			 PictFormatPtr maskFormat, unsigned flags,
+			 INT16 src_x, INT16 src_y,
 			 int ntrap, xTrapezoid *traps)
 {
 	if (NO_SCAN_CONVERTER)
 		return false;
 
 	if (is_precise(dst, maskFormat))
-		return precise_trapezoid_mask_converter(op, src, dst, maskFormat, src_x, src_y, ntrap, traps);
+		return precise_trapezoid_mask_converter(op, src, dst, maskFormat, flags, src_x, src_y, ntrap, traps);
 	else
-		return imprecise_trapezoid_mask_converter(op, src, dst, maskFormat, src_x, src_y, ntrap, traps);
+		return imprecise_trapezoid_mask_converter(op, src, dst, maskFormat, flags, src_x, src_y, ntrap, traps);
 }
 
 static inline bool
 trapezoid_span_fallback(CARD8 op, PicturePtr src, PicturePtr dst,
-			PictFormatPtr maskFormat, INT16 src_x, INT16 src_y,
+			PictFormatPtr maskFormat, unsigned flags,
+			INT16 src_x, INT16 src_y,
 			int ntrap, xTrapezoid *traps)
 {
 	if (NO_SCAN_CONVERTER)
 		return false;
 
 	if (is_precise(dst, maskFormat))
-		return precise_trapezoid_span_fallback(op, src, dst, maskFormat, src_x, src_y, ntrap, traps);
+		return precise_trapezoid_span_fallback(op, src, dst, maskFormat, flags, src_x, src_y, ntrap, traps);
 	else
-		return imprecise_trapezoid_span_fallback(op, src, dst, maskFormat, src_x, src_y, ntrap, traps);
+		return imprecise_trapezoid_span_fallback(op, src, dst, maskFormat, flags, src_x, src_y, ntrap, traps);
 }
 
 bool

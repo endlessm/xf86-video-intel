@@ -389,7 +389,7 @@ cell_list_find(struct cell_list *cells, int x)
 	} while (1);
 
 	if (tail->x != x)
-		tail = cell_list_alloc (cells, tail, x);
+		tail = cell_list_alloc(cells, tail, x);
 
 	return cells->cursor = tail;
 }
@@ -777,7 +777,7 @@ merge_unsorted_edges(struct edge *head, struct edge *unsorted)
 
 /* Test if the edges on the active list can be safely advanced by a
  * full row without intersections or any edges ending. */
-inline static bool
+inline static int
 can_full_step(struct active_list *active)
 {
 	const struct edge *e;
@@ -785,7 +785,7 @@ can_full_step(struct active_list *active)
 
 	assert(active->head.next != &active->tail);
 	for (e = active->head.next; &active->tail != e; e = e->next) {
-		assert(e->height_left >= 0);
+		assert(e->height_left > 0);
 
 		if (e->dy != 0)
 			return 0;
@@ -842,6 +842,7 @@ nonzero_subrow(struct active_list *active, struct cell_list *coverages)
 			xstart = edge->next->x.quo;
 		}
 
+		assert(edge->height_left > 0);
 		if (--edge->height_left) {
 			if (edge->dy) {
 				edge->x.quo += edge->dxdy.quo;
@@ -885,7 +886,7 @@ nonzero_row(struct active_list *active, struct cell_list *coverages)
 
 		left->height_left -= FAST_SAMPLES_Y;
 		assert(left->height_left >= 0);
-		if (! left->height_left) {
+		if (!left->height_left) {
 			left->prev->next = left->next;
 			left->next->prev = left->prev;
 		}
@@ -967,6 +968,7 @@ step_edges(struct active_list *active, int count)
 	count *= FAST_SAMPLES_Y;
 	for (edge = active->head.next; edge != &active->tail; edge = edge->next) {
 		edge->height_left -= count;
+		assert(edge->height_left >= 0);
 		if (!edge->height_left) {
 			edge->prev->next = edge->next;
 			edge->next->prev = edge->prev;
@@ -1266,6 +1268,7 @@ inplace_row(struct active_list *active, uint8_t *row, int width)
 		int lix, rix;
 
 		left->height_left -= FAST_SAMPLES_Y;
+		assert(left->height_left >= 0);
 		if (!left->height_left) {
 			left->prev->next = left->next;
 			left->next->prev = left->prev;
@@ -1274,6 +1277,7 @@ inplace_row(struct active_list *active, uint8_t *row, int width)
 		right = left->next;
 		do {
 			right->height_left -= FAST_SAMPLES_Y;
+			assert(right->height_left >= 0);
 			if (!right->height_left) {
 				right->prev->next = right->next;
 				right->next->prev = right->prev;
@@ -1414,6 +1418,7 @@ inplace_subrow(struct active_list *active, int8_t *row,
 			xstart = MAX(edge->x.quo, 0);
 		}
 
+		assert(edge->height_left > 0);
 		if (--edge->height_left) {
 			if (edge->dy) {
 				edge->x.quo += edge->dxdy.quo;
@@ -1704,8 +1709,8 @@ struct span_thread {
 #define SPAN_THREAD_MAX_BOXES (8192/sizeof(struct sna_opacity_box))
 struct span_thread_boxes {
 	const struct sna_composite_spans_op *op;
-	struct sna_opacity_box boxes[SPAN_THREAD_MAX_BOXES];
 	int num_boxes;
+	struct sna_opacity_box boxes[SPAN_THREAD_MAX_BOXES];
 };
 
 static void span_thread_add_boxes(struct sna *sna, void *data,
@@ -1943,7 +1948,9 @@ imprecise_trapezoid_span_converter(struct sna *sna,
 	dy *= FAST_SAMPLES_Y;
 
 	num_threads = 1;
-	if (!NO_GPU_THREADS && tmp.thread_boxes &&
+	if (!NO_GPU_THREADS &&
+	    (flags & COMPOSITE_SPANS_RECTILINEAR) == 0 &&
+	    tmp.thread_boxes &&
 	    thread_choose_span(&tmp, dst, maskFormat, &clip))
 		num_threads = sna_use_threads(clip.extents.x2-clip.extents.x1,
 					      clip.extents.y2-clip.extents.y1,
@@ -2063,7 +2070,8 @@ tor_blt_mask_mono(struct sna *sna,
 
 bool
 imprecise_trapezoid_mask_converter(CARD8 op, PicturePtr src, PicturePtr dst,
-				   PictFormatPtr maskFormat, INT16 src_x, INT16 src_y,
+				   PictFormatPtr maskFormat, unsigned flags,
+				   INT16 src_x, INT16 src_y,
 				   int ntrap, xTrapezoid *traps)
 {
 	struct tor tor;
@@ -2083,7 +2091,7 @@ imprecise_trapezoid_mask_converter(CARD8 op, PicturePtr src, PicturePtr dst,
 		     __FUNCTION__));
 		do {
 			/* XXX unwind errors? */
-			if (!imprecise_trapezoid_mask_converter(op, src, dst, NULL,
+			if (!imprecise_trapezoid_mask_converter(op, src, dst, NULL, flags,
 								src_x, src_y, 1, traps++))
 				return false;
 		} while (--ntrap);
@@ -2183,8 +2191,8 @@ imprecise_trapezoid_mask_converter(CARD8 op, PicturePtr src, PicturePtr dst,
 }
 
 struct inplace {
-	uint32_t stride;
 	uint8_t *ptr;
+	uint32_t stride;
 	union {
 		uint8_t opacity;
 		uint32_t color;
@@ -2917,7 +2925,8 @@ static void inplace_thread(void *arg)
 bool
 imprecise_trapezoid_span_inplace(struct sna *sna,
 				 CARD8 op, PicturePtr src, PicturePtr dst,
-				 PictFormatPtr maskFormat, INT16 src_x, INT16 src_y,
+				 PictFormatPtr maskFormat, unsigned flags,
+				 INT16 src_x, INT16 src_y,
 				 int ntrap, xTrapezoid *traps,
 				 bool fallback)
 {
@@ -3007,7 +3016,7 @@ imprecise_trapezoid_span_inplace(struct sna *sna,
 		     __FUNCTION__));
 		do {
 			/* XXX unwind errors? */
-			if (!imprecise_trapezoid_span_inplace(sna, op, src, dst, NULL,
+			if (!imprecise_trapezoid_span_inplace(sna, op, src, dst, NULL, flags,
 							      src_x, src_y, 1, traps++,
 							      fallback))
 				return false;
@@ -3064,16 +3073,17 @@ imprecise_trapezoid_span_inplace(struct sna *sna,
 	dx = dst->pDrawable->x * FAST_SAMPLES_X;
 	dy = dst->pDrawable->y * FAST_SAMPLES_Y;
 
-
 	inplace.ptr = pixmap->devPrivate.ptr;
 	if (get_drawable_deltas(dst->pDrawable, pixmap, &dst_x, &dst_y))
 		inplace.ptr += dst_y * pixmap->devKind + dst_x;
 	inplace.stride = pixmap->devKind;
 	inplace.opacity = color >> 24;
 
-	num_threads = sna_use_threads(region.extents.x2 - region.extents.x1,
-				      region.extents.y2 - region.extents.y1,
-				      16);
+	num_threads = 1;
+	if ((flags & COMPOSITE_SPANS_RECTILINEAR) == 0)
+		num_threads = sna_use_threads(region.extents.x2 - region.extents.x1,
+					      region.extents.y2 - region.extents.y1,
+					      16);
 	if (num_threads == 1) {
 		struct tor tor;
 
@@ -3143,7 +3153,8 @@ imprecise_trapezoid_span_inplace(struct sna *sna,
 
 bool
 imprecise_trapezoid_span_fallback(CARD8 op, PicturePtr src, PicturePtr dst,
-				  PictFormatPtr maskFormat, INT16 src_x, INT16 src_y,
+				  PictFormatPtr maskFormat, unsigned flags,
+				  INT16 src_x, INT16 src_y,
 				  int ntrap, xTrapezoid *traps)
 {
 	struct tor tor;
@@ -3163,7 +3174,7 @@ imprecise_trapezoid_span_fallback(CARD8 op, PicturePtr src, PicturePtr dst,
 		     __FUNCTION__));
 		do {
 			/* XXX unwind errors? */
-			if (!imprecise_trapezoid_span_fallback(op, src, dst, NULL,
+			if (!imprecise_trapezoid_span_fallback(op, src, dst, NULL, flags,
 							       src_x, src_y, 1, traps++))
 				return false;
 		} while (--ntrap);

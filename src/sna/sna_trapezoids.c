@@ -660,7 +660,7 @@ sna_composite_trapezoids(CARD8 op,
 
 	if (trapezoid_spans_maybe_inplace(sna, op, src, dst, maskFormat)) {
 		flags |= COMPOSITE_SPANS_INPLACE_HINT;
-		if (trapezoid_span_inplace(sna, op, src, dst, maskFormat,
+		if (trapezoid_span_inplace(sna, op, src, dst, maskFormat, flags,
 					   xSrc, ySrc, ntrap, traps,
 					   false))
 			return;
@@ -670,22 +670,22 @@ sna_composite_trapezoids(CARD8 op,
 				     xSrc, ySrc, ntrap, traps))
 		return;
 
-	if (trapezoid_span_inplace(sna, op, src, dst, maskFormat,
+	if (trapezoid_span_inplace(sna, op, src, dst, maskFormat, flags,
 				   xSrc, ySrc, ntrap, traps,
 				   false))
 		return;
 
-	if (trapezoid_mask_converter(op, src, dst, maskFormat,
+	if (trapezoid_mask_converter(op, src, dst, maskFormat, flags,
 				     xSrc, ySrc, ntrap, traps))
 		return;
 
 fallback:
-	if (trapezoid_span_inplace(sna, op, src, dst, maskFormat,
+	if (trapezoid_span_inplace(sna, op, src, dst, maskFormat, flags,
 				   xSrc, ySrc, ntrap, traps,
 				   true))
 		return;
 
-	if (trapezoid_span_fallback(op, src, dst, maskFormat,
+	if (trapezoid_span_fallback(op, src, dst, maskFormat, flags,
 				    xSrc, ySrc, ntrap, traps))
 		return;
 
