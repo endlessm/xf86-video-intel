@@ -45,6 +45,7 @@
 #include "gen4_source.h"
 #include "gen4_vertex.h"
 
+#define ALWAYS_INVALIDATE 0
 #define ALWAYS_FLUSH 0
 #define ALWAYS_STALL 0
 
@@ -1111,7 +1112,7 @@ gen7_emit_state(struct sna *sna,
 	if (ALWAYS_STALL)
 		need_stall = true;
 
-	if (ALWAYS_FLUSH || kgem_bo_is_dirty(op->src.bo) || kgem_bo_is_dirty(op->mask.bo)) {
+	if (ALWAYS_INVALIDATE || kgem_bo_is_dirty(op->src.bo) || kgem_bo_is_dirty(op->mask.bo)) {
 		gen7_emit_pipe_invalidate(sna);
 		kgem_clear_dirty(&sna->kgem);
 		assert(op->dst.bo->exec);
@@ -1119,7 +1120,7 @@ gen7_emit_state(struct sna *sna,
 		sna->render_state.gen7.emit_flush = false;
 		need_stall = false;
 	}
-	if (sna->render_state.gen7.emit_flush && GEN7_READS_DST(op->u.gen7.flags)) {
+	if (ALWAYS_FLUSH || (sna->render_state.gen7.emit_flush && GEN7_READS_DST(op->u.gen7.flags))) {
 		gen7_emit_pipe_flush(sna, need_stall);
 		need_stall = false;
 	}
