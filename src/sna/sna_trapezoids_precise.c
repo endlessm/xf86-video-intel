@@ -261,13 +261,6 @@ struct cell_list {
 struct active_list {
 	/* Leftmost edge on the current scan line. */
 	struct edge head, tail;
-
-	/* A lower bound on the height of the active edges is used to
-	 * estimate how soon some active edge ends.	 We can't advance the
-	 * scan conversion by a full pixel row if an edge ends somewhere
-	 * within it. */
-	int min_height;
-	int is_vertical;
 };
 
 struct tor {
@@ -668,8 +661,6 @@ active_list_reset(struct active_list *active)
 	active->tail.x.quo = INT_MAX;
 	active->tail.height_left = INT_MAX;
 	active->tail.dy = 0;
-	active->min_height = INT_MAX;
-	active->is_vertical = 1;
 }
 
 static struct edge *
@@ -793,35 +784,30 @@ merge_unsorted_edges(struct edge *head, struct edge *unsorted)
 inline static bool
 can_full_step(struct active_list *active)
 {
-	/* Recomputes the minimum height of all edges on the active
-	 * list if we have been dropping edges. */
-	if (active->min_height <= 0) {
-		const struct edge *e;
-		int min_height = INT_MAX;
-		int is_vertical = 1;
+	const struct edge *e;
+	int min_height = INT_MAX;
 
-		for (e = active->head.next; &active->tail != e; e = e->next) {
-			if (e->height_left < min_height)
-				min_height = e->height_left;
-			if (is_vertical)
-				is_vertical = e->dy == 0;
+	assert(active->head.next != &active->tail);
+	for (e = active->head.next; &active->tail != e; e = e->next) {
+		assert(e->height_left >= 0);
+
+		if (e->dy != 0)
+			return 0;
+
+		if (e->height_left < min_height) {
+			min_height = e->height_left;
+			if (min_height < SAMPLES_Y)
+				return 0;
 		}
-
-		active->is_vertical = is_vertical;
-		active->min_height = min_height;
 	}
 
-	if (active->min_height < SAMPLES_Y)
-		return false;
-
-	return active->is_vertical;
+	return min_height;
 }
 
 inline static void
 merge_edges(struct active_list *active, struct edge *edges)
 {
 	active->head.next = merge_unsorted_edges(active->head.next, edges);
-	active->min_height = -1;
 }
 
 inline static void
@@ -830,9 +816,6 @@ fill_buckets(struct active_list *active,
 	     int ymin,
 	     struct edge **buckets)
 {
-	int min_height = active->min_height;
-	int is_vertical = active->is_vertical;
-
 	while (edge) {
 		struct edge *next = edge->next;
 		struct edge **b = &buckets[edge->ytop - ymin];
@@ -841,15 +824,8 @@ fill_buckets(struct active_list *active,
 		edge->next = *b;
 		edge->prev = NULL;
 		*b = edge;
-		if (edge->height_left < min_height)
-			min_height = edge->height_left;
-		if (is_vertical)
-			is_vertical = edge->dy == 0;
 		edge = next;
 	}
-
-	active->is_vertical = is_vertical;
-	active->min_height = min_height;
 }
 
 inline static void
@@ -908,13 +884,12 @@ nonzero_row(struct active_list *active, struct cell_list *coverages)
 {
 	struct edge *left = active->head.next;
 
-	assert(active->is_vertical);
-
 	while (&active->tail != left) {
 		struct edge *right;
 		int winding = left->dir;
 
 		left->height_left -= SAMPLES_Y;
+		assert(left->height_left >= 0);
 		if (!left->height_left) {
 			left->prev->next = left->next;
 			left->next->prev = left->prev;
@@ -923,6 +898,7 @@ nonzero_row(struct active_list *active, struct cell_list *coverages)
 		right = left->next;
 		do {
 			right->height_left -= SAMPLES_Y;
+			assert(right->height_left >= 0);
 			if (!right->height_left) {
 				right->prev->next = right->next;
 				right->next->prev = right->prev;
@@ -1181,8 +1157,6 @@ tor_render(struct sna *sna,
 		 * stepper. */
 		if (!polygon->y_buckets[i]) {
 			if (active->head.next == &active->tail) {
-				active->min_height = INT_MAX;
-				active->is_vertical = 1;
 				for (; !polygon->y_buckets[j]; j++)
 					;
 				__DBG(("%s: no new edges and no exisiting edges, skipping, %d -> %d\n",
@@ -1196,19 +1170,16 @@ tor_render(struct sna *sna,
 			do_full_step = can_full_step(active);
 		}
 
-		__DBG(("%s: y=%d [%d], do_full_step=%d, new edges=%d, min_height=%d, vertical=%d\n",
+		__DBG(("%s: y=%d [%d], do_full_step=%d, new edges=%d\n",
 		       __FUNCTION__,
 		       i, i+ymin, do_full_step,
-		       polygon->y_buckets[i] != NULL,
-		       active->min_height,
-		       active->is_vertical));
+		       polygon->y_buckets[i] != NULL));
 		if (do_full_step) {
-			assert(active->is_vertical);
 			nonzero_row(active, coverages);
 
 			while (polygon->y_buckets[j] == NULL &&
-			       active->min_height >= SAMPLES_Y) {
-				active->min_height -= SAMPLES_Y;
+			       do_full_step >= 2*SAMPLES_Y) {
+				do_full_step -= SAMPLES_Y;
 				j++;
 			}
 			if (j != i + 1)
@@ -1236,8 +1207,6 @@ tor_render(struct sna *sna,
 			i+ymin, j-i, xmin, xmax,
 			unbounded);
 		cell_list_reset(coverages);
-
-		active->min_height -= SAMPLES_Y;
 	}
 }
 
@@ -1245,8 +1214,6 @@ static void
 inplace_row(struct active_list *active, uint8_t *row, int width)
 {
 	struct edge *left = active->head.next;
-
-	assert(active->is_vertical);
 
 	while (&active->tail != left) {
 		struct edge *right;
@@ -1528,8 +1495,6 @@ tor_inplace(struct tor *converter, PixmapPtr scratch)
 		 * stepper. */
 		if (!polygon->y_buckets[i]) {
 			if (active->head.next == &active->tail) {
-				active->min_height = INT_MAX;
-				active->is_vertical = 1;
 				for (; !polygon->y_buckets[j]; j++)
 					;
 				__DBG(("%s: no new edges and no exisiting edges, skipping, %d -> %d\n",
@@ -1546,20 +1511,16 @@ tor_inplace(struct tor *converter, PixmapPtr scratch)
 		__DBG(("%s: y=%d, do_full_step=%d, new edges=%d, min_height=%d, vertical=%d\n",
 		       __FUNCTION__,
 		       i, do_full_step,
-		       polygon->y_buckets[i] != NULL,
-		       active->min_height,
-		       active->is_vertical));
+		       polygon->y_buckets[i] != NULL));
 		if (do_full_step) {
-			assert(active->is_vertical);
-
 			memset(ptr, 0, width);
 			inplace_row(active, ptr, width);
 			if (row != ptr)
 				memcpy(row, ptr, width);
 
 			while (polygon->y_buckets[j] == NULL &&
-			       active->min_height >= SAMPLES_Y) {
-				active->min_height -= SAMPLES_Y;
+			       do_full_step >= 2*SAMPLES_Y) {
+				do_full_step -= SAMPLES_Y;
 				row += stride;
 				memcpy(row, ptr, width);
 				j++;
@@ -1588,7 +1549,6 @@ tor_inplace(struct tor *converter, PixmapPtr scratch)
 				memcpy(row, ptr, width);
 		}
 
-		active->min_height -= SAMPLES_Y;
 		row += stride;
 	}
 }
