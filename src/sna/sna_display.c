@@ -3127,8 +3127,10 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 
 	assert((sna->flags & SNA_IS_HOSTED) == 0);
 
-	if (xf86ReturnOptValBool(sna->Options, OPTION_REPROBE, FALSE))
+	if (xf86ReturnOptValBool(sna->Options, OPTION_REPROBE, FALSE)) {
+		DBG(("%s: user requests reprobing\n", __FUNCTION__));
 		return false;
+	}
 
 	/* First scan through all outputs and look for user overrides */
 	for (i = 0; i < config->num_output; i++) {
@@ -3239,6 +3241,8 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 
 		if (j == config->num_crtc) {
 			/* Can not find the earlier associated CRTC, bail */
+			DBG(("%s: existing setup conflicts with output assignment (Zaphod), reprobing\n",
+			     __FUNCTION__));
 			return false;
 		}
 	}
@@ -3273,6 +3277,7 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 	scrn->virtualY = height;
 
 	xf86SetScrnInfoModes(sna->scrn);
+	DBG(("%s: SetScrnInfoModes = %p\n", __FUNCTION__, scrn->modes));
 	return scrn->modes != NULL;
 }
 
