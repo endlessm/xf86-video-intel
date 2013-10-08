@@ -1907,7 +1907,7 @@ precise_trapezoid_span_converter(struct sna *sna,
 		y = clip.extents.y1;
 		h = clip.extents.y2 - clip.extents.y1;
 		h = (h + num_threads - 1) / num_threads;
-		num_threads = (clip.extents.y2 - clip.extents.y1 + h - 1) / h;
+		num_threads -= (num_threads-1) * h >= clip.extents.y2 - clip.extents.y1;
 
 		for (n = 1; n < num_threads; n++) {
 			threads[n] = threads[0];
@@ -2133,7 +2133,7 @@ precise_trapezoid_mask_converter(CARD8 op, PicturePtr src, PicturePtr dst,
 		y = extents.y1;
 		h = extents.y2 - extents.y1;
 		h = (h + num_threads - 1) / num_threads;
-		num_threads = (extents.y2 - extents.y1 + h - 1) / h;
+		num_threads -= (num_threads-1) * h >= extents.y2 - extents.y1;
 
 		for (n = 1; n < num_threads; n++) {
 			threads[n] = threads[0];
@@ -2839,7 +2839,7 @@ trapezoid_span_inplace__x8r8g8b8(CARD8 op,
 		y = region.extents.y1;
 		h = region.extents.y2 - region.extents.y1;
 		h = (h + num_threads - 1) / num_threads;
-		num_threads = (region.extents.y2 - region.extents.y1 + h - 1) / h;
+		num_threads -= (num_threads-1) * h >= region.extents.y2 - region.extents.y1;
 
 		for (n = 1; n < num_threads; n++) {
 			threads[n] = threads[0];
@@ -3111,7 +3111,7 @@ precise_trapezoid_span_inplace(struct sna *sna,
 		y = region.extents.y1;
 		h = region.extents.y2 - region.extents.y1;
 		h = (h + num_threads - 1) / num_threads;
-		num_threads = (region.extents.y2 - region.extents.y1 + h - 1) / h;
+		num_threads -= (num_threads-1) * h >= region.extents.y2 - region.extents.y1;
 
 		for (n = 1; n < num_threads; n++) {
 			threads[n] = threads[0];
@@ -3255,7 +3255,7 @@ precise_trapezoid_span_fallback(CARD8 op, PicturePtr src, PicturePtr dst,
 		y = extents.y1;
 		h = extents.y2 - extents.y1;
 		h = (h + num_threads - 1) / num_threads;
-		num_threads = (extents.y2 - extents.y1 + h - 1) / h;
+		num_threads -= (num_threads-1) * h >= extents.y2 - extents.y1;
 
 		for (n = 1; n < num_threads; n++) {
 			threads[n] = threads[0];

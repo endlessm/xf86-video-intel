@@ -274,7 +274,7 @@ void sna_image_composite(pixman_op_t        op,
 
 		y = dst_y;
 		dy = (height + num_threads - 1) / num_threads;
-		num_threads = (height + dy - 1) / dy;
+		num_threads -= (num_threads-1) * dy >= height;
 
 		data[0].op = op;
 		data[0].src = src;

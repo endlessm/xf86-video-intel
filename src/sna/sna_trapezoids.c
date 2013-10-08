@@ -390,7 +390,7 @@ trapezoids_fallback(struct sna *sna,
 
 				y = bounds.y1;
 				dy = (height + num_threads - 1) / num_threads;
-				num_threads = (bounds.y2 - bounds.y1 + dy - 1) / dy;
+				num_threads -= (num_threads-1) * dy >= bounds.y2 - bounds.y1;
 
 				for (n = 1; n < num_threads; n++) {
 					threads[n] = threads[0];
