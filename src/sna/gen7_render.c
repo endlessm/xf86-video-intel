@@ -3844,10 +3844,18 @@ gen7_render_context_switch(struct kgem *kgem,
 			   int new_mode)
 {
 	if (kgem->nbatch) {
-		DBG(("%s: switch rings %d -> %d\n",
-		     __FUNCTION__, kgem->mode, new_mode));
+		DBG(("%s: from %d to %d, submit batch\n", __FUNCTION__, kgem->mode, new_mode));
 		_kgem_submit(kgem);
 	}
+
+	if (kgem->nexec) {
+		DBG(("%s: from %d to %d, reset incomplete batch\n", __FUNCTION__, kgem->mode, new_mode));
+		kgem_reset(kgem);
+	}
+
+	assert(kgem->nbatch == 0);
+	assert(kgem->nreloc == 0);
+	assert(kgem->nexec == 0);
 
 	kgem->ring = new_mode;
 }
