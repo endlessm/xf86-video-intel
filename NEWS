@@ -1,3 +1,41 @@
+Snapshot 2.99.904 (2013-10-09)
+==============================
+There is one more feature planned to be completed for 3.0, so time for a
+snapshot beforehand to push out the bug fixes from the last week.
+
+ * Fix video output using sprites when changing the image size
+
+ * Apply more restrictive tile constaints for 915g class devices
+   https://bugs.launchpad.net/ubuntu/+source/xserver-xorg-video-intel/+bug/1232546
+
+ * Ensure all overlapping rectangles are drawn for XRenderFillRectangles
+   https://bugs.freedesktop.org/show_bug.cgi?id=66313
+
+ * Fix trapezoid clipping against the left-edge
+   https://bugs.freedesktop.org/show_bug.cgi?id=69469
+
+ * Prevent discarding active upload buffers, causing glitches in chromium
+   https://bugs.freedesktop.org/show_bug.cgi?id=66990
+
+ * Prevent specifying a negative timeout to select if the BlockHandler
+   takes too long to update the display
+
+ * Promote the Ironlake pipecontrol to be a full pipeline flush to
+   prevent render cache corruption
+   https://bugs.freedesktop.org/show_bug.cgi?id=51422
+
+ * Never pass an invalid trapezoid to pixman
+   https://bugs.launchpad.net/ubuntu/+source/xorg-server/+bug/1197921
+
+ * Prevent out-of-bounds access by overassigning work amongst threads
+   https://bugs.freedesktop.org/show_bug.cgi?id=70204
+
+ * Make sure the current mode is always listed amongst the output modes
+   https://bugs.freedesktop.org/show_bug.cgi?id=70132
+
+ * Build fixes for 1.14.99.2
+
+
 Snapshot 2.99.903 (2013-09-28)
 ==============================
 Lots more stabilization work, not yet peaceful enough to christen 3.0. We
