@@ -38,6 +38,29 @@
 #define sse2
 #endif
 
+void gen4_vertex_align(struct sna *sna, const struct sna_composite_op *op)
+{
+	int vertex_index;
+
+	assert(op->floats_per_rect == 3*op->floats_per_vertex);
+
+	vertex_index = (sna->render.vertex_used + op->floats_per_vertex - 1) / op->floats_per_vertex;
+	if ((int)sna->render.vertex_size - vertex_index * op->floats_per_vertex < 2*op->floats_per_rect) {
+		DBG(("%s: flushing vertex buffer: new index=%d, max=%d\n",
+		     __FUNCTION__, vertex_index, sna->render.vertex_size / op->floats_per_vertex));
+		if (gen4_vertex_finish(sna) < op->floats_per_rect) {
+			kgem_submit(&sna->kgem);
+			_kgem_set_mode(&sna->kgem, KGEM_RENDER);
+		}
+
+		vertex_index = (sna->render.vertex_used + op->floats_per_vertex - 1) / op->floats_per_vertex;
+		assert(vertex_index * op->floats_per_vertex <= sna->render.vertex_size);
+	}
+
+	sna->render.vertex_index = vertex_index;
+	sna->render.vertex_used = vertex_index * op->floats_per_vertex;
+}
+
 void gen4_vertex_flush(struct sna *sna)
 {
 	DBG(("%s[%x] = %d\n", __FUNCTION__,

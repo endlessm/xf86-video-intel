@@ -827,16 +827,10 @@ gen4_align_vertex(struct sna *sna, const struct sna_composite_op *op)
 {
 	assert(op->floats_per_rect == 3*op->floats_per_vertex);
 	if (op->floats_per_vertex != sna->render_state.gen4.floats_per_vertex) {
-		if (sna->render.vertex_size - sna->render.vertex_used < 2*op->floats_per_rect)
-			gen4_vertex_finish(sna);
-
-		DBG(("aligning vertex: was %d, now %d floats per vertex, %d->%d\n",
+		DBG(("aligning vertex: was %d, now %d floats per vertex\n",
 		     sna->render_state.gen4.floats_per_vertex,
-		     op->floats_per_vertex,
-		     sna->render.vertex_index,
-		     (sna->render.vertex_used + op->floats_per_vertex - 1) / op->floats_per_vertex));
-		sna->render.vertex_index = (sna->render.vertex_used + op->floats_per_vertex - 1) / op->floats_per_vertex;
-		sna->render.vertex_used = sna->render.vertex_index * op->floats_per_vertex;
+		     op->floats_per_vertex));
+		gen4_vertex_align(sna, op);
 		sna->render_state.gen4.floats_per_vertex = op->floats_per_vertex;
 	}
 }
@@ -1396,8 +1390,8 @@ gen4_render_video(struct sna *sna,
 		assert(kgem_check_bo(&sna->kgem, tmp.dst.bo, frame->bo, NULL));
 	}
 
-	gen4_video_bind_surfaces(sna, &tmp);
 	gen4_align_vertex(sna, &tmp);
+	gen4_video_bind_surfaces(sna, &tmp);
 
 	/* Set up the offset for translating from the given region (in screen
 	 * coordinates) to the backing pixmap.
@@ -1987,8 +1981,8 @@ gen4_render_composite(struct sna *sna,
 			goto cleanup_mask;
 	}
 
-	gen4_bind_surfaces(sna, tmp);
 	gen4_align_vertex(sna, tmp);
+	gen4_bind_surfaces(sna, tmp);
 	return true;
 
 cleanup_mask:
@@ -2226,8 +2220,8 @@ gen4_render_composite_spans(struct sna *sna,
 			goto cleanup_src;
 	}
 
-	gen4_bind_surfaces(sna, &tmp->base);
 	gen4_align_vertex(sna, &tmp->base);
+	gen4_bind_surfaces(sna, &tmp->base);
 	return true;
 
 cleanup_src:
@@ -2428,8 +2422,8 @@ fallback_blt:
 	src_dx += tmp.src.offset[0];
 	src_dy += tmp.src.offset[1];
 
-	gen4_copy_bind_surfaces(sna, &tmp);
 	gen4_align_vertex(sna, &tmp);
+	gen4_copy_bind_surfaces(sna, &tmp);
 
 	do {
 		gen4_render_copy_one(sna, &tmp,
@@ -2558,8 +2552,8 @@ fallback:
 			return true;
 	}
 
-	gen4_copy_bind_surfaces(sna, &op->base);
 	gen4_align_vertex(sna, &op->base);
+	gen4_copy_bind_surfaces(sna, &op->base);
 
 	op->blt  = gen4_render_copy_blt;
 	op->done = gen4_render_copy_done;
@@ -2664,8 +2658,8 @@ gen4_render_fill_boxes(struct sna *sna,
 		assert(kgem_check_bo(&sna->kgem, dst_bo, NULL));
 	}
 
-	gen4_bind_surfaces(sna, &tmp);
 	gen4_align_vertex(sna, &tmp);
+	gen4_bind_surfaces(sna, &tmp);
 
 	do {
 		gen4_render_fill_rectangle(sna, &tmp,
@@ -2769,8 +2763,8 @@ gen4_render_fill(struct sna *sna, uint8_t alu,
 		assert(kgem_check_bo(&sna->kgem, dst_bo, NULL));
 	}
 
-	gen4_bind_surfaces(sna, &op->base);
 	gen4_align_vertex(sna, &op->base);
+	gen4_bind_surfaces(sna, &op->base);
 
 	op->blt   = gen4_render_fill_op_blt;
 	op->box   = gen4_render_fill_op_box;
@@ -2853,8 +2847,8 @@ gen4_render_fill_one(struct sna *sna, PixmapPtr dst, struct kgem_bo *bo,
 		}
 	}
 
-	gen4_bind_surfaces(sna, &tmp);
 	gen4_align_vertex(sna, &tmp);
+	gen4_bind_surfaces(sna, &tmp);
 
 	gen4_render_fill_rectangle(sna, &tmp, x1, y1, x2 - x1, y2 - y1);
 
