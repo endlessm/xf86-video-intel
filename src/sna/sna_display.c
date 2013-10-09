@@ -2112,7 +2112,8 @@ sna_output_get_modes(xf86OutputPtr output)
 		Mode = calloc(1, sizeof(DisplayModeRec));
 		if (Mode) {
 			*Mode = current;
-			Mode->name = strdup(Mode->name);
+			current.name = NULL;
+
 			output->probed_modes =
 				xf86ModesAdd(output->probed_modes, Mode);
 		}
