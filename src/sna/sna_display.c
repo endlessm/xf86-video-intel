@@ -2039,21 +2039,46 @@ sna_output_get_modes(xf86OutputPtr output)
 {
 	struct sna_output *sna_output = output->driver_private;
 	DisplayModePtr Modes = NULL;
+	DisplayModeRec current;
+	bool has_current = false;
 	int i;
 
-	DBG(("%s\n", __FUNCTION__));
+	DBG(("%s(%s)\n", __FUNCTION__, output->name));
 
 	sna_output_attach_edid(output);
+
+	memset(&current, 0, sizeof(current));
+	if (output->crtc) {
+		struct drm_mode_crtc mode;
+
+		VG_CLEAR(mode);
+		mode.crtc_id = to_sna_crtc(output->crtc)->id;
+
+		if (drmIoctl(to_sna(output->scrn)->kgem.fd, DRM_IOCTL_MODE_GETCRTC, &mode) == 0) {
+			DBG(("%s: CRTC:%d, pipe=%d: has mode?=%d\n", __FUNCTION__,
+			     to_sna_crtc(output->crtc)->id,
+			     to_sna_crtc(output->crtc)->pipe,
+			     mode.mode_valid && mode.mode.clock));
+
+			if (mode.mode_valid && mode.mode.clock)
+				mode_from_kmode(output->scrn, &mode.mode, &current);
+		}
+	}
 
 	for (i = 0; i < sna_output->num_modes; i++) {
 		DisplayModePtr Mode;
 
 		Mode = calloc(1, sizeof(DisplayModeRec));
-		if (Mode)
-			Modes = xf86ModesAdd(Modes,
-					     mode_from_kmode(output->scrn,
-							     &sna_output->modes[i],
-							     Mode));
+		if (Mode) {
+			Mode = mode_from_kmode(output->scrn,
+					       &sna_output->modes[i],
+					       Mode);
+
+			if (!has_current && xf86ModesEqual(Mode, &current))
+				has_current = true;
+
+			Modes = xf86ModesAdd(Modes, Mode);
+		}
 	}
 
 	/*
@@ -2080,6 +2105,19 @@ sna_output_get_modes(xf86OutputPtr output)
 
 		Modes = sna_output_panel_edid(output, Modes);
 	}
+
+	if (!has_current && current.Clock) {
+		DisplayModePtr Mode;
+
+		Mode = calloc(1, sizeof(DisplayModeRec));
+		if (Mode) {
+			*Mode = current;
+			Mode->name = strdup(Mode->name);
+			output->probed_modes =
+				xf86ModesAdd(output->probed_modes, Mode);
+		}
+	}
+	free(current.name);
 
 	return Modes;
 }
