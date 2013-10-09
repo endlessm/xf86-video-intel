@@ -3110,10 +3110,14 @@ gen6_emit_fill_state(struct sna *sna, const struct sna_composite_op *op)
 }
 
 static inline bool prefer_blt_fill(struct sna *sna,
-				   struct kgem_bo *bo)
+				   struct kgem_bo *bo,
+				   unsigned flags)
 {
 	if (PREFER_RENDER)
 		return PREFER_RENDER < 0;
+
+	if (flags & (FILL_POINTS | FILL_SPANS))
+		return true;
 
 	if (untiled_tlb_miss(bo))
 		return true;
@@ -3154,7 +3158,8 @@ gen6_render_fill_boxes(struct sna *sna,
 		return false;
 	}
 
-	if (prefer_blt_fill(sna, dst_bo) || !gen6_check_dst_format(format)) {
+	if (prefer_blt_fill(sna, dst_bo, FILL_BOXES) ||
+	    !gen6_check_dst_format(format)) {
 		uint8_t alu = GXinvalid;
 
 		if (op <= PictOpSrc) {
@@ -3365,12 +3370,12 @@ gen6_render_op_fill_done(struct sna *sna, const struct sna_fill_op *op)
 static bool
 gen6_render_fill(struct sna *sna, uint8_t alu,
 		 PixmapPtr dst, struct kgem_bo *dst_bo,
-		 uint32_t color,
+		 uint32_t color, unsigned flags,
 		 struct sna_fill_op *op)
 {
 	DBG(("%s: (alu=%d, color=%x)\n", __FUNCTION__, alu, color));
 
-	if (prefer_blt_fill(sna, dst_bo) &&
+	if (prefer_blt_fill(sna, dst_bo, flags) &&
 	    sna_blt_fill(sna, alu,
 			 dst_bo, dst->drawable.bitsPerPixel,
 			 color,
@@ -3454,7 +3459,7 @@ gen6_render_fill_one(struct sna *sna, PixmapPtr dst, struct kgem_bo *bo,
 	int16_t *v;
 
 	/* Prefer to use the BLT if already engaged */
-	if (prefer_blt_fill(sna, bo) &&
+	if (prefer_blt_fill(sna, bo, FILL_BOXES) &&
 	    gen6_render_fill_one_try_blt(sna, dst, bo, color,
 					 x1, y1, x2, y2, alu))
 		return true;

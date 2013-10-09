@@ -203,7 +203,7 @@ no_render_fill_boxes(struct sna *sna,
 static bool
 no_render_fill(struct sna *sna, uint8_t alu,
 	       PixmapPtr dst, struct kgem_bo *dst_bo,
-	       uint32_t color,
+	       uint32_t color, unsigned flags,
 	       struct sna_fill_op *tmp)
 {
 	DBG(("%s (alu=%d, color=%08x)\n", __FUNCTION__, alu, color));

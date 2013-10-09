@@ -255,8 +255,11 @@ struct sna_render {
 			   const BoxRec *box, int n);
 	bool (*fill)(struct sna *sna, uint8_t alu,
 		     PixmapPtr dst, struct kgem_bo *dst_bo,
-		     uint32_t color,
+		     uint32_t color, unsigned flags,
 		     struct sna_fill_op *tmp);
+#define FILL_BOXES 0x1
+#define FILL_POINTS 0x2
+#define FILL_SPANS 0x4
 	bool (*fill_one)(struct sna *sna, PixmapPtr dst, struct kgem_bo *dst_bo,
 			 uint32_t color,
 			 int16_t x1, int16_t y1, int16_t x2, int16_t y2,

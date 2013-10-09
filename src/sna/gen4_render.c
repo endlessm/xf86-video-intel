@@ -2716,7 +2716,7 @@ gen4_render_fill_op_done(struct sna *sna, const struct sna_fill_op *op)
 static bool
 gen4_render_fill(struct sna *sna, uint8_t alu,
 		 PixmapPtr dst, struct kgem_bo *dst_bo,
-		 uint32_t color,
+		 uint32_t color, unsigned flags,
 		 struct sna_fill_op *op)
 {
 	if (sna_blt_fill(sna, alu,

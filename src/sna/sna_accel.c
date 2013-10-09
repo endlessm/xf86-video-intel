@@ -422,9 +422,10 @@ sna_fill_init_blt(struct sna_fill_op *fill,
 		  PixmapPtr pixmap,
 		  struct kgem_bo *bo,
 		  uint8_t alu,
-		  uint32_t pixel)
+		  uint32_t pixel,
+		  unsigned flags)
 {
-	return sna->render.fill(sna, alu, pixmap, bo, pixel, fill);
+	return sna->render.fill(sna, alu, pixmap, bo, pixel, flags, fill);
 }
 
 static bool
@@ -5418,7 +5419,8 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 
 				if (!sna_fill_init_blt(&fill, sna,
 						       dst_pixmap, bo,
-						       alu, src_priv->clear_color)) {
+						       alu, src_priv->clear_color,
+						       FILL_BOXES)) {
 					DBG(("%s: unsupported fill\n",
 					     __FUNCTION__));
 					goto fallback;
@@ -6140,7 +6142,8 @@ sna_poly_point__gpu(DrawablePtr drawable, GCPtr gc,
 
 	if (!sna_fill_init_blt(&fill,
 			       data->sna, data->pixmap,
-			       data->bo, gc->alu, gc->fgPixel))
+			       data->bo, gc->alu, gc->fgPixel,
+			       FILL_POINTS))
 		return;
 
 	DBG(("%s: count=%d\n", __FUNCTION__, n));
@@ -6541,7 +6544,7 @@ sna_fill_spans_blt(DrawablePtr drawable,
 	DBG(("%s: alu=%d, fg=%08lx, damge=%p, clipped?=%d\n",
 	     __FUNCTION__, gc->alu, gc->fgPixel, damage, clipped));
 
-	if (!sna_fill_init_blt(&fill, sna, pixmap, bo, gc->alu, pixel))
+	if (!sna_fill_init_blt(&fill, sna, pixmap, bo, gc->alu, pixel, FILL_SPANS))
 		return false;
 
 	get_drawable_deltas(drawable, pixmap, &dx, &dy);
@@ -7625,7 +7628,7 @@ sna_poly_point_blt(DrawablePtr drawable,
 	DBG(("%s: alu=%d, pixel=%08lx, clipped?=%d\n",
 	     __FUNCTION__, gc->alu, gc->fgPixel, clipped));
 
-	if (!sna_fill_init_blt(&fill, sna, pixmap, bo, gc->alu, gc->fgPixel))
+	if (!sna_fill_init_blt(&fill, sna, pixmap, bo, gc->alu, gc->fgPixel, FILL_POINTS))
 		return false;
 
 	get_drawable_deltas(drawable, pixmap, &dx, &dy);
@@ -7841,7 +7844,7 @@ sna_poly_zero_line_blt(DrawablePtr drawable,
 
 	DBG(("%s: alu=%d, pixel=%lx, n=%d, clipped=%d, damage=%p\n",
 	     __FUNCTION__, gc->alu, gc->fgPixel, _n, clipped, damage));
-	if (!sna_fill_init_blt(&fill, sna, pixmap, bo, gc->alu, gc->fgPixel))
+	if (!sna_fill_init_blt(&fill, sna, pixmap, bo, gc->alu, gc->fgPixel, FILL_SPANS))
 		return false;
 
 	get_drawable_deltas(drawable, pixmap, &dx, &dy);
@@ -8212,7 +8215,7 @@ sna_poly_line_blt(DrawablePtr drawable,
 
 	DBG(("%s: alu=%d, fg=%08x\n", __FUNCTION__, gc->alu, (unsigned)pixel));
 
-	if (!sna_fill_init_blt(&fill, sna, pixmap, bo, gc->alu, pixel))
+	if (!sna_fill_init_blt(&fill, sna, pixmap, bo, gc->alu, pixel, FILL_BOXES))
 		return false;
 
 	get_drawable_deltas(drawable, pixmap, &dx, &dy);
@@ -8709,7 +8712,8 @@ spans_fallback:
 			if (gc->lineStyle == LineSolid) {
 				if (!sna_fill_init_blt(&fill,
 						       data.sna, data.pixmap,
-						       data.bo, gc->alu, color))
+						       data.bo, gc->alu, color,
+						       FILL_POINTS | FILL_SPANS))
 					goto fallback;
 
 				data.op = &fill;
@@ -8768,7 +8772,8 @@ spans_fallback:
 				DBG(("%s: miZeroLine (solid dash)\n", __FUNCTION__));
 				if (!sna_fill_init_blt(&fill,
 						       data.sna, data.pixmap,
-						       data.bo, gc->alu, color))
+						       data.bo, gc->alu, color,
+						       FILL_POINTS | FILL_SPANS))
 					goto fallback;
 
 				gc->ops = &sna_gc_ops__tmp;
@@ -8778,7 +8783,8 @@ spans_fallback:
 				if (sna_fill_init_blt(&fill,
 						       data.sna, data.pixmap,
 						       data.bo, gc->alu,
-						       gc->bgPixel)) {
+						       gc->bgPixel,
+						       FILL_POINTS | FILL_SPANS)) {
 					miZeroDashLine(drawable, gc, mode, n, pt);
 					fill.done(data.sna, &fill);
 				}
@@ -8911,7 +8917,7 @@ sna_poly_segment_blt(DrawablePtr drawable,
 	DBG(("%s: n=%d, alu=%d, fg=%08lx, clipped=%d\n",
 	     __FUNCTION__, n, gc->alu, gc->fgPixel, clipped));
 
-	if (!sna_fill_init_blt(&fill, sna, pixmap, bo, gc->alu, pixel))
+	if (!sna_fill_init_blt(&fill, sna, pixmap, bo, gc->alu, pixel, FILL_SPANS))
 		return false;
 
 	get_drawable_deltas(drawable, pixmap, &dx, &dy);
@@ -9065,7 +9071,7 @@ sna_poly_zero_segment_blt(DrawablePtr drawable,
 
 	DBG(("%s: alu=%d, pixel=%lx, n=%d, clipped=%d, damage=%p\n",
 	     __FUNCTION__, gc->alu, gc->fgPixel, _n, clipped, damage));
-	if (!sna_fill_init_blt(&fill, sna, pixmap, bo, gc->alu, gc->fgPixel))
+	if (!sna_fill_init_blt(&fill, sna, pixmap, bo, gc->alu, gc->fgPixel, FILL_BOXES))
 		return false;
 
 	get_drawable_deltas(drawable, pixmap, &dx, &dy);
@@ -9628,7 +9634,8 @@ spans_fallback:
 
 			if (!sna_fill_init_blt(&fill,
 					       data.sna, data.pixmap,
-					       data.bo, gc->alu, color))
+					       data.bo, gc->alu, color,
+					       FILL_POINTS | FILL_SPANS))
 				goto fallback;
 
 			data.op = &fill;
@@ -9773,7 +9780,7 @@ sna_poly_rectangle_blt(DrawablePtr drawable,
 
 	DBG(("%s: n=%d, alu=%d, width=%d, fg=%08lx, damge=%p, clipped?=%d\n",
 	     __FUNCTION__, n, gc->alu, gc->lineWidth, gc->fgPixel, damage, clipped));
-	if (!sna_fill_init_blt(&fill, sna, pixmap, bo, gc->alu, gc->fgPixel))
+	if (!sna_fill_init_blt(&fill, sna, pixmap, bo, gc->alu, gc->fgPixel, FILL_BOXES))
 		return false;
 
 	get_drawable_deltas(drawable, pixmap, &dx, &dy);
@@ -10428,7 +10435,8 @@ sna_poly_arc(DrawablePtr drawable, GCPtr gc, int n, xArc *arc)
 
 				if (!sna_fill_init_blt(&fill,
 						       data.sna, data.pixmap,
-						       data.bo, gc->alu, color))
+						       data.bo, gc->alu, color,
+						       FILL_POINTS | FILL_SPANS))
 					goto fallback;
 
 				if ((data.flags & 2) == 0) {
@@ -10595,7 +10603,7 @@ sna_poly_fill_rect_blt(DrawablePtr drawable,
 		return success;
 	}
 
-	if (!sna_fill_init_blt(&fill, sna, pixmap, bo, gc->alu, pixel)) {
+	if (!sna_fill_init_blt(&fill, sna, pixmap, bo, gc->alu, pixel, FILL_BOXES)) {
 		DBG(("%s: unsupported blt\n", __FUNCTION__));
 		return false;
 	}
@@ -10804,7 +10812,8 @@ sna_poly_fill_polygon(DrawablePtr draw, GCPtr gc,
 
 			if (!sna_fill_init_blt(&fill,
 					       data.sna, data.pixmap,
-					       data.bo, gc->alu, color))
+					       data.bo, gc->alu, color,
+					       FILL_SPANS))
 				goto fallback;
 
 			data.op = &fill;
@@ -13252,7 +13261,8 @@ sna_poly_fill_arc(DrawablePtr draw, GCPtr gc, int n, xArc *arc)
 
 			if (!sna_fill_init_blt(&fill,
 					       data.sna, data.pixmap,
-					       data.bo, gc->alu, color))
+					       data.bo, gc->alu, color,
+					       FILL_SPANS))
 				goto fallback;
 
 			data.op = &fill;
