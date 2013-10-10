@@ -3935,20 +3935,14 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 			if (size > num_pages(bo) || num_pages(bo) > 2*size)
 				continue;
 
+			if (bo->tiling != tiling || bo->pitch != pitch)
+				/* No tiling/pitch without recreating fb */
+				continue;
+
 			if (!check_scanout_size(kgem, bo, width, height)) {
 				if (first == NULL)
 					first = bo;
 				continue;
-			}
-
-			if (bo->tiling != tiling ||
-			    (tiling != I915_TILING_NONE && bo->pitch != pitch)) {
-				if (!gem_set_tiling(kgem->fd, bo->handle,
-						    tiling, pitch))
-					continue;
-
-				bo->tiling = tiling;
-				bo->pitch = pitch;
 			}
 
 			if (flags & CREATE_INACTIVE && bo->rq) {
