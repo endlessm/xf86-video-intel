@@ -163,7 +163,7 @@ if test "x$UDEV" != "xno"; then
 	fi
 fi
 
-PKG_CHECK_MODULES(X11, [x11 xrender xrandr xext pixman-1], [x11="yes"], [x11="no"])
+PKG_CHECK_MODULES(X11, [x11 xrender xrandr xext xfixes pixman-1], [x11="yes"], [x11="no"])
 AM_CONDITIONAL(HAVE_X11, test "x$x11" = "xyes")
 
 PKG_CHECK_MODULES(TOOL, [xinerama xrandr xdamage xfixes xcursor xtst xrender xext x11 pixman-1], [tools="yes"], [tools="no"])
