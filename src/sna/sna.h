@@ -301,6 +301,7 @@ struct sna {
 		uint32_t fill_alu;
 	} blt_state;
 	union {
+		unsigned gt;
 		struct gen2_render_state gen2;
 		struct gen3_render_state gen3;
 		struct gen4_render_state gen4;

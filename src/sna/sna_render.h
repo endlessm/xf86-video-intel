@@ -424,6 +424,7 @@ enum {
 };
 
 struct gen6_render_state {
+	unsigned gt;
 	const struct gt_info *info;
 	struct kgem_bo *general_bo;
 
@@ -473,6 +474,7 @@ enum {
 };
 
 struct gen7_render_state {
+	unsigned gt;
 	const struct gt_info *info;
 	struct kgem_bo *general_bo;
 
