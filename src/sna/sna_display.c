@@ -3225,8 +3225,10 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 		xf86OutputPtr output = config->output[i];
 		uint32_t crtc_id;
 
-		if (to_sna_output(output) == NULL)
+		if (to_sna_output(output) == NULL) {
+			assert(output->crtc == NULL);
 			continue;
+		}
 
 		crtc_id = (uintptr_t)output->crtc;
 		output->crtc = NULL;
@@ -3321,6 +3323,16 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 }
 
 static void
+sanitize_outputs(struct sna *sna)
+{
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	int i;
+
+	for (i = 0; i < config->num_output; i++)
+		config->output[i]->crtc = NULL;
+}
+
+static void
 sna_crtc_config_notify(ScreenPtr screen)
 {
 	DBG(("%s\n", __FUNCTION__));
@@ -3372,8 +3384,10 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 	if (!sna_mode_fake_init(sna, num_fake))
 		return false;
 
-	if (!sna_probe_initial_configuration(sna))
+	if (!sna_probe_initial_configuration(sna)) {
+		sanitize_outputs(sna);
 		xf86InitialConfiguration(scrn, TRUE);
+	}
 
 	sna_setup_provider(scrn);
 	return scrn->modes != NULL;
