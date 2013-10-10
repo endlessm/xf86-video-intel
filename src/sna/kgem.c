@@ -3554,6 +3554,7 @@ struct kgem_bo *kgem_create_for_prime(struct kgem *kgem, int name, uint32_t size
 	struct drm_prime_handle args;
 	struct drm_i915_gem_get_tiling tiling;
 	struct kgem_bo *bo;
+	off_t seek;
 
 	DBG(("%s(name=%d)\n", __FUNCTION__, name));
 
@@ -3572,6 +3573,11 @@ struct kgem_bo *kgem_create_for_prime(struct kgem *kgem, int name, uint32_t size
 		gem_close(kgem->fd, args.handle);
 		return NULL;
 	}
+
+	/* Query actual size, overriding specified if available */
+	seek = lseek(args.fd, 0, SEEK_END);
+	if (seek != -1)
+		size = seek;
 
 	DBG(("%s: new handle=%d, tiling=%d\n", __FUNCTION__,
 	     args.handle, tiling.tiling_mode));
