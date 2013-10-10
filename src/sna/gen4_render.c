@@ -41,6 +41,7 @@
 #include "sna_video.h"
 
 #include "brw/brw.h"
+#include "gen4_common.h"
 #include "gen4_render.h"
 #include "gen4_source.h"
 #include "gen4_vertex.h"
@@ -2856,51 +2857,6 @@ gen4_render_fill_one(struct sna *sna, PixmapPtr dst, struct kgem_bo *bo,
 	kgem_bo_destroy(&sna->kgem, tmp.src.bo);
 
 	return true;
-}
-
-static void
-gen4_render_flush(struct sna *sna)
-{
-	gen4_vertex_close(sna);
-
-	assert(sna->render.vb_id == 0);
-	assert(sna->render.vertex_offset == 0);
-}
-
-static void
-discard_vbo(struct sna *sna)
-{
-	kgem_bo_destroy(&sna->kgem, sna->render.vbo);
-	sna->render.vbo = NULL;
-	sna->render.vertices = sna->render.vertex_data;
-	sna->render.vertex_size = ARRAY_SIZE(sna->render.vertex_data);
-	sna->render.vertex_used = 0;
-	sna->render.vertex_index = 0;
-}
-
-static void
-gen4_render_retire(struct kgem *kgem)
-{
-	struct sna *sna;
-
-	sna = container_of(kgem, struct sna, kgem);
-	if (kgem->nbatch == 0 && sna->render.vbo && !kgem_bo_is_busy(sna->render.vbo)) {
-		DBG(("%s: resetting idle vbo\n", __FUNCTION__));
-		sna->render.vertex_used = 0;
-		sna->render.vertex_index = 0;
-	}
-}
-
-static void
-gen4_render_expire(struct kgem *kgem)
-{
-	struct sna *sna;
-
-	sna = container_of(kgem, struct sna, kgem);
-	if (sna->render.vbo && !sna->render.vertex_used) {
-		DBG(("%s: discarding vbo\n", __FUNCTION__));
-		discard_vbo(sna);
-	}
 }
 
 static void gen4_render_reset(struct sna *sna)

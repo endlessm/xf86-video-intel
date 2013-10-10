@@ -186,9 +186,7 @@ static inline bool prefer_blt_fill(struct sna *sna,
 	return prefer_blt_bo(sna, bo);
 }
 
-void gen6_render_flush(struct sna *sna);
-void gen6_render_retire(struct kgem *kgem);
-void gen6_render_expire(struct kgem *kgem);
 void gen6_render_context_switch(struct kgem *kgem, int new_mode);
+void gen6_render_retire(struct kgem *kgem);
 
 #endif /* GEN6_COMMON_H */

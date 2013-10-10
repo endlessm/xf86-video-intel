@@ -42,6 +42,7 @@
 
 #include "brw/brw.h"
 #include "gen5_render.h"
+#include "gen4_common.h"
 #include "gen4_source.h"
 #include "gen4_vertex.h"
 
@@ -2973,16 +2974,6 @@ gen5_render_fill_one(struct sna *sna, PixmapPtr dst, struct kgem_bo *bo,
 
 	return true;
 }
-
-static void
-gen5_render_flush(struct sna *sna)
-{
-	gen4_vertex_close(sna);
-
-	assert(sna->render.vb_id == 0);
-	assert(sna->render.vertex_offset == 0);
-}
-
 static void
 gen5_render_context_switch(struct kgem *kgem,
 			   int new_mode)
@@ -3009,42 +3000,6 @@ gen5_render_context_switch(struct kgem *kgem,
 	if (kgem_ring_is_idle(kgem, kgem->ring)) {
 		DBG(("%s: GPU idle, flushing\n", __FUNCTION__));
 		_kgem_submit(kgem);
-	}
-}
-
-static void
-discard_vbo(struct sna *sna)
-{
-	kgem_bo_destroy(&sna->kgem, sna->render.vbo);
-	sna->render.vbo = NULL;
-	sna->render.vertices = sna->render.vertex_data;
-	sna->render.vertex_size = ARRAY_SIZE(sna->render.vertex_data);
-	sna->render.vertex_used = 0;
-	sna->render.vertex_index = 0;
-}
-
-static void
-gen5_render_retire(struct kgem *kgem)
-{
-	struct sna *sna;
-
-	sna = container_of(kgem, struct sna, kgem);
-	if (kgem->nbatch == 0 && sna->render.vbo && !kgem_bo_is_busy(sna->render.vbo)) {
-		DBG(("%s: resetting idle vbo\n", __FUNCTION__));
-		sna->render.vertex_used = 0;
-		sna->render.vertex_index = 0;
-	}
-}
-
-static void
-gen5_render_expire(struct kgem *kgem)
-{
-	struct sna *sna;
-
-	sna = container_of(kgem, struct sna, kgem);
-	if (sna->render.vbo && !sna->render.vertex_used) {
-		DBG(("%s: discarding vbo\n", __FUNCTION__));
-		discard_vbo(sna);
 	}
 }
 
@@ -3303,8 +3258,8 @@ const char *gen5_render_init(struct sna *sna, const char *backend)
 		return backend;
 
 	sna->kgem.context_switch = gen5_render_context_switch;
-	sna->kgem.retire = gen5_render_retire;
-	sna->kgem.expire = gen5_render_expire;
+	sna->kgem.retire = gen4_render_retire;
+	sna->kgem.expire = gen4_render_expire;
 
 #if !NO_COMPOSITE
 	sna->render.composite = gen5_render_composite;
@@ -3325,7 +3280,7 @@ const char *gen5_render_init(struct sna *sna, const char *backend)
 	sna->render.fill = gen5_render_fill;
 	sna->render.fill_one = gen5_render_fill_one;
 
-	sna->render.flush = gen5_render_flush;
+	sna->render.flush = gen4_render_flush;
 	sna->render.reset = gen5_render_reset;
 	sna->render.fini = gen5_render_fini;
 

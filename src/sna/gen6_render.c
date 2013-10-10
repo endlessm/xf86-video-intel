@@ -43,6 +43,7 @@
 #include "brw/brw.h"
 #include "gen6_render.h"
 #include "gen6_common.h"
+#include "gen4_common.h"
 #include "gen4_source.h"
 #include "gen4_vertex.h"
 
@@ -3481,6 +3482,9 @@ static void gen6_render_reset(struct sna *sna)
 	sna->render_state.gen6.drawrect_limit = -1;
 	sna->render_state.gen6.surface_table = -1;
 
+	assert(sna->render.vbo == NULL ||
+	       kgem_bo_is_mappable(&sna->kgem, sna->render.vbo));
+
 	sna->render.vertex_offset = 0;
 	sna->render.nvertex_reloc = 0;
 	sna->render.vb_id = 0;
@@ -3589,7 +3593,7 @@ const char *gen6_render_init(struct sna *sna, const char *backend)
 
 	sna->kgem.context_switch = gen6_render_context_switch;
 	sna->kgem.retire = gen6_render_retire;
-	sna->kgem.expire = gen6_render_expire;
+	sna->kgem.expire = gen4_render_expire;
 
 #if !NO_COMPOSITE
 	sna->render.composite = gen6_render_composite;
@@ -3624,7 +3628,7 @@ const char *gen6_render_init(struct sna *sna, const char *backend)
 	sna->render.clear = gen6_render_clear;
 #endif
 
-	sna->render.flush = gen6_render_flush;
+	sna->render.flush = gen4_render_flush;
 	sna->render.reset = gen6_render_reset;
 	sna->render.fini = gen6_render_fini;
 

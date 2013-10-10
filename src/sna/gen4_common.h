@@ -25,48 +25,25 @@
  *
  */
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
+#ifndef GEN4_COMMON_H
+#define GEN4_COMMON_H
 
-#include "gen6_common.h"
-#include "gen4_vertex.h"
+#include "sna.h"
 
-void
-gen6_render_context_switch(struct kgem *kgem,
-			   int new_mode)
+inline static void
+discard_vbo(struct sna *sna)
 {
-	if (kgem->nbatch) {
-		DBG(("%s: from %d to %d, submit batch\n", __FUNCTION__, kgem->mode, new_mode));
-		_kgem_submit(kgem);
-	}
-
-	if (kgem->nexec) {
-		DBG(("%s: from %d to %d, reset incomplete batch\n", __FUNCTION__, kgem->mode, new_mode));
-		kgem_reset(kgem);
-	}
-
-	assert(kgem->nbatch == 0);
-	assert(kgem->nreloc == 0);
-	assert(kgem->nexec == 0);
-
-	kgem->ring = new_mode;
+	kgem_bo_destroy(&sna->kgem, sna->render.vbo);
+	sna->render.vbo = NULL;
+	sna->render.vertices = sna->render.vertex_data;
+	sna->render.vertex_size = ARRAY_SIZE(sna->render.vertex_data);
+	sna->render.vertex_used = 0;
+	sna->render.vertex_index = 0;
 }
 
-void gen6_render_retire(struct kgem *kgem)
-{
-	struct sna *sna;
+void gen4_render_flush(struct sna *sna);
+void gen4_render_retire(struct kgem *kgem);
+void gen4_render_expire(struct kgem *kgem);
 
-	if (kgem->ring && (kgem->has_semaphores || !kgem->need_retire))
-		kgem->ring = kgem->mode;
-
-	sna = container_of(kgem, struct sna, kgem);
-	if (sna->render.nvertex_reloc == 0 &&
-	    sna->render.vbo &&
-	    !kgem_bo_is_busy(sna->render.vbo)) {
-		DBG(("%s: resetting idle vbo\n", __FUNCTION__));
-		sna->render.vertex_used = 0;
-		sna->render.vertex_index = 0;
-	}
-}
+#endif /* GEN4_COMMON_H */
 

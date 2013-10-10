@@ -42,6 +42,7 @@
 
 #include "brw/brw.h"
 #include "gen7_render.h"
+#include "gen4_common.h"
 #include "gen4_source.h"
 #include "gen4_vertex.h"
 #include "gen6_common.h"
@@ -3709,6 +3710,12 @@ static void gen7_render_reset(struct sna *sna)
 	sna->render_state.gen7.drawrect_limit = -1;
 	sna->render_state.gen7.surface_table = -1;
 
+	if (sna->render.vbo &&
+	    !kgem_bo_is_mappable(&sna->kgem, sna->render.vbo)) {
+		DBG(("%s: discarding unmappable vbo\n", __FUNCTION__));
+		discard_vbo(sna);
+	}
+
 	sna->render.vertex_offset = 0;
 	sna->render.nvertex_reloc = 0;
 	sna->render.vb_id = 0;
@@ -3837,7 +3844,7 @@ const char *gen7_render_init(struct sna *sna, const char *backend)
 
 	sna->kgem.context_switch = gen6_render_context_switch;
 	sna->kgem.retire = gen6_render_retire;
-	sna->kgem.expire = gen6_render_expire;
+	sna->kgem.expire = gen4_render_expire;
 
 #if !NO_COMPOSITE
 	sna->render.composite = gen7_render_composite;
@@ -3871,7 +3878,7 @@ const char *gen7_render_init(struct sna *sna, const char *backend)
 	sna->render.clear = gen7_render_clear;
 #endif
 
-	sna->render.flush = gen6_render_flush;
+	sna->render.flush = gen4_render_flush;
 	sna->render.reset = gen7_render_reset;
 	sna->render.fini = gen7_render_fini;
 
