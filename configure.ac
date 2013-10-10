@@ -97,13 +97,26 @@ AC_ARG_ENABLE(gen4asm,
 
 gen4asm=no
 if test "x$ASM" != "xno"; then
-	PKG_CHECK_MODULES(GEN4ASM, [intel-gen4asm >= 1.2], [gen4asm=yes], [gen4asm=no])
-	if test "x$ASM" = "xyes" -a "x$gen4asm" != "xyes"; then
-		AC_MSG_ERROR([intel-gen4asm support requested but not found])
+	AC_ARG_WITH(gen4asm,
+		    AS_HELP_STRING([--with-gen4asm=PATH],
+				   [Path to intel-gen4asm binary]]]),
+		    [path="$withval"],
+		    [path=""])
+	if test -n "$path" ; then
+		gen4asm=yes
+	else
+		PKG_CHECK_MODULES(GEN4ASM, [intel-gen4asm >= 1.2], [gen4asm=yes], [gen4asm=no])
+		if test "x$ASM" = "xyes" -a "x$gen4asm" != "xyes"; then
+			AC_MSG_ERROR([intel-gen4asm support requested but not found])
+		fi
 	fi
 	if test "x$gen4asm" = "xyes"; then
 		AC_MSG_CHECKING([path to use for intel-gen4asm])
-		INTEL_GEN4ASM="`pkg-config intel-gen4asm --variable=exec_prefix`/bin/intel-gen4asm"
+		if test -n "$path" ; then
+			INTEL_GEN4ASM="$path"
+		else
+			INTEL_GEN4ASM="`pkg-config intel-gen4asm --variable=exec_prefix`/bin/intel-gen4asm"
+		fi
 		if ! test -e "$INTEL_GEN4ASM"; then
 			AC_MSG_ERROR([intel-gen4asm enabled, but not found. Tried '$INTEL_GEN4ASM'.])
 		fi
