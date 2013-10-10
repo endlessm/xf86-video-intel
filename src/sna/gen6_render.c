@@ -3116,7 +3116,8 @@ static inline bool prefer_blt_fill(struct sna *sna,
 	if (PREFER_RENDER)
 		return PREFER_RENDER < 0;
 
-	if (flags & (FILL_POINTS | FILL_SPANS))
+	if (flags & (FILL_POINTS | FILL_SPANS) &&
+	    can_switch_to_blt(sna, bo, 0))
 		return true;
 
 	if (untiled_tlb_miss(bo))
