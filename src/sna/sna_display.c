@@ -2390,7 +2390,7 @@ sna_output_set_property(xf86OutputPtr output, Atom property,
 
 		val = *(INT32 *)value->data;
 		DBG(("%s: setting backlight to %d (max=%d)\n",
-		     ___FUNCTION__, val, sna_output->backlight_max));
+		     __FUNCTION__, val, sna_output->backlight_max));
 		if (val < 0 || val > sna_output->backlight_max)
 			return FALSE;
 
