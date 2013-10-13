@@ -957,10 +957,8 @@ static void
 sna_crtc_disable(xf86CrtcPtr crtc)
 {
 	struct sna *sna = to_sna(crtc->scrn);
-	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(crtc->scrn);
 	struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
 	struct drm_mode_crtc arg;
-	int i;
 
 	if (sna_crtc == NULL)
 		return;
