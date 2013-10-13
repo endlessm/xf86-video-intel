@@ -2594,6 +2594,8 @@ sna_output_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 	sna_output->prop_values = malloc(sizeof(uint64_t)*conn.count_props);
 	sna_output->dpms_mode = DPMSModeOff;
 
+	conn.count_encoders = 0;
+
 	conn.count_modes = 1;
 	conn.modes_ptr = (uintptr_t)&dummy;
 
@@ -2602,7 +2604,7 @@ sna_output_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 	conn.prop_values_ptr = (uintptr_t)sna_output->prop_values;
 
 	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETCONNECTOR, &conn))
-		return false;
+		goto cleanup;
 
 	/* statically constructed property list */
 	assert(sna_output->num_props == conn.count_props);
