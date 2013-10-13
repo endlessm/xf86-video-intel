@@ -78,6 +78,11 @@ I915DisplayVideoTextured(ScrnInfoPtr scrn,
 		if (target == NULL)
 			return;
 
+		if (intel_get_pixmap_bo(target) == NULL) {
+			screen->DestroyPixmap(target);
+			return;
+		}
+
 		pix_xoff = -dxo;
 		pix_yoff = -dyo;
 	} else {
