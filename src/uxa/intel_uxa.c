@@ -1159,6 +1159,9 @@ Bool intel_uxa_create_screen_resources(ScreenPtr screen)
 
 	pixmap = screen->GetScreenPixmap(screen);
 	intel_set_pixmap_bo(pixmap, bo);
+	if (intel_get_pixmap_private(pixmap) == NULL)
+		return FALSE;
+
 	intel_get_pixmap_private(pixmap)->pinned |= PIN_SCANOUT;
 	screen->ModifyPixmapHeader(pixmap,
 				   scrn->virtualX,
