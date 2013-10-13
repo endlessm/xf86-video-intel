@@ -760,6 +760,9 @@ sna_crtc_force_outputs_on(xf86CrtcPtr crtc)
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(crtc->scrn);
 	int i;
 
+	DBG(("%s(pipe=%d), currently? %d\n", __FUNCTION__,
+	     to_sna_crtc(crtc)->pipe, to_sna_crtc(crtc)->dpms_mode));
+
 	/* DPMS handling by the kernel is inconsistent, so after setting a
 	 * mode on an output presume that we intend for it to be on, or that
 	 * the kernel will force it on.
@@ -780,6 +783,34 @@ sna_crtc_force_outputs_on(xf86CrtcPtr crtc)
 #if XF86_CRTC_VERSION >= 3
 	crtc->active = TRUE;
 #endif
+}
+
+static void
+sna_crtc_force_outputs_off(xf86CrtcPtr crtc)
+{
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(crtc->scrn);
+	int i;
+
+	DBG(("%s(pipe=%d), currently? %d\n", __FUNCTION__,
+	     to_sna_crtc(crtc)->pipe, to_sna_crtc(crtc)->dpms_mode));
+
+	/* DPMS handling by the kernel is inconsistent, so after setting a
+	 * mode on an output presume that we intend for it to be on, or that
+	 * the kernel will force it on.
+	 *
+	 * So force DPMS to be on for all connected outputs, and restore
+	 * the backlight.
+	 */
+	for (i = 0; i < config->num_output; i++) {
+		xf86OutputPtr output = config->output[i];
+
+		if (output->crtc != crtc)
+			continue;
+
+		output->funcs->dpms(output, DPMSModeOff);
+	}
+
+	to_sna_crtc(crtc)->dpms_mode = DPMSModeOff;
 }
 
 static bool
@@ -934,7 +965,10 @@ sna_crtc_disable(xf86CrtcPtr crtc)
 	if (sna_crtc == NULL)
 		return;
 
-	DBG(("%s: disabling crtc [%d]\n", __FUNCTION__, sna_crtc->id));
+	DBG(("%s: disabling crtc [%d, pipe=%d]\n", __FUNCTION__,
+	     sna_crtc->id, sna_crtc->pipe));
+
+	sna_crtc_force_outputs_off(crtc);
 
 	memset(&arg, 0, sizeof(arg));
 	arg.crtc_id = sna_crtc->id;
@@ -946,15 +980,6 @@ sna_crtc_disable(xf86CrtcPtr crtc)
 		kgem_bo_destroy(&sna->kgem, sna_crtc->bo);
 		sna_crtc->bo = NULL;
 	}
-
-	for (i = 0; i < config->num_output; i++) {
-		xf86OutputPtr output = config->output[i];
-
-		if (output->crtc == crtc)
-			to_sna_output(output)->dpms_mode = DPMSModeOff;
-	}
-
-	sna_crtc->dpms_mode = DPMSModeOff;
 }
 
 static void update_flush_interval(struct sna *sna)
@@ -2176,10 +2201,13 @@ sna_output_dpms(xf86OutputPtr output, int dpms)
 	struct sna *sna = to_sna(output->scrn);
 	struct sna_output *sna_output = output->driver_private;
 
+	DBG(("%s(%s): dpms=%d (current: %d), active? %d\n",
+	     __FUNCTION__, output->name,
+	     dpms, sna_output->dpms_mode,
+	     output->crtc != NULL));
+
 	if (sna_output->dpms_mode == dpms)
 		return;
-
-	DBG(("%s(%s): dpms=%d\n", __FUNCTION__, output->name, dpms));
 
 	/* Record the value of the backlight before turning
 	 * off the display, and reset if after turning it on.
@@ -2363,6 +2391,8 @@ sna_output_set_property(xf86OutputPtr output, Atom property,
 		}
 
 		val = *(INT32 *)value->data;
+		DBG(("%s: setting backlight to %d (max=%d)\n",
+		     ___FUNCTION__, val, sna_output->backlight_max));
 		if (val < 0 || val > sna_output->backlight_max)
 			return FALSE;
 
