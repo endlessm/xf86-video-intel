@@ -1434,7 +1434,7 @@ static inline bool has_coherent_map(struct sna *sna,
 	return kgem_bo_can_map__cpu(&sna->kgem, bo, flags & MOVE_WRITE);
 }
 
-static inline bool has_coherent_ptr(struct sna *sna, struct sna_pixmap *priv)
+static inline bool has_coherent_ptr(struct sna *sna, struct sna_pixmap *priv, unsigned flags)
 {
 	if (priv == NULL)
 		return true;
@@ -1446,8 +1446,16 @@ static inline bool has_coherent_ptr(struct sna *sna, struct sna_pixmap *priv)
 		return priv->pixmap->devPrivate.ptr == MAP(priv->cpu_bo->map__cpu);
 	}
 
-	if (priv->pixmap->devPrivate.ptr == MAP(priv->gpu_bo->map__cpu))
-		return priv->gpu_bo->tiling == I915_TILING_NONE && (priv->gpu_bo->domain == DOMAIN_CPU || sna->kgem.has_llc);
+	if (priv->pixmap->devPrivate.ptr == MAP(priv->gpu_bo->map__cpu)) {
+		if (!priv->cpu)
+			return false;
+		if (priv->gpu_bo->exec)
+			return false;
+		if (priv->gpu_bo->tiling == I915_TILING_NONE)
+			return false;
+
+		return kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, flags & MOVE_WRITE);
+	}
 
 	if (priv->pixmap->devPrivate.ptr == MAP(priv->gpu_bo->map__gtt))
 		return true;
@@ -1997,8 +2005,8 @@ skip_inplace_map:
 
 	if (USE_INPLACE &&
 	    priv->gpu_damage && priv->cpu_damage == NULL && !priv->cow &&
-	    (flags & MOVE_READ || kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, flags & MOVE_WRITE)) &&
 	    priv->gpu_bo->tiling == I915_TILING_NONE &&
+	    (flags & MOVE_READ || kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, flags & MOVE_WRITE)) &&
 	    ((flags & (MOVE_WRITE | MOVE_ASYNC_HINT)) == 0 ||
 	     !__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo))) {
 		DBG(("%s: try to operate inplace (CPU)\n", __FUNCTION__));
@@ -2099,7 +2107,7 @@ skip_inplace_map:
 							    box, n, COPY_LAST);
 			}
 			if (!ok) {
-				assert(has_coherent_ptr(sna, sna_pixmap(pixmap)));
+				assert(has_coherent_ptr(sna, sna_pixmap(pixmap), MOVE_READ));
 				sna_read_boxes(sna, pixmap, priv->gpu_bo,
 					       box, n);
 			}
@@ -2153,7 +2161,7 @@ done:
 	assert(pixmap->devPrivate.ptr);
 	assert(pixmap->devKind);
 	assert_pixmap_damage(pixmap);
-	assert(has_coherent_ptr(sna, sna_pixmap(pixmap)));
+	assert(has_coherent_ptr(sna, sna_pixmap(pixmap), flags));
 	sigtrap_assert();
 	return true;
 }
@@ -2547,7 +2555,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 							    box, n, COPY_LAST);
 			}
 			if (!ok) {
-				assert(has_coherent_ptr(sna, sna_pixmap(pixmap)));
+				assert(has_coherent_ptr(sna, sna_pixmap(pixmap), MOVE_READ));
 				sna_read_boxes(sna, pixmap, priv->gpu_bo,
 					       box, n);
 			}
@@ -2661,7 +2669,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 					}
 
 					if (!ok) {
-						assert(has_coherent_ptr(sna, sna_pixmap(pixmap)));
+						assert(has_coherent_ptr(sna, sna_pixmap(pixmap), MOVE_READ));
 						sna_read_boxes(sna, pixmap, priv->gpu_bo,
 							       box, n);
 					}
@@ -2689,7 +2697,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 								    box, n, COPY_LAST);
 				}
 				if (!ok) {
-					assert(has_coherent_ptr(sna, sna_pixmap(pixmap)));
+					assert(has_coherent_ptr(sna, sna_pixmap(pixmap), MOVE_READ));
 					sna_read_boxes(sna, pixmap, priv->gpu_bo,
 						       box, n);
 				}
@@ -2715,7 +2723,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 									    box, n, COPY_LAST);
 					}
 					if (!ok) {
-						assert(has_coherent_ptr(sna, sna_pixmap(pixmap)));
+						assert(has_coherent_ptr(sna, sna_pixmap(pixmap), MOVE_READ));
 						sna_read_boxes(sna, pixmap, priv->gpu_bo,
 							       box, n);
 					}
@@ -2773,7 +2781,7 @@ out:
 	assert(pixmap->devPrivate.ptr);
 	assert(pixmap->devKind);
 	assert_pixmap_damage(pixmap);
-	assert(has_coherent_ptr(sna, sna_pixmap(pixmap)));
+	assert(has_coherent_ptr(sna, sna_pixmap(pixmap), flags));
 	sigtrap_assert();
 	return true;
 }
@@ -4365,7 +4373,7 @@ sna_put_zpixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 		assert(box->x2 - x <= w);
 		assert(box->y2 - y <= h);
 
-		assert(has_coherent_ptr(to_sna_from_pixmap(pixmap), sna_pixmap(pixmap)));
+		assert(has_coherent_ptr(to_sna_from_pixmap(pixmap), sna_pixmap(pixmap), MOVE_WRITE));
 		memcpy_blt(bits, pixmap->devPrivate.ptr,
 			   pixmap->drawable.bitsPerPixel,
 			   stride, pixmap->devKind,
@@ -5636,8 +5644,8 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 				assert(box[i].x2 + dx <= tmp->drawable.width);
 				assert(box[i].y2 + dy <= tmp->drawable.height);
 
-				assert(has_coherent_ptr(sna, sna_pixmap(src_pixmap)));
-				assert(has_coherent_ptr(sna, sna_pixmap(tmp)));
+				assert(has_coherent_ptr(sna, sna_pixmap(src_pixmap), MOVE_READ));
+				assert(has_coherent_ptr(sna, sna_pixmap(tmp), MOVE_WRITE));
 				memcpy_blt(src_pixmap->devPrivate.ptr,
 					   tmp->devPrivate.ptr,
 					   src_pixmap->drawable.bitsPerPixel,
@@ -5814,8 +5822,8 @@ fallback:
 				assert(box->y1 + src_dy >= 0);
 				assert(box->x2 + src_dx <= src_pixmap->drawable.width);
 				assert(box->y2 + src_dy <= src_pixmap->drawable.height);
-				assert(has_coherent_ptr(sna, sna_pixmap(src_pixmap)));
-				assert(has_coherent_ptr(sna, sna_pixmap(dst_pixmap)));
+				assert(has_coherent_ptr(sna, sna_pixmap(src_pixmap), MOVE_READ));
+				assert(has_coherent_ptr(sna, sna_pixmap(dst_pixmap), MOVE_WRITE));
 				memcpy_blt(src_bits, dst_bits, bpp,
 					   src_stride, dst_stride,
 					   box->x1, box->y1,
@@ -10905,7 +10913,7 @@ sna_pixmap_get_source_bo(PixmapPtr pixmap)
 		if (upload == NULL)
 			return NULL;
 
-		assert(has_coherent_ptr(sna, sna_pixmap(pixmap)));
+		assert(has_coherent_ptr(sna, sna_pixmap(pixmap), MOVE_READ));
 		memcpy_blt(pixmap->devPrivate.ptr, ptr,
 			   pixmap->drawable.bitsPerPixel,
 			   pixmap->devKind, upload->pitch,
@@ -11274,7 +11282,7 @@ sna_poly_fill_rect_tiled_nxm_blt(DrawablePtr drawable,
 
 	assert(tile->drawable.height && tile->drawable.height <= 8);
 	assert(tile->drawable.width && tile->drawable.width <= 8);
-	assert(has_coherent_ptr(sna, sna_pixmap(tile)));
+	assert(has_coherent_ptr(sna, sna_pixmap(tile), MOVE_READ));
 
 	cpp = tile->drawable.bitsPerPixel/8;
 	for (h = 0; h < tile->drawable.height; h++) {
@@ -15025,7 +15033,7 @@ sna_get_image(DrawablePtr drawable,
 		     __FUNCTION__,
 		     region.extents.x1, region.extents.y1,
 		     region.extents.x2, region.extents.y2));
-		assert(has_coherent_ptr(to_sna_from_pixmap(pixmap), sna_pixmap(pixmap)));
+		assert(has_coherent_ptr(to_sna_from_pixmap(pixmap), sna_pixmap(pixmap), MOVE_READ));
 		memcpy_blt(pixmap->devPrivate.ptr, dst, drawable->bitsPerPixel,
 			   pixmap->devKind, PixmapBytePad(w, drawable->depth),
 			   region.extents.x1, region.extents.y1, 0, 0, w, h);
@@ -15434,8 +15442,8 @@ fallback:
 					assert(box->x2 <= src->drawable.width);
 					assert(box->y2 <= src->drawable.height);
 
-					assert(has_coherent_ptr(sna, sna_pixmap(src)));
-					assert(has_coherent_ptr(sna, sna_pixmap(dst)));
+					assert(has_coherent_ptr(sna, sna_pixmap(src), MOVE_READ));
+					assert(has_coherent_ptr(sna, sna_pixmap(dst), MOVE_WRITE));
 					memcpy_blt(src->devPrivate.ptr,
 						   dst->devPrivate.ptr,
 						   src->drawable.bitsPerPixel,
