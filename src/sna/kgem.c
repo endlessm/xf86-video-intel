@@ -4880,6 +4880,7 @@ uint32_t kgem_add_reloc(struct kgem *kgem,
 	assert(index < ARRAY_SIZE(kgem->reloc));
 	kgem->reloc[index].offset = pos * sizeof(kgem->batch[0]);
 	if (bo) {
+		assert(kgem->mode != KGEM_NONE);
 		assert(bo->refcnt);
 		while (bo->proxy) {
 			DBG(("%s: adding proxy [delta=%d] for handle=%d\n",
