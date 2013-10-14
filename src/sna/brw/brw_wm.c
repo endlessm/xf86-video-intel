@@ -531,7 +531,7 @@ static void brw_wm_projective_st(struct brw_compile *p, int dw,
 			brw_math_invert(p, brw_vec8_grf(31, 0), brw_vec8_grf(31, 0));
 			brw_set_compression_control(p, BRW_COMPRESSION_COMPRESSED);
 		} else
-			brw_math_invert(p, brw_vec8_grf(30, 0), brw_message_reg(msg));
+			brw_math_invert(p, brw_vec8_grf(30, 0), brw_vec8_grf(30, 0));
 
 		brw_PLN(p,
 			brw_vec8_grf(26, 0),
