@@ -1853,52 +1853,55 @@ sna_output_detect(xf86OutputPtr output)
 {
 	struct sna *sna = to_sna(output->scrn);
 	struct sna_output *sna_output = output->driver_private;
-	struct drm_mode_get_connector conn;
+	union {
+		struct drm_mode_get_connector conn;
+		uint32_t pad[20];
+	} compat_conn;
 
 	DBG(("%s(%s)\n", __FUNCTION__, output->name));
 
-	VG_CLEAR(conn);
-	conn.connector_id = sna_output->id;
-	sna_output->num_modes = conn.count_modes = 0; /* reprobe */
-	conn.count_encoders = 0;
-	conn.count_props = sna_output->num_props;
-	conn.props_ptr = (uintptr_t)sna_output->prop_ids;
-	conn.prop_values_ptr = (uintptr_t)sna_output->prop_values;
+	VG_CLEAR(compat_conn);
+	compat_conn.conn.connector_id = sna_output->id;
+	sna_output->num_modes = compat_conn.conn.count_modes = 0; /* reprobe */
+	compat_conn.conn.count_encoders = 0;
+	compat_conn.conn.count_props = sna_output->num_props;
+	compat_conn.conn.props_ptr = (uintptr_t)sna_output->prop_ids;
+	compat_conn.conn.prop_values_ptr = (uintptr_t)sna_output->prop_values;
 
-	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETCONNECTOR, &conn))
+	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETCONNECTOR, &compat_conn.conn))
 		return XF86OutputStatusUnknown;
 	DBG(("%s(%s): num modes %d -> %d, num props %d -> %d\n",
 	     __FUNCTION__, output->name,
-	     sna_output->num_modes, conn.count_modes,
-	     sna_output->num_props, conn.count_props));
+	     sna_output->num_modes, compat_conn.conn.count_modes,
+	     sna_output->num_props, compat_conn.conn.count_props));
 
-	assert(conn.count_props == sna_output->num_props);
+	assert(compat_conn.conn.count_props == sna_output->num_props);
 
-	while (conn.count_modes && conn.count_modes != sna_output->num_modes) {
+	while (compat_conn.conn.count_modes && compat_conn.conn.count_modes != sna_output->num_modes) {
 		struct drm_mode_modeinfo *new_modes;
 		int old_count;
 
 		old_count = sna_output->num_modes;
 		new_modes = realloc(sna_output->modes,
-				    sizeof(*sna_output->modes)*conn.count_modes);
+				    sizeof(*sna_output->modes)*compat_conn.conn.count_modes);
 		if (new_modes == NULL)
 			break;
 
 		sna_output->modes = new_modes;
-		sna_output->num_modes = conn.count_modes;
-		conn.modes_ptr = (uintptr_t)sna_output->modes;
-		conn.count_encoders = 0;
-		conn.count_props = 0;
-		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETCONNECTOR, &conn)) {
+		sna_output->num_modes = compat_conn.conn.count_modes;
+		compat_conn.conn.modes_ptr = (uintptr_t)sna_output->modes;
+		compat_conn.conn.count_encoders = 0;
+		compat_conn.conn.count_props = 0;
+		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETCONNECTOR, &compat_conn.conn)) {
 			sna_output->num_modes = min(old_count, sna_output->num_modes);
 			break;
 		}
 	}
 
 	DBG(("%s(%s): found %d modes, connection status=%d\n",
-	     __FUNCTION__, output->name, sna_output->num_modes, conn.connection));
+	     __FUNCTION__, output->name, sna_output->num_modes, compat_conn.conn.connection));
 
-	switch (conn.connection) {
+	switch (compat_conn.conn.connection) {
 	case DRM_MODE_CONNECTED:
 		return XF86OutputStatusConnected;
 	case DRM_MODE_DISCONNECTED:
@@ -2587,39 +2590,52 @@ sna_output_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 {
 	struct sna *sna = to_sna(scrn);
 	xf86OutputPtr output;
-	struct drm_mode_get_connector conn;
-	struct drm_mode_get_encoder enc;
-	struct drm_mode_modeinfo dummy;
+	union {
+		struct drm_mode_get_connector conn;
+		uint32_t pad[20];
+	} compat_conn;
+	union {
+		struct drm_mode_get_encoder enc;
+		uint32_t pad[6];
+	} compat_enc;
+	union {
+		struct drm_mode_modeinfo mode;
+		uint32_t pad[18];
+	} compat_mode;
 	struct sna_output *sna_output;
 	const char *output_name;
 	char name[32];
 	bool ret = false;
 	int i;
 
+	COMPILE_TIME_ASSERT(sizeof(struct drm_mode_get_connector) <= sizeof(compat_conn));
+	COMPILE_TIME_ASSERT(sizeof(struct drm_mode_get_encoder) <= sizeof(compat_enc));
+	COMPILE_TIME_ASSERT(sizeof(struct drm_mode_modeinfo) <= sizeof(compat_mode));
+
 	DBG(("%s(num=%d)\n", __FUNCTION__, num));
 
-	VG_CLEAR(conn);
-	VG_CLEAR(enc);
+	VG_CLEAR(compat_conn);
+	VG_CLEAR(compat_enc);
 
-	conn.connector_id = mode->kmode->connectors[num];
-	conn.count_props = 0;
-	conn.count_modes = 1; /* skip detect */
-	conn.modes_ptr = (uintptr_t)&dummy;
-	conn.count_encoders = 1;
-	conn.encoders_ptr = (uintptr_t)&enc.encoder_id;
+	compat_conn.conn.connector_id = mode->kmode->connectors[num];
+	compat_conn.conn.count_props = 0;
+	compat_conn.conn.count_modes = 1; /* skip detect */
+	compat_conn.conn.modes_ptr = (uintptr_t)&compat_mode.mode;
+	compat_conn.conn.count_encoders = 1;
+	compat_conn.conn.encoders_ptr = (uintptr_t)&compat_enc.enc.encoder_id;
 
-	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETCONNECTOR, &conn)) {
+	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETCONNECTOR, &compat_conn.conn)) {
 		DBG(("%s: GETCONNECTOR failed, ret=%d\n", __FUNCTION__, errno));
 		return false;
 	}
 
-	if (conn.count_encoders != 1) {
+	if (compat_conn.conn.count_encoders != 1) {
 		DBG(("%s: unexpected number [%d] of encoders attached\n",
-		     __FUNCTION__, conn.count_encoders));
+		     __FUNCTION__, compat_conn.conn.count_encoders));
 		return false;
 	}
 
-	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETENCODER, &enc)) {
+	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETENCODER, &compat_enc.enc)) {
 		DBG(("%s: GETENCODER failed, ret=%d\n", __FUNCTION__, errno));
 		return false;
 	}
@@ -2628,33 +2644,33 @@ sna_output_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 	if (!sna_output)
 		return false;
 
-	sna_output->num_props = conn.count_props;
-	sna_output->prop_ids = malloc(sizeof(uint32_t)*conn.count_props);
-	sna_output->prop_values = malloc(sizeof(uint64_t)*conn.count_props);
+	sna_output->num_props = compat_conn.conn.count_props;
+	sna_output->prop_ids = malloc(sizeof(uint32_t)*compat_conn.conn.count_props);
+	sna_output->prop_values = malloc(sizeof(uint64_t)*compat_conn.conn.count_props);
 	sna_output->dpms_mode = DPMSModeOff;
 
-	conn.count_encoders = 0;
+	compat_conn.conn.count_encoders = 0;
 
-	conn.count_modes = 1;
-	conn.modes_ptr = (uintptr_t)&dummy;
+	compat_conn.conn.count_modes = 1;
+	compat_conn.conn.modes_ptr = (uintptr_t)&compat_mode.mode;
 
-	conn.count_props = sna_output->num_props;
-	conn.props_ptr = (uintptr_t)sna_output->prop_ids;
-	conn.prop_values_ptr = (uintptr_t)sna_output->prop_values;
+	compat_conn.conn.count_props = sna_output->num_props;
+	compat_conn.conn.props_ptr = (uintptr_t)sna_output->prop_ids;
+	compat_conn.conn.prop_values_ptr = (uintptr_t)sna_output->prop_values;
 
-	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETCONNECTOR, &conn)) {
+	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETCONNECTOR, &compat_conn.conn)) {
 		DBG(("%s: second! GETCONNECTOR failed, ret=%d\n", __FUNCTION__, errno));
 		goto cleanup;
 	}
 
 	/* statically constructed property list */
-	assert(sna_output->num_props == conn.count_props);
+	assert(sna_output->num_props == compat_conn.conn.count_props);
 
-	if (conn.connector_type < ARRAY_SIZE(output_names))
-		output_name = output_names[conn.connector_type];
+	if (compat_conn.conn.connector_type < ARRAY_SIZE(output_names))
+		output_name = output_names[compat_conn.conn.connector_type];
 	else
 		output_name = "UNKNOWN";
-	snprintf(name, 32, "%s%d", output_name, conn.connector_type_id);
+	snprintf(name, 32, "%s%d", output_name, compat_conn.conn.connector_type_id);
 
 	if (xf86IsEntityShared(scrn->entityList[0])) {
 		const char *str;
@@ -2666,7 +2682,7 @@ sna_output_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 			goto cleanup;
 		}
 
-		if ((enc.possible_crtcs & (1 << scrn->confScreen->device->screen)) == 0) {
+		if ((compat_enc.enc.possible_crtcs & (1 << scrn->confScreen->device->screen)) == 0) {
 			if (str) {
 				xf86DrvMsg(scrn->scrnIndex, X_ERROR,
 					   "%s is an invalid output for screen (pipe) %d\n",
@@ -2675,8 +2691,8 @@ sna_output_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 			goto cleanup;
 		}
 
-		enc.possible_crtcs = 1;
-		enc.possible_clones = 0;
+		compat_enc.enc.possible_crtcs = 1;
+		compat_enc.enc.possible_clones = 0;
 	}
 
 	output = xf86OutputCreate(scrn, &sna_output_funcs, name);
@@ -2691,21 +2707,21 @@ sna_output_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 		goto cleanup;
 	}
 
-	sna_output->id = conn.connector_id;
-	sna_output->is_panel = is_panel(conn.connector_type);
+	sna_output->id = compat_conn.conn.connector_id;
+	sna_output->is_panel = is_panel(compat_conn.conn.connector_type);
 	sna_output->edid_idx = find_property(sna, sna_output, "EDID");
 	sna_output->dpms_id = find_property_id(sna, sna_output, "DPMS");
 
-	output->mm_width = conn.mm_width;
-	output->mm_height = conn.mm_height;
+	output->mm_width = compat_conn.conn.mm_width;
+	output->mm_height = compat_conn.conn.mm_height;
 
-	if (conn.subpixel >= ARRAY_SIZE(subpixel_conv_table))
-		conn.subpixel = 0;
-	output->subpixel_order = subpixel_conv_table[conn.subpixel];
+	if (compat_conn.conn.subpixel >= ARRAY_SIZE(subpixel_conv_table))
+		compat_conn.conn.subpixel = 0;
+	output->subpixel_order = subpixel_conv_table[compat_conn.conn.subpixel];
 	output->driver_private = sna_output;
 
 	for (i = 0; i < mode->kmode->count_encoders; i++) {
-		if (enc.encoder_id == mode->kmode->encoders[i]) {
+		if (compat_enc.enc.encoder_id == mode->kmode->encoders[i]) {
 			sna_output->encoder_idx = i;
 			break;
 		}
@@ -2714,14 +2730,14 @@ sna_output_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 	if (sna_output->is_panel)
 		sna_output_backlight_init(output);
 
-	output->possible_crtcs = enc.possible_crtcs;
-	output->possible_clones = enc.possible_clones;
+	output->possible_crtcs = compat_enc.enc.possible_crtcs;
+	output->possible_clones = compat_enc.enc.possible_clones;
 	output->interlaceAllowed = TRUE;
 
 	/* stash the active CRTC id for our probe function */
 	output->crtc = NULL;
-	if (conn.connection == DRM_MODE_CONNECTED)
-		output->crtc = (void *)(uintptr_t)enc.crtc_id;
+	if (compat_conn.conn.connection == DRM_MODE_CONNECTED)
+		output->crtc = (void *)(uintptr_t)compat_enc.enc.crtc_id;
 
 	DBG(("%s: created output '%s' %d [%ld]  (possible crtc:%x, possible clones:%x), edid=%d, dpms=%d, crtc=%lu\n",
 	     __FUNCTION__, name, num, (long)sna_output->id,
