@@ -547,7 +547,8 @@ sna_composite_trapezoids(CARD8 op,
 	PixmapPtr pixmap = get_drawable_pixmap(dst->pDrawable);
 	struct sna *sna = to_sna_from_pixmap(pixmap);
 	struct sna_pixmap *priv;
-	bool rectilinear, pixel_aligned, force_fallback;
+	bool force_fallback = false;
+	bool rectilinear, pixel_aligned;
 	unsigned flags;
 	int n;
 
