@@ -2596,6 +2596,8 @@ sna_output_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 	bool ret = false;
 	int i;
 
+	DBG(("%s(num=%d)\n", __FUNCTION__, num));
+
 	VG_CLEAR(conn);
 	VG_CLEAR(enc);
 
@@ -2606,14 +2608,21 @@ sna_output_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 	conn.count_encoders = 1;
 	conn.encoders_ptr = (uintptr_t)&enc.encoder_id;
 
-	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETCONNECTOR, &conn))
+	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETCONNECTOR, &conn)) {
+		DBG(("%s: GETCONNECTOR failed, ret=%d\n", __FUNCTION__, errno));
 		return false;
+	}
 
-	if (conn.count_encoders != 1)
+	if (conn.count_encoders != 1) {
+		DBG(("%s: unexpected number [%d] of encoders attached\n",
+		     __FUNCTION__, conn.count_encoders));
 		return false;
+	}
 
-	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETENCODER, &enc))
+	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETENCODER, &enc)) {
+		DBG(("%s: GETENCODER failed, ret=%d\n", __FUNCTION__, errno));
 		return false;
+	}
 
 	sna_output = calloc(sizeof(struct sna_output), 1);
 	if (!sna_output)
@@ -2633,8 +2642,10 @@ sna_output_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 	conn.props_ptr = (uintptr_t)sna_output->prop_ids;
 	conn.prop_values_ptr = (uintptr_t)sna_output->prop_values;
 
-	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETCONNECTOR, &conn))
+	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETCONNECTOR, &conn)) {
+		DBG(("%s: second! GETCONNECTOR failed, ret=%d\n", __FUNCTION__, errno));
 		goto cleanup;
+	}
 
 	/* statically constructed property list */
 	assert(sna_output->num_props == conn.count_props);
@@ -2650,6 +2661,7 @@ sna_output_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 
 		str = xf86GetOptValString(sna->Options, OPTION_ZAPHOD);
 		if (str && !sna_zaphod_match(str, name)) {
+			DBG(("%s: zaphod mismatch, want %s, have %s\n", __FUNCTION__, str, name));
 			ret = true;
 			goto cleanup;
 		}
@@ -2675,6 +2687,7 @@ sna_output_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 		 * explicitly ignored the output.
 		 */
 		ret = output_ignored(scrn, name);
+		DBG(("%s: create failed, ignored? %d\n", __FUNCTION__, ret));
 		goto cleanup;
 	}
 
