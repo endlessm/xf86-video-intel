@@ -1447,10 +1447,6 @@ static inline bool has_coherent_ptr(struct sna *sna, struct sna_pixmap *priv, un
 	}
 
 	if (priv->pixmap->devPrivate.ptr == MAP(priv->gpu_bo->map__cpu)) {
-		if (!priv->cpu)
-			return false;
-		if (priv->gpu_bo->exec)
-			return false;
 		if (priv->gpu_bo->tiling == I915_TILING_NONE)
 			return false;
 
