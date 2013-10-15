@@ -2456,7 +2456,6 @@ sna_output_get_property(xf86OutputPtr output, Atom property)
 	int err;
 
 	if (property == backlight_atom || property == backlight_deprecated_atom) {
-		int old_backlight;
 		INT32 val;
 
 		if (!sna_output->backlight_iface)
@@ -2466,17 +2465,9 @@ sna_output_get_property(xf86OutputPtr output, Atom property)
 		if (val < 0)
 			return FALSE;
 
-		/* Preserve our value of the current user backlight level so that we
-		 * avoid mixing in automatic resetting of the backlight across DPMS
-		 * events. The property query should ideally always be idempotent.
-		 */
-		old_backlight = sna_output->backlight_active_level;
-
 		err = RRChangeOutputProperty(output->randr_output, property,
 					     XA_INTEGER, 32, PropModeReplace, 1, &val,
 					     FALSE, FALSE);
-
-		sna_output->backlight_active_level = old_backlight;
 
 		if (err != 0) {
 			xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
