@@ -1965,7 +1965,7 @@ sna_output_attach_edid(xf86OutputPtr output)
 					       XA_INTEGER, 8, PropModeReplace,
 					       sna_output->edid_len,
 					       sna_output->edid_raw,
-					       FALSE, TRUE);
+					       FALSE, FALSE);
 
 			return;
 		}
@@ -2271,8 +2271,8 @@ sna_output_create_ranged_atom(xf86OutputPtr output, Atom *atom,
 			   "RRConfigureOutputProperty error, %d\n", err);
 
 	err = RRChangeOutputProperty(output->randr_output, *atom, XA_INTEGER,
-				     32, PropModeReplace, 1, &value, FALSE,
-				     TRUE);
+				     32, PropModeReplace, 1, &value,
+				     FALSE, FALSE);
 	if (err != 0)
 		xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
 			   "RRChangeOutputProperty error, %d\n", err);
@@ -2344,7 +2344,8 @@ sna_output_create_resources(xf86OutputPtr output)
 					break;
 			/* there's always a matching value */
 			err = RRChangeOutputProperty(output->randr_output, p->atoms[0],
-						     XA_ATOM, 32, PropModeReplace, 1, &p->atoms[j+1], FALSE, TRUE);
+						     XA_ATOM, 32, PropModeReplace, 1, &p->atoms[j+1],
+						     FALSE, FALSE);
 			if (err != 0) {
 				xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
 					   "RRChangeOutputProperty error, %d\n", err);
@@ -2473,7 +2474,7 @@ sna_output_get_property(xf86OutputPtr output, Atom property)
 
 		err = RRChangeOutputProperty(output->randr_output, property,
 					     XA_INTEGER, 32, PropModeReplace, 1, &val,
-					     FALSE, TRUE);
+					     FALSE, FALSE);
 
 		sna_output->backlight_active_level = old_backlight;
 
