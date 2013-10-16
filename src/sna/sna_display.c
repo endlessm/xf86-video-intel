@@ -42,6 +42,7 @@
 #include "sna.h"
 #include "sna_reg.h"
 #include "fb/fbpict.h"
+#include "intel_options.h"
 
 #include <xf86Crtc.h>
 
@@ -58,10 +59,15 @@
 #define DPMSModeOn 0
 #define DPMSModeOff 3
 #endif
-#include <xf86drm.h>
 #include <xf86DDC.h> /* for xf86InterpretEDID */
 
-#include "intel_options.h"
+#include <xf86drm.h>
+
+/* Minor discrepancy between 32-bit/64-bit ABI in old kernels */
+union compat_mode_get_connector{
+	struct drm_mode_get_connector conn;
+	uint32_t pad[20];
+};
 
 #define KNOWN_MODE_FLAGS ((1<<14)-1)
 
@@ -1853,10 +1859,7 @@ sna_output_detect(xf86OutputPtr output)
 {
 	struct sna *sna = to_sna(output->scrn);
 	struct sna_output *sna_output = output->driver_private;
-	union {
-		struct drm_mode_get_connector conn;
-		uint32_t pad[20];
-	} compat_conn;
+	union compat_mode_get_connector compat_conn;
 
 	DBG(("%s(%s)\n", __FUNCTION__, output->name));
 
@@ -2394,7 +2397,7 @@ sna_output_set_property(xf86OutputPtr output, Atom property,
 
 		val = *(INT32 *)value->data;
 		DBG(("%s: setting backlight to %d (max=%d)\n",
-		     __FUNCTION__, val, sna_output->backlight_max));
+		     __FUNCTION__, (int)val, sna_output->backlight_max));
 		if (val < 0 || val > sna_output->backlight_max)
 			return FALSE;
 
@@ -2590,39 +2593,28 @@ sna_output_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 {
 	struct sna *sna = to_sna(scrn);
 	xf86OutputPtr output;
-	union {
-		struct drm_mode_get_connector conn;
-		uint32_t pad[20];
-	} compat_conn;
-	union {
-		struct drm_mode_get_encoder enc;
-		uint32_t pad[6];
-	} compat_enc;
-	union {
-		struct drm_mode_modeinfo mode;
-		uint32_t pad[18];
-	} compat_mode;
+	union compat_mode_get_connector compat_conn;
+	struct drm_mode_get_encoder enc;
+	struct drm_mode_modeinfo dummy;
 	struct sna_output *sna_output;
 	const char *output_name;
 	char name[32];
 	bool ret = false;
 	int i;
 
-	COMPILE_TIME_ASSERT(sizeof(struct drm_mode_get_connector) <= sizeof(compat_conn));
-	COMPILE_TIME_ASSERT(sizeof(struct drm_mode_get_encoder) <= sizeof(compat_enc));
-	COMPILE_TIME_ASSERT(sizeof(struct drm_mode_modeinfo) <= sizeof(compat_mode));
+	COMPILE_TIME_ASSERT(sizeof(struct drm_mode_get_connector) <= sizeof(compat_conn.pad));
 
 	DBG(("%s(num=%d)\n", __FUNCTION__, num));
 
 	VG_CLEAR(compat_conn);
-	VG_CLEAR(compat_enc);
+	VG_CLEAR(enc);
 
 	compat_conn.conn.connector_id = mode->kmode->connectors[num];
 	compat_conn.conn.count_props = 0;
 	compat_conn.conn.count_modes = 1; /* skip detect */
-	compat_conn.conn.modes_ptr = (uintptr_t)&compat_mode.mode;
+	compat_conn.conn.modes_ptr = (uintptr_t)&dummy;
 	compat_conn.conn.count_encoders = 1;
-	compat_conn.conn.encoders_ptr = (uintptr_t)&compat_enc.enc.encoder_id;
+	compat_conn.conn.encoders_ptr = (uintptr_t)&enc.encoder_id;
 
 	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETCONNECTOR, &compat_conn.conn)) {
 		DBG(("%s: GETCONNECTOR failed, ret=%d\n", __FUNCTION__, errno));
@@ -2635,7 +2627,7 @@ sna_output_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 		return false;
 	}
 
-	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETENCODER, &compat_enc.enc)) {
+	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETENCODER, &enc)) {
 		DBG(("%s: GETENCODER failed, ret=%d\n", __FUNCTION__, errno));
 		return false;
 	}
@@ -2652,7 +2644,7 @@ sna_output_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 	compat_conn.conn.count_encoders = 0;
 
 	compat_conn.conn.count_modes = 1;
-	compat_conn.conn.modes_ptr = (uintptr_t)&compat_mode.mode;
+	compat_conn.conn.modes_ptr = (uintptr_t)&dummy;
 
 	compat_conn.conn.count_props = sna_output->num_props;
 	compat_conn.conn.props_ptr = (uintptr_t)sna_output->prop_ids;
@@ -2682,7 +2674,7 @@ sna_output_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 			goto cleanup;
 		}
 
-		if ((compat_enc.enc.possible_crtcs & (1 << scrn->confScreen->device->screen)) == 0) {
+		if ((enc.possible_crtcs & (1 << scrn->confScreen->device->screen)) == 0) {
 			if (str) {
 				xf86DrvMsg(scrn->scrnIndex, X_ERROR,
 					   "%s is an invalid output for screen (pipe) %d\n",
@@ -2691,8 +2683,8 @@ sna_output_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 			goto cleanup;
 		}
 
-		compat_enc.enc.possible_crtcs = 1;
-		compat_enc.enc.possible_clones = 0;
+		enc.possible_crtcs = 1;
+		enc.possible_clones = 0;
 	}
 
 	output = xf86OutputCreate(scrn, &sna_output_funcs, name);
@@ -2721,7 +2713,7 @@ sna_output_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 	output->driver_private = sna_output;
 
 	for (i = 0; i < mode->kmode->count_encoders; i++) {
-		if (compat_enc.enc.encoder_id == mode->kmode->encoders[i]) {
+		if (enc.encoder_id == mode->kmode->encoders[i]) {
 			sna_output->encoder_idx = i;
 			break;
 		}
@@ -2730,14 +2722,14 @@ sna_output_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 	if (sna_output->is_panel)
 		sna_output_backlight_init(output);
 
-	output->possible_crtcs = compat_enc.enc.possible_crtcs;
-	output->possible_clones = compat_enc.enc.possible_clones;
+	output->possible_crtcs = enc.possible_crtcs;
+	output->possible_clones = enc.possible_clones;
 	output->interlaceAllowed = TRUE;
 
 	/* stash the active CRTC id for our probe function */
 	output->crtc = NULL;
 	if (compat_conn.conn.connection == DRM_MODE_CONNECTED)
-		output->crtc = (void *)(uintptr_t)compat_enc.enc.crtc_id;
+		output->crtc = (void *)(uintptr_t)enc.crtc_id;
 
 	DBG(("%s: created output '%s' %d [%ld]  (possible crtc:%x, possible clones:%x), edid=%d, dpms=%d, crtc=%lu\n",
 	     __FUNCTION__, name, num, (long)sna_output->id,
