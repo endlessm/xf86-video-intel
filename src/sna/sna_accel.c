@@ -11458,6 +11458,12 @@ sna_poly_fill_rect_tiled_blt(DrawablePtr drawable,
 		bool ret;
 
 		tile_bo = sna_pixmap_get_source_bo(tile);
+		if (tile_bo == NULL) {
+			DBG(("%s: unable to move tile go GPU, fallback\n",
+			     __FUNCTION__));
+			return false;
+		}
+
 		ret = sna_poly_fill_rect_tiled_8x8_blt(drawable, bo, damage,
 						       tile_bo, gc, n, rect,
 						       extents, clipped);
