@@ -12304,9 +12304,9 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 				void *ptr;
 
 				unclipped.x1 = r->x + drawable->x;
-				unclipped.x2 = bound(unclipped.x2, r->width);
+				unclipped.x2 = bound(unclipped.x1, r->width);
 				unclipped.y1 = r->y + drawable->y;
-				unclipped.y2 = bound(unclipped.y2, r->height);
+				unclipped.y2 = bound(unclipped.y1, r->height);
 				r++;
 
 				c = find_clip_box_for_y(clip_start,
