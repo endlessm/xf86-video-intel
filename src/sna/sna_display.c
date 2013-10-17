@@ -4216,12 +4216,7 @@ static void set_bo(PixmapPtr pixmap, struct kgem_bo *bo)
 	if (priv->cow)
 		sna_pixmap_undo_cow(to_sna_from_pixmap(pixmap), priv, 0);
 
-	if (priv->mapped) {
-		assert(!priv->shm && priv->stride);
-		pixmap->devPrivate.ptr = PTR(priv->ptr);
-		pixmap->devKind = priv->stride;
-		priv->mapped = false;
-	}
+	sna_pixmap_unmap(pixmap, priv);
 
 	priv->gpu_bo = bo;
 }

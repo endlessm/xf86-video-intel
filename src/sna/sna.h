@@ -494,6 +494,20 @@ PixmapPtr sna_pixmap_create_unattached(ScreenPtr screen,
 				       int width, int height, int depth);
 void sna_pixmap_destroy(PixmapPtr pixmap);
 
+static inline void sna_pixmap_unmap(PixmapPtr pixmap, struct sna_pixmap *priv)
+{
+	if (!priv->mapped)
+		return;
+
+	assert(pixmap->devPrivate.ptr == (priv->cpu ? MAP(priv->gpu_bo->map__cpu) : MAP(priv->gpu_bo->map__gtt)));
+	assert(priv->stride && priv->stride);
+
+	pixmap->devPrivate.ptr = PTR(priv->ptr);
+	pixmap->devKind = priv->stride;
+
+	priv->mapped = false;
+}
+
 bool
 sna_pixmap_undo_cow(struct sna *sna, struct sna_pixmap *priv, unsigned flags);
 
