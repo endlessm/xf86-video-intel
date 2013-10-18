@@ -1277,7 +1277,8 @@ fastcall struct sna_damage *_sna_damage_subtract_boxes(struct sna_damage *damage
 static int __sna_damage_contains_box(struct sna_damage *damage,
 				     const BoxRec *box)
 {
-	int ret;
+	const BoxRec *b;
+	int n, count, ret;
 
 	if (!damage)
 		return PIXMAN_REGION_OUT;
@@ -1295,9 +1296,29 @@ static int __sna_damage_contains_box(struct sna_damage *damage,
 	if (damage->mode == DAMAGE_ADD) {
 		if (ret == PIXMAN_REGION_IN)
 			return ret;
+
+		count = damage->embedded_box.size;
+		if (list_is_empty(&damage->embedded_box.list))
+			count -= damage->remain;
+
+		b = damage->embedded_box.box;
+		for (n = 0; n < count; n++) {
+			if (box_contains(&b[n], box))
+				return PIXMAN_REGION_IN;
+		}
 	} else {
 		if (ret == PIXMAN_REGION_OUT)
 			return ret;
+
+		count = damage->embedded_box.size;
+		if (list_is_empty(&damage->embedded_box.list))
+			count -= damage->remain;
+
+		b = damage->embedded_box.box;
+		for (n = 0; n < count; n++) {
+			if (box_contains(&b[n], box))
+				return PIXMAN_REGION_OUT;
+		}
 	}
 
 	__sna_damage_reduce(damage);
