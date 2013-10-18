@@ -144,7 +144,10 @@ struct sna_pixmap {
 #define PIN_DRI 0x2
 #define PIN_PRIME 0x4
 	uint8_t create :4;
-	uint8_t mapped :1;
+	uint8_t mapped :2;
+#define MAPPED_NONE 0
+#define MAPPED_GTT 1
+#define MAPPED_CPU 2
 	uint8_t flush :1;
 	uint8_t shm :1;
 	uint8_t clear :1;
@@ -494,18 +497,25 @@ PixmapPtr sna_pixmap_create_unattached(ScreenPtr screen,
 				       int width, int height, int depth);
 void sna_pixmap_destroy(PixmapPtr pixmap);
 
+#define assert_pixmap_map(pixmap, priv) \
+	assert(priv->mapped == false || pixmap->devPrivate.ptr == (priv->mapped == MAPPED_CPU ? MAP(priv->gpu_bo->map__cpu) : MAP(priv->gpu_bo->map__gtt)));
+
 static inline void sna_pixmap_unmap(PixmapPtr pixmap, struct sna_pixmap *priv)
 {
-	if (!priv->mapped)
+	if (priv->mapped == MAPPED_NONE)
 		return;
 
-	assert(pixmap->devPrivate.ptr == (priv->cpu ? MAP(priv->gpu_bo->map__cpu) : MAP(priv->gpu_bo->map__gtt)));
+	DBG(("%s: pixmap=%ld dropping %s mapping\n",
+	     __FUNCTION__, pixmap->drawable.serialNumber,
+	     priv->mapped == MAPPED_CPU ? "cpu" : "gtt"));
+
+	assert_pixmap_map(pixmap, priv);
 	assert(priv->stride && priv->stride);
 
 	pixmap->devPrivate.ptr = PTR(priv->ptr);
 	pixmap->devKind = priv->stride;
 
-	priv->mapped = false;
+	priv->mapped = MAPPED_NONE;
 }
 
 bool
