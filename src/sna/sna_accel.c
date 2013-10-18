@@ -15613,10 +15613,8 @@ static void sna_accel_flush(struct sna *sna)
 
 	if (priv &&
 	    sna_pixmap_force_to_gpu(priv->pixmap,
-				    MOVE_READ | MOVE_ASYNC_HINT)) {
+				    MOVE_READ | MOVE_ASYNC_HINT))
 		kgem_scanout_flush(&sna->kgem, priv->gpu_bo);
-		assert(!priv->cpu);
-	}
 
 	sna_mode_redisplay(sna);
 	sna_accel_post_damage(sna);
