@@ -517,10 +517,11 @@ static void set_bo(PixmapPtr pixmap, struct kgem_bo *bo)
 
 	assert(bo->refcnt);
 	if (priv->gpu_bo != bo) {
-		if (priv->gpu_bo)
+		if (priv->gpu_bo) {
+			sna_pixmap_unmap(pixmap, priv);
 			kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
+		}
 		priv->gpu_bo = ref(bo);
-		sna_pixmap_unmap(pixmap, priv);
 	}
 	if (bo->domain != DOMAIN_GPU)
 		bo->domain = DOMAIN_NONE;
