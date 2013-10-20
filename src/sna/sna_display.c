@@ -2067,16 +2067,13 @@ static DisplayModePtr
 sna_output_get_modes(xf86OutputPtr output)
 {
 	struct sna_output *sna_output = output->driver_private;
-	DisplayModePtr Modes = NULL;
-	DisplayModeRec current;
-	bool has_current = false;
+	DisplayModePtr Modes = NULL, Mode, current = NULL;
 	int i;
 
 	DBG(("%s(%s)\n", __FUNCTION__, output->name));
 
 	sna_output_attach_edid(output);
 
-	memset(&current, 0, sizeof(current));
 	if (output->crtc) {
 		struct drm_mode_crtc mode;
 
@@ -2089,26 +2086,32 @@ sna_output_get_modes(xf86OutputPtr output)
 			     to_sna_crtc(output->crtc)->pipe,
 			     mode.mode_valid && mode.mode.clock));
 
-			if (mode.mode_valid && mode.mode.clock)
-				mode_from_kmode(output->scrn, &mode.mode, &current);
+			if (mode.mode_valid && mode.mode.clock) {
+				current = calloc(1, sizeof(DisplayModeRec));
+				if (current) {
+					mode_from_kmode(output->scrn, &mode.mode, current);
+					Modes = xf86ModesAdd(Modes, current);
+				}
+			}
 		}
 	}
 
+	Mode = NULL;
 	for (i = 0; i < sna_output->num_modes; i++) {
-		DisplayModePtr Mode;
-
-		Mode = calloc(1, sizeof(DisplayModeRec));
+		if (Mode == NULL)
+			Mode = calloc(1, sizeof(DisplayModeRec));
 		if (Mode) {
 			Mode = mode_from_kmode(output->scrn,
 					       &sna_output->modes[i],
 					       Mode);
 
-			if (!has_current && xf86ModesEqual(Mode, &current))
-				has_current = true;
-
-			Modes = xf86ModesAdd(Modes, Mode);
+			if (!current || !xf86ModesEqual(Mode, current)) {
+				Modes = xf86ModesAdd(Modes, Mode);
+				Mode = NULL;
+			}
 		}
 	}
+	free(Mode);
 
 	/*
 	 * If the connector type is a panel, we will traverse the kernel mode to
@@ -2135,19 +2138,6 @@ sna_output_get_modes(xf86OutputPtr output)
 		Modes = sna_output_panel_edid(output, Modes);
 	}
 
-	if (!has_current && current.Clock) {
-		DisplayModePtr Mode;
-
-		Mode = calloc(1, sizeof(DisplayModeRec));
-		if (Mode) {
-			*Mode = current;
-			current.name = NULL;
-
-			output->probed_modes =
-				xf86ModesAdd(output->probed_modes, Mode);
-		}
-	}
-	free(current.name);
 
 	return Modes;
 }
