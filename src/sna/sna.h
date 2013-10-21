@@ -131,6 +131,9 @@ struct sna_pixmap {
 	void *ptr;
 #define PTR(ptr) ((void*)((uintptr_t)(ptr) & ~1))
 
+	bool (*move_to_gpu)(struct sna *, struct sna_pixmap *, unsigned);
+	void *move_to_gpu_data;
+
 	struct list flush_list;
 	struct list cow_list;
 
@@ -266,10 +269,11 @@ struct sna {
 	struct sna_mode {
 		drmModeResPtr kmode;
 
-		int shadow_active;
 		DamagePtr shadow_damage;
 		struct kgem_bo *shadow;
+		int shadow_active;
 		int shadow_flip;
+		int front_active;
 
 		unsigned num_real_crtc;
 		unsigned num_real_output;
