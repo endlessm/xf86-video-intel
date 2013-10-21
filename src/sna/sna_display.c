@@ -2089,6 +2089,29 @@ sna_output_panel_edid(xf86OutputPtr output, DisplayModePtr modes)
 	return xf86ModesAdd(modes, m);
 }
 
+static int _canonical_mode_name(DisplayModePtr mode, char *str)
+{
+	return sprintf(str, "%dx%d%s",
+		       mode->HDisplay, mode->VDisplay,
+		       mode->Flags & V_INTERLACE ? "i" : "");
+}
+
+static char *canonical_mode_name(DisplayModePtr mode)
+{
+	 char *str;
+	 int len;
+
+	 len = _canonical_mode_name(mode, NULL);
+	 if (len < 0)
+		 return NULL;
+
+	 str = malloc(len + 1);
+	 if (str != NULL)
+		 _canonical_mode_name(mode, str);
+
+	 return str;
+}
+
 static DisplayModePtr
 sna_output_get_modes(xf86OutputPtr output)
 {
@@ -2143,6 +2166,14 @@ sna_output_get_modes(xf86OutputPtr output)
 		}
 	}
 	free(Mode);
+
+	if (current && (current->name == NULL || *current->name == '\0')) {
+		char *str = canonical_mode_name(current);
+		if (str) {
+			free(current->name);
+			current->name = str;
+		}
+	}
 
 	/*
 	 * If the connector type is a panel, we will traverse the kernel mode to
