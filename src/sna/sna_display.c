@@ -1951,7 +1951,7 @@ sna_output_attach_edid(xf86OutputPtr output)
 	struct sna *sna = to_sna(output->scrn);
 	struct sna_output *sna_output = output->driver_private;
 	struct drm_mode_get_blob blob;
-	void *raw = NULL;
+	void *old, *raw = NULL;
 	xf86MonPtr mon = NULL;
 
 	if (sna_output->edid_idx == -1)
@@ -1959,6 +1959,12 @@ sna_output_attach_edid(xf86OutputPtr output)
 
 	raw = sna_output->edid_raw;
 	blob.length = sna_output->edid_len;
+
+	if (blob.length && output->MonInfo) {
+		old = alloca(blob.length);
+		memcpy(old, raw, blob.length);
+	} else
+		old = NULL;
 
 	blob.blob_id = sna_output->prop_values[sna_output->edid_idx];
 	DBG(("%s: attaching EDID id=%d, current=%d\n",
@@ -1995,6 +2001,20 @@ sna_output_attach_edid(xf86OutputPtr output)
 		blob.data = (uintptr_t)raw;
 		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPBLOB, &blob))
 			goto done;
+	}
+
+	if (old &&
+	    blob.length == sna_output->edid_len &&
+	    memcmp(old, raw, blob.length) == 0) {
+		assert(sna_output->edid_raw == raw);
+		sna_output->edid_blob_id = blob.blob_id;
+		RRChangeOutputProperty(output->randr_output,
+				       MakeAtom("EDID", strlen("EDID"), TRUE),
+				       XA_INTEGER, 8, PropModeReplace,
+				       sna_output->edid_len,
+				       sna_output->edid_raw,
+				       FALSE, FALSE);
+		return;
 	}
 
 skip_read:
