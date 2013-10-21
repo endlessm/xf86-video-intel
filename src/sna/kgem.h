@@ -335,14 +335,6 @@ static inline void kgem_submit(struct kgem *kgem)
 		_kgem_submit(kgem);
 }
 
-static inline bool kgem_flush(struct kgem *kgem, bool flush)
-{
-	if (kgem->nreloc == 0)
-		return false;
-
-	return (kgem->flush ^ flush) && kgem_ring_is_idle(kgem, kgem->ring);
-}
-
 static inline void kgem_bo_submit(struct kgem *kgem, struct kgem_bo *bo)
 {
 	if (bo->exec)
@@ -633,9 +625,6 @@ static inline bool __kgem_bo_is_busy(struct kgem *kgem, struct kgem_bo *bo)
 
 	if (bo->exec)
 		return true;
-
-	if (kgem_flush(kgem, bo->flush))
-		kgem_submit(kgem);
 
 	if (bo->rq && !__kgem_busy(kgem, bo->handle))
 		__kgem_bo_clear_busy(bo);

@@ -4647,6 +4647,20 @@ static bool aperture_check(struct kgem *kgem, unsigned num_pages)
 	return false;
 }
 
+static inline bool kgem_flush(struct kgem *kgem, bool flush)
+{
+	if (kgem->nreloc == 0)
+		return false;
+
+	if (container_of(kgem, struct sna, kgem)->flags & SNA_POWERSAVE)
+		return false;
+
+	if (kgem->flush == flush && kgem->aperture < kgem->aperture_low)
+		return false;
+
+	return kgem_ring_is_idle(kgem, kgem->ring);
+}
+
 bool kgem_check_bo(struct kgem *kgem, ...)
 {
 	va_list ap;
@@ -4680,14 +4694,14 @@ bool kgem_check_bo(struct kgem *kgem, ...)
 	if (!num_pages)
 		return true;
 
-	if (kgem_flush(kgem, flush)) {
-		DBG(("%s: opportunistic flushing\n", __FUNCTION__));
+	if (kgem->nexec + num_exec >= KGEM_EXEC_SIZE(kgem)) {
+		DBG(("%s: out of exec slots (%d + %d / %d)\n", __FUNCTION__,
+		     kgem->nexec, num_exec, KGEM_EXEC_SIZE(kgem)));
 		return false;
 	}
 
-	if (kgem->aperture > kgem->aperture_low &&
-	    kgem_ring_is_idle(kgem, kgem->ring)) {
-		DBG(("%s: current aperture usage (%d) is greater than low water mark (%d)\n",
+	if (kgem_flush(kgem, flush)) {
+		DBG(("%s: opportunistic flushing, aperture %d/%d\n",
 		     __FUNCTION__, kgem->aperture, kgem->aperture_low));
 		return false;
 	}
@@ -4696,12 +4710,6 @@ bool kgem_check_bo(struct kgem *kgem, ...)
 		DBG(("%s: final aperture usage (%d) is greater than high water mark (%d)\n",
 		     __FUNCTION__, num_pages + kgem->aperture, kgem->aperture_high));
 		return aperture_check(kgem, num_pages);
-	}
-
-	if (kgem->nexec + num_exec >= KGEM_EXEC_SIZE(kgem)) {
-		DBG(("%s: out of exec slots (%d + %d / %d)\n", __FUNCTION__,
-		     kgem->nexec, num_exec, KGEM_EXEC_SIZE(kgem)));
-		return false;
 	}
 
 	return true;
@@ -4736,22 +4744,16 @@ bool kgem_check_bo_fenced(struct kgem *kgem, struct kgem_bo *bo)
 		return true;
 	}
 
+	if (kgem->nexec >= KGEM_EXEC_SIZE(kgem) - 1)
+		return false;
+
 	if (needs_semaphore(kgem, bo)) {
 		DBG(("%s: flushing for required semaphore\n", __FUNCTION__));
 		return false;
 	}
 
 	if (kgem_flush(kgem, bo->flush)) {
-		DBG(("%s: opportunistic flushing\n", __FUNCTION__));
-		return false;
-	}
-
-	if (kgem->nexec >= KGEM_EXEC_SIZE(kgem) - 1)
-		return false;
-
-	if (kgem->aperture > kgem->aperture_low &&
-	    kgem_ring_is_idle(kgem, kgem->ring)) {
-		DBG(("%s: current aperture usage (%d) is greater than low water mark (%d)\n",
+		DBG(("%s: opportunistic flushing, aperture %d/%d\n",
 		     __FUNCTION__, kgem->aperture, kgem->aperture_low));
 		return false;
 	}
@@ -4838,14 +4840,11 @@ bool kgem_check_many_bo_fenced(struct kgem *kgem, ...)
 	}
 
 	if (num_pages) {
-		if (kgem_flush(kgem, flush)) {
-			DBG(("%s: opportunistic flushing\n", __FUNCTION__));
+		if (kgem->nexec + num_exec >= KGEM_EXEC_SIZE(kgem))
 			return false;
-		}
 
-		if (kgem->aperture > kgem->aperture_low &&
-		    kgem_ring_is_idle(kgem, kgem->ring)) {
-			DBG(("%s: current aperture usage (%d) is greater than low water mark (%d)\n",
+		if (kgem_flush(kgem, flush)) {
+			DBG(("%s: opportunistic flushing, aperture %d/%d\n",
 			     __FUNCTION__, kgem->aperture, kgem->aperture_low));
 			return false;
 		}
@@ -4855,9 +4854,6 @@ bool kgem_check_many_bo_fenced(struct kgem *kgem, ...)
 			     __FUNCTION__, num_pages + kgem->aperture, kgem->aperture_high));
 			return aperture_check(kgem, num_pages);
 		}
-
-		if (kgem->nexec + num_exec >= KGEM_EXEC_SIZE(kgem))
-			return false;
 	}
 
 	return true;
