@@ -4255,7 +4255,10 @@ sna_crtc_redisplay(xf86CrtcPtr crtc, RegionPtr region)
 			return;
 	}
 
-	sna_crtc_redisplay__composite(crtc, region);
+	if (can_render(sna))
+		sna_crtc_redisplay__composite(crtc, region);
+	else
+		sna_crtc_redisplay__fallback(crtc, region);
 }
 
 static void set_bo(PixmapPtr pixmap, struct kgem_bo *bo)
@@ -4291,8 +4294,7 @@ void sna_mode_redisplay(struct sna *sna)
 	if (RegionNil(region))
 		return;
 
-	if (!can_render(sna) ||
-	    !sna_pixmap_move_to_gpu(sna->front, MOVE_READ)) {
+	if (wedged(sna) || !sna_pixmap_move_to_gpu(sna->front, MOVE_READ)) {
 		if (!sna_pixmap_move_to_cpu(sna->front, MOVE_READ))
 			return;
 
