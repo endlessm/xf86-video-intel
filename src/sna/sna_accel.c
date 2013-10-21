@@ -1793,7 +1793,7 @@ sna_pixmap_make_cow(struct sna *sna,
 		sna_pixmap_unmap(dst_priv->pixmap, dst_priv);
 		kgem_bo_destroy(&sna->kgem, dst_priv->gpu_bo);
 	}
-	assert(!priv->mapped);
+	assert(!dst_priv->mapped);
 	dst_priv->gpu_bo = kgem_bo_reference(cow->bo);
 	dst_priv->cow = cow;
 	list_add(&dst_priv->cow_list, &cow->list);
