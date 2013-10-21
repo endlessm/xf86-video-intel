@@ -705,6 +705,12 @@ mode_from_kmode(ScrnInfoPtr scrn,
 		const struct drm_mode_modeinfo *kmode,
 		DisplayModePtr mode)
 {
+	DBG(("kmode: %s, clock=%d, %d %d %d %d %d, %d %d %d %d %d, flags=%x, type=%x\n",
+	     kmode->name, kmode->clock,
+	     kmode->hdisplay, kmode->hsync_start, kmode->hsync_end, kmode->htotal, kmode->hskew,
+	     kmode->vdisplay, kmode->vsync_start, kmode->vsync_end, kmode->vtotal, kmode->vscan,
+	     kmode->flags, kmode->type));
+
 	mode->status = MODE_OK;
 
 	mode->Clock = kmode->clock;
@@ -2116,6 +2122,8 @@ sna_output_get_modes(xf86OutputPtr output)
 		}
 	}
 
+	DBG(("%s: adding %d probed modes\n", __FUNCTION__, sna_output->num_modes));
+
 	Mode = NULL;
 	for (i = 0; i < sna_output->num_modes; i++) {
 		if (Mode == NULL)
@@ -2128,6 +2136,9 @@ sna_output_get_modes(xf86OutputPtr output)
 			if (!current || !xf86ModesEqual(Mode, current)) {
 				Modes = xf86ModesAdd(Modes, Mode);
 				Mode = NULL;
+			} else {
+				current->name = strdup(Mode->name);
+				current->type = Mode->type;
 			}
 		}
 	}
