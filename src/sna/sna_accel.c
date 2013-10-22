@@ -3419,8 +3419,7 @@ create_gpu_bo:
 			} else {
 				DBG(("%s: partial GPU damage with no CPU damage, continuing to use GPU\n",
 				     __FUNCTION__));
-				priv->cpu = false;
-				goto done;
+				goto move_to_gpu;
 			}
 		}
 
