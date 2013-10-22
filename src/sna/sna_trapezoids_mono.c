@@ -1341,7 +1341,7 @@ mono_triangles_span_converter(struct sna *sna,
 
 	was_clear = sna_drawable_is_clear(dst->pDrawable);
 
-	if (mono_init(&mono, 3*count))
+	if (!mono_init(&mono, 3*count))
 		return false;
 
 	for (n = 0; n < count; n++) {
