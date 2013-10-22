@@ -4808,7 +4808,7 @@ fallback:
 					      format == XYPixmap ?
 					      MOVE_READ | MOVE_WRITE :
 					      drawable_gc_flags(drawable, gc, false)))
-		goto out_gc;
+		goto out;
 
 	if (sigtrap_get() == 0) {
 		DBG(("%s: fbPutImage(%d, %d, %d, %d)\n",
@@ -4817,9 +4817,8 @@ fallback:
 		FALLBACK_FLUSH(drawable);
 		sigtrap_put();
 	}
-out_gc:
-	sna_gc_move_to_gpu(gc);
 out:
+	sna_gc_move_to_gpu(gc);
 	RegionUninit(&region);
 }
 
@@ -5088,11 +5087,11 @@ fallback:
 			}
 
 			if (gc)
+out:
 				sna_gc_move_to_gpu(gc);
 		}
 	}
 
-out:
 	if (box != RegionRects(region))
 		free(box);
 }
@@ -6029,10 +6028,8 @@ fallback:
 
 			RegionTranslate(region, -dst_dx, -dst_dy);
 
-			if (!sna_gc_move_to_cpu(gc, dst, region))
-				return;
-
-			if (sigtrap_get() == 0) {
+			if (sna_gc_move_to_cpu(gc, dst, region) &&
+			    sigtrap_get() == 0) {
 				miCopyRegion(src, dst, gc,
 					     region, dx, dy,
 					     fbCopyNtoN, 0, NULL);
@@ -6190,22 +6187,22 @@ sna_fallback_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	     dx, dy, gc->alu));
 
 	if (!sna_gc_move_to_cpu(gc, dst, region))
-		return;
+		goto out;
 
 	RegionTranslate(region, dx, dy);
 	if (!sna_drawable_move_region_to_cpu(src, region, MOVE_READ))
-		goto out_gc;
+		goto out;
 	RegionTranslate(region, -dx, -dy);
 
 	if (src == dst ||
 	    get_drawable_pixmap(src) == get_drawable_pixmap(dst)) {
 		DBG(("%s: self-copy\n", __FUNCTION__));
 		if (!sna_drawable_move_to_cpu(dst, MOVE_WRITE | MOVE_READ))
-			goto out_gc;
+			goto out;
 	} else {
 		if (!sna_drawable_move_region_to_cpu(dst, region,
 						     drawable_gc_flags(dst, gc, false)))
-			goto out_gc;
+			goto out;
 	}
 
 	if (sigtrap_get() == 0) {
@@ -6215,7 +6212,7 @@ sna_fallback_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 		FALLBACK_FLUSH(dst);
 		sigtrap_put();
 	}
-out_gc:
+out:
 	sna_gc_move_to_gpu(gc);
 }
 
@@ -7245,7 +7242,7 @@ fallback:
 		goto out;
 	if (!sna_drawable_move_region_to_cpu(drawable, &region,
 					     drawable_gc_flags(drawable, gc, n > 1)))
-		goto out_gc;
+		goto out;
 
 	if (sigtrap_get() == 0) {
 		DBG(("%s: fbFillSpans\n", __FUNCTION__));
@@ -7253,9 +7250,8 @@ fallback:
 		FALLBACK_FLUSH(drawable);
 		sigtrap_put();
 	}
-out_gc:
-	sna_gc_move_to_gpu(gc);
 out:
+	sna_gc_move_to_gpu(gc);
 	RegionUninit(&region);
 }
 
@@ -7288,7 +7284,7 @@ fallback:
 		goto out;
 	if (!sna_drawable_move_region_to_cpu(drawable, &region,
 					     drawable_gc_flags(drawable, gc, n > 1)))
-		goto out_gc;
+		goto out;
 
 	if (sigtrap_get() == 0) {
 		DBG(("%s: fbSetSpans\n", __FUNCTION__));
@@ -7296,9 +7292,8 @@ fallback:
 		FALLBACK_FLUSH(drawable);
 		sigtrap_put();
 	}
-out_gc:
-	sna_gc_move_to_gpu(gc);
 out:
+	sna_gc_move_to_gpu(gc);
 	RegionUninit(&region);
 }
 
@@ -7787,7 +7782,7 @@ fallback:
 		goto out;
 	if (!sna_drawable_move_region_to_cpu(dst, &region,
 					     drawable_gc_flags(dst, gc, false)))
-		goto out_gc;
+		goto out;
 
 	if (sigtrap_get() == 0) {
 		DBG(("%s: fbCopyPlane(%d, %d, %d, %d, %d,%d) %x\n",
@@ -7799,9 +7794,8 @@ fallback:
 		FALLBACK_FLUSH(dst);
 		sigtrap_put();
 	}
-out_gc:
-	sna_gc_move_to_gpu(gc);
 out:
+	sna_gc_move_to_gpu(gc);
 	RegionUninit(&region);
 	return ret;
 empty:
@@ -8001,7 +7995,7 @@ fallback:
 		goto out;
 	if (!sna_drawable_move_region_to_cpu(drawable, &region,
 					     MOVE_READ | MOVE_WRITE))
-		goto out_gc;
+		goto out;
 
 	if (sigtrap_get() == 0) {
 		DBG(("%s: fbPolyPoint\n", __FUNCTION__));
@@ -8009,9 +8003,8 @@ fallback:
 		FALLBACK_FLUSH(drawable);
 		sigtrap_put();
 	}
-out_gc:
-	sna_gc_move_to_gpu(gc);
 out:
+	sna_gc_move_to_gpu(gc);
 	RegionUninit(&region);
 }
 
@@ -9048,7 +9041,7 @@ fallback:
 	if (!sna_drawable_move_region_to_cpu(drawable, &data.region,
 					     drawable_gc_flags(drawable, gc,
 							       !(data.flags & 4 && n == 2))))
-		goto out_gc;
+		goto out;
 
 	if (sigtrap_get() == 0) {
 		DBG(("%s: fbPolyLine\n", __FUNCTION__));
@@ -9056,9 +9049,8 @@ fallback:
 		FALLBACK_FLUSH(drawable);
 		sigtrap_put();
 	}
-out_gc:
-	sna_gc_move_to_gpu(gc);
 out:
+	sna_gc_move_to_gpu(gc);
 	RegionUninit(&data.region);
 }
 
@@ -9901,7 +9893,7 @@ fallback:
 	if (!sna_drawable_move_region_to_cpu(drawable, &data.region,
 					     drawable_gc_flags(drawable, gc,
 							       !(data.flags & 4 && n == 1))))
-		goto out_gc;
+		goto out;
 
 	if (sigtrap_get() == 0) {
 		DBG(("%s: fbPolySegment\n", __FUNCTION__));
@@ -9909,9 +9901,8 @@ fallback:
 		FALLBACK_FLUSH(drawable);
 		sigtrap_put();
 	}
-out_gc:
-	sna_gc_move_to_gpu(gc);
 out:
+	sna_gc_move_to_gpu(gc);
 	RegionUninit(&data.region);
 }
 
@@ -10512,7 +10503,7 @@ fallback:
 		goto out;
 	if (!sna_drawable_move_region_to_cpu(drawable, &region,
 					     drawable_gc_flags(drawable, gc, true)))
-		goto out_gc;
+		goto out;
 
 	if (sigtrap_get() == 0) {
 		DBG(("%s: miPolyRectangle\n", __FUNCTION__));
@@ -10520,9 +10511,8 @@ fallback:
 		FALLBACK_FLUSH(drawable);
 		sigtrap_put();
 	}
-out_gc:
-	sna_gc_move_to_gpu(gc);
 out:
+	sna_gc_move_to_gpu(gc);
 	RegionUninit(&region);
 }
 
@@ -10715,7 +10705,7 @@ fallback:
 		goto out;
 	if (!sna_drawable_move_region_to_cpu(drawable, &data.region,
 					     drawable_gc_flags(drawable, gc, true)))
-		goto out_gc;
+		goto out;
 
 	if (sigtrap_get() == 0) {
 		DBG(("%s -- fbPolyArc\n", __FUNCTION__));
@@ -10723,9 +10713,8 @@ fallback:
 		FALLBACK_FLUSH(drawable);
 		sigtrap_put();
 	}
-out_gc:
-	sna_gc_move_to_gpu(gc);
 out:
+	sna_gc_move_to_gpu(gc);
 	RegionUninit(&data.region);
 }
 
@@ -11072,7 +11061,7 @@ fallback:
 		goto out;
 	if (!sna_drawable_move_region_to_cpu(draw, &data.region,
 					     drawable_gc_flags(draw, gc, true)))
-		goto out_gc;
+		goto out;
 
 	if (sigtrap_get() == 0) {
 		DBG(("%s: fallback -- miFillPolygon -> sna_fill_spans__cpu\n",
@@ -11080,9 +11069,8 @@ fallback:
 		miFillPolygon(draw, gc, shape, mode, n, pt);
 		sigtrap_put();
 	}
-out_gc:
-	sna_gc_move_to_gpu(gc);
 out:
+	sna_gc_move_to_gpu(gc);
 	RegionUninit(&data.region);
 }
 
@@ -13354,7 +13342,7 @@ fallback:
 		goto out;
 	if (!sna_drawable_move_region_to_cpu(draw, &region,
 					     drawable_gc_flags(draw, gc, n > 1)))
-		goto out_gc;
+		goto out;
 
 	if (sigtrap_get() == 0) {
 		DBG(("%s: fallback - fbPolyFillRect\n", __FUNCTION__));
@@ -13362,9 +13350,8 @@ fallback:
 		FALLBACK_FLUSH(draw);
 		sigtrap_put();
 	}
-out_gc:
-	sna_gc_move_to_gpu(gc);
 out:
+	sna_gc_move_to_gpu(gc);
 	RegionUninit(&region);
 }
 
@@ -13527,7 +13514,7 @@ fallback:
 		goto out;
 	if (!sna_drawable_move_region_to_cpu(draw, &data.region,
 					     drawable_gc_flags(draw, gc, true)))
-		goto out_gc;
+		goto out;
 
 	if (sigtrap_get() == 0) {
 		DBG(("%s: fallback -- miPolyFillArc -> sna_fill_spans__cpu\n",
@@ -13535,9 +13522,8 @@ fallback:
 		miPolyFillArc(draw, gc, n, arc);
 		sigtrap_put();
 	}
-out_gc:
-	sna_gc_move_to_gpu(gc);
 out:
+	sna_gc_move_to_gpu(gc);
 	RegionUninit(&data.region);
 }
 
@@ -14022,7 +14008,7 @@ fallback:
 			goto out;
 		if (!sna_drawable_move_region_to_cpu(drawable, &region,
 						     MOVE_READ | MOVE_WRITE))
-			goto out_gc;
+			goto out;
 
 		if (sigtrap_get() == 0) {
 			DBG(("%s: fallback -- fbPolyGlyphBlt\n", __FUNCTION__));
@@ -14031,10 +14017,9 @@ fallback:
 			FALLBACK_FLUSH(drawable);
 			sigtrap_put();
 		}
-out_gc:
+out:
 		sna_gc_move_to_gpu(gc);
 	}
-out:
 	RegionUninit(&region);
 	return x + extents.overallRight;
 }
@@ -14100,7 +14085,7 @@ fallback:
 			goto out;
 		if (!sna_drawable_move_region_to_cpu(drawable, &region,
 						     MOVE_READ | MOVE_WRITE))
-			goto out_gc;
+			goto out;
 
 		if (sigtrap_get() == 0) {
 			DBG(("%s: fallback -- fbPolyGlyphBlt\n", __FUNCTION__));
@@ -14109,10 +14094,9 @@ fallback:
 			FALLBACK_FLUSH(drawable);
 			sigtrap_put();
 		}
-out_gc:
+out:
 		sna_gc_move_to_gpu(gc);
 	}
-out:
 	RegionUninit(&region);
 	return x + extents.overallRight;
 }
@@ -14185,7 +14169,7 @@ fallback:
 		if (!sna_gc_move_to_cpu(gc, drawable, &region))
 			goto out;
 		if (!sna_drawable_move_region_to_cpu(drawable, &region, MOVE_WRITE))
-			goto out_gc;
+			goto out;
 
 		if (sigtrap_get() == 0) {
 			DBG(("%s: fallback -- fbImageGlyphBlt\n", __FUNCTION__));
@@ -14194,10 +14178,9 @@ fallback:
 			FALLBACK_FLUSH(drawable);
 			sigtrap_put();
 		}
-out_gc:
+out:
 		sna_gc_move_to_gpu(gc);
 	}
-out:
 	RegionUninit(&region);
 }
 
@@ -14270,7 +14253,7 @@ fallback:
 		if (!sna_gc_move_to_cpu(gc, drawable, &region))
 			goto out;
 		if (!sna_drawable_move_region_to_cpu(drawable, &region, MOVE_WRITE))
-			goto out_gc;
+			goto out;
 
 		if (sigtrap_get() == 0) {
 			DBG(("%s: fallback -- fbImageGlyphBlt\n", __FUNCTION__));
@@ -14279,10 +14262,9 @@ fallback:
 			FALLBACK_FLUSH(drawable);
 			sigtrap_put();
 		}
-out_gc:
+out:
 		sna_gc_move_to_gpu(gc);
 	}
-out:
 	RegionUninit(&region);
 }
 
@@ -14599,7 +14581,7 @@ sna_image_glyph(DrawablePtr drawable, GCPtr gc,
 fallback:
 	DBG(("%s: fallback\n", __FUNCTION__));
 	if (!sna_gc_move_to_cpu(gc, drawable, &region))
-		goto out;
+		goto out_gc;
 	if (!sna_drawable_move_region_to_cpu(drawable, &region, MOVE_WRITE))
 		goto out_gc;
 
@@ -14680,7 +14662,7 @@ sna_poly_glyph(DrawablePtr drawable, GCPtr gc,
 fallback:
 	DBG(("%s: fallback\n", __FUNCTION__));
 	if (!sna_gc_move_to_cpu(gc, drawable, &region))
-		goto out;
+		goto out_gc;
 	if (!sna_drawable_move_region_to_cpu(drawable, &region,
 					     MOVE_READ | MOVE_WRITE))
 		goto out_gc;
@@ -14867,10 +14849,10 @@ sna_push_pixels(GCPtr gc, PixmapPtr bitmap, DrawablePtr drawable,
 	if (!sna_gc_move_to_cpu(gc, drawable, &region))
 		goto out;
 	if (!sna_pixmap_move_to_cpu(bitmap, MOVE_READ))
-		goto out_gc;
+		goto out;
 	if (!sna_drawable_move_region_to_cpu(drawable, &region,
 					     drawable_gc_flags(drawable, gc, false)))
-		goto out_gc;
+		goto out;
 
 	if (sigtrap_get() == 0) {
 		DBG(("%s: fallback, fbPushPixels(%d, %d, %d %d)\n",
@@ -14879,9 +14861,8 @@ sna_push_pixels(GCPtr gc, PixmapPtr bitmap, DrawablePtr drawable,
 		FALLBACK_FLUSH(drawable);
 		sigtrap_put();
 	}
-out_gc:
-	sna_gc_move_to_gpu(gc);
 out:
+	sna_gc_move_to_gpu(gc);
 	RegionUninit(&region);
 }
 
