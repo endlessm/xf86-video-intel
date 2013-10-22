@@ -1183,6 +1183,7 @@ sna_create_pixmap_shared(struct sna *sna, ScreenPtr screen,
 		pixmap->devPrivate.ptr =
 			kgem_bo_map__async(&sna->kgem, priv->gpu_bo);
 		if (pixmap->devPrivate.ptr == NULL) {
+			kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
 			free(priv);
 			FreePixmap(pixmap);
 			return FALSE;
