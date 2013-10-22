@@ -102,11 +102,11 @@ num_cores(void)
 			int id;
 			if (sscanf(line, "physical id : %d", &id) == 1) {
 				if (id >= 32)
-					return 0;
+					continue;
 				processors |= 1 << id;
 			} else if (sscanf(line, "core id : %d", &id) == 1) {
 				if (id >= 32)
-					return 0;
+					continue;
 				cores |= 1 << id;
 			}
 		}
