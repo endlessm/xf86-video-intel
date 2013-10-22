@@ -1436,10 +1436,12 @@ static inline bool has_coherent_ptr(struct sna *sna, struct sna_pixmap *priv, un
 		if (!priv->cpu_bo)
 			return true;
 
+		assert(priv->pixmap->devKind == priv->cpu_bo->pitch);
 		return priv->pixmap->devPrivate.ptr == MAP(priv->cpu_bo->map__cpu);
 	}
 
 	assert(!priv->move_to_gpu || (flags & MOVE_WRITE) == 0);
+	assert(priv->pixmap->devKind == priv->gpu_bo->pitch);
 
 	if (priv->pixmap->devPrivate.ptr == MAP(priv->gpu_bo->map__cpu)) {
 		assert(priv->mapped == MAPPED_CPU);
@@ -1447,7 +1449,7 @@ static inline bool has_coherent_ptr(struct sna *sna, struct sna_pixmap *priv, un
 		if (priv->gpu_bo->tiling != I915_TILING_NONE)
 			return false;
 
-		return kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, flags & MOVE_WRITE);
+		return flags & MOVE_READ || kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, flags & MOVE_WRITE);
 	}
 
 	if (priv->pixmap->devPrivate.ptr == MAP(priv->gpu_bo->map__gtt)) {
@@ -2027,6 +2029,7 @@ skip_inplace_map:
 		assert(priv->move_to_gpu == NULL || (flags & MOVE_WRITE) == 0);
 
 		assert(!priv->mapped);
+		assert(priv->gpu_bo->tiling == I915_TILING_NONE);
 
 		ptr = kgem_bo_map__cpu(&sna->kgem, priv->gpu_bo);
 		if (ptr != NULL) {
