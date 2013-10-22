@@ -1818,6 +1818,7 @@ sna_crtc_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 	sna_crtc->cursor = gem_create(sna->kgem.fd, 64*64*4);
 	if (!sna_crtc->cursor) {
 		xf86CrtcDestroy(crtc);
+		free(sna_crtc);
 		return false;
 	}
 	DBG(("%s: created handle=%d for cursor on CRTC:%d\n",
