@@ -4423,7 +4423,6 @@ void sna_mode_redisplay(struct sna *sna)
 	if (sna->mode.shadow_flip)
 		return;
 
-	assert(sna_pixmap(sna->front)->move_to_gpu == NULL);
 	if (wedged(sna) || !sna_pixmap_move_to_gpu(sna->front, MOVE_READ)) {
 		if (!sna_pixmap_move_to_cpu(sna->front, MOVE_READ))
 			return;
@@ -4450,6 +4449,8 @@ void sna_mode_redisplay(struct sna *sna)
 		RegionEmpty(region);
 		return;
 	}
+
+	assert(sna_pixmap(sna->front)->move_to_gpu == NULL);
 
 	for (i = 0; i < config->num_crtc; i++) {
 		xf86CrtcPtr crtc = config->crtc[i];
