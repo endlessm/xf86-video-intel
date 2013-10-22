@@ -1389,6 +1389,9 @@ static Bool sna_destroy_pixmap(PixmapPtr pixmap)
 		priv->cow = NULL;
 	}
 
+	if (priv->move_to_gpu)
+		(void)priv->move_to_gpu(sna, priv, 0);
+
 	/* Always release the gpu bo back to the lower levels of caching */
 	if (priv->gpu_bo) {
 		sna_pixmap_unmap(pixmap, priv);
