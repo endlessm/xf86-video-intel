@@ -1432,14 +1432,14 @@ static inline bool has_coherent_ptr(struct sna *sna, struct sna_pixmap *priv, un
 	if (priv == NULL)
 		return true;
 
-	assert(!priv->move_to_gpu);
-
 	if (!priv->mapped) {
 		if (!priv->cpu_bo)
 			return true;
 
 		return priv->pixmap->devPrivate.ptr == MAP(priv->cpu_bo->map__cpu);
 	}
+
+	assert(!priv->move_to_gpu || (flags & MOVE_WRITE) == 0);
 
 	if (priv->pixmap->devPrivate.ptr == MAP(priv->gpu_bo->map__cpu)) {
 		assert(priv->mapped == MAPPED_CPU);
@@ -1475,7 +1475,7 @@ static inline bool pixmap_inplace(struct sna *sna,
 		return false;
 	}
 
-	if (priv->move_to_gpu)
+	if (priv->move_to_gpu && flags & MOVE_WRITE)
 		return false;
 
 	if (priv->gpu_bo && kgem_bo_is_busy(priv->gpu_bo)) {
@@ -1825,7 +1825,7 @@ static inline bool operate_inplace(struct sna_pixmap *priv, unsigned flags)
 
 	assert((flags & MOVE_ASYNC_HINT) == 0);
 
-	if (priv->move_to_gpu) {
+	if (priv->move_to_gpu && flags & MOVE_WRITE) {
 		DBG(("%s: no, has pending move-to-gpu\n", __FUNCTION__));
 		return false;
 	}
@@ -1888,6 +1888,13 @@ _sna_pixmap_move_to_cpu(PixmapPtr pixmap, unsigned int flags)
 
 	assert(priv->gpu_damage == NULL || priv->gpu_bo);
 
+	if ((flags & MOVE_READ) == 0 && UNDO) {
+		if (priv->gpu_bo)
+			kgem_bo_undo(&sna->kgem, priv->gpu_bo);
+		if (priv->cpu_bo)
+			kgem_bo_undo(&sna->kgem, priv->cpu_bo);
+	}
+
 	if (DAMAGE_IS_ALL(priv->cpu_damage)) {
 		DBG(("%s: CPU all-damaged\n", __FUNCTION__));
 		assert(priv->gpu_damage == NULL || DAMAGE_IS_ALL(priv->gpu_damage));
@@ -1897,13 +1904,6 @@ _sna_pixmap_move_to_cpu(PixmapPtr pixmap, unsigned int flags)
 	if (priv->move_to_gpu && !priv->move_to_gpu(sna, priv, MOVE_READ)) {
 		DBG(("%s: move-to-gpu override failed\n", __FUNCTION__));
 		return false;
-	}
-
-	if ((flags & MOVE_READ) == 0 && UNDO) {
-		if (priv->gpu_bo)
-			kgem_bo_undo(&sna->kgem, priv->gpu_bo);
-		if (priv->cpu_bo)
-			kgem_bo_undo(&sna->kgem, priv->cpu_bo);
 	}
 
 	if (USE_INPLACE && (flags & MOVE_READ) == 0 && !priv->cow) {
@@ -1917,9 +1917,9 @@ _sna_pixmap_move_to_cpu(PixmapPtr pixmap, unsigned int flags)
 			void *ptr;
 
 			DBG(("%s: write inplace\n", __FUNCTION__));
-			assert(priv->cow == NULL || (flags & MOVE_WRITE) == 0);
 			assert(!priv->shm);
-			assert(!priv->move_to_gpu);
+			assert(priv->cow == NULL);
+			assert(priv->move_to_gpu == NULL);
 			assert(priv->gpu_bo->exec == NULL);
 			assert((flags & MOVE_READ) == 0 || priv->cpu_damage == NULL);
 
@@ -2015,18 +2015,18 @@ skip_inplace_map:
 
 	if (USE_INPLACE &&
 	    priv->gpu_damage && priv->cpu_damage == NULL &&
-	    !priv->cow && !priv->move_to_gpu &&
 	    priv->gpu_bo->tiling == I915_TILING_NONE &&
 	    (flags & MOVE_READ || kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, flags & MOVE_WRITE)) &&
 	    ((flags & (MOVE_WRITE | MOVE_ASYNC_HINT)) == 0 ||
-	     !__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo))) {
+	     (!priv->cow && !priv->move_to_gpu &&
+	      !__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo)))) {
 		void *ptr;
 
 		DBG(("%s: try to operate inplace (CPU)\n", __FUNCTION__));
 		assert(priv->cow == NULL || (flags & MOVE_WRITE) == 0);
+		assert(priv->move_to_gpu == NULL || (flags & MOVE_WRITE) == 0);
 
 		assert(!priv->mapped);
-		assert(!priv->move_to_gpu);
 
 		ptr = kgem_bo_map__cpu(&sna->kgem, priv->gpu_bo);
 		if (ptr != NULL) {
@@ -2389,6 +2389,13 @@ contains_damage:
 		return _sna_pixmap_move_to_cpu(pixmap, flags);
 	}
 
+	if (priv->move_to_gpu && !priv->move_to_gpu(sna, priv, MOVE_READ)) {
+		DBG(("%s: move-to-gpu override failed\n", __FUNCTION__));
+		if (dx | dy)
+			RegionTranslate(region, -dx, -dy);
+		return false;
+	}
+
 	if (USE_INPLACE &&
 	    operate_inplace(priv, flags) &&
 	    region_inplace(sna, pixmap, region, priv, flags) &&
@@ -2397,7 +2404,7 @@ contains_damage:
 
 		DBG(("%s: try to operate inplace\n", __FUNCTION__));
 		assert(priv->cow == NULL || (flags & MOVE_WRITE) == 0);
-		assert(!priv->move_to_gpu);
+		assert(priv->move_to_gpu == NULL || (flags & MOVE_WRITE) == 0);
 
 		/* XXX only sync for writes? */
 		kgem_bo_submit(&sna->kgem, priv->gpu_bo);
@@ -2443,20 +2450,12 @@ contains_damage:
 		return _sna_pixmap_move_to_cpu(pixmap, flags | MOVE_READ);
 	}
 
-	if (priv->move_to_gpu && !priv->move_to_gpu(sna, priv, MOVE_READ)) {
-		DBG(("%s: move-to-gpu override failed\n", __FUNCTION__));
-		if (dx | dy)
-			RegionTranslate(region, -dx, -dy);
-		return false;
-	}
-
 	sna_pixmap_unmap(pixmap, priv);
 
 	if (USE_INPLACE &&
 	    priv->gpu_damage &&
 	    priv->gpu_bo->tiling == I915_TILING_NONE &&
-	    priv->move_to_gpu == NULL &&
-	    (priv->cow == NULL || (flags & MOVE_WRITE) == 0) &&
+	    ((priv->cow == NULL && priv->move_to_gpu == NULL) || (flags & MOVE_WRITE) == 0) &&
 	    (DAMAGE_IS_ALL(priv->gpu_damage) ||
 	     sna_damage_contains_box__no_reduce(priv->gpu_damage,
 						&region->extents)) &&
@@ -5548,6 +5547,7 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 		DBG(("%s: ignoring cow reference for cousin copy\n",
 		     __FUNCTION__));
 		assert(src_priv->cpu_damage == NULL);
+		assert(dst_priv->move_to_gpu == NULL);
 		bo = dst_priv->gpu_bo;
 		damage = NULL;
 	} else {
