@@ -4158,9 +4158,17 @@ try_upload_blt(PixmapPtr pixmap, RegionRec *region,
 	assert(priv->gpu_bo);
 	assert(priv->gpu_bo->proxy == NULL);
 
-	if (priv->cow || !__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo)) {
+	if (!__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo)) {
 		DBG(("%s: no, target is idle\n", __FUNCTION__));
 		return false;
+	}
+
+	if (priv->cow || priv->move_to_gpu) {
+		if (!region_subsumes_drawable(region, &pixmap->drawable) ||
+		    !sna_pixmap_move_to_gpu(pixmap, MOVE_WRITE)) {
+			DBG(("%s: no, target is a partial COW\n", __FUNCTION__));
+			return false;
+		}
 	}
 
 	if (priv->cpu_damage &&
