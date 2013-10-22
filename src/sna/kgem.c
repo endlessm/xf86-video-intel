@@ -1052,6 +1052,7 @@ static bool kgem_init_pinned_batches(struct kgem *kgem)
 			pin.alignment = 0;
 			if (drmIoctl(kgem->fd, DRM_IOCTL_I915_GEM_PIN, &pin)) {
 				gem_close(kgem->fd, pin.handle);
+				free(bo);
 				goto err;
 			}
 			bo->presumed_offset = pin.offset;
