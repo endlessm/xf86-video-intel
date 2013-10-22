@@ -4423,7 +4423,7 @@ void sna_mode_redisplay(struct sna *sna)
 	if (sna->mode.shadow_flip)
 		return;
 
-	if (wedged(sna) || !sna_pixmap_move_to_gpu(sna->front, MOVE_READ)) {
+	if (wedged(sna) || !sna_pixmap_move_to_gpu(sna->front, MOVE_READ | MOVE_ASYNC_HINT)) {
 		if (!sna_pixmap_move_to_cpu(sna->front, MOVE_READ))
 			return;
 
