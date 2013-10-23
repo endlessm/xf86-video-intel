@@ -4325,6 +4325,8 @@ static bool wait_for_shadow(struct sna *sna, struct sna_pixmap *priv, unsigned f
 			while (sna->mode.shadow_flip &&
 			       sna_mode_wait_for_event(sna))
 				sna_mode_wakeup(sna);
+
+			bo = wait->bo;
 		}
 	}
 
