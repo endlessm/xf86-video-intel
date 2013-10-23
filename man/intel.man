@@ -134,6 +134,16 @@ disable render acceleration and only use the BLT engine.
 .IP
 Default: use UXA (render acceleration)
 .TP
+.BI "Option \*qTearFree\*q \*q" boolean \*q
+Disable or enable TearFree updates. This option forces X to perform all
+rendering to a backbuffer prior to updating the actual display. That update
+is then performed synchronously with the vertical refresh of the display so
+that the entire update is complete before the display starts its refresh.
+That is only one frame is ever visible, preventing an unsightly tear between
+two visible differing frames.
+.IP
+Default: TearFree is disabled.
+.TP
 .BI "Option \*qReprobeOutputs\*q \*q" boolean \*q
 Disable or enable rediscovery of connected displays during server startup.
 As the kernel driver loads it scans for connected displays and configures a
