@@ -906,9 +906,16 @@ sna_composite_rectangles(CARD8		 op,
 	     (long)RegionNumRects(&region)));
 
 	pixmap = get_drawable_pixmap(dst->pDrawable);
-	if (get_drawable_deltas(dst->pDrawable, pixmap, &dst_x, &dst_y)) {
+
+	/* XXX xserver-1.8: CompositeRects is not tracked by Damage, so we must
+	 * manually append the damaged regions ourselves.
+	 *
+	 * Note that DamageRegionAppend() will apply the drawable-deltas itself.
+	 */
+	DamageRegionAppend(&pixmap->drawable, &region);
+
+	if (get_drawable_deltas(dst->pDrawable, pixmap, &dst_x, &dst_y))
 		pixman_region_translate(&region, dst_x, dst_y);
-	}
 
 	DBG(("%s: pixmap +(%d, %d) extents (%d, %d),(%d, %d)\n",
 	     __FUNCTION__, dst_x, dst_y,
@@ -933,11 +940,6 @@ sna_composite_rectangles(CARD8		 op,
 		     __FUNCTION__, pixmap->drawable.serialNumber));
 		goto fallback;
 	}
-
-	/* XXX xserver-1.8: CompositeRects is not tracked by Damage, so we must
-	 * manually append the damaged regions ourselves.
-	 */
-	DamageRegionAppend(&pixmap->drawable, &region);
 
 	/* If we going to be overwriting any CPU damage with a subsequent
 	 * operation, then we may as well delete it without moving it
