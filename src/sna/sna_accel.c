@@ -3408,8 +3408,21 @@ create_gpu_bo:
 
 	if (priv->gpu_damage) {
 		assert(priv->gpu_bo);
-		if (!priv->cpu_damage)
-			goto use_gpu_bo;
+		if (!priv->cpu_damage) {
+			if (sna_damage_contains_box__no_reduce(priv->gpu_damage,
+							       &region.extents)) {
+				DBG(("%s: region wholly contained within GPU damage\n",
+				     __FUNCTION__));
+				assert(sna_damage_contains_box(priv->gpu_damage, &region.extents) == PIXMAN_REGION_IN);
+				assert(sna_damage_contains_box(priv->cpu_damage, &region.extents) == PIXMAN_REGION_OUT);
+				goto use_gpu_bo;
+			} else {
+				DBG(("%s: partial GPU damage with no CPU damage, continuing to use GPU\n",
+				     __FUNCTION__));
+				priv->cpu = false;
+				goto done;
+			}
+		}
 
 		ret = sna_damage_contains_box(priv->gpu_damage, &region.extents);
 		if (ret == PIXMAN_REGION_IN) {
