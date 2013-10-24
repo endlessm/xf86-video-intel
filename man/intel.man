@@ -132,13 +132,13 @@ In addition, there are a pair of sub-options to limit the acceleration for
 debugging use. Specify \*qoff\*q to disable all acceleration, or \*qblt\*q to
 disable render acceleration and only use the BLT engine.
 .IP
-Default: use UXA (render acceleration)
+Default: use SNA (render acceleration)
 .TP
 .BI "Option \*qTearFree\*q \*q" boolean \*q
 Disable or enable TearFree updates. This option forces X to perform all
 rendering to a backbuffer prior to updating the actual display. It requires
 an extra memory allocation the same size as a framebuffer, the occasional extra
-copy, and requires Damage tracking update. Thus enabling TearFree requires more
+copy, and requires Damage tracking. Thus enabling TearFree requires more
 memory and is slower (reduced throughput) and introduces a small amount of
 output latency, but it should not impact input latency. However, the update to
 the screen is then performed synchronously with the vertical refresh of the
