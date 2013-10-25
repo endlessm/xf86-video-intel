@@ -2279,6 +2279,7 @@ fill:
 
 put:
 		if (tmp->dst.bo == sna_pixmap(tmp->dst.pixmap)->cpu_bo) {
+			DBG(("%s: dropping upload into CPU bo\n", __FUNCTION__));
 			tmp->dst.bo = NULL;
 			tmp->damage = NULL;
 		}
