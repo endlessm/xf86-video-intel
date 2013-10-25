@@ -1472,13 +1472,11 @@ indirect_replace(struct sna *sna,
 	return ret;
 }
 
-bool sna_replace(struct sna *sna,
-		 PixmapPtr pixmap,
-		 struct kgem_bo **_bo,
+bool sna_replace(struct sna *sna, PixmapPtr pixmap,
 		 const void *src, int stride)
 {
-	struct kgem_bo *bo = *_bo;
-	struct kgem *kgem = &sna->kgem;
+	struct sna_pixmap *priv = sna_pixmap(pixmap);
+	struct kgem_bo *bo = priv->gpu_bo;
 	void *dst;
 
 	assert(bo);
@@ -1488,19 +1486,19 @@ bool sna_replace(struct sna *sna,
 	     pixmap->drawable.height,
 	     pixmap->drawable.bitsPerPixel,
 	     bo->tiling,
-	     __kgem_bo_is_busy(kgem, bo)));
+	     __kgem_bo_is_busy(&sna->kgem, bo)));
 
-	assert(!sna_pixmap(pixmap)->pinned);
+	assert(!priv->pinned);
 
-	kgem_bo_undo(kgem, bo);
+	kgem_bo_undo(&sna->kgem, bo);
 
-	if (__kgem_bo_is_busy(kgem, bo)) {
+	if (__kgem_bo_is_busy(&sna->kgem, bo)) {
 		struct kgem_bo *new_bo;
 
 		if (indirect_replace(sna, pixmap, bo, src, stride))
 			return true;
 
-		new_bo = kgem_create_2d(kgem,
+		new_bo = kgem_create_2d(&sna->kgem,
 					pixmap->drawable.width,
 					pixmap->drawable.height,
 					pixmap->drawable.bitsPerPixel,
@@ -1511,26 +1509,26 @@ bool sna_replace(struct sna *sna,
 	}
 
 	if (bo->tiling == I915_TILING_NONE && bo->pitch == stride &&
-	    kgem_bo_write(kgem, bo, src,
+	    kgem_bo_write(&sna->kgem, bo, src,
 			  (pixmap->drawable.height-1)*stride + pixmap->drawable.width*pixmap->drawable.bitsPerPixel/8))
 			goto done;
 
-	if (upload_inplace__tiled(kgem, bo)) {
+	if (upload_inplace__tiled(&sna->kgem, bo)) {
 		BoxRec box;
 
 		box.x1 = box.y1 = 0;
 		box.x2 = pixmap->drawable.width;
 		box.y2 = pixmap->drawable.height;
 
-		if (write_boxes_inplace__tiled(kgem, src,
+		if (write_boxes_inplace__tiled(&sna->kgem, src,
 					       stride, pixmap->drawable.bitsPerPixel, 0, 0,
 					       bo, 0, 0, &box, 1))
 			goto done;
 	}
 
 	sigtrap_assert();
-	if (kgem_bo_is_mappable(kgem, bo) &&
-	    (dst = kgem_bo_map(kgem, bo)) != NULL &&
+	if (kgem_bo_is_mappable(&sna->kgem, bo) &&
+	    (dst = kgem_bo_map(&sna->kgem, bo)) != NULL &&
 	    sigtrap_get() == 0) {
 		memcpy_blt(src, dst, pixmap->drawable.bitsPerPixel,
 			   stride, bo->pitch,
@@ -1554,26 +1552,27 @@ bool sna_replace(struct sna *sna,
 	}
 
 done:
-	if (bo != *_bo)
-		kgem_bo_destroy(kgem, *_bo);
-	*_bo = bo;
+	if (bo != priv->gpu_bo) {
+		sna_pixmap_unmap(pixmap, priv);
+		kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
+		priv->gpu_bo = bo;
+	}
+
 	return true;
 
 err:
-	if (bo != *_bo)
-		kgem_bo_destroy(kgem, bo);
+	if (bo != priv->gpu_bo)
+		kgem_bo_destroy(&sna->kgem, bo);
 	return false;
 }
 
 bool
-sna_replace__xor(struct sna *sna,
-		 PixmapPtr pixmap,
-		 struct kgem_bo **_bo,
+sna_replace__xor(struct sna *sna, PixmapPtr pixmap,
 		 const void *src, int stride,
 		 uint32_t and, uint32_t or)
 {
-	struct kgem_bo *bo = *_bo;
-	struct kgem *kgem = &sna->kgem;
+	struct sna_pixmap *priv = sna_pixmap(pixmap);
+	struct kgem_bo *bo = priv->gpu_bo;
 	void *dst;
 
 	DBG(("%s(handle=%d, %dx%d, bpp=%d, tiling=%d)\n",
@@ -1583,25 +1582,27 @@ sna_replace__xor(struct sna *sna,
 	     pixmap->drawable.bitsPerPixel,
 	     bo->tiling));
 
-	assert(!sna_pixmap(pixmap)->pinned);
+	assert(!priv->pinned);
+
+	kgem_bo_undo(&sna->kgem, bo);
 
 	if (kgem_bo_is_busy(bo)) {
 		struct kgem_bo *new_bo;
 
-		new_bo = kgem_create_2d(kgem,
+		new_bo = kgem_create_2d(&sna->kgem,
 					pixmap->drawable.width,
 					pixmap->drawable.height,
 					pixmap->drawable.bitsPerPixel,
 					bo->tiling,
 					CREATE_GTT_MAP | CREATE_INACTIVE);
 		if (new_bo) {
-			kgem_bo_destroy(kgem, bo);
+			kgem_bo_destroy(&sna->kgem, bo);
 			bo = new_bo;
 		}
 	}
 
-	if (kgem_bo_is_mappable(kgem, bo) &&
-	    (dst = kgem_bo_map(kgem, bo)) != NULL &&
+	if (kgem_bo_is_mappable(&sna->kgem, bo) &&
+	    (dst = kgem_bo_map(&sna->kgem, bo)) != NULL &&
 	    sigtrap_get() == 0) {
 		memcpy_xor(src, dst, pixmap->drawable.bitsPerPixel,
 			   stride, bo->pitch,
@@ -1626,13 +1627,16 @@ sna_replace__xor(struct sna *sna,
 			goto err;
 	}
 
-	if (bo != *_bo)
-		kgem_bo_destroy(kgem, *_bo);
-	*_bo = bo;
+	if (bo != priv->gpu_bo) {
+		sna_pixmap_unmap(pixmap, priv);
+		kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
+		priv->gpu_bo = bo;
+	}
+
 	return true;
 
 err:
-	if (bo != *_bo)
-		kgem_bo_destroy(kgem, bo);
+	if (bo != priv->gpu_bo)
+		kgem_bo_destroy(&sna->kgem, bo);
 	return false;
 }

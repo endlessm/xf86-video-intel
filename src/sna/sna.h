@@ -892,11 +892,9 @@ bool sna_write_boxes__xor(struct sna *sna, PixmapPtr dst,
 
 bool sna_replace(struct sna *sna,
 		 PixmapPtr pixmap,
-		 struct kgem_bo **bo,
 		 const void *src, int stride);
 bool sna_replace__xor(struct sna *sna,
 		      PixmapPtr pixmap,
-		      struct kgem_bo **bo,
 		      const void *src, int stride,
 		      uint32_t and, uint32_t or);
 

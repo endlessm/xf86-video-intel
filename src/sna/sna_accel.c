@@ -3110,7 +3110,6 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 				    box->x2 >= pixmap->drawable.width &&
 				    box->y2 >= pixmap->drawable.height) {
 					ok = sna_replace(sna, pixmap,
-							 &priv->gpu_bo,
 							 pixmap->devPrivate.ptr,
 							 pixmap->devKind);
 				} else {
@@ -3857,7 +3856,6 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 			    (box->x2 - box->x1) >= pixmap->drawable.width &&
 			    (box->y2 - box->y1) >= pixmap->drawable.height) {
 				ok = sna_replace(sna, pixmap,
-						 &priv->gpu_bo,
 						 pixmap->devPrivate.ptr,
 						 pixmap->devKind);
 			} else {
@@ -5891,9 +5889,7 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 				bits = src_pixmap->devPrivate.ptr;
 				bits += (src_dy + box->y1) * stride + (src_dx + box->x1) * bpp / 8;
 
-				if (!sna_replace(sna, dst_pixmap,
-						 &dst_priv->gpu_bo,
-						 bits, stride)) {
+				if (!sna_replace(sna, dst_pixmap, bits, stride)) {
 					DBG(("%s: replace failed, fallback\n", __FUNCTION__));
 					goto fallback;
 				}
