@@ -884,7 +884,7 @@ bool sna_write_boxes(struct sna *sna, PixmapPtr dst,
 		     struct kgem_bo *dst_bo, int16_t dst_dx, int16_t dst_dy,
 		     const void *src, int stride, int16_t src_dx, int16_t src_dy,
 		     const BoxRec *box, int n);
-void sna_write_boxes__xor(struct sna *sna, PixmapPtr dst,
+bool sna_write_boxes__xor(struct sna *sna, PixmapPtr dst,
 			  struct kgem_bo *dst_bo, int16_t dst_dx, int16_t dst_dy,
 			  const void *src, int stride, int16_t src_dx, int16_t src_dy,
 			  const BoxRec *box, int nbox,
@@ -894,11 +894,11 @@ bool sna_replace(struct sna *sna,
 		 PixmapPtr pixmap,
 		 struct kgem_bo **bo,
 		 const void *src, int stride);
-struct kgem_bo *sna_replace__xor(struct sna *sna,
-				 PixmapPtr pixmap,
-				 struct kgem_bo *bo,
-				 const void *src, int stride,
-				 uint32_t and, uint32_t or);
+bool sna_replace__xor(struct sna *sna,
+		      PixmapPtr pixmap,
+		      struct kgem_bo **bo,
+		      const void *src, int stride,
+		      uint32_t and, uint32_t or);
 
 bool
 sna_compute_composite_extents(BoxPtr extents,

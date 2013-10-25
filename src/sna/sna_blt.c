@@ -1709,6 +1709,7 @@ blt_put_composite(struct sna *sna,
 		data += (src_x - dst_x) * bpp / 8;
 		data += (src_y - dst_y) * pitch;
 
+		assert(op->dst.bo == dst_priv->gpu_bo);
 		sna_replace(sna, op->dst.pixmap, &dst_priv->gpu_bo,
 			    data, pitch);
 	} else {
@@ -1750,6 +1751,7 @@ fastcall static void blt_put_composite_box(struct sna *sna,
 		data += (box->y1 + op->u.blt.sy) * pitch;
 		data += (box->x1 + op->u.blt.sx) * bpp;
 
+		assert(op->dst.bo == dst_priv->gpu_bo);
 		sna_replace(sna, op->dst.pixmap, &dst_priv->gpu_bo,
 			    data, pitch);
 	} else {
@@ -1788,6 +1790,7 @@ static void blt_put_composite_boxes(struct sna *sna,
 		data += (box->y1 + op->u.blt.sy) * pitch;
 		data += (box->x1 + op->u.blt.sx) * bpp;
 
+		assert(op->dst.bo == dst_priv->gpu_bo);
 		sna_replace(sna, op->dst.pixmap, &dst_priv->gpu_bo,
 			    data, pitch);
 	} else {
@@ -1829,10 +1832,9 @@ blt_put_composite_with_alpha(struct sna *sna,
 		data += (src_x - dst_x) * bpp;
 		data += (src_y - dst_y) * pitch;
 
-		dst_priv->gpu_bo =
-			sna_replace__xor(sna, op->dst.pixmap, dst_priv->gpu_bo,
-					 data, pitch,
-					 0xffffffff, op->u.blt.pixel);
+		assert(op->dst.bo == dst_priv->gpu_bo);
+		sna_replace__xor(sna, op->dst.pixmap, &dst_priv->gpu_bo,
+				 data, pitch, 0xffffffff, op->u.blt.pixel);
 	} else {
 		BoxRec box;
 
@@ -1871,10 +1873,9 @@ blt_put_composite_box_with_alpha(struct sna *sna,
 		data += (box->y1 + op->u.blt.sy) * pitch;
 		data += (box->x1 + op->u.blt.sx) * bpp;
 
-		dst_priv->gpu_bo =
-			sna_replace__xor(sna, op->dst.pixmap, op->dst.bo,
-					 data, pitch,
-					 0xffffffff, op->u.blt.pixel);
+		assert(op->dst.bo == dst_priv->gpu_bo);
+		sna_replace__xor(sna, op->dst.pixmap, &dst_priv->gpu_bo,
+				 data, pitch, 0xffffffff, op->u.blt.pixel);
 	} else {
 		sna_write_boxes__xor(sna, op->dst.pixmap,
 				     op->dst.bo, op->dst.x, op->dst.y,
@@ -1909,10 +1910,9 @@ blt_put_composite_boxes_with_alpha(struct sna *sna,
 		data += (box->y1 + op->u.blt.sy) * pitch;
 		data += (box->x1 + op->u.blt.sx) * bpp;
 
-		dst_priv->gpu_bo =
-			sna_replace__xor(sna, op->dst.pixmap, op->dst.bo,
-					 data, pitch,
-					 0xffffffff, op->u.blt.pixel);
+		assert(dst_priv->gpu_bo == op->dst.bo);
+		sna_replace__xor(sna, op->dst.pixmap, &dst_priv->gpu_bo,
+				 data, pitch, 0xffffffff, op->u.blt.pixel);
 	} else {
 		sna_write_boxes__xor(sna, op->dst.pixmap,
 				     op->dst.bo, op->dst.x, op->dst.y,

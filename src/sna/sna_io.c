@@ -1032,7 +1032,7 @@ fallback:
 				   box, nbox);
 }
 
-static void
+static bool
 write_boxes_inplace__xor(struct kgem *kgem,
 			 const void *src, int stride, int bpp, int16_t src_dx, int16_t src_dy,
 			 struct kgem_bo *bo, int16_t dst_dx, int16_t dst_dy,
@@ -1047,11 +1047,11 @@ write_boxes_inplace__xor(struct kgem *kgem,
 
 	dst = kgem_bo_map(kgem, bo);
 	if (dst == NULL)
-		return;
+		return false;
 
 	sigtrap_assert();
 	if (sigtrap_get())
-		return;
+		return false;
 
 	do {
 		DBG(("%s: (%d, %d) -> (%d, %d) x (%d, %d) [bpp=%d, src_pitch=%d, dst_pitch=%d]\n", __FUNCTION__,
@@ -1082,6 +1082,7 @@ write_boxes_inplace__xor(struct kgem *kgem,
 	} while (--n);
 
 	sigtrap_put();
+	return true;
 }
 
 static bool upload_inplace__xor(struct kgem *kgem,
@@ -1098,7 +1099,7 @@ static bool upload_inplace__xor(struct kgem *kgem,
 	return __upload_inplace(kgem, bo, box, n, bpp);
 }
 
-void sna_write_boxes__xor(struct sna *sna, PixmapPtr dst,
+bool sna_write_boxes__xor(struct sna *sna, PixmapPtr dst,
 			  struct kgem_bo *dst_bo, int16_t dst_dx, int16_t dst_dy,
 			  const void *src, int stride, int16_t src_dx, int16_t src_dy,
 			  const BoxRec *box, int nbox,
@@ -1116,12 +1117,11 @@ void sna_write_boxes__xor(struct sna *sna, PixmapPtr dst,
 
 	if (upload_inplace__xor(kgem, dst_bo, box, nbox, dst->drawable.bitsPerPixel)) {
 fallback:
-		write_boxes_inplace__xor(kgem,
-					 src, stride, dst->drawable.bitsPerPixel, src_dx, src_dy,
-					 dst_bo, dst_dx, dst_dy,
-					 box, nbox,
-					 and, or);
-		return;
+		return write_boxes_inplace__xor(kgem,
+						src, stride, dst->drawable.bitsPerPixel, src_dx, src_dy,
+						dst_bo, dst_dx, dst_dy,
+						box, nbox,
+						and, or);
 	}
 
 	can_blt = kgem_bo_can_blt(kgem, dst_bo) &&
@@ -1294,7 +1294,7 @@ tile:
 				goto tile;
 		}
 
-		return;
+		return true;
 	}
 
 	cmd = XY_SRC_COPY_BLT_CMD;
@@ -1410,6 +1410,7 @@ tile:
 	} while (nbox);
 
 	sna->blt_state.fill_bo = 0;
+	return true;
 }
 
 static bool
@@ -1564,12 +1565,14 @@ err:
 	return false;
 }
 
-struct kgem_bo *sna_replace__xor(struct sna *sna,
-				 PixmapPtr pixmap,
-				 struct kgem_bo *bo,
-				 const void *src, int stride,
-				 uint32_t and, uint32_t or)
+bool
+sna_replace__xor(struct sna *sna,
+		 PixmapPtr pixmap,
+		 struct kgem_bo **_bo,
+		 const void *src, int stride,
+		 uint32_t and, uint32_t or)
 {
+	struct kgem_bo *bo = *_bo;
 	struct kgem *kgem = &sna->kgem;
 	void *dst;
 
@@ -1615,12 +1618,21 @@ struct kgem_bo *sna_replace__xor(struct sna *sna,
 		box.x2 = pixmap->drawable.width;
 		box.y2 = pixmap->drawable.height;
 
-		sna_write_boxes__xor(sna, pixmap,
-				     bo, 0, 0,
-				     src, stride, 0, 0,
-				     &box, 1,
-				     and, or);
+		if (!sna_write_boxes__xor(sna, pixmap,
+					  bo, 0, 0,
+					  src, stride, 0, 0,
+					  &box, 1,
+					  and, or))
+			goto err;
 	}
 
-	return bo;
+	if (bo != *_bo)
+		kgem_bo_destroy(kgem, *_bo);
+	*_bo = bo;
+	return true;
+
+err:
+	if (bo != *_bo)
+		kgem_bo_destroy(kgem, bo);
+	return false;
 }
