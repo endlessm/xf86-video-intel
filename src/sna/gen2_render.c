@@ -1487,6 +1487,7 @@ gen2_composite_picture(struct sna *sna,
 	channel->is_opaque = false;
 	channel->is_affine = true;
 	channel->transform = NULL;
+	channel->card_format = -1;
 
 	if (sna_picture_is_solid(picture, &color))
 		return gen2_composite_solid_init(sna, channel, color);

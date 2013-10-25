@@ -4725,6 +4725,8 @@ bool kgem_check_bo_fenced(struct kgem *kgem, struct kgem_bo *bo)
 		if (kgem->gen < 040 &&
 		    bo->tiling != I915_TILING_NONE &&
 		    (bo->exec->flags & EXEC_OBJECT_NEEDS_FENCE) == 0) {
+			assert(bo->tiling == I915_TILING_X);
+
 			if (kgem->nfence >= kgem->fence_max)
 				return false;
 
@@ -4749,14 +4751,10 @@ bool kgem_check_bo_fenced(struct kgem *kgem, struct kgem_bo *bo)
 		return false;
 	}
 
-	if (kgem->aperture + num_pages(bo) > kgem->aperture_high) {
-		DBG(("%s: final aperture usage (%d) is greater than high water mark (%d)\n",
-		     __FUNCTION__, num_pages(bo) + kgem->aperture, kgem->aperture_high));
-		return aperture_check(kgem, num_pages(bo));
-	}
-
 	assert_tiling(kgem, bo);
 	if (kgem->gen < 040 && bo->tiling != I915_TILING_NONE) {
+		assert(bo->tiling == I915_TILING_X);
+
 		if (kgem->nfence >= kgem->fence_max)
 			return false;
 
@@ -4768,6 +4766,12 @@ bool kgem_check_bo_fenced(struct kgem *kgem, struct kgem_bo *bo)
 		size += kgem_bo_fenced_size(kgem, bo);
 		if (3*size > 2*kgem->aperture_mappable)
 			return false;
+	}
+
+	if (kgem->aperture + num_pages(bo) > kgem->aperture_high) {
+		DBG(("%s: final aperture usage (%d) is greater than high water mark (%d)\n",
+		     __FUNCTION__, num_pages(bo) + kgem->aperture, kgem->aperture_high));
+		return aperture_check(kgem, num_pages(bo));
 	}
 
 	return kgem_flush(kgem, bo->flush);
@@ -4894,6 +4898,7 @@ uint32_t kgem_add_reloc(struct kgem *kgem,
 		if (kgem->gen < 040 && read_write_domain & KGEM_RELOC_FENCED) {
 			if (bo->tiling &&
 			    (bo->exec->flags & EXEC_OBJECT_NEEDS_FENCE) == 0) {
+				assert(bo->tiling == I915_TILING_X);
 				assert(kgem->nfence < kgem->fence_max);
 				kgem->aperture_fenced +=
 					kgem_bo_fenced_size(kgem, bo);

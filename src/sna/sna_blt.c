@@ -2646,6 +2646,10 @@ static bool sna_blt_fill_box(struct sna *sna, uint8_t alu,
 		_kgem_set_mode(kgem, KGEM_BLT);
 	}
 
+	assert(kgem_check_batch(kgem, 6));
+	assert(kgem_check_reloc(kgem, 1));
+	assert(kgem_check_bo_fenced(kgem, bo));
+
 	b = kgem->batch + kgem->nbatch;
 	b[0] = cmd;
 	b[1] = br13;
