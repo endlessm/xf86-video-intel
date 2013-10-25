@@ -2641,13 +2641,14 @@ static bool sna_blt_fill_box(struct sna *sna, uint8_t alu,
 	    !kgem_check_reloc(kgem, 1) ||
 	    !kgem_check_bo_fenced(kgem, bo)) {
 		kgem_submit(kgem);
-		assert(kgem_check_bo_fenced(&sna->kgem, bo));
+		if (!kgem_check_bo_fenced(&sna->kgem, bo))
+			return false;
+
 		_kgem_set_mode(kgem, KGEM_BLT);
 	}
 
 	assert(kgem_check_batch(kgem, 6));
 	assert(kgem_check_reloc(kgem, 1));
-	assert(kgem_check_bo_fenced(kgem, bo));
 
 	b = kgem->batch + kgem->nbatch;
 	b[0] = cmd;
