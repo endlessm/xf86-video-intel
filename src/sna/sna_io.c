@@ -1049,6 +1049,10 @@ write_boxes_inplace__xor(struct kgem *kgem,
 	if (dst == NULL)
 		return;
 
+	sigtrap_assert();
+	if (sigtrap_get())
+		return;
+
 	do {
 		DBG(("%s: (%d, %d) -> (%d, %d) x (%d, %d) [bpp=%d, src_pitch=%d, dst_pitch=%d]\n", __FUNCTION__,
 		     box->x1 + src_dx, box->y1 + src_dy,
@@ -1076,6 +1080,8 @@ write_boxes_inplace__xor(struct kgem *kgem,
 			   and, or);
 		box++;
 	} while (--n);
+
+	sigtrap_put();
 }
 
 static bool upload_inplace__xor(struct kgem *kgem,
@@ -1591,17 +1597,17 @@ struct kgem_bo *sna_replace__xor(struct sna *sna,
 		}
 	}
 
-	if (kgem_bo_is_mappable(kgem, bo)) {
-		dst = kgem_bo_map(kgem, bo);
-		if (dst) {
-			memcpy_xor(src, dst, pixmap->drawable.bitsPerPixel,
-				   stride, bo->pitch,
-				   0, 0,
-				   0, 0,
-				   pixmap->drawable.width,
-				   pixmap->drawable.height,
-				   and, or);
-		}
+	if (kgem_bo_is_mappable(kgem, bo) &&
+	    (dst = kgem_bo_map(kgem, bo)) != NULL &&
+	    sigtrap_get() == 0) {
+		memcpy_xor(src, dst, pixmap->drawable.bitsPerPixel,
+			   stride, bo->pitch,
+			   0, 0,
+			   0, 0,
+			   pixmap->drawable.width,
+			   pixmap->drawable.height,
+			   and, or);
+		sigtrap_put();
 	} else {
 		BoxRec box;
 
