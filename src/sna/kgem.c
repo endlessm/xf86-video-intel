@@ -4706,7 +4706,7 @@ bool kgem_check_bo(struct kgem *kgem, ...)
 	if (num_pages + kgem->aperture > kgem->aperture_high) {
 		DBG(("%s: final aperture usage (%d) is greater than high water mark (%d)\n",
 		     __FUNCTION__, num_pages + kgem->aperture, kgem->aperture_high));
-		return aperture_check(kgem, num_pages);
+		return aperture_check(kgem, num_pages + kgem->aperture);
 	}
 
 	return kgem_flush(kgem, flush);
@@ -4730,13 +4730,13 @@ bool kgem_check_bo_fenced(struct kgem *kgem, struct kgem_bo *bo)
 			if (kgem->nfence >= kgem->fence_max)
 				return false;
 
-			if (3*kgem->aperture_fenced > kgem->aperture_mappable &&
+			if (3*kgem->aperture_fenced > (kgem->aperture_mappable - kgem->aperture) &&
 			    kgem_ring_is_idle(kgem, kgem->ring))
 				return false;
 
 			size = kgem->aperture_fenced;
 			size += kgem_bo_fenced_size(kgem, bo);
-			if (3*size > 2*kgem->aperture_mappable)
+			if (3*size > 2*(kgem->aperture_mappable - kgem->aperture))
 				return false;
 		}
 
@@ -4758,20 +4758,20 @@ bool kgem_check_bo_fenced(struct kgem *kgem, struct kgem_bo *bo)
 		if (kgem->nfence >= kgem->fence_max)
 			return false;
 
-		if (3*kgem->aperture_fenced > kgem->aperture_mappable &&
+		if (3*kgem->aperture_fenced > (kgem->aperture_mappable - kgem->aperture) &&
 		    kgem_ring_is_idle(kgem, kgem->ring))
 			return false;
 
 		size = kgem->aperture_fenced;
 		size += kgem_bo_fenced_size(kgem, bo);
-		if (3*size > 2*kgem->aperture_mappable)
+		if (3*size > 2*(kgem->aperture_mappable - kgem->aperture))
 			return false;
 	}
 
-	if (kgem->aperture + num_pages(bo) > kgem->aperture_high) {
+	if (kgem->aperture + num_pages(bo) > kgem->aperture_high - kgem->aperture_fenced) {
 		DBG(("%s: final aperture usage (%d) is greater than high water mark (%d)\n",
 		     __FUNCTION__, num_pages(bo) + kgem->aperture, kgem->aperture_high));
-		return aperture_check(kgem, num_pages(bo));
+		return aperture_check(kgem, num_pages(bo) + kgem->aperture + kgem->aperture_fenced);
 	}
 
 	return kgem_flush(kgem, bo->flush);
@@ -4826,11 +4826,11 @@ bool kgem_check_many_bo_fenced(struct kgem *kgem, ...)
 		if (kgem->nfence + num_fence > kgem->fence_max)
 			return false;
 
-		if (3*kgem->aperture_fenced > kgem->aperture_mappable &&
+		if (3*kgem->aperture_fenced > (kgem->aperture_mappable - kgem->aperture) &&
 		    kgem_ring_is_idle(kgem, kgem->ring))
 			return false;
 
-		if (3*(fenced_size + kgem->aperture_fenced) > 2*kgem->aperture_mappable)
+		if (3*(fenced_size + kgem->aperture_fenced) > 2*(kgem->aperture_mappable - kgem->aperture))
 			return false;
 	}
 
@@ -4840,10 +4840,10 @@ bool kgem_check_many_bo_fenced(struct kgem *kgem, ...)
 	if (kgem->nexec + num_exec >= KGEM_EXEC_SIZE(kgem))
 		return false;
 
-	if (num_pages + kgem->aperture > kgem->aperture_high) {
+	if (num_pages + kgem->aperture > kgem->aperture_high - kgem->aperture_fenced) {
 		DBG(("%s: final aperture usage (%d) is greater than high water mark (%d)\n",
 		     __FUNCTION__, num_pages + kgem->aperture, kgem->aperture_high));
-		return aperture_check(kgem, num_pages);
+		return aperture_check(kgem, num_pages + kgem->aperture + kgem->aperture_fenced);
 	}
 
 	return kgem_flush(kgem, flush);
