@@ -4495,13 +4495,26 @@ void sna_mode_redisplay(struct sna *sna)
 				arg.reserved = 0;
 
 				if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_PAGE_FLIP, &arg)) {
+					BoxRec box;
+
 					DBG(("%s: flip [fb=%d] on crtc %d [%d, pipe=%d] failed - %d\n",
 					     __FUNCTION__, arg.fb_id, i, sna_crtc->id, sna_crtc->pipe, errno));
 disable1:
-					xf86DrvMsg(crtc->scrn->scrnIndex, X_ERROR,
-						   "%s: page flipping failed, disabling CRTC:%d (pipe=%d)\n",
-						   __FUNCTION__, sna_crtc->id, sna_crtc->pipe);
-					sna_crtc_disable(crtc);
+					box.x1 = 0;
+					box.y1 = 0;
+					box.x2 = crtc->mode.HDisplay;
+					box.y2 = crtc->mode.VDisplay;
+
+					if (!sna->render.copy_boxes(sna, GXcopy,
+								    sna->front, bo, 0, 0,
+								    sna->front, sna_crtc->bo, 0, 0,
+								    &box, 1, COPY_LAST)) {
+						xf86DrvMsg(crtc->scrn->scrnIndex, X_ERROR,
+							   "%s: page flipping failed, disabling CRTC:%d (pipe=%d)\n",
+							   __FUNCTION__, sna_crtc->id, sna_crtc->pipe);
+						sna_crtc_disable(crtc);
+					}
+
 					continue;
 				}
 
@@ -4554,6 +4567,25 @@ disable1:
 				DBG(("%s: flip [fb=%d] on crtc %d [%d, pipe=%d] failed - %d\n",
 				     __FUNCTION__, arg.fb_id, i, crtc->id, crtc->pipe, errno));
 disable2:
+				if (sna->mode.shadow_flip == 0) {
+					BoxRec box;
+
+					box.x1 = 0;
+					box.y1 = 0;
+					box.x2 = sna->scrn->virtualX;
+					box.y2 = sna->scrn->virtualY;
+
+					if (sna->render.copy_boxes(sna, GXcopy,
+								    sna->front, new, 0, 0,
+								    sna->front, old, 0, 0,
+								    &box, 1, COPY_LAST)) {
+						kgem_submit(&sna->kgem);
+						RegionEmpty(region);
+					}
+
+					return;
+				}
+
 				xf86DrvMsg(sna->scrn->scrnIndex, X_ERROR,
 					   "%s: page flipping failed, disabling CRTC:%d (pipe=%d)\n",
 					   __FUNCTION__, crtc->id, crtc->pipe);
