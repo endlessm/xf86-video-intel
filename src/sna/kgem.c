@@ -4674,6 +4674,7 @@ bool kgem_check_bo(struct kgem *kgem, ...)
 	int num_exec = 0;
 	int num_pages = 0;
 	bool flush = false;
+	bool active = true;
 
 	va_start(ap, kgem);
 	while ((bo = va_arg(ap, struct kgem_bo *))) {
@@ -4691,6 +4692,7 @@ bool kgem_check_bo(struct kgem *kgem, ...)
 		num_exec++;
 
 		flush |= bo->flush;
+		active &= bo->rq != NULL;
 	}
 	va_end(ap);
 
@@ -4712,6 +4714,9 @@ bool kgem_check_bo(struct kgem *kgem, ...)
 		if (!aperture_check(kgem, num_pages + kgem->aperture))
 			return false;
 	}
+
+	if (active)
+		return true;
 
 	return kgem_flush(kgem, flush);
 }
@@ -4793,6 +4798,9 @@ bool kgem_check_bo_fenced(struct kgem *kgem, struct kgem_bo *bo)
 			return false;
 	}
 
+	if (bo->rq)
+		return true;
+
 	return kgem_flush(kgem, bo->flush);
 }
 
@@ -4805,6 +4813,7 @@ bool kgem_check_many_bo_fenced(struct kgem *kgem, ...)
 	int num_pages = 0;
 	int fenced_size = 0;
 	bool flush = false;
+	bool active = true;
 
 	va_start(ap, kgem);
 	while ((bo = va_arg(ap, struct kgem_bo *))) {
@@ -4838,6 +4847,7 @@ bool kgem_check_many_bo_fenced(struct kgem *kgem, ...)
 		}
 
 		flush |= bo->flush;
+		active &= bo->rq != NULL;
 	}
 	va_end(ap);
 
@@ -4875,6 +4885,9 @@ bool kgem_check_many_bo_fenced(struct kgem *kgem, ...)
 		if (!aperture_check(kgem, num_pages + kgem->aperture + kgem->aperture_fenced))
 			return false;
 	}
+
+	if (active)
+		return true;
 
 	return kgem_flush(kgem, flush);
 }
