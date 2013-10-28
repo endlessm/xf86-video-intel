@@ -63,6 +63,11 @@
 
 #include <xf86drm.h>
 
+#ifdef HAVE_VALGRIND
+#include <valgrind.h>
+#include <memcheck.h>
+#endif
+
 /* Minor discrepancy between 32-bit/64-bit ABI in old kernels */
 union compat_mode_get_connector{
 	struct drm_mode_get_connector conn;
@@ -1752,6 +1757,8 @@ sna_crtc_find_plane(struct sna *sna, int pipe)
 	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPLANERESOURCES, &r))
 		r.count_planes = 0;
 
+	VG(VALGRIND_MAKE_MEM_DEFINED(planes, sizeof(uint32_t)*r.count_planes));
+
 	for (i = 0; i < r.count_planes; i++) {
 		struct drm_mode_get_plane p;
 
@@ -2704,6 +2711,8 @@ sna_output_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 
 	/* statically constructed property list */
 	assert(sna_output->num_props == compat_conn.conn.count_props);
+	VG(VALGRIND_MAKE_MEM_DEFINED(sna_output->prop_ids, sizeof(uint32_t)*sna_output->num_props));
+	VG(VALGRIND_MAKE_MEM_DEFINED(sna_output->prop_values, sizeof(uint64_t)*sna_output->num_props));
 
 	if (compat_conn.conn.connector_type < ARRAY_SIZE(output_names))
 		output_name = output_names[compat_conn.conn.connector_type];
@@ -3202,6 +3211,7 @@ static void crtc_init_gamma(xf86CrtcPtr crtc)
 		lut.green = (uintptr_t)(gamma + 256);
 		lut.blue = (uintptr_t)(gamma + 2 * 256);
 		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETGAMMA, &lut) == 0) {
+			VG(VALGRIND_MAKE_MEM_DEFINED(gamma, 3*256*sizeof(gamma[0])));
 			gamma_set =
 				gamma[256 - 1] &&
 				gamma[2*256 - 1] &&

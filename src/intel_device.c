@@ -67,8 +67,9 @@ static int intel_device_key = -1;
 static int __intel_get_device_id(int fd)
 {
 	struct drm_i915_getparam gp;
-	int devid;
+	int devid = 0;
 
+	memset(&gp, 0, sizeof(gp));
 	gp.param = I915_PARAM_CHIPSET_ID;
 	gp.value = &devid;
 
