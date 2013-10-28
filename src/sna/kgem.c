@@ -1368,6 +1368,7 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 	     kgem->max_upload_tile_size, kgem->max_copy_tile_size));
 
 	/* Convert the aperture thresholds to pages */
+	kgem->aperture_mappable /= PAGE_SIZE;
 	kgem->aperture_low /= PAGE_SIZE;
 	kgem->aperture_high /= PAGE_SIZE;
 	kgem->aperture_total /= PAGE_SIZE;
@@ -2808,10 +2809,10 @@ void _kgem_submit(struct kgem *kgem)
 	batch_end = kgem_end_batch(kgem);
 	kgem_sna_flush(kgem);
 
-	DBG(("batch[%d/%d, flags=%x]: %d %d %d %d, nreloc=%d, nexec=%d, nfence=%d, aperture=%d\n",
+	DBG(("batch[%d/%d, flags=%x]: %d %d %d %d, nreloc=%d, nexec=%d, nfence=%d, aperture=%d [fenced=%]\n",
 	     kgem->mode, kgem->ring, kgem->batch_flags,
 	     batch_end, kgem->nbatch, kgem->surface, kgem->batch_size,
-	     kgem->nreloc, kgem->nexec, kgem->nfence, kgem->aperture));
+	     kgem->nreloc, kgem->nexec, kgem->nfence, kgem->aperture, kgem->aperture_fenced));
 
 	assert(kgem->nbatch <= kgem->batch_size);
 	assert(kgem->nbatch <= kgem->surface);
@@ -2902,9 +2903,9 @@ void _kgem_submit(struct kgem *kgem)
 
 #if !NDEBUG
 				ret = errno;
-				ErrorF("batch[%d/%d]: %d %d %d, nreloc=%d, nexec=%d, nfence=%d, aperture=%d: errno=%d\n",
+				ErrorF("batch[%d/%d]: %d %d %d, nreloc=%d, nexec=%d, nfence=%d, aperture=%d, fenced=%d, high=%d: errno=%d\n",
 				       kgem->mode, kgem->ring, batch_end, kgem->nbatch, kgem->surface,
-				       kgem->nreloc, kgem->nexec, kgem->nfence, kgem->aperture, errno);
+				       kgem->nreloc, kgem->nexec, kgem->nfence, kgem->aperture, kgem->aperture_fenced, kgem->aperture_high, errno);
 
 				for (i = 0; i < kgem->nexec; i++) {
 					struct kgem_bo *bo, *found = NULL;
@@ -3797,7 +3798,7 @@ unsigned kgem_can_create_2d(struct kgem *kgem,
 			flags |= KGEM_CAN_CREATE_CPU;
 		if (size <= kgem->max_gpu_size)
 			flags |= KGEM_CAN_CREATE_GPU;
-		if (size <= kgem->aperture_mappable/4)
+		if (size <= PAGE_SIZE*kgem->aperture_mappable/4)
 			flags |= KGEM_CAN_CREATE_GTT;
 		if (size > kgem->large_object_size)
 			flags |= KGEM_CAN_CREATE_LARGE;
@@ -3817,7 +3818,7 @@ unsigned kgem_can_create_2d(struct kgem *kgem,
 		DBG(("%s: tiled[%d] size=%d\n", __FUNCTION__, tiling, size));
 		if (size > 0 && size <= kgem->max_gpu_size)
 			flags |= KGEM_CAN_CREATE_GPU;
-		if (size > 0 && size <= kgem->aperture_mappable/4)
+		if (size > 0 && size <= PAGE_SIZE*kgem->aperture_mappable/4)
 			flags |= KGEM_CAN_CREATE_GTT;
 		if (size > kgem->large_object_size)
 			flags |= KGEM_CAN_CREATE_LARGE;
@@ -3840,10 +3841,10 @@ inline int kgem_bo_fenced_size(struct kgem *kgem, struct kgem_bo *bo)
 	assert(kgem->gen < 040);
 
 	if (kgem->gen < 030)
-		size = 512 * 1024;
+		size = 512 * 1024 / PAGE_SIZE;
 	else
-		size = 1024 * 1024;
-	while (size < bytes(bo))
+		size = 1024 * 1024 / PAGE_SIZE;
+	while (size < num_pages(bo))
 		size *= 2;
 
 	return size;
@@ -4715,8 +4716,6 @@ bool kgem_check_bo(struct kgem *kgem, ...)
 
 bool kgem_check_bo_fenced(struct kgem *kgem, struct kgem_bo *bo)
 {
-	uint32_t size;
-
 	assert(bo->refcnt);
 	while (bo->proxy)
 		bo = bo->proxy;
@@ -4726,18 +4725,26 @@ bool kgem_check_bo_fenced(struct kgem *kgem, struct kgem_bo *bo)
 		if (kgem->gen < 040 &&
 		    bo->tiling != I915_TILING_NONE &&
 		    (bo->exec->flags & EXEC_OBJECT_NEEDS_FENCE) == 0) {
+			uint32_t size;
+
 			assert(bo->tiling == I915_TILING_X);
 
 			if (kgem->nfence >= kgem->fence_max)
 				return false;
 
-			if (3*kgem->aperture_fenced > (kgem->aperture_mappable - kgem->aperture) &&
+			size = 3*kgem->aperture_fenced;
+			if (kgem->aperture_total == kgem->aperture_mappable)
+				size += kgem->aperture;
+			if (size > kgem->aperture_mappable &&
 			    kgem_ring_is_idle(kgem, kgem->ring))
 				return false;
 
 			size = kgem->aperture_fenced;
 			size += kgem_bo_fenced_size(kgem, bo);
-			if (3*size > 2*(kgem->aperture_mappable - kgem->aperture))
+			size *= 2;
+			if (kgem->aperture_total == kgem->aperture_mappable)
+				size += kgem->aperture;
+			if (size > kgem->aperture_mappable)
 				return false;
 		}
 
@@ -4754,22 +4761,30 @@ bool kgem_check_bo_fenced(struct kgem *kgem, struct kgem_bo *bo)
 
 	assert_tiling(kgem, bo);
 	if (kgem->gen < 040 && bo->tiling != I915_TILING_NONE) {
+		uint32_t size;
+
 		assert(bo->tiling == I915_TILING_X);
 
 		if (kgem->nfence >= kgem->fence_max)
 			return false;
 
-		if (3*kgem->aperture_fenced > (kgem->aperture_mappable - kgem->aperture) &&
+		size = 3*kgem->aperture_fenced;
+		if (kgem->aperture_total == kgem->aperture_mappable)
+			size += kgem->aperture;
+		if (size > kgem->aperture_mappable &&
 		    kgem_ring_is_idle(kgem, kgem->ring))
 			return false;
 
 		size = kgem->aperture_fenced;
 		size += kgem_bo_fenced_size(kgem, bo);
-		if (3*size > 2*(kgem->aperture_mappable - kgem->aperture))
+		size *= 2;
+		if (kgem->aperture_total == kgem->aperture_mappable)
+			size += kgem->aperture;
+		if (size > kgem->aperture_mappable)
 			return false;
 	}
 
-	if (kgem->aperture + num_pages(bo) > kgem->aperture_high - kgem->aperture_fenced) {
+	if (kgem->aperture + kgem->aperture_fenced + num_pages(bo) > kgem->aperture_high) {
 		DBG(("%s: final aperture usage (%d) is greater than high water mark (%d)\n",
 		     __FUNCTION__, num_pages(bo) + kgem->aperture, kgem->aperture_high));
 		if (!aperture_check(kgem, num_pages(bo) + kgem->aperture + kgem->aperture_fenced))
@@ -4825,14 +4840,24 @@ bool kgem_check_many_bo_fenced(struct kgem *kgem, ...)
 	va_end(ap);
 
 	if (num_fence) {
+		uint32_t size;
+
 		if (kgem->nfence + num_fence > kgem->fence_max)
 			return false;
 
-		if (3*kgem->aperture_fenced > (kgem->aperture_mappable - kgem->aperture) &&
+		size = 3*kgem->aperture_fenced;
+		if (kgem->aperture_total == kgem->aperture_mappable)
+			size += kgem->aperture;
+		if (size > kgem->aperture_mappable &&
 		    kgem_ring_is_idle(kgem, kgem->ring))
 			return false;
 
-		if (3*(fenced_size + kgem->aperture_fenced) > 2*(kgem->aperture_mappable - kgem->aperture))
+		size = kgem->aperture_fenced;
+		size += fenced_size;
+		size *= 2;
+		if (kgem->aperture_total == kgem->aperture_mappable)
+			size += kgem->aperture;
+		if (size > kgem->aperture_mappable)
 			return false;
 	}
 
@@ -5730,9 +5755,9 @@ struct kgem_bo *kgem_create_buffer(struct kgem *kgem,
 		alloc = PAGE_ALIGN(size);
 	assert(alloc);
 
+	alloc /= PAGE_SIZE;
 	if (alloc > kgem->aperture_mappable / 4)
 		flags &= ~KGEM_BUFFER_INPLACE;
-	alloc /= PAGE_SIZE;
 
 	if (kgem->has_llc &&
 	    (flags & KGEM_BUFFER_WRITE_INPLACE) != KGEM_BUFFER_WRITE_INPLACE) {
