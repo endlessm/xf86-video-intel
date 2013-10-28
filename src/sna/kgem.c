@@ -4643,6 +4643,8 @@ static bool aperture_check(struct kgem *kgem, unsigned num_pages)
 		aperture.aper_available_size -= 4 * 1024 * 1024;
 		if (kgem->gen < 040)
 			aperture.aper_available_size -= kgem->aperture_fenced * PAGE_SIZE;
+		if (!kgem->has_llc)
+			aperture.aper_available_size -= 2 * kgem->nexec * PAGE_SIZE;
 
 		if (num_pages < aperture.aper_available_size / PAGE_SIZE)
 			return true;
