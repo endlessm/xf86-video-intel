@@ -4549,9 +4549,12 @@ sna_put_xybitmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 		src_stride -= bw;
 		do {
 			int i = bw;
+			assert(src >= (uint8_t *)bits);
 			do {
 				*dst++ = byte_reverse(*src++);
 			} while (--i);
+			assert(src <= (uint8_t *)bits + BitmapBytePad(w) * h);
+			assert(dst <= (uint8_t *)ptr + kgem_bo_size(upload));
 			dst += bstride;
 			src += src_stride;
 		} while (--bh);
@@ -4679,9 +4682,12 @@ sna_put_xypixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 			src_stride -= bw;
 			do {
 				int j = bw;
+				assert(src >= (uint8_t *)bits);
 				do {
 					*dst++ = byte_reverse(*src++);
 				} while (--j);
+				assert(src <= (uint8_t *)bits + BitmapBytePad(w) * h);
+				assert(dst <= (uint8_t *)ptr + kgem_bo_size(upload));
 				dst += bstride;
 				src += src_stride;
 			} while (--bh);
@@ -7401,11 +7407,13 @@ sna_copy_bitmap_blt(DrawablePtr _bitmap, DrawablePtr drawable, GCPtr gc,
 			src_stride -= bstride;
 			do {
 				int i = bstride;
+				assert(src >= (uint8_t *)bitmap->devPrivate.ptr);
 				do {
 					*dst++ = byte_reverse(*src++);
 					*dst++ = byte_reverse(*src++);
 					i -= 2;
 				} while (i);
+				assert(src <= (uint8_t *)bitmap->devPrivate.ptr + bitmap->devKind * bitmap->drawable.height);
 				src += src_stride;
 			} while (--bh);
 		} else {
@@ -7457,11 +7465,14 @@ sna_copy_bitmap_blt(DrawablePtr _bitmap, DrawablePtr drawable, GCPtr gc,
 			src_stride -= bstride;
 			do {
 				int i = bstride;
+				assert(src >= (uint8_t *)bitmap->devPrivate.ptr);
 				do {
 					*dst++ = byte_reverse(*src++);
 					*dst++ = byte_reverse(*src++);
 					i -= 2;
 				} while (i);
+				assert(src <= (uint8_t *)bitmap->devPrivate.ptr + bitmap->devKind * bitmap->drawable.height);
+				assert(dst <= (uint8_t *)ptr + kgem_bo_size(upload));
 				src += src_stride;
 			} while (--bh);
 
