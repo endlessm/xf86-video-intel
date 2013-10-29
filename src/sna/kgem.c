@@ -1801,7 +1801,7 @@ inline static void kgem_bo_remove_from_active(struct kgem *kgem,
 
 	list_del(&bo->list);
 	assert(bo->rq != NULL);
-	if (bo->rq == (void *)kgem) {
+	if (RQ(bo->rq) == (void *)kgem) {
 		assert(bo->exec == NULL);
 		list_del(&bo->request);
 	}
@@ -2119,7 +2119,7 @@ static bool kgem_retire__flushing(struct kgem *kgem)
 	bool retired = false;
 
 	list_for_each_entry_safe(bo, next, &kgem->flushing, request) {
-		assert(bo->rq == (void *)kgem);
+		assert(RQ(bo->rq) == (void *)kgem);
 		assert(bo->exec == NULL);
 
 		if (__kgem_busy(kgem, bo->handle))
@@ -3378,7 +3378,7 @@ retry_large:
 				goto discard;
 
 			list_del(&bo->list);
-			if (bo->rq == (void *)kgem) {
+			if (RQ(bo->rq) == (void *)kgem) {
 				assert(bo->exec == NULL);
 				list_del(&bo->request);
 			}
