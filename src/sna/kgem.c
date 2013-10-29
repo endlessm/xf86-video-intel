@@ -5787,6 +5787,7 @@ struct kgem_bo *kgem_create_buffer(struct kgem *kgem,
 			assert(bo->base.refcnt >= 1);
 			assert(bo->mmapped);
 			assert(bo->mmapped == MMAPPED_GTT || kgem->has_llc || bo->base.snoop);
+			assert(bo->base.rq);
 
 			if ((bo->write & ~flags) & KGEM_BUFFER_INPLACE && !bo->base.snoop) {
 				DBG(("%s: skip write %x buffer, need %x\n",
@@ -5799,6 +5800,27 @@ struct kgem_bo *kgem_create_buffer(struct kgem *kgem,
 				     __FUNCTION__, bo->used, size, bytes(&bo->base)));
 				offset = bo->used;
 				bo->used += size;
+				list_move(&bo->base.list, &kgem->batch_buffers);
+				goto done;
+			}
+
+			if (size <= bytes(&bo->base) &&
+			    !__kgem_busy(kgem, bo->base.handle)) {
+				DBG(("%s: reusing whole buffer? size=%d, total=%d\n",
+				     __FUNCTION__, size, bytes(&bo->base)));
+				__kgem_bo_clear_busy(&bo->base);
+
+				switch (bo->mmapped) {
+				case MMAPPED_CPU:
+					kgem_bo_sync__cpu(kgem, &bo->base);
+					break;
+				case MMAPPED_GTT:
+					kgem_bo_sync__gtt(kgem, &bo->base);
+					break;
+				}
+
+				offset = 0;
+				bo->used = size;
 				list_move(&bo->base.list, &kgem->batch_buffers);
 				goto done;
 			}
