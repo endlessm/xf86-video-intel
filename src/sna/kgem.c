@@ -2452,14 +2452,12 @@ static void kgem_finish_buffers(struct kgem *kgem)
 			    (kgem->has_llc || bo->mmapped == MMAPPED_GTT || bo->base.snoop)) {
 				DBG(("%s: retaining upload buffer (%d/%d)\n",
 				     __FUNCTION__, bo->used, bytes(&bo->base)));
-				assert(bo->base.rq);
-				assert(used >= bo->used);
 				bo->used = used;
 				if (bo->base.refcnt == 1) {
 					list_move(&bo->base.list,
 						  &kgem->active_buffers);
+					kgem->need_retire = true;
 				}
-				kgem->need_retire = true;
 				continue;
 			}
 			DBG(("%s: discarding mmapped buffer, used=%d, map type=%d\n",
@@ -2467,7 +2465,7 @@ static void kgem_finish_buffers(struct kgem *kgem)
 			goto decouple;
 		}
 
-		if (!bo->used) {
+		if (!bo->used || !bo->base.exec) {
 			/* Unless we replace the handle in the execbuffer,
 			 * then this bo will become active. So decouple it
 			 * from the buffer list and track it in the normal
