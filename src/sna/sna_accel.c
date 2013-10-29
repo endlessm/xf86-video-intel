@@ -5065,7 +5065,7 @@ sna_self_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 fallback:
 		DBG(("%s: fallback", __FUNCTION__));
 		if (!sna_pixmap_move_to_cpu(pixmap, MOVE_READ | MOVE_WRITE))
-			goto out;
+			goto free_boxes;
 
 		if (alu == GXcopy && pixmap->drawable.bitsPerPixel >= 8) {
 			if (sigtrap_get() == 0) {
@@ -5105,6 +5105,7 @@ out:
 		}
 	}
 
+free_boxes:
 	if (box != RegionRects(region))
 		free(box);
 }
