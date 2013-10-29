@@ -2095,6 +2095,10 @@ static bool kgem_retire__buffers(struct kgem *kgem)
 					struct kgem_buffer,
 					base.list);
 
+		DBG(("%s: handle=%d, busy? %d [%d]\n",
+		     __FUNCTION__, bo->base.handle, bo->base.rq != NULL, bo->base.exec != NULL));
+
+		assert(bo->base.exec == NULL || RQ(bo->base.rq) == kgem->next_request);
 		if (bo->base.rq)
 			break;
 
@@ -2317,6 +2321,18 @@ bool __kgem_ring_is_idle(struct kgem *kgem, int ring)
 	return true;
 }
 
+#ifndef NDEBUG
+static void kgem_commit__check_buffers(struct kgem *kgem)
+{
+	struct kgem_buffer *bo;
+
+	list_for_each_entry(bo, &kgem->active_buffers, base.list)
+		assert(bo->base.exec == NULL);
+}
+#else
+#define kgem_commit__check_buffers(kgem)
+#endif
+
 static void kgem_commit(struct kgem *kgem)
 {
 	struct kgem_request *rq = kgem->next_request;
@@ -2350,7 +2366,6 @@ static void kgem_commit(struct kgem *kgem)
 
 		if (bo->proxy) {
 			/* proxies are not used for domain tracking */
-			bo->exec = NULL;
 			__kgem_bo_clear_busy(bo);
 		}
 
@@ -2384,6 +2399,8 @@ static void kgem_commit(struct kgem *kgem)
 	}
 
 	kgem->next_request = NULL;
+
+	kgem_commit__check_buffers(kgem);
 }
 
 static void kgem_close_list(struct kgem *kgem, struct list *head)
@@ -2413,7 +2430,7 @@ static void kgem_finish_buffers(struct kgem *kgem)
 		assert(bo->base.io);
 		assert(bo->base.refcnt >= 1);
 
-		if (!bo->base.exec) {
+		if (bo->base.refcnt > 1 && !bo->base.exec) {
 			DBG(("%s: skipping unattached handle=%d, used=%d\n",
 			     __FUNCTION__, bo->base.handle, bo->used));
 			continue;
@@ -2438,8 +2455,10 @@ static void kgem_finish_buffers(struct kgem *kgem)
 				assert(bo->base.rq);
 				assert(used >= bo->used);
 				bo->used = used;
-				list_move(&bo->base.list,
-					  &kgem->active_buffers);
+				if (bo->base.refcnt == 1) {
+					list_move(&bo->base.list,
+						  &kgem->active_buffers);
+				}
 				kgem->need_retire = true;
 				continue;
 			}
@@ -2850,7 +2869,7 @@ void _kgem_submit(struct kgem *kgem)
 	batch_end = kgem_end_batch(kgem);
 	kgem_sna_flush(kgem);
 
-	DBG(("batch[%d/%d, flags=%x]: %d %d %d %d, nreloc=%d, nexec=%d, nfence=%d, aperture=%d [fenced=%]\n",
+	DBG(("batch[%d/%d, flags=%x]: %d %d %d %d, nreloc=%d, nexec=%d, nfence=%d, aperture=%d [fenced=%d]\n",
 	     kgem->mode, kgem->ring, kgem->batch_flags,
 	     batch_end, kgem->nbatch, kgem->surface, kgem->batch_size,
 	     kgem->nreloc, kgem->nexec, kgem->nfence, kgem->aperture, kgem->aperture_fenced));
@@ -2998,9 +3017,8 @@ void _kgem_submit(struct kgem *kgem)
 #endif
 			}
 		}
-
-		kgem_commit(kgem);
 	}
+	kgem_commit(kgem);
 	if (kgem->wedged)
 		kgem_cleanup(kgem);
 
@@ -5786,9 +5804,9 @@ struct kgem_bo *kgem_create_buffer(struct kgem *kgem,
 		list_for_each_entry(bo, &kgem->active_buffers, base.list) {
 			assert(bo->base.io);
 			assert(bo->base.refcnt >= 1);
+			assert(bo->base.exec == NULL);
 			assert(bo->mmapped);
 			assert(bo->mmapped == MMAPPED_GTT || kgem->has_llc || bo->base.snoop);
-			assert(bo->base.rq);
 
 			if ((bo->write & ~flags) & KGEM_BUFFER_INPLACE && !bo->base.snoop) {
 				DBG(("%s: skip write %x buffer, need %x\n",
@@ -5806,10 +5824,12 @@ struct kgem_bo *kgem_create_buffer(struct kgem *kgem,
 			}
 
 			if (size <= bytes(&bo->base) &&
-			    !__kgem_busy(kgem, bo->base.handle)) {
+			    (bo->base.rq == NULL ||
+			     !__kgem_busy(kgem, bo->base.handle))) {
 				DBG(("%s: reusing whole buffer? size=%d, total=%d\n",
 				     __FUNCTION__, size, bytes(&bo->base)));
 				__kgem_bo_clear_busy(&bo->base);
+				kgem_buffer_release(kgem, bo);
 
 				switch (bo->mmapped) {
 				case MMAPPED_CPU:
