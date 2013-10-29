@@ -713,8 +713,7 @@ void kgem_buffer_read_sync(struct kgem *kgem, struct kgem_bo *bo);
 void kgem_throttle(struct kgem *kgem);
 #define MAX_INACTIVE_TIME 10
 bool kgem_expire_cache(struct kgem *kgem);
-void kgem_purge_cache(struct kgem *kgem);
-void kgem_cleanup_cache(struct kgem *kgem);
+bool kgem_cleanup_cache(struct kgem *kgem);
 
 void kgem_clean_scanout_cache(struct kgem *kgem);
 void kgem_clean_large_cache(struct kgem *kgem);

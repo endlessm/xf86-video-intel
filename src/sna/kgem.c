@@ -344,10 +344,8 @@ retry_gtt:
 		if (kgem_expire_cache(kgem))
 			goto retry_gtt;
 
-		if (kgem->need_expire) {
-			kgem_cleanup_cache(kgem);
+		if (kgem_cleanup_cache(kgem))
 			goto retry_gtt;
-		}
 
 		ErrorF("%s: failed to retrieve GTT offset for handle=%d: %d\n",
 		       __FUNCTION__, bo->handle, err);
@@ -365,10 +363,8 @@ retry_mmap:
 		if (__kgem_throttle_retire(kgem, 0))
 			goto retry_mmap;
 
-		if (kgem->need_expire) {
-			kgem_cleanup_cache(kgem);
+		if (kgem_cleanup_cache(kgem))
 			goto retry_mmap;
-		}
 
 		ErrorF("%s: failed to mmap handle=%d, %d bytes, into GTT domain: %d\n",
 		       __FUNCTION__, bo->handle, bytes(bo), err);
@@ -485,8 +481,23 @@ bool kgem_bo_write(struct kgem *kgem, struct kgem_bo *bo,
 	ASSERT_IDLE(kgem, bo->handle);
 
 	assert(length <= bytes(bo));
-	if (gem_write(kgem->fd, bo->handle, 0, length, data))
+retry:
+	if (gem_write(kgem->fd, bo->handle, 0, length, data)) {
+		int err = errno;
+
+		assert(err != EINVAL);
+
+		(void)__kgem_throttle_retire(kgem, 0);
+		if (kgem_expire_cache(kgem))
+			goto retry;
+
+		if (kgem_cleanup_cache(kgem))
+			goto retry;
+
+		ErrorF("%s: failed to write %d bytes into BO handle=%d: %d\n",
+		       __FUNCTION__, length, bo->handle, err);
 		return false;
+	}
 
 	DBG(("%s: flush=%d, domain=%d\n", __FUNCTION__, bo->flush, bo->domain));
 	if (bo->exec == NULL) {
@@ -2600,33 +2611,58 @@ static int kgem_batch_write(struct kgem *kgem, uint32_t handle, uint32_t size)
 
 	ASSERT_IDLE(kgem, handle);
 
+retry:
 	/* If there is no surface data, just upload the batch */
-	if (kgem->surface == kgem->batch_size)
-		return gem_write(kgem->fd, handle,
-				 0, sizeof(uint32_t)*kgem->nbatch,
-				 kgem->batch);
+	if (kgem->surface == kgem->batch_size) {
+		if (gem_write(kgem->fd, handle,
+			      0, sizeof(uint32_t)*kgem->nbatch,
+			      kgem->batch) == 0)
+			return 0;
+
+		goto expire;
+	}
 
 	/* Are the batch pages conjoint with the surface pages? */
 	if (kgem->surface < kgem->nbatch + PAGE_SIZE/sizeof(uint32_t)) {
 		assert(size == PAGE_ALIGN(kgem->batch_size*sizeof(uint32_t)));
-		return gem_write(kgem->fd, handle,
-				 0, kgem->batch_size*sizeof(uint32_t),
-				 kgem->batch);
+		if (gem_write(kgem->fd, handle,
+				0, kgem->batch_size*sizeof(uint32_t),
+				kgem->batch) == 0)
+			return 0;
+
+		goto expire;
 	}
 
 	/* Disjoint surface/batch, upload separately */
-	ret = gem_write(kgem->fd, handle,
+	if (gem_write(kgem->fd, handle,
 			0, sizeof(uint32_t)*kgem->nbatch,
-			kgem->batch);
-	if (ret)
-		return ret;
+			kgem->batch))
+		goto expire;
 
 	ret = PAGE_ALIGN(sizeof(uint32_t) * kgem->batch_size);
 	ret -= sizeof(uint32_t) * kgem->surface;
 	assert(size-ret >= kgem->nbatch*sizeof(uint32_t));
-	return __gem_write(kgem->fd, handle,
+	if (__gem_write(kgem->fd, handle,
 			size - ret, (kgem->batch_size - kgem->surface)*sizeof(uint32_t),
-			kgem->batch + kgem->surface);
+			kgem->batch + kgem->surface))
+		goto expire;
+
+	return 0;
+
+expire:
+	ret = errno;
+	assert(ret != EINVAL);
+
+	(void)__kgem_throttle_retire(kgem, 0);
+	if (kgem_expire_cache(kgem))
+		goto retry;
+
+	if (kgem_cleanup_cache(kgem))
+		goto retry;
+
+	ErrorF("%s: failed to write batch (handle=%d): %d\n",
+	       __FUNCTION__, handle, ret);
+	return ret;
 }
 
 void kgem_reset(struct kgem *kgem)
@@ -3015,7 +3051,7 @@ void kgem_throttle(struct kgem *kgem)
 	}
 }
 
-void kgem_purge_cache(struct kgem *kgem)
+static void kgem_purge_cache(struct kgem *kgem)
 {
 	struct kgem_bo *bo, *next;
 	int i;
@@ -3220,7 +3256,7 @@ bool kgem_expire_cache(struct kgem *kgem)
 	(void)size;
 }
 
-void kgem_cleanup_cache(struct kgem *kgem)
+bool kgem_cleanup_cache(struct kgem *kgem)
 {
 	unsigned int i;
 	int n;
@@ -3250,6 +3286,9 @@ void kgem_cleanup_cache(struct kgem *kgem)
 	kgem_retire(kgem);
 	kgem_cleanup(kgem);
 
+	if (!kgem->need_expire)
+		return false;
+
 	for (i = 0; i < ARRAY_SIZE(kgem->inactive); i++) {
 		while (!list_is_empty(&kgem->inactive[i]))
 			kgem_bo_free(kgem,
@@ -3273,6 +3312,7 @@ void kgem_cleanup_cache(struct kgem *kgem)
 
 	kgem->need_purge = false;
 	kgem->need_expire = false;
+	return true;
 }
 
 static struct kgem_bo *
@@ -5199,10 +5239,8 @@ retry:
 		if (__kgem_throttle_retire(kgem, 0))
 			goto retry;
 
-		if (kgem->need_expire) {
-			kgem_cleanup_cache(kgem);
+		if (kgem_cleanup_cache(kgem))
 			goto retry;
-		}
 
 		ErrorF("%s: failed to mmap handle=%d, %d bytes, into CPU domain: %d\n",
 		       __FUNCTION__, bo->handle, bytes(bo), err);
