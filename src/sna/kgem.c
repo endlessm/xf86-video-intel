@@ -2178,7 +2178,7 @@ static bool __kgem_retire_rq(struct kgem *kgem, struct kgem_request *rq)
 			DBG(("%s: moving %d to flushing\n",
 			     __FUNCTION__, bo->handle));
 			list_add(&bo->request, &kgem->flushing);
-			bo->rq = (void *)kgem;
+			bo->rq = MAKE_REQUEST(kgem, RQ_RING(bo->rq));
 			continue;
 		}
 
@@ -2310,8 +2310,8 @@ bool __kgem_ring_is_idle(struct kgem *kgem, int ring)
 	DBG(("%s: ring=%d idle (handle=%d)\n",
 	     __FUNCTION__, ring, rq->bo->handle));
 
-	if (kgem_retire__requests_ring(kgem, ring))
-		kgem_retire__buffers(kgem);
+	kgem_retire__requests_ring(kgem, ring);
+	kgem_retire__buffers(kgem);
 
 	assert(list_is_empty(&kgem->requests[ring]));
 	return true;
@@ -2435,6 +2435,7 @@ static void kgem_finish_buffers(struct kgem *kgem)
 			    (kgem->has_llc || bo->mmapped == MMAPPED_GTT || bo->base.snoop)) {
 				DBG(("%s: retaining upload buffer (%d/%d)\n",
 				     __FUNCTION__, bo->used, bytes(&bo->base)));
+				assert(bo->base.rq);
 				assert(used >= bo->used);
 				bo->used = used;
 				list_move(&bo->base.list,
