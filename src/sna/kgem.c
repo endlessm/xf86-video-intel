@@ -2296,6 +2296,7 @@ bool __kgem_ring_is_idle(struct kgem *kgem, int ring)
 {
 	struct kgem_request *rq;
 
+	assert(ring < ARRAY_SIZE(kgem->requests));
 	assert(!list_is_empty(&kgem->requests[ring]));
 
 	rq = list_last_entry(&kgem->requests[ring],
@@ -2309,7 +2310,9 @@ bool __kgem_ring_is_idle(struct kgem *kgem, int ring)
 	DBG(("%s: ring=%d idle (handle=%d)\n",
 	     __FUNCTION__, ring, rq->bo->handle));
 
-	kgem_retire__requests_ring(kgem, ring);
+	if (kgem_retire__requests_ring(kgem, ring))
+		kgem_retire__buffers(kgem);
+
 	assert(list_is_empty(&kgem->requests[ring]));
 	return true;
 }
@@ -2436,6 +2439,7 @@ static void kgem_finish_buffers(struct kgem *kgem)
 				bo->used = used;
 				list_move(&bo->base.list,
 					  &kgem->active_buffers);
+				kgem->need_retire = true;
 				continue;
 			}
 			DBG(("%s: discarding mmapped buffer, used=%d, map type=%d\n",
