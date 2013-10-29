@@ -4519,9 +4519,6 @@ sna_put_xybitmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 		int bw = (bx2 - bx1)/8;
 		int bh = box->y2 - box->y1;
 		int bstride = ALIGN(bw, 2);
-		int src_stride;
-		uint8_t *dst, *src;
-		uint32_t *b;
 		struct kgem_bo *upload;
 		void *ptr;
 
@@ -4541,50 +4538,56 @@ sna_put_xybitmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 		if (!upload)
 			break;
 
-		dst = ptr;
-		bstride -= bw;
 
-		src_stride = BitmapBytePad(w);
-		src = (uint8_t*)bits + (box->y1 - y) * src_stride + bx1/8;
-		src_stride -= bw;
-		do {
-			int i = bw;
-			assert(src >= (uint8_t *)bits);
+		if (sigtrap_get() == 0) {
+			int src_stride = BitmapBytePad(w);
+			uint8_t *dst = ptr;
+			uint8_t *src = (uint8_t*)bits + (box->y1 - y) * src_stride + bx1/8;
+			uint32_t *b;
+
+			bstride -= bw;
+			src_stride -= bw;
+
 			do {
-				*dst++ = byte_reverse(*src++);
-			} while (--i);
-			assert(src <= (uint8_t *)bits + BitmapBytePad(w) * h);
-			assert(dst <= (uint8_t *)ptr + kgem_bo_size(upload));
-			dst += bstride;
-			src += src_stride;
-		} while (--bh);
+				int i = bw;
+				assert(src >= (uint8_t *)bits);
+				do {
+					*dst++ = byte_reverse(*src++);
+				} while (--i);
+				assert(src <= (uint8_t *)bits + BitmapBytePad(w) * h);
+				assert(dst <= (uint8_t *)ptr + kgem_bo_size(upload));
+				dst += bstride;
+				src += src_stride;
+			} while (--bh);
 
-		b = sna->kgem.batch + sna->kgem.nbatch;
-		b[0] = XY_MONO_SRC_COPY | 3 << 20;
-		b[0] |= ((box->x1 - x) & 7) << 17;
-		b[1] = bo->pitch;
-		if (sna->kgem.gen >= 040 && bo->tiling) {
-			b[0] |= BLT_DST_TILED;
-			b[1] >>= 2;
+			b = sna->kgem.batch + sna->kgem.nbatch;
+			b[0] = XY_MONO_SRC_COPY | 3 << 20;
+			b[0] |= ((box->x1 - x) & 7) << 17;
+			b[1] = bo->pitch;
+			if (sna->kgem.gen >= 040 && bo->tiling) {
+				b[0] |= BLT_DST_TILED;
+				b[1] >>= 2;
+			}
+			b[1] |= blt_depth(drawable->depth) << 24;
+			b[1] |= rop << 16;
+			b[2] = box->y1 << 16 | box->x1;
+			b[3] = box->y2 << 16 | box->x2;
+			b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
+					      I915_GEM_DOMAIN_RENDER << 16 |
+					      I915_GEM_DOMAIN_RENDER |
+					      KGEM_RELOC_FENCED,
+					      0);
+			b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5,
+					      upload,
+					      I915_GEM_DOMAIN_RENDER << 16 |
+					      KGEM_RELOC_FENCED,
+					      0);
+			b[6] = gc->bgPixel;
+			b[7] = gc->fgPixel;
+
+			sna->kgem.nbatch += 8;
+			sigtrap_put();
 		}
-		b[1] |= blt_depth(drawable->depth) << 24;
-		b[1] |= rop << 16;
-		b[2] = box->y1 << 16 | box->x1;
-		b[3] = box->y2 << 16 | box->x2;
-		b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
-				      I915_GEM_DOMAIN_RENDER << 16 |
-				      I915_GEM_DOMAIN_RENDER |
-				      KGEM_RELOC_FENCED,
-				      0);
-		b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5,
-				      upload,
-				      I915_GEM_DOMAIN_RENDER << 16 |
-				      KGEM_RELOC_FENCED,
-				      0);
-		b[6] = gc->bgPixel;
-		b[7] = gc->fgPixel;
-
-		sna->kgem.nbatch += 8;
 		kgem_bo_destroy(&sna->kgem, upload);
 
 		box++;
@@ -4652,9 +4655,6 @@ sna_put_xypixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 			int bw = (bx2 - bx1)/8;
 			int bh = box->y2 - box->y1;
 			int bstride = ALIGN(bw, 2);
-			int src_stride;
-			uint8_t *dst, *src;
-			uint32_t *b;
 			struct kgem_bo *upload;
 			void *ptr;
 
@@ -4674,56 +4674,60 @@ sna_put_xypixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 			if (!upload)
 				break;
 
-			dst = ptr;
-			bstride -= bw;
+			if (sigtrap_get() == 0) {
+				int src_stride = BitmapBytePad(w);
+				uint8_t *src = (uint8_t*)bits + (box->y1 - y) * src_stride + bx1/8;
+				uint8_t *dst = ptr;
+				uint32_t *b;
 
-			src_stride = BitmapBytePad(w);
-			src = (uint8_t*)bits + (box->y1 - y) * src_stride + bx1/8;
-			src_stride -= bw;
-			do {
-				int j = bw;
-				assert(src >= (uint8_t *)bits);
+				bstride -= bw;
+				src_stride -= bw;
 				do {
-					*dst++ = byte_reverse(*src++);
-				} while (--j);
-				assert(src <= (uint8_t *)bits + BitmapBytePad(w) * h);
-				assert(dst <= (uint8_t *)ptr + kgem_bo_size(upload));
-				dst += bstride;
-				src += src_stride;
-			} while (--bh);
+					int j = bw;
+					assert(src >= (uint8_t *)bits);
+					do {
+						*dst++ = byte_reverse(*src++);
+					} while (--j);
+					assert(src <= (uint8_t *)bits + BitmapBytePad(w) * h);
+					assert(dst <= (uint8_t *)ptr + kgem_bo_size(upload));
+					dst += bstride;
+					src += src_stride;
+				} while (--bh);
 
-			b = sna->kgem.batch + sna->kgem.nbatch;
-			b[0] = XY_FULL_MONO_PATTERN_MONO_SRC_BLT | 3 << 20;
-			b[0] |= ((box->x1 - x) & 7) << 17;
-			b[1] = bo->pitch;
-			if (sna->kgem.gen >= 040 && bo->tiling) {
-				b[0] |= BLT_DST_TILED;
-				b[1] >>= 2;
+				b = sna->kgem.batch + sna->kgem.nbatch;
+				b[0] = XY_FULL_MONO_PATTERN_MONO_SRC_BLT | 3 << 20;
+				b[0] |= ((box->x1 - x) & 7) << 17;
+				b[1] = bo->pitch;
+				if (sna->kgem.gen >= 040 && bo->tiling) {
+					b[0] |= BLT_DST_TILED;
+					b[1] >>= 2;
+				}
+				b[1] |= 1 << 31; /* solid pattern */
+				b[1] |= blt_depth(drawable->depth) << 24;
+				b[1] |= 0xce << 16; /* S or (D and !P) */
+				b[2] = box->y1 << 16 | box->x1;
+				b[3] = box->y2 << 16 | box->x2;
+				b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4,
+						      bo,
+						      I915_GEM_DOMAIN_RENDER << 16 |
+						      I915_GEM_DOMAIN_RENDER |
+						      KGEM_RELOC_FENCED,
+						      0);
+				b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5,
+						      upload,
+						      I915_GEM_DOMAIN_RENDER << 16 |
+						      KGEM_RELOC_FENCED,
+						      0);
+				b[6] = 0;
+				b[7] = i;
+				b[8] = i;
+				b[9] = i;
+				b[10] = -1;
+				b[11] = -1;
+
+				sna->kgem.nbatch += 12;
+				sigtrap_put();
 			}
-			b[1] |= 1 << 31; /* solid pattern */
-			b[1] |= blt_depth(drawable->depth) << 24;
-			b[1] |= 0xce << 16; /* S or (D and !P) */
-			b[2] = box->y1 << 16 | box->x1;
-			b[3] = box->y2 << 16 | box->x2;
-			b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4,
-					      bo,
-					      I915_GEM_DOMAIN_RENDER << 16 |
-					      I915_GEM_DOMAIN_RENDER |
-					      KGEM_RELOC_FENCED,
-					      0);
-			b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5,
-					      upload,
-					      I915_GEM_DOMAIN_RENDER << 16 |
-					      KGEM_RELOC_FENCED,
-					      0);
-			b[6] = 0;
-			b[7] = i;
-			b[8] = i;
-			b[9] = i;
-			b[10] = -1;
-			b[11] = -1;
-
-			sna->kgem.nbatch += 12;
 			kgem_bo_destroy(&sna->kgem, upload);
 
 			box++;
@@ -7436,45 +7440,50 @@ sna_copy_bitmap_blt(DrawablePtr _bitmap, DrawablePtr drawable, GCPtr gc,
 			if (!upload)
 				break;
 
-			b = sna->kgem.batch + sna->kgem.nbatch;
-			b[0] = XY_MONO_SRC_COPY | br00;
-			b[0] |= ((box->x1 + sx) & 7) << 17;
-			b[1] = br13;
-			b[2] = (box->y1 + dy) << 16 | (box->x1 + dx);
-			b[3] = (box->y2 + dy) << 16 | (box->x2 + dx);
-			b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4,
-					      arg->bo,
-					      I915_GEM_DOMAIN_RENDER << 16 |
-					      I915_GEM_DOMAIN_RENDER |
-					      KGEM_RELOC_FENCED,
-					      0);
-			b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5,
-					      upload,
-					      I915_GEM_DOMAIN_RENDER << 16 |
-					      KGEM_RELOC_FENCED,
-					      0);
-			b[6] = gc->bgPixel;
-			b[7] = gc->fgPixel;
+			if (sigtrap_get() == 0) {
+				b = sna->kgem.batch + sna->kgem.nbatch;
 
-			sna->kgem.nbatch += 8;
+				b[0] = XY_MONO_SRC_COPY | br00;
+				b[0] |= ((box->x1 + sx) & 7) << 17;
+				b[1] = br13;
+				b[2] = (box->y1 + dy) << 16 | (box->x1 + dx);
+				b[3] = (box->y2 + dy) << 16 | (box->x2 + dx);
+				b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4,
+						      arg->bo,
+						      I915_GEM_DOMAIN_RENDER << 16 |
+						      I915_GEM_DOMAIN_RENDER |
+						      KGEM_RELOC_FENCED,
+						      0);
+				b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5,
+						      upload,
+						      I915_GEM_DOMAIN_RENDER << 16 |
+						      KGEM_RELOC_FENCED,
+						      0);
+				b[6] = gc->bgPixel;
+				b[7] = gc->fgPixel;
 
-			dst = ptr;
-			src_stride = bitmap->devKind;
-			src = bitmap->devPrivate.ptr;
-			src += (box->y1 + sy) * src_stride + bx1/8;
-			src_stride -= bstride;
-			do {
-				int i = bstride;
-				assert(src >= (uint8_t *)bitmap->devPrivate.ptr);
+				sna->kgem.nbatch += 8;
+
+				dst = ptr;
+				src_stride = bitmap->devKind;
+				src = bitmap->devPrivate.ptr;
+				src += (box->y1 + sy) * src_stride + bx1/8;
+				src_stride -= bstride;
 				do {
-					*dst++ = byte_reverse(*src++);
-					*dst++ = byte_reverse(*src++);
-					i -= 2;
-				} while (i);
-				assert(src <= (uint8_t *)bitmap->devPrivate.ptr + bitmap->devKind * bitmap->drawable.height);
-				assert(dst <= (uint8_t *)ptr + kgem_bo_size(upload));
-				src += src_stride;
-			} while (--bh);
+					int i = bstride;
+					assert(src >= (uint8_t *)bitmap->devPrivate.ptr);
+					do {
+						*dst++ = byte_reverse(*src++);
+						*dst++ = byte_reverse(*src++);
+						i -= 2;
+					} while (i);
+					assert(src <= (uint8_t *)bitmap->devPrivate.ptr + bitmap->devKind * bitmap->drawable.height);
+					assert(dst <= (uint8_t *)ptr + kgem_bo_size(upload));
+					src += src_stride;
+				} while (--bh);
+
+				sigtrap_put();
+			}
 
 			kgem_bo_destroy(&sna->kgem, upload);
 		}
@@ -7533,7 +7542,6 @@ sna_copy_plane_blt(DrawablePtr source, DrawablePtr drawable, GCPtr gc,
 		int bw = (bx2 - bx1)/8;
 		int bh = box->y2 - box->y1;
 		int bstride = ALIGN(bw, 2);
-		uint32_t *b;
 		struct kgem_bo *upload;
 		void *ptr;
 
@@ -7559,130 +7567,135 @@ sna_copy_plane_blt(DrawablePtr source, DrawablePtr drawable, GCPtr gc,
 		if (!upload)
 			break;
 
-		switch (source->bitsPerPixel) {
-		case 32:
-			{
-				uint32_t *src = src_pixmap->devPrivate.ptr;
-				int src_stride = src_pixmap->devKind/sizeof(uint32_t);
-				uint8_t *dst = ptr;
+		if (sigtrap_get() == 0) {
+			uint32_t *b;
 
-				src += (box->y1 + sy) * src_stride;
-				src += bx1;
+			switch (source->bitsPerPixel) {
+			case 32:
+				{
+					uint32_t *src = src_pixmap->devPrivate.ptr;
+					int src_stride = src_pixmap->devKind/sizeof(uint32_t);
+					uint8_t *dst = ptr;
 
-				src_stride -= bw * 8;
-				bstride -= bw;
+					src += (box->y1 + sy) * src_stride;
+					src += bx1;
 
-				do {
-					int i = bw;
+					src_stride -= bw * 8;
+					bstride -= bw;
+
 					do {
-						uint8_t v = 0;
+						int i = bw;
+						do {
+							uint8_t v = 0;
 
-						v |= ((*src++ >> bit) & 1) << 7;
-						v |= ((*src++ >> bit) & 1) << 6;
-						v |= ((*src++ >> bit) & 1) << 5;
-						v |= ((*src++ >> bit) & 1) << 4;
-						v |= ((*src++ >> bit) & 1) << 3;
-						v |= ((*src++ >> bit) & 1) << 2;
-						v |= ((*src++ >> bit) & 1) << 1;
-						v |= ((*src++ >> bit) & 1) << 0;
+							v |= ((*src++ >> bit) & 1) << 7;
+							v |= ((*src++ >> bit) & 1) << 6;
+							v |= ((*src++ >> bit) & 1) << 5;
+							v |= ((*src++ >> bit) & 1) << 4;
+							v |= ((*src++ >> bit) & 1) << 3;
+							v |= ((*src++ >> bit) & 1) << 2;
+							v |= ((*src++ >> bit) & 1) << 1;
+							v |= ((*src++ >> bit) & 1) << 0;
 
-						*dst++ = v;
-					} while (--i);
-					dst += bstride;
-					src += src_stride;
-				} while (--bh);
-				break;
-			}
-		case 16:
-			{
-				uint16_t *src = src_pixmap->devPrivate.ptr;
-				int src_stride = src_pixmap->devKind/sizeof(uint16_t);
-				uint8_t *dst = ptr;
+							*dst++ = v;
+						} while (--i);
+						dst += bstride;
+						src += src_stride;
+					} while (--bh);
+					break;
+				}
+			case 16:
+				{
+					uint16_t *src = src_pixmap->devPrivate.ptr;
+					int src_stride = src_pixmap->devKind/sizeof(uint16_t);
+					uint8_t *dst = ptr;
 
-				src += (box->y1 + sy) * src_stride;
-				src += bx1;
+					src += (box->y1 + sy) * src_stride;
+					src += bx1;
 
-				src_stride -= bw * 8;
-				bstride -= bw;
+					src_stride -= bw * 8;
+					bstride -= bw;
 
-				do {
-					int i = bw;
 					do {
-						uint8_t v = 0;
+						int i = bw;
+						do {
+							uint8_t v = 0;
 
-						v |= ((*src++ >> bit) & 1) << 7;
-						v |= ((*src++ >> bit) & 1) << 6;
-						v |= ((*src++ >> bit) & 1) << 5;
-						v |= ((*src++ >> bit) & 1) << 4;
-						v |= ((*src++ >> bit) & 1) << 3;
-						v |= ((*src++ >> bit) & 1) << 2;
-						v |= ((*src++ >> bit) & 1) << 1;
-						v |= ((*src++ >> bit) & 1) << 0;
+							v |= ((*src++ >> bit) & 1) << 7;
+							v |= ((*src++ >> bit) & 1) << 6;
+							v |= ((*src++ >> bit) & 1) << 5;
+							v |= ((*src++ >> bit) & 1) << 4;
+							v |= ((*src++ >> bit) & 1) << 3;
+							v |= ((*src++ >> bit) & 1) << 2;
+							v |= ((*src++ >> bit) & 1) << 1;
+							v |= ((*src++ >> bit) & 1) << 0;
 
-						*dst++ = v;
-					} while (--i);
-					dst += bstride;
-					src += src_stride;
-				} while (--bh);
-				break;
-			}
-		default:
-			assert(0);
-		case 8:
-			{
-				uint8_t *src = src_pixmap->devPrivate.ptr;
-				int src_stride = src_pixmap->devKind/sizeof(uint8_t);
-				uint8_t *dst = ptr;
+							*dst++ = v;
+						} while (--i);
+						dst += bstride;
+						src += src_stride;
+					} while (--bh);
+					break;
+				}
+			default:
+				assert(0);
+			case 8:
+				{
+					uint8_t *src = src_pixmap->devPrivate.ptr;
+					int src_stride = src_pixmap->devKind/sizeof(uint8_t);
+					uint8_t *dst = ptr;
 
-				src += (box->y1 + sy) * src_stride;
-				src += bx1;
+					src += (box->y1 + sy) * src_stride;
+					src += bx1;
 
-				src_stride -= bw * 8;
-				bstride -= bw;
+					src_stride -= bw * 8;
+					bstride -= bw;
 
-				do {
-					int i = bw;
 					do {
-						uint8_t v = 0;
+						int i = bw;
+						do {
+							uint8_t v = 0;
 
-						v |= ((*src++ >> bit) & 1) << 7;
-						v |= ((*src++ >> bit) & 1) << 6;
-						v |= ((*src++ >> bit) & 1) << 5;
-						v |= ((*src++ >> bit) & 1) << 4;
-						v |= ((*src++ >> bit) & 1) << 3;
-						v |= ((*src++ >> bit) & 1) << 2;
-						v |= ((*src++ >> bit) & 1) << 1;
-						v |= ((*src++ >> bit) & 1) << 0;
+							v |= ((*src++ >> bit) & 1) << 7;
+							v |= ((*src++ >> bit) & 1) << 6;
+							v |= ((*src++ >> bit) & 1) << 5;
+							v |= ((*src++ >> bit) & 1) << 4;
+							v |= ((*src++ >> bit) & 1) << 3;
+							v |= ((*src++ >> bit) & 1) << 2;
+							v |= ((*src++ >> bit) & 1) << 1;
+							v |= ((*src++ >> bit) & 1) << 0;
 
-						*dst++ = v;
-					} while (--i);
-					dst += bstride;
-					src += src_stride;
-				} while (--bh);
-				break;
+							*dst++ = v;
+						} while (--i);
+						dst += bstride;
+						src += src_stride;
+					} while (--bh);
+					break;
+				}
 			}
+
+			b = sna->kgem.batch + sna->kgem.nbatch;
+			b[0] = br00 | ((box->x1 + sx) & 7) << 17;
+			b[1] = br13;
+			b[2] = (box->y1 + dy) << 16 | (box->x1 + dx);
+			b[3] = (box->y2 + dy) << 16 | (box->x2 + dx);
+			b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4,
+					      arg->bo,
+					      I915_GEM_DOMAIN_RENDER << 16 |
+					      I915_GEM_DOMAIN_RENDER |
+					      KGEM_RELOC_FENCED,
+					      0);
+			b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5,
+					      upload,
+					      I915_GEM_DOMAIN_RENDER << 16 |
+					      KGEM_RELOC_FENCED,
+					      0);
+			b[6] = gc->bgPixel;
+			b[7] = gc->fgPixel;
+
+			sna->kgem.nbatch += 8;
+			sigtrap_put();
 		}
-
-		b = sna->kgem.batch + sna->kgem.nbatch;
-		b[0] = br00 | ((box->x1 + sx) & 7) << 17;
-		b[1] = br13;
-		b[2] = (box->y1 + dy) << 16 | (box->x1 + dx);
-		b[3] = (box->y2 + dy) << 16 | (box->x2 + dx);
-		b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4,
-				      arg->bo,
-				      I915_GEM_DOMAIN_RENDER << 16 |
-				      I915_GEM_DOMAIN_RENDER |
-				      KGEM_RELOC_FENCED,
-				      0);
-		b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5,
-				      upload,
-				      I915_GEM_DOMAIN_RENDER << 16 |
-				      KGEM_RELOC_FENCED,
-				      0);
-		b[6] = gc->bgPixel;
-		b[7] = gc->fgPixel;
-
-		sna->kgem.nbatch += 8;
 		kgem_bo_destroy(&sna->kgem, upload);
 
 		box++;
@@ -12182,41 +12195,45 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 				if (!upload)
 					break;
 
-				dst = ptr;
-				src_stride = stipple->devKind;
-				src = stipple->devPrivate.ptr;
-				src += (r->y - origin->y) * src_stride + bx1/8;
-				src_stride -= bstride;
-				do {
-					int i = bstride;
+				if (sigtrap_get() == 0) {
+					dst = ptr;
+					src_stride = stipple->devKind;
+					src = stipple->devPrivate.ptr;
+					src += (r->y - origin->y) * src_stride + bx1/8;
+					src_stride -= bstride;
 					do {
-						*dst++ = byte_reverse(*src++);
-						*dst++ = byte_reverse(*src++);
-						i -= 2;
-					} while (i);
-					src += src_stride;
-				} while (--bh);
-				b = sna->kgem.batch + sna->kgem.nbatch;
-				b[0] = XY_MONO_SRC_COPY | br00;
-				b[0] |= ((r->x - origin->x) & 7) << 17;
-				b[1] = br13;
-				b[2] = (r->y + dy) << 16 | (r->x + dx);
-				b[3] = (r->y + r->height + dy) << 16 | (r->x + r->width + dx);
-				b[4] = kgem_add_reloc(&sna->kgem,
-						      sna->kgem.nbatch + 4, bo,
-						      I915_GEM_DOMAIN_RENDER << 16 |
-						      I915_GEM_DOMAIN_RENDER |
-						      KGEM_RELOC_FENCED,
-						      0);
-				b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5,
-						      upload,
-						      I915_GEM_DOMAIN_RENDER << 16 |
-						      KGEM_RELOC_FENCED,
-						      0);
-				b[6] = gc->bgPixel;
-				b[7] = gc->fgPixel;
+						int i = bstride;
+						do {
+							*dst++ = byte_reverse(*src++);
+							*dst++ = byte_reverse(*src++);
+							i -= 2;
+						} while (i);
+						src += src_stride;
+					} while (--bh);
 
-				sna->kgem.nbatch += 8;
+					b = sna->kgem.batch + sna->kgem.nbatch;
+					b[0] = XY_MONO_SRC_COPY | br00;
+					b[0] |= ((r->x - origin->x) & 7) << 17;
+					b[1] = br13;
+					b[2] = (r->y + dy) << 16 | (r->x + dx);
+					b[3] = (r->y + r->height + dy) << 16 | (r->x + r->width + dx);
+					b[4] = kgem_add_reloc(&sna->kgem,
+							      sna->kgem.nbatch + 4, bo,
+							      I915_GEM_DOMAIN_RENDER << 16 |
+							      I915_GEM_DOMAIN_RENDER |
+							      KGEM_RELOC_FENCED,
+							      0);
+					b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5,
+							      upload,
+							      I915_GEM_DOMAIN_RENDER << 16 |
+							      KGEM_RELOC_FENCED,
+							      0);
+					b[6] = gc->bgPixel;
+					b[7] = gc->fgPixel;
+
+					sna->kgem.nbatch += 8;
+					sigtrap_put();
+				}
 				kgem_bo_destroy(&sna->kgem, upload);
 			}
 
@@ -12325,42 +12342,45 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 					if (!upload)
 						break;
 
-					dst = ptr;
-					src_stride = stipple->devKind;
-					src = stipple->devPrivate.ptr;
-					src += (box.y1 - pat.y) * src_stride + bx1/8;
-					src_stride -= bstride;
-					do {
-						int i = bstride;
+					if (sigtrap_get() == 0) {
+						dst = ptr;
+						src_stride = stipple->devKind;
+						src = stipple->devPrivate.ptr;
+						src += (box.y1 - pat.y) * src_stride + bx1/8;
+						src_stride -= bstride;
 						do {
-							*dst++ = byte_reverse(*src++);
-							*dst++ = byte_reverse(*src++);
-							i -= 2;
-						} while (i);
-						src += src_stride;
-					} while (--bh);
+							int i = bstride;
+							do {
+								*dst++ = byte_reverse(*src++);
+								*dst++ = byte_reverse(*src++);
+								i -= 2;
+							} while (i);
+							src += src_stride;
+						} while (--bh);
 
-					b = sna->kgem.batch + sna->kgem.nbatch;
-					b[0] = XY_MONO_SRC_COPY | br00;
-					b[0] |= ((box.x1 - pat.x) & 7) << 17;
-					b[1] = br13;
-					b[2] = (box.y1 + dy) << 16 | (box.x1 + dx);
-					b[3] = (box.y2 + dy) << 16 | (box.x2 + dx);
-					b[4] = kgem_add_reloc(&sna->kgem,
-							      sna->kgem.nbatch + 4, bo,
-							      I915_GEM_DOMAIN_RENDER << 16 |
-							      I915_GEM_DOMAIN_RENDER |
-							      KGEM_RELOC_FENCED,
-							      0);
-					b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5,
-							      upload,
-							      I915_GEM_DOMAIN_RENDER << 16 |
-							      KGEM_RELOC_FENCED,
-							      0);
-					b[6] = gc->bgPixel;
-					b[7] = gc->fgPixel;
+						b = sna->kgem.batch + sna->kgem.nbatch;
+						b[0] = XY_MONO_SRC_COPY | br00;
+						b[0] |= ((box.x1 - pat.x) & 7) << 17;
+						b[1] = br13;
+						b[2] = (box.y1 + dy) << 16 | (box.x1 + dx);
+						b[3] = (box.y2 + dy) << 16 | (box.x2 + dx);
+						b[4] = kgem_add_reloc(&sna->kgem,
+								      sna->kgem.nbatch + 4, bo,
+								      I915_GEM_DOMAIN_RENDER << 16 |
+								      I915_GEM_DOMAIN_RENDER |
+								      KGEM_RELOC_FENCED,
+								      0);
+						b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5,
+								      upload,
+								      I915_GEM_DOMAIN_RENDER << 16 |
+								      KGEM_RELOC_FENCED,
+								      0);
+						b[6] = gc->bgPixel;
+						b[7] = gc->fgPixel;
 
-					sna->kgem.nbatch += 8;
+						sna->kgem.nbatch += 8;
+						sigtrap_put();
+					}
 					kgem_bo_destroy(&sna->kgem, upload);
 				}
 			} while (--n);
@@ -12470,42 +12490,45 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 						if (!upload)
 							break;
 
-						dst = ptr;
-						src_stride = stipple->devKind;
-						src = stipple->devPrivate.ptr;
-						src += (box.y1 - pat.y) * src_stride + bx1/8;
-						src_stride -= bstride;
-						do {
-							int i = bstride;
+						if (sigtrap_get() == 0) {
+							dst = ptr;
+							src_stride = stipple->devKind;
+							src = stipple->devPrivate.ptr;
+							src += (box.y1 - pat.y) * src_stride + bx1/8;
+							src_stride -= bstride;
 							do {
-								*dst++ = byte_reverse(*src++);
-								*dst++ = byte_reverse(*src++);
-								i -= 2;
-							} while (i);
-							src += src_stride;
-						} while (--bh);
+								int i = bstride;
+								do {
+									*dst++ = byte_reverse(*src++);
+									*dst++ = byte_reverse(*src++);
+									i -= 2;
+								} while (i);
+								src += src_stride;
+							} while (--bh);
 
-						b = sna->kgem.batch + sna->kgem.nbatch;
-						b[0] = XY_MONO_SRC_COPY | br00;
-						b[0] |= ((box.x1 - pat.x) & 7) << 17;
-						b[1] = br13;
-						b[2] = (box.y1 + dy) << 16 | (box.x1 + dx);
-						b[3] = (box.y2 + dy) << 16 | (box.x2 + dx);
-						b[4] = kgem_add_reloc(&sna->kgem,
-								      sna->kgem.nbatch + 4, bo,
-								      I915_GEM_DOMAIN_RENDER << 16 |
-								      I915_GEM_DOMAIN_RENDER |
-								      KGEM_RELOC_FENCED,
-								      0);
-						b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5,
-								      upload,
-								      I915_GEM_DOMAIN_RENDER << 16 |
-								      KGEM_RELOC_FENCED,
-								      0);
-						b[6] = gc->bgPixel;
-						b[7] = gc->fgPixel;
+							b = sna->kgem.batch + sna->kgem.nbatch;
+							b[0] = XY_MONO_SRC_COPY | br00;
+							b[0] |= ((box.x1 - pat.x) & 7) << 17;
+							b[1] = br13;
+							b[2] = (box.y1 + dy) << 16 | (box.x1 + dx);
+							b[3] = (box.y2 + dy) << 16 | (box.x2 + dx);
+							b[4] = kgem_add_reloc(&sna->kgem,
+									      sna->kgem.nbatch + 4, bo,
+									      I915_GEM_DOMAIN_RENDER << 16 |
+									      I915_GEM_DOMAIN_RENDER |
+									      KGEM_RELOC_FENCED,
+									      0);
+							b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5,
+									      upload,
+									      I915_GEM_DOMAIN_RENDER << 16 |
+									      KGEM_RELOC_FENCED,
+									      0);
+							b[6] = gc->bgPixel;
+							b[7] = gc->fgPixel;
 
-						sna->kgem.nbatch += 8;
+							sna->kgem.nbatch += 8;
+							sigtrap_put();
+						}
 						kgem_bo_destroy(&sna->kgem, upload);
 					}
 				}
@@ -14719,9 +14742,6 @@ sna_push_pixels_solid_blt(GCPtr gc,
 		int bw = (bx2 - bx1)/8;
 		int bh = box->y2 - box->y1;
 		int bstride = ALIGN(bw, 2);
-		int src_stride;
-		uint8_t *dst, *src;
-		uint32_t *b;
 		struct kgem_bo *upload;
 		void *ptr;
 
@@ -14741,49 +14761,55 @@ sna_push_pixels_solid_blt(GCPtr gc,
 		if (!upload)
 			break;
 
-		dst = ptr;
+		if (sigtrap_get() == 0) {
+			uint8_t *dst = ptr;
 
-		src_stride = bitmap->devKind;
-		src = (uint8_t*)bitmap->devPrivate.ptr;
-		src += (box->y1 - region->extents.y1) * src_stride + bx1/8;
-		src_stride -= bstride;
-		do {
-			int i = bstride;
+			int src_stride = bitmap->devKind;
+			uint8_t *src;
+			uint32_t *b;
+
+			src = (uint8_t*)bitmap->devPrivate.ptr;
+			src += (box->y1 - region->extents.y1) * src_stride + bx1/8;
+			src_stride -= bstride;
 			do {
-				*dst++ = byte_reverse(*src++);
-				*dst++ = byte_reverse(*src++);
-				i -= 2;
-			} while (i);
-			src += src_stride;
-		} while (--bh);
+				int i = bstride;
+				do {
+					*dst++ = byte_reverse(*src++);
+					*dst++ = byte_reverse(*src++);
+					i -= 2;
+				} while (i);
+				src += src_stride;
+			} while (--bh);
 
-		b = sna->kgem.batch + sna->kgem.nbatch;
-		b[0] = XY_MONO_SRC_COPY | 3 << 20;
-		b[0] |= ((box->x1 - region->extents.x1) & 7) << 17;
-		b[1] = bo->pitch;
-		if (sna->kgem.gen >= 040 && bo->tiling) {
-			b[0] |= BLT_DST_TILED;
-			b[1] >>= 2;
+			b = sna->kgem.batch + sna->kgem.nbatch;
+			b[0] = XY_MONO_SRC_COPY | 3 << 20;
+			b[0] |= ((box->x1 - region->extents.x1) & 7) << 17;
+			b[1] = bo->pitch;
+			if (sna->kgem.gen >= 040 && bo->tiling) {
+				b[0] |= BLT_DST_TILED;
+				b[1] >>= 2;
+			}
+			b[1] |= 1 << 29;
+			b[1] |= blt_depth(drawable->depth) << 24;
+			b[1] |= rop << 16;
+			b[2] = box->y1 << 16 | box->x1;
+			b[3] = box->y2 << 16 | box->x2;
+			b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
+					      I915_GEM_DOMAIN_RENDER << 16 |
+					      I915_GEM_DOMAIN_RENDER |
+					      KGEM_RELOC_FENCED,
+					      0);
+			b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5,
+					      upload,
+					      I915_GEM_DOMAIN_RENDER << 16 |
+					      KGEM_RELOC_FENCED,
+					      0);
+			b[6] = gc->bgPixel;
+			b[7] = gc->fgPixel;
+
+			sna->kgem.nbatch += 8;
+			sigtrap_put();
 		}
-		b[1] |= 1 << 29;
-		b[1] |= blt_depth(drawable->depth) << 24;
-		b[1] |= rop << 16;
-		b[2] = box->y1 << 16 | box->x1;
-		b[3] = box->y2 << 16 | box->x2;
-		b[4] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 4, bo,
-				      I915_GEM_DOMAIN_RENDER << 16 |
-				      I915_GEM_DOMAIN_RENDER |
-				      KGEM_RELOC_FENCED,
-				      0);
-		b[5] = kgem_add_reloc(&sna->kgem, sna->kgem.nbatch + 5,
-				      upload,
-				      I915_GEM_DOMAIN_RENDER << 16 |
-				      KGEM_RELOC_FENCED,
-				      0);
-		b[6] = gc->bgPixel;
-		b[7] = gc->fgPixel;
-
-		sna->kgem.nbatch += 8;
 		kgem_bo_destroy(&sna->kgem, upload);
 
 		box++;
