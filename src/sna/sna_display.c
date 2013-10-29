@@ -1,5 +1,6 @@
 /*
  * Copyright © 2007 Red Hat, Inc.
+ * Copyright © 2013 Intel Corporation
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -3701,6 +3702,7 @@ static bool sna_emit_wait_for_scanline_ivb(struct sna *sna,
 {
 	uint32_t *b;
 	uint32_t event;
+	uint32_t forcewake;
 
 	if (!sna->kgem.has_secure_batches)
 		return false;
@@ -3728,6 +3730,11 @@ static bool sna_emit_wait_for_scanline_ivb(struct sna *sna,
 		break;
 	}
 
+	if (sna->kgem.gen == 071)
+		forcewake = 0x1300b0; /* FORCEWAKE_VLV */
+	else
+		forcewake = 0xa188; /* FORCEWAKE_MT */
+
 	b = kgem_get_batch(&sna->kgem);
 
 	/* Both the LRI and WAIT_FOR_EVENT must be in the same cacheline */
@@ -3742,14 +3749,14 @@ static bool sna_emit_wait_for_scanline_ivb(struct sna *sna,
 	b[1] = 0x44050; /* DERRMR */
 	b[2] = ~event;
 	b[3] = MI_LOAD_REGISTER_IMM | 1;
-	b[4] = 0xa188; /* FORCEWAKE_MT */
+	b[4] = forcewake;
 	b[5] = 2 << 16 | 2;
 	b[6] = MI_LOAD_REGISTER_IMM | 1;
 	b[7] = 0x70068 + 0x1000 * pipe;
 	b[8] = (1 << 31) | (1 << 30) | (y1 << 16) | y2;
 	b[9] = MI_WAIT_FOR_EVENT | event;
 	b[10] = MI_LOAD_REGISTER_IMM | 1;
-	b[11] = 0xa188; /* FORCEWAKE_MT */
+	b[11] = forcewake;
 	b[12] = 2 << 16;
 	b[13] = MI_LOAD_REGISTER_IMM | 1;
 	b[14] = 0x44050; /* DERRMR */
@@ -3914,8 +3921,6 @@ sna_wait_for_scanline(struct sna *sna,
 		ret = false;
 	else if (sna->kgem.gen >= 075)
 		ret = sna_emit_wait_for_scanline_hsw(sna, crtc, pipe, y1, y2, full_height);
-	else if (sna->kgem.gen == 071)
-		ret =sna_emit_wait_for_scanline_gen6(sna, crtc, pipe, y1, y2, full_height);
 	else if (sna->kgem.gen >= 070)
 		ret = sna_emit_wait_for_scanline_ivb(sna, crtc, pipe, y1, y2, full_height);
 	else if (sna->kgem.gen >= 060)
