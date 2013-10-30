@@ -2183,6 +2183,7 @@ static bool __kgem_retire_rq(struct kgem *kgem, struct kgem_request *rq)
 			     __FUNCTION__, bo->handle));
 			list_add(&bo->request, &kgem->flushing);
 			bo->rq = MAKE_REQUEST(kgem, RQ_RING(bo->rq));
+			kgem->need_retire = true;
 			continue;
 		}
 
@@ -2710,6 +2711,7 @@ void kgem_reset(struct kgem *kgem)
 				assert(bo->domain == DOMAIN_GPU || bo->domain == DOMAIN_NONE);
 				list_add(&bo->request, &kgem->flushing);
 				bo->rq = (void *)kgem;
+				kgem->need_retire = true;
 			} else
 				__kgem_bo_clear_busy(bo);
 
@@ -3952,6 +3954,7 @@ __kgem_bo_create_as_display(struct kgem *kgem, int size, int tiling, int pitch)
 		assert(bo->exec == NULL);
 		list_add(&bo->request, &kgem->flushing);
 		bo->rq = (void *)kgem;
+		kgem->need_retire = true;
 	}
 
 	assert_tiling(kgem, bo);
