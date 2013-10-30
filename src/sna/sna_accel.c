@@ -4566,6 +4566,7 @@ sna_put_xybitmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 				src += src_stride;
 			} while (--bh);
 
+			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
 			b[0] = XY_MONO_SRC_COPY | 3 << 20;
 			b[0] |= ((box->x1 - x) & 7) << 17;
@@ -4701,6 +4702,7 @@ sna_put_xypixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 					src += src_stride;
 				} while (--bh);
 
+				assert(sna->kgem.mode == KGEM_BLT);
 				b = sna->kgem.batch + sna->kgem.nbatch;
 				b[0] = XY_FULL_MONO_PATTERN_MONO_SRC_BLT | 3 << 20;
 				b[0] |= ((box->x1 - x) & 7) << 17;
@@ -7406,6 +7408,7 @@ sna_copy_bitmap_blt(DrawablePtr _bitmap, DrawablePtr drawable, GCPtr gc,
 				_kgem_set_mode(&sna->kgem, KGEM_BLT);
 			}
 
+			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
 			b[0] = XY_MONO_SRC_COPY_IMM | (5 + src_stride) | br00;
 			b[0] |= ((box->x1 + sx) & 7) << 17;
@@ -7461,6 +7464,7 @@ sna_copy_bitmap_blt(DrawablePtr _bitmap, DrawablePtr drawable, GCPtr gc,
 
 			sigtrap_assert();
 			if (sigtrap_get() == 0) {
+				assert(sna->kgem.mode == KGEM_BLT);
 				b = sna->kgem.batch + sna->kgem.nbatch;
 
 				b[0] = XY_MONO_SRC_COPY | br00;
@@ -7695,6 +7699,7 @@ sna_copy_plane_blt(DrawablePtr source, DrawablePtr drawable, GCPtr gc,
 				}
 			}
 
+			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
 			b[0] = br00 | ((box->x1 + sx) & 7) << 17;
 			b[1] = br13;
@@ -11261,6 +11266,7 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 			assert(r->x + dx + r->width  <= pixmap->drawable.width);
 			assert(r->y + dy + r->height <= pixmap->drawable.height);
 
+			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
 			b[0] = XY_PAT_BLT | tx << 12 | ty << 8 | 3 << 20 | (br00 & BLT_DST_TILED);
 			b[1] = br13;
@@ -11279,6 +11285,7 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 		} else do {
 			int n_this_time;
 
+			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
 			b[0] = XY_SETUP_BLT | 3 << 20;
 			b[1] = br13;
@@ -11303,6 +11310,7 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 			assert(n_this_time);
 			n -= n_this_time;
 
+			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
 			sna->kgem.nbatch += 3*n_this_time;
 			do {
@@ -11341,6 +11349,7 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 		unwind_batch = sna->kgem.nbatch;
 		unwind_reloc = sna->kgem.nreloc;
 
+		assert(sna->kgem.mode == KGEM_BLT);
 		b = sna->kgem.batch + sna->kgem.nbatch;
 		b[0] = XY_SETUP_BLT | 3 << 20;
 		b[1] = br13;
@@ -11378,6 +11387,7 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 						unwind_batch = sna->kgem.nbatch;
 						unwind_reloc = sna->kgem.nreloc;
 
+						assert(sna->kgem.mode == KGEM_BLT);
 						b = sna->kgem.batch + sna->kgem.nbatch;
 						b[0] = XY_SETUP_BLT | 3 << 20;
 						b[1] = br13;
@@ -11410,6 +11420,7 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 					if (tx < 0)
 						tx = 8 - tx;
 
+					assert(sna->kgem.mode == KGEM_BLT);
 					b = sna->kgem.batch + sna->kgem.nbatch;
 					b[0] = br00 | tx << 12 | ty << 8;
 					b[1] = (box.y1 + dy) << 16 | (box.x1 + dx);
@@ -11449,6 +11460,7 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 							unwind_batch = sna->kgem.nbatch;
 							unwind_reloc = sna->kgem.nreloc;
 
+							assert(sna->kgem.mode == KGEM_BLT);
 							b = sna->kgem.batch + sna->kgem.nbatch;
 							b[0] = XY_SETUP_BLT | 3 << 20;
 							b[1] = br13;
@@ -11481,6 +11493,7 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 						if (tx < 0)
 							tx = 8 - tx;
 
+						assert(sna->kgem.mode == KGEM_BLT);
 						b = sna->kgem.batch + sna->kgem.nbatch;
 						b[0] = br00 | tx << 12 | ty << 8;
 						b[1] = (bb.y1 + dy) << 16 | (bb.x1 + dx);
@@ -11895,6 +11908,7 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 			DBG(("%s: single unclipped rect (%d, %d)x(%d, %d)\n",
 			     __FUNCTION__, r->x + dx, r->y + dy, r->width, r->height));
 
+			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
 			b[0] = XY_MONO_PAT | (br00 & (BLT_DST_TILED | 0x7<<12 | 0x7<<8)) | 3<<20;
 			b[1] = br13;
@@ -11913,6 +11927,7 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 		} else do {
 			int n_this_time;
 
+			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
 			b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20;
 			b[1] = br13;
@@ -11935,6 +11950,7 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 			assert(n_this_time);
 			n -= n_this_time;
 
+			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
 			sna->kgem.nbatch += 3 * n_this_time;
 			do {
@@ -11965,6 +11981,7 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 		if (!region_maybe_clip(&clip, gc->pCompositeClip))
 			return true;
 
+		assert(sna->kgem.mode == KGEM_BLT);
 		b = sna->kgem.batch + sna->kgem.nbatch;
 		b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20;
 		b[1] = br13;
@@ -11996,6 +12013,7 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 						_kgem_submit(&sna->kgem);
 						_kgem_set_mode(&sna->kgem, KGEM_BLT);
 
+						assert(sna->kgem.mode == KGEM_BLT);
 						b = sna->kgem.batch + sna->kgem.nbatch;
 						b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20;
 						b[1] = br13;
@@ -12013,6 +12031,7 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 						sna->kgem.nbatch += 9;
 					}
 
+					assert(sna->kgem.mode == KGEM_BLT);
 					b = sna->kgem.batch + sna->kgem.nbatch;
 					sna->kgem.nbatch += 3;
 					b[0] = br00;
@@ -12048,6 +12067,7 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 							_kgem_submit(&sna->kgem);
 							_kgem_set_mode(&sna->kgem, KGEM_BLT);
 
+							assert(sna->kgem.mode == KGEM_BLT);
 							b = sna->kgem.batch + sna->kgem.nbatch;
 							b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20;
 							b[1] = br13;
@@ -12065,6 +12085,7 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 							sna->kgem.nbatch += 9;
 						}
 
+						assert(sna->kgem.mode == KGEM_BLT);
 						b = sna->kgem.batch + sna->kgem.nbatch;
 						sna->kgem.nbatch += 3;
 						b[0] = br00;
@@ -12199,6 +12220,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 					_kgem_set_mode(&sna->kgem, KGEM_BLT);
 				}
 
+				assert(sna->kgem.mode == KGEM_BLT);
 				b = sna->kgem.batch + sna->kgem.nbatch;
 				b[0] = XY_MONO_SRC_COPY_IMM | (5 + src_stride) | br00;
 				b[0] |= ((r->x - origin->x) & 7) << 17;
@@ -12267,6 +12289,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 						src += src_stride;
 					} while (--bh);
 
+					assert(sna->kgem.mode == KGEM_BLT);
 					b = sna->kgem.batch + sna->kgem.nbatch;
 					b[0] = XY_MONO_SRC_COPY | br00;
 					b[0] |= ((r->x - origin->x) & 7) << 17;
@@ -12350,6 +12373,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 						_kgem_set_mode(&sna->kgem, KGEM_BLT);
 					}
 
+					assert(sna->kgem.mode == KGEM_BLT);
 					b = sna->kgem.batch + sna->kgem.nbatch;
 					b[0] = XY_MONO_SRC_COPY_IMM | (5 + src_stride) | br00;
 					b[0] |= ((box.x1 - pat.x) & 7) << 17;
@@ -12415,6 +12439,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 							src += src_stride;
 						} while (--bh);
 
+						assert(sna->kgem.mode == KGEM_BLT);
 						b = sna->kgem.batch + sna->kgem.nbatch;
 						b[0] = XY_MONO_SRC_COPY | br00;
 						b[0] |= ((box.x1 - pat.x) & 7) << 17;
@@ -12499,6 +12524,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 							_kgem_set_mode(&sna->kgem, KGEM_BLT);
 						}
 
+						assert(sna->kgem.mode == KGEM_BLT);
 						b = sna->kgem.batch + sna->kgem.nbatch;
 						b[0] = XY_MONO_SRC_COPY_IMM | (5 + src_stride) | br00;
 						b[0] |= ((box.x1 - pat.x) & 7) << 17;
@@ -12564,6 +12590,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 								src += src_stride;
 							} while (--bh);
 
+							assert(sna->kgem.mode == KGEM_BLT);
 							b = sna->kgem.batch + sna->kgem.nbatch;
 							b[0] = XY_MONO_SRC_COPY | br00;
 							b[0] |= ((box.x1 - pat.x) & 7) << 17;
@@ -12657,6 +12684,7 @@ sna_poly_fill_rect_stippled_n_box__imm(struct sna *sna,
 				_kgem_set_mode(&sna->kgem, KGEM_BLT);
 			}
 
+			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
 			b[0] = br00 | (5 + len) | (ox & 7) << 17;
 			b[1] = br13;
@@ -12763,6 +12791,7 @@ sna_poly_fill_rect_stippled_n_box(struct sna *sna,
 				_kgem_set_mode(&sna->kgem, KGEM_BLT);
 			}
 
+			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
 
 			if (!use_tile && len <= 32) {
@@ -12816,6 +12845,7 @@ sna_poly_fill_rect_stippled_n_box(struct sna *sna,
 						return;
 				}
 
+				assert(sna->kgem.mode == KGEM_BLT);
 				b = sna->kgem.batch + sna->kgem.nbatch;
 				b[0] = br00 | (ox & 7) << 17;
 				b[1] = br13;
@@ -13748,6 +13778,7 @@ sna_glyph_blt(DrawablePtr drawable, GCPtr gc,
 	unwind_batch = sna->kgem.nbatch;
 	unwind_reloc = sna->kgem.nreloc;
 
+	assert(sna->kgem.mode == KGEM_BLT);
 	b = sna->kgem.batch + sna->kgem.nbatch;
 	b[0] = XY_SETUP_BLT | 3 << 20;
 	b[1] = bo->pitch;
@@ -13810,6 +13841,7 @@ sna_glyph_blt(DrawablePtr drawable, GCPtr gc,
 				unwind_batch = sna->kgem.nbatch;
 				unwind_reloc = sna->kgem.nreloc;
 
+				assert(sna->kgem.mode == KGEM_BLT);
 				b = sna->kgem.batch + sna->kgem.nbatch;
 				b[0] = XY_SETUP_BLT | 3 << 20;
 				b[1] = bo->pitch;
@@ -13831,6 +13863,7 @@ sna_glyph_blt(DrawablePtr drawable, GCPtr gc,
 				sna->kgem.nbatch += 8;
 			}
 
+			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
 			sna->kgem.nbatch += 3 + len;
 
@@ -13864,6 +13897,7 @@ skip:
 			break;
 
 		if (kgem_check_batch(&sna->kgem, 3)) {
+			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
 			sna->kgem.nbatch += 3;
 
@@ -14419,6 +14453,8 @@ sna_reversed_glyph_blt(DrawablePtr drawable, GCPtr gc,
 	     __FUNCTION__,
 	     extents->x1, extents->y1,
 	     extents->x2, extents->y2));
+
+	assert(sna->kgem.mode == KGEM_BLT);
 	b = sna->kgem.batch + sna->kgem.nbatch;
 	b[0] = XY_SETUP_BLT | 1 << 20;
 	b[1] = bo->pitch;
@@ -14503,6 +14539,7 @@ sna_reversed_glyph_blt(DrawablePtr drawable, GCPtr gc,
 				     extents->x1, extents->y1,
 				     extents->x2, extents->y2));
 
+				assert(sna->kgem.mode == KGEM_BLT);
 				b = sna->kgem.batch + sna->kgem.nbatch;
 				b[0] = XY_SETUP_BLT | 1 << 20;
 				b[1] = bo->pitch;
@@ -14525,6 +14562,7 @@ sna_reversed_glyph_blt(DrawablePtr drawable, GCPtr gc,
 				sna->kgem.nbatch += 8;
 			}
 
+			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
 			sna->kgem.nbatch += 3 + len;
 
@@ -14565,6 +14603,7 @@ skip:
 			break;
 
 		if (kgem_check_batch(&sna->kgem, 3 + 5)) {
+			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
 			sna->kgem.nbatch += 3;
 
@@ -14856,6 +14895,7 @@ sna_push_pixels_solid_blt(GCPtr gc,
 				src += src_stride;
 			} while (--bh);
 
+			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
 			b[0] = XY_MONO_SRC_COPY | 3 << 20;
 			b[0] |= ((box->x1 - region->extents.x1) & 7) << 17;
