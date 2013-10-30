@@ -4717,6 +4717,9 @@ static bool aperture_check(struct kgem *kgem, unsigned num_pages)
 
 static inline bool kgem_flush(struct kgem *kgem, bool flush)
 {
+	if (unlikely(kgem->wedged))
+		return false;
+
 	if (kgem->nreloc == 0)
 		return true;
 

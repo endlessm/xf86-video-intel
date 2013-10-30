@@ -1868,7 +1868,9 @@ gen7_render_video(struct sna *sna,
 	kgem_set_mode(&sna->kgem, KGEM_RENDER, tmp.dst.bo);
 	if (!kgem_check_bo(&sna->kgem, tmp.dst.bo, frame->bo, NULL)) {
 		kgem_submit(&sna->kgem);
-		assert(kgem_check_bo(&sna->kgem, tmp.dst.bo, frame->bo, NULL));
+		if (!kgem_check_bo(&sna->kgem, tmp.dst.bo, frame->bo, NULL))
+			return false;
+
 		_kgem_set_mode(&sna->kgem, KGEM_RENDER);
 	}
 
@@ -3327,7 +3329,12 @@ gen7_render_fill_boxes(struct sna *sna,
 	kgem_set_mode(&sna->kgem, KGEM_RENDER, dst_bo);
 	if (!kgem_check_bo(&sna->kgem, dst_bo, NULL)) {
 		kgem_submit(&sna->kgem);
-		assert(kgem_check_bo(&sna->kgem, dst_bo, NULL));
+		if (!kgem_check_bo(&sna->kgem, dst_bo, NULL)) {
+			kgem_bo_destroy(&sna->kgem, tmp.src.bo);
+			if (tmp.redirect.real_bo)
+				kgem_bo_destroy(&sna->kgem, tmp.dst.bo);
+			return false;
+		}
 		_kgem_set_mode(&sna->kgem, KGEM_RENDER);
 	}
 
@@ -3502,7 +3509,11 @@ gen7_render_fill(struct sna *sna, uint8_t alu,
 	kgem_set_mode(&sna->kgem, KGEM_RENDER, dst_bo);
 	if (!kgem_check_bo(&sna->kgem, dst_bo, NULL)) {
 		kgem_submit(&sna->kgem);
-		assert(kgem_check_bo(&sna->kgem, dst_bo, NULL));
+		if (!kgem_check_bo(&sna->kgem, dst_bo, NULL)) {
+			kgem_bo_destroy(&sna->kgem, op->base.src.bo);
+			return false;
+		}
+
 		_kgem_set_mode(&sna->kgem, KGEM_RENDER);
 	}
 
@@ -3581,7 +3592,7 @@ gen7_render_fill_one(struct sna *sna, PixmapPtr dst, struct kgem_bo *bo,
 	kgem_set_mode(&sna->kgem, KGEM_RENDER, bo);
 	if (!kgem_check_bo(&sna->kgem, bo, NULL)) {
 		kgem_submit(&sna->kgem);
-		if (kgem_check_bo(&sna->kgem, bo, NULL)) {
+		if (!kgem_check_bo(&sna->kgem, bo, NULL)) {
 			kgem_bo_destroy(&sna->kgem, tmp.src.bo);
 			return false;
 		}

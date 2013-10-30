@@ -173,6 +173,8 @@ static bool sna_blt_fill_init(struct sna *sna,
 
 		if (!kgem_check_reloc(kgem, 1)) {
 			_kgem_submit(kgem);
+			if (!kgem_check_bo_fenced(kgem, bo))
+				return false;
 			_kgem_set_mode(kgem, KGEM_BLT);
 		}
 
@@ -2734,6 +2736,8 @@ bool sna_blt_fill_boxes(struct sna *sna, uint8_t alu,
 
 		if (!kgem_check_reloc(kgem, 1)) {
 			_kgem_submit(kgem);
+			if (!kgem_check_bo_fenced(&sna->kgem, bo))
+				return false;
 			_kgem_set_mode(kgem, KGEM_BLT);
 		}
 

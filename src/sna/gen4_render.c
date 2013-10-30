@@ -1388,7 +1388,8 @@ gen4_render_video(struct sna *sna,
 
 	if (!kgem_check_bo(&sna->kgem, tmp.dst.bo, frame->bo, NULL)) {
 		kgem_submit(&sna->kgem);
-		assert(kgem_check_bo(&sna->kgem, tmp.dst.bo, frame->bo, NULL));
+		if (!kgem_check_bo(&sna->kgem, tmp.dst.bo, frame->bo, NULL))
+			return false;
 	}
 
 	gen4_align_vertex(sna, &tmp);
@@ -2656,7 +2657,8 @@ gen4_render_fill_boxes(struct sna *sna,
 
 	if (!kgem_check_bo(&sna->kgem, dst_bo, NULL)) {
 		kgem_submit(&sna->kgem);
-		assert(kgem_check_bo(&sna->kgem, dst_bo, NULL));
+		if (!kgem_check_bo(&sna->kgem, dst_bo, NULL))
+			return false;
 	}
 
 	gen4_align_vertex(sna, &tmp);
@@ -2761,7 +2763,10 @@ gen4_render_fill(struct sna *sna, uint8_t alu,
 
 	if (!kgem_check_bo(&sna->kgem, dst_bo, NULL)) {
 		kgem_submit(&sna->kgem);
-		assert(kgem_check_bo(&sna->kgem, dst_bo, NULL));
+		if (!kgem_check_bo(&sna->kgem, dst_bo, NULL)) {
+			kgem_bo_destroy(&sna->kgem, op->base.src.bo);
+			return false;
+		}
 	}
 
 	gen4_align_vertex(sna, &op->base);
