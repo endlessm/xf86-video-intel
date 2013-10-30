@@ -396,15 +396,14 @@ static void assert_pixmap_damage(PixmapPtr p)
 #endif
 #endif
 
-jmp_buf sigjmp;
+jmp_buf sigjmp[4];
 volatile sig_atomic_t sigtrap;
 
 static int sigtrap_handler(int sig)
 {
 	if (sigtrap) {
 		/* XXX rate-limited squawk? */
-		sigtrap = 0;
-		siglongjmp(sigjmp, sig);
+		siglongjmp(sigjmp[--sigtrap], sig);
 	}
 
 	return -1;
