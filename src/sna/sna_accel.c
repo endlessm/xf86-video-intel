@@ -333,6 +333,8 @@ static void assert_pixmap_damage(PixmapPtr p)
 	struct sna_pixmap *priv;
 	RegionRec reg, cpu, gpu;
 
+	sigtrap_assert();
+
 	priv = sna_pixmap(p);
 	if (priv == NULL)
 		return;
@@ -4205,6 +4207,7 @@ try_upload_blt(PixmapPtr pixmap, RegionRec *region,
 	     __FUNCTION__, x, y, w, h,
 	     RegionNumRects(region)));
 
+	sigtrap_assert();
 	if (sigtrap_get() == 0) {
 		ok = sna->render.copy_boxes(sna, GXcopy,
 					    pixmap, src_bo, -x, -y,
@@ -4319,6 +4322,7 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 
 	DBG(("%s: upload(%d, %d, %d, %d) x %d\n", __FUNCTION__, x, y, w, h, n));
 
+	sigtrap_assert();
 	if (sigtrap_get())
 		return false;
 
@@ -4411,6 +4415,7 @@ sna_put_zpixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 					     region, MOVE_WRITE))
 		return false;
 
+	sigtrap_assert();
 	if (sigtrap_get())
 		return false;
 
@@ -4539,6 +4544,7 @@ sna_put_xybitmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 			break;
 
 
+		sigtrap_assert();
 		if (sigtrap_get() == 0) {
 			int src_stride = BitmapBytePad(w);
 			uint8_t *dst = ptr;
@@ -4674,6 +4680,7 @@ sna_put_xypixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 			if (!upload)
 				break;
 
+			sigtrap_assert();
 			if (sigtrap_get() == 0) {
 				int src_stride = BitmapBytePad(w);
 				uint8_t *src = (uint8_t*)bits + (box->y1 - y) * src_stride + bx1/8;
@@ -4833,9 +4840,11 @@ fallback:
 					      drawable_gc_flags(drawable, gc, false)))
 		goto out;
 
+	sigtrap_assert();
 	if (sigtrap_get() == 0) {
 		DBG(("%s: fbPutImage(%d, %d, %d, %d)\n",
 		     __FUNCTION__, x, y, w, h));
+		assert(gc->ops == (GCOps *)&sna_gc_ops__cpu);
 		fbPutImage(drawable, gc, depth, x, y, w, h, left, format, bits);
 		FALLBACK_FLUSH(drawable);
 		sigtrap_put();
@@ -5078,6 +5087,7 @@ fallback:
 			goto free_boxes;
 
 		if (alu == GXcopy && pixmap->drawable.bitsPerPixel >= 8) {
+			sigtrap_assert();
 			if (sigtrap_get() == 0) {
 				FbBits *dst_bits, *src_bits;
 				int stride = pixmap->devKind;
@@ -5101,6 +5111,7 @@ fallback:
 			if (gc && !sna_gc_move_to_cpu(gc, dst, region))
 				goto out;
 
+			sigtrap_assert();
 			if (sigtrap_get() == 0) {
 				get_drawable_deltas(src, pixmap, &tx, &ty);
 				miCopyRegion(src, dst, gc,
@@ -6051,8 +6062,10 @@ fallback:
 
 			RegionTranslate(region, -dst_dx, -dst_dy);
 
+			sigtrap_assert();
 			if (sna_gc_move_to_cpu(gc, dst, region) &&
 			    sigtrap_get() == 0) {
+				assert(gc->ops == (GCOps *)&sna_gc_ops__cpu);
 				miCopyRegion(src, dst, gc,
 					     region, dx, dy,
 					     fbCopyNtoN, 0, NULL);
@@ -6228,7 +6241,9 @@ sna_fallback_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 			goto out;
 	}
 
+	sigtrap_assert();
 	if (sigtrap_get() == 0) {
+		assert(gc->ops == (GCOps *)&sna_gc_ops__cpu);
 		miCopyRegion(src, dst, gc,
 			     region, dx, dy,
 			     fbCopyNtoN, 0, NULL);
@@ -7264,8 +7279,10 @@ fallback:
 					     drawable_gc_flags(drawable, gc, n > 1)))
 		goto out;
 
+	sigtrap_assert();
 	if (sigtrap_get() == 0) {
 		DBG(("%s: fbFillSpans\n", __FUNCTION__));
+		assert(gc->ops == (GCOps *)&sna_gc_ops__cpu);
 		fbFillSpans(drawable, gc, n, pt, width, sorted);
 		FALLBACK_FLUSH(drawable);
 		sigtrap_put();
@@ -7305,8 +7322,10 @@ fallback:
 					     drawable_gc_flags(drawable, gc, n > 1)))
 		goto out;
 
+	sigtrap_assert();
 	if (sigtrap_get() == 0) {
 		DBG(("%s: fbSetSpans\n", __FUNCTION__));
+		assert(gc->ops == (GCOps *)&sna_gc_ops__cpu);
 		fbSetSpans(drawable, gc, src, pt, width, n, sorted);
 		FALLBACK_FLUSH(drawable);
 		sigtrap_put();
@@ -7440,6 +7459,7 @@ sna_copy_bitmap_blt(DrawablePtr _bitmap, DrawablePtr drawable, GCPtr gc,
 			if (!upload)
 				break;
 
+			sigtrap_assert();
 			if (sigtrap_get() == 0) {
 				b = sna->kgem.batch + sna->kgem.nbatch;
 
@@ -7567,6 +7587,7 @@ sna_copy_plane_blt(DrawablePtr source, DrawablePtr drawable, GCPtr gc,
 		if (!upload)
 			break;
 
+		sigtrap_assert();
 		if (sigtrap_get() == 0) {
 			uint32_t *b;
 
@@ -7817,15 +7838,30 @@ fallback:
 					     drawable_gc_flags(dst, gc, false)))
 		goto out;
 
+	sigtrap_assert();
 	if (sigtrap_get() == 0) {
+		bool expose = gc->fExpose;
+
 		DBG(("%s: fbCopyPlane(%d, %d, %d, %d, %d,%d) %x\n",
 		     __FUNCTION__, src_x, src_y, w, h, dst_x, dst_y, (unsigned)bit));
-		ret = miDoCopy(src, dst, gc,
-			       src_x, src_y, w, h, dst_x, dst_y,
-			       src->bitsPerPixel > 1 ? fbCopyNto1 : fbCopy1toN,
-			       bit, 0);
+		assert(gc->ops == (GCOps *)&sna_gc_ops__cpu);
+
+		expose = gc->fExpose;
+		gc->fExpose = 0;
+
+		miDoCopy(src, dst, gc,
+			 src_x, src_y, w, h, dst_x, dst_y,
+			 src->bitsPerPixel > 1 ? fbCopyNto1 : fbCopy1toN,
+			 bit, 0);
+
 		FALLBACK_FLUSH(dst);
 		sigtrap_put();
+
+		gc->fExpose = expose;
+		ret = miHandleExposures(src, dst, gc,
+					src_x, src_y,
+					w, h,
+					dst_x, dst_y, bit);
 	}
 out:
 	sna_gc_move_to_gpu(gc);
@@ -8029,8 +8065,10 @@ fallback:
 					     MOVE_READ | MOVE_WRITE))
 		goto out;
 
+	sigtrap_assert();
 	if (sigtrap_get() == 0) {
 		DBG(("%s: fbPolyPoint\n", __FUNCTION__));
+		assert(gc->ops == (GCOps *)&sna_gc_ops__cpu);
 		fbPolyPoint(drawable, gc, mode, n, pt, flags);
 		FALLBACK_FLUSH(drawable);
 		sigtrap_put();
@@ -9070,8 +9108,10 @@ fallback:
 							       !(data.flags & 4 && n == 2))))
 		goto out;
 
+	sigtrap_assert();
 	if (sigtrap_get() == 0) {
 		DBG(("%s: fbPolyLine\n", __FUNCTION__));
+		assert(gc->ops == (GCOps *)&sna_gc_ops__cpu);
 		fbPolyLine(drawable, gc, mode, n, pt);
 		FALLBACK_FLUSH(drawable);
 		sigtrap_put();
@@ -9918,8 +9958,10 @@ fallback:
 							       !(data.flags & 4 && n == 1))))
 		goto out;
 
+	sigtrap_assert();
 	if (sigtrap_get() == 0) {
 		DBG(("%s: fbPolySegment\n", __FUNCTION__));
+		assert(gc->ops == (GCOps *)&sna_gc_ops__cpu);
 		fbPolySegment(drawable, gc, n, seg);
 		FALLBACK_FLUSH(drawable);
 		sigtrap_put();
@@ -10526,8 +10568,10 @@ fallback:
 					     drawable_gc_flags(drawable, gc, true)))
 		goto out;
 
+	sigtrap_assert();
 	if (sigtrap_get() == 0) {
 		DBG(("%s: miPolyRectangle\n", __FUNCTION__));
+		assert(gc->ops == (GCOps *)&sna_gc_ops__cpu);
 		miPolyRectangle(drawable, gc, n, r);
 		FALLBACK_FLUSH(drawable);
 		sigtrap_put();
@@ -10725,8 +10769,10 @@ fallback:
 					     drawable_gc_flags(drawable, gc, true)))
 		goto out;
 
+	sigtrap_assert();
 	if (sigtrap_get() == 0) {
 		DBG(("%s -- fbPolyArc\n", __FUNCTION__));
+		assert(gc->ops == (GCOps *)&sna_gc_ops__cpu);
 		fbPolyArc(drawable, gc, n, arc);
 		FALLBACK_FLUSH(drawable);
 		sigtrap_put();
@@ -11078,9 +11124,11 @@ fallback:
 					     drawable_gc_flags(draw, gc, true)))
 		goto out;
 
+	sigtrap_assert();
 	if (sigtrap_get() == 0) {
 		DBG(("%s: fallback -- miFillPolygon -> sna_fill_spans__cpu\n",
 		     __FUNCTION__));
+		assert(gc->ops == (GCOps *)&sna_gc_ops__cpu);
 		miFillPolygon(draw, gc, shape, mode, n, pt);
 		sigtrap_put();
 	}
@@ -11108,6 +11156,12 @@ sna_pixmap_get_source_bo(PixmapPtr pixmap)
 		if (upload == NULL)
 			return NULL;
 
+		sigtrap_assert();
+		if (sigtrap_get()) {
+			kgem_bo_destroy(&sna->kgem, upload);
+			return NULL;
+		}
+
 		assert(has_coherent_ptr(sna, sna_pixmap(pixmap), MOVE_READ));
 		memcpy_blt(pixmap->devPrivate.ptr, ptr,
 			   pixmap->drawable.bitsPerPixel,
@@ -11116,6 +11170,7 @@ sna_pixmap_get_source_bo(PixmapPtr pixmap)
 			   0, 0,
 			   pixmap->drawable.width,
 			   pixmap->drawable.height);
+		sigtrap_put();
 
 		return upload;
 	}
@@ -12195,6 +12250,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 				if (!upload)
 					break;
 
+				sigtrap_assert();
 				if (sigtrap_get() == 0) {
 					dst = ptr;
 					src_stride = stipple->devKind;
@@ -12342,6 +12398,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 					if (!upload)
 						break;
 
+					sigtrap_assert();
 					if (sigtrap_get() == 0) {
 						dst = ptr;
 						src_stride = stipple->devKind;
@@ -12490,6 +12547,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 						if (!upload)
 							break;
 
+						sigtrap_assert();
 						if (sigtrap_get() == 0) {
 							dst = ptr;
 							src_stride = stipple->devKind;
@@ -13362,8 +13420,10 @@ fallback:
 					     drawable_gc_flags(draw, gc, n > 1)))
 		goto out;
 
+	sigtrap_assert();
 	if (sigtrap_get() == 0) {
 		DBG(("%s: fallback - fbPolyFillRect\n", __FUNCTION__));
+		assert(gc->ops == (GCOps *)&sna_gc_ops__cpu);
 		fbPolyFillRect(draw, gc, n, rect);
 		FALLBACK_FLUSH(draw);
 		sigtrap_put();
@@ -13532,9 +13592,11 @@ fallback:
 					     drawable_gc_flags(draw, gc, true)))
 		goto out;
 
+	sigtrap_assert();
 	if (sigtrap_get() == 0) {
 		DBG(("%s: fallback -- miPolyFillArc -> sna_fill_spans__cpu\n",
 		     __FUNCTION__));
+		assert(gc->ops == (GCOps *)&sna_gc_ops__cpu);
 		miPolyFillArc(draw, gc, n, arc);
 		sigtrap_put();
 	}
@@ -14025,8 +14087,10 @@ fallback:
 						     MOVE_READ | MOVE_WRITE))
 			goto out;
 
+		sigtrap_assert();
 		if (sigtrap_get() == 0) {
 			DBG(("%s: fallback -- fbPolyGlyphBlt\n", __FUNCTION__));
+			assert(gc->ops == (GCOps *)&sna_gc_ops__cpu);
 			fbPolyGlyphBlt(drawable, gc, x, y, n,
 				       info, FONTGLYPHS(gc->font));
 			FALLBACK_FLUSH(drawable);
@@ -14101,8 +14165,10 @@ fallback:
 						     MOVE_READ | MOVE_WRITE))
 			goto out;
 
+		sigtrap_assert();
 		if (sigtrap_get() == 0) {
 			DBG(("%s: fallback -- fbPolyGlyphBlt\n", __FUNCTION__));
+			assert(gc->ops == (GCOps *)&sna_gc_ops__cpu);
 			fbPolyGlyphBlt(drawable, gc, x, y, n,
 				       info, FONTGLYPHS(gc->font));
 			FALLBACK_FLUSH(drawable);
@@ -14184,8 +14250,10 @@ fallback:
 		if (!sna_drawable_move_region_to_cpu(drawable, &region, MOVE_WRITE))
 			goto out;
 
+		sigtrap_assert();
 		if (sigtrap_get() == 0) {
 			DBG(("%s: fallback -- fbImageGlyphBlt\n", __FUNCTION__));
+			assert(gc->ops == (GCOps *)&sna_gc_ops__cpu);
 			fbImageGlyphBlt(drawable, gc, x, y, n,
 					info, FONTGLYPHS(gc->font));
 			FALLBACK_FLUSH(drawable);
@@ -14267,8 +14335,10 @@ fallback:
 		if (!sna_drawable_move_region_to_cpu(drawable, &region, MOVE_WRITE))
 			goto out;
 
+		sigtrap_assert();
 		if (sigtrap_get() == 0) {
 			DBG(("%s: fallback -- fbImageGlyphBlt\n", __FUNCTION__));
+			assert(gc->ops == (GCOps *)&sna_gc_ops__cpu);
 			fbImageGlyphBlt(drawable, gc, x, y, n,
 					info, FONTGLYPHS(gc->font));
 			FALLBACK_FLUSH(drawable);
@@ -14596,8 +14666,10 @@ fallback:
 	if (!sna_drawable_move_region_to_cpu(drawable, &region, MOVE_WRITE))
 		goto out_gc;
 
+	sigtrap_assert();
 	if (sigtrap_get() == 0) {
 		DBG(("%s: fallback -- fbImageGlyphBlt\n", __FUNCTION__));
+		assert(gc->ops == (GCOps *)&sna_gc_ops__cpu);
 		fbImageGlyphBlt(drawable, gc, x, y, n, info, base);
 		FALLBACK_FLUSH(drawable);
 		sigtrap_put();
@@ -14677,8 +14749,10 @@ fallback:
 					     MOVE_READ | MOVE_WRITE))
 		goto out_gc;
 
+	sigtrap_assert();
 	if (sigtrap_get() == 0) {
 		DBG(("%s: fallback -- fbPolyGlyphBlt\n", __FUNCTION__));
+		assert(gc->ops == (GCOps *)&sna_gc_ops__cpu);
 		fbPolyGlyphBlt(drawable, gc, x, y, n, info, base);
 		FALLBACK_FLUSH(drawable);
 		sigtrap_put();
@@ -14761,6 +14835,7 @@ sna_push_pixels_solid_blt(GCPtr gc,
 		if (!upload)
 			break;
 
+		sigtrap_assert();
 		if (sigtrap_get() == 0) {
 			uint8_t *dst = ptr;
 
@@ -14866,9 +14941,11 @@ sna_push_pixels(GCPtr gc, PixmapPtr bitmap, DrawablePtr drawable,
 					     drawable_gc_flags(drawable, gc, false)))
 		goto out;
 
+	sigtrap_assert();
 	if (sigtrap_get() == 0) {
 		DBG(("%s: fallback, fbPushPixels(%d, %d, %d %d)\n",
 		     __FUNCTION__, w, h, x, y));
+		assert(gc->ops == (GCOps *)&sna_gc_ops__cpu);
 		fbPushPixels(gc, bitmap, drawable, w, h, x, y);
 		FALLBACK_FLUSH(drawable);
 		sigtrap_put();
@@ -14901,12 +14978,43 @@ static const GCOps sna_gc_ops = {
 	sna_push_pixels,
 };
 
+static RegionPtr
+sna_copy_plane__cpu(DrawablePtr src, DrawablePtr dst, GCPtr gc,
+		    int src_x, int src_y,
+		    int w, int h,
+		    int dst_x, int dst_y,
+		    unsigned long bit)
+{
+	DBG(("%s: src=(%d, %d), dst=(%d, %d), size=%dx%d\n", __FUNCTION__,
+	     src_x, src_y, dst_x, dst_y, w, h));
+
+	if (gc->planemask == 0)
+		goto empty;
+
+	if (src->bitsPerPixel == 1 && (bit&1) == 0)
+		goto empty;
+
+	if (!sna_drawable_move_to_cpu(src, MOVE_READ))
+		goto empty;
+
+	return miDoCopy(src, dst, gc,
+			src_x, src_y, w, h, dst_x, dst_y,
+			src->bitsPerPixel > 1 ? fbCopyNto1 : fbCopy1toN,
+			bit, 0);
+
+empty:
+	return miHandleExposures(src, dst, gc,
+				 src_x, src_y,
+				 w, h,
+				 dst_x, dst_y, bit);
+}
+
 static const GCOps sna_gc_ops__cpu = {
 	fbFillSpans,
 	fbSetSpans,
 	fbPutImage,
 	fbCopyArea,
-	fbCopyPlane,
+	sna_copy_plane__cpu,
 	sna_poly_point__cpu,
 	fbPolyLine,
 	fbPolySegment,
@@ -14960,6 +15068,25 @@ sna_validate_gc(GCPtr gc, unsigned long changes, DrawablePtr drawable)
 	sna_gc(gc)->changes |= changes;
 }
 
+static void
+sna_validate_gc__cpu(GCPtr gc, unsigned long changes, DrawablePtr drawable)
+{
+	struct sna_gc *sgc;
+
+	DBG(("%s changes=%lx\n", __FUNCTION__, changes));
+
+	if (changes & (GCClipXOrigin | GCClipYOrigin | GCClipMask | GCSubwindowMode) ||
+	    drawable->serialNumber != (gc->serialNumber & DRAWABLE_SERIAL_BITS))
+		miComputeCompositeClip(gc, drawable);
+
+	fbValidateGC(gc, changes, drawable);
+	gc->serialNumber = drawable->serialNumber;
+
+	sgc = sna_gc(gc);
+	sgc->serial = drawable->serialNumber;
+	sgc->changes = 0;
+}
+
 static const GCFuncs sna_gc_funcs = {
 	sna_validate_gc,
 	miChangeGC,
@@ -14971,7 +15098,7 @@ static const GCFuncs sna_gc_funcs = {
 };
 
 static const GCFuncs sna_gc_funcs__cpu = {
-	fbValidateGC,
+	sna_validate_gc__cpu,
 	miChangeGC,
 	miCopyGC,
 	miDestroyGC,
@@ -14991,8 +15118,13 @@ static int sna_create_gc(GCPtr gc)
 
 	fb_gc(gc)->bpp = bits_per_pixel(gc->depth);
 
-	gc->funcs = (GCFuncs *)&sna_gc_funcs;
-	gc->ops = (GCOps *)&sna_gc_ops;
+	if (gc->depth < 8) {
+		gc->funcs = (GCFuncs *)&sna_gc_funcs__cpu;
+		gc->ops = (GCOps *)&sna_gc_ops__cpu;
+	} else {
+		gc->funcs = (GCFuncs *)&sna_gc_funcs;
+		gc->ops = (GCOps *)&sna_gc_ops;
+	}
 	return true;
 }
 
@@ -15289,6 +15421,7 @@ sna_copy_window(WindowPtr win, DDXPointRec origin, RegionPtr src)
 		if (!sna_pixmap_move_to_cpu(pixmap, MOVE_READ | MOVE_WRITE))
 			return;
 
+		sigtrap_assert();
 		if (sigtrap_get() == 0) {
 			miCopyRegion(&pixmap->drawable, &pixmap->drawable,
 				     0, &dst, dx, dy, fbCopyNtoN, 0, NULL);
@@ -15611,6 +15744,7 @@ fallback:
 			if (!sna_pixmap_move_to_cpu(dst, MOVE_READ | MOVE_WRITE | MOVE_INPLACE_HINT))
 				goto skip;
 
+			sigtrap_assert();
 			if (sigtrap_get() == 0) {
 				assert(src->drawable.bitsPerPixel == dst->drawable.bitsPerPixel);
 				do {
