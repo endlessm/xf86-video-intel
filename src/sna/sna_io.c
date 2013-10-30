@@ -114,7 +114,6 @@ read_boxes_inplace__cpu(struct kgem *kgem,
 
 	kgem_bo_sync__cpu_full(kgem, bo, 0);
 
-	sigtrap_assert();
 	if (sigtrap_get())
 		return false;
 
@@ -164,7 +163,6 @@ static void read_boxes_inplace(struct kgem *kgem,
 	if (src == NULL)
 		return;
 
-	sigtrap_assert();
 	if (sigtrap_get())
 		return;
 
@@ -591,7 +589,6 @@ write_boxes_inplace__tiled(struct kgem *kgem,
 
 	kgem_bo_sync__cpu(kgem, bo);
 
-	sigtrap_assert();
 	if (sigtrap_get())
 		return false;
 
@@ -633,7 +630,6 @@ static bool write_boxes_inplace(struct kgem *kgem,
 
 	assert(dst != src);
 
-	sigtrap_assert();
 	if (sigtrap_get())
 		return false;
 
@@ -1049,7 +1045,6 @@ write_boxes_inplace__xor(struct kgem *kgem,
 	if (dst == NULL)
 		return false;
 
-	sigtrap_assert();
 	if (sigtrap_get())
 		return false;
 
@@ -1446,7 +1441,6 @@ indirect_replace(struct sna *sna,
 	if (!src_bo)
 		return false;
 
-	sigtrap_assert();
 	if (sigtrap_get() == 0) {
 		memcpy_blt(src, ptr, pixmap->drawable.bitsPerPixel,
 			   stride, src_bo->pitch,
@@ -1526,7 +1520,6 @@ bool sna_replace(struct sna *sna, PixmapPtr pixmap,
 			goto done;
 	}
 
-	sigtrap_assert();
 	if (kgem_bo_is_mappable(&sna->kgem, bo) &&
 	    (dst = kgem_bo_map(&sna->kgem, bo)) != NULL &&
 	    sigtrap_get() == 0) {

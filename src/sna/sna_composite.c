@@ -541,7 +541,6 @@ sna_composite_fb(CARD8 op,
 		    region->extents.y1 + sy >= 0 &&
 		    region->extents.x2 + sx <= src->pDrawable->width &&
 		    region->extents.y2 + sy <= src->pDrawable->height) {
-			sigtrap_assert();
 			if (sigtrap_get() == 0) {
 				BoxPtr box = RegionRects(region);
 				int nbox = RegionNumRects(region);
@@ -594,7 +593,6 @@ sna_composite_fb(CARD8 op,
 	dest_image = image_from_pict(dst, TRUE, &dst_xoff, &dst_yoff);
 
 	if (src_image && dest_image && !(mask && !mask_image)) {
-		sigtrap_assert();
 		if (sigtrap_get() == 0) {
 			sna_image_composite(op, src_image, mask_image, dest_image,
 					    src_x + src_xoff, src_y + src_yoff,
@@ -748,7 +746,6 @@ fallback:
 			 width,  height);
 out:
 	REGION_UNINIT(NULL, &region);
-	sigtrap_assert();
 }
 
 void
@@ -1083,7 +1080,6 @@ fallback:
 
 	assert(pixmap->devPrivate.ptr);
 
-	sigtrap_assert();
 	if (sigtrap_get() == 0) {
 		if (op <= PictOpSrc) {
 			int nbox = RegionNumRects(&region);

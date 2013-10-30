@@ -1678,7 +1678,6 @@ next:
 		if (dst_image == NULL)
 			goto out_free_src;
 
-		sigtrap_assert();
 		if (sigtrap_get() == 0) {
 			if (mask_format) {
 				pixman_composite_glyphs(op, src_image, dst_image,
@@ -1761,7 +1760,6 @@ out:
 			src_y -= y - dst->pDrawable->y;
 		}
 
-		sigtrap_assert();
 		if (sigtrap_get() == 0) {
 			do {
 				n = list->len;
