@@ -1109,9 +1109,13 @@ gen7_emit_state(struct sna *sna,
 	if (ALWAYS_INVALIDATE)
 		need_invalidate = true;
 
-	need_flush = sna->render_state.gen7.emit_flush;
+	need_flush =
+		sna->render_state.gen7.emit_flush ||
+		wm_binding_table & GEN7_READS_DST(op->u.gen7.flags);
 	if (ALWAYS_FLUSH)
 		need_flush = true;
+
+	wm_binding_table &= ~1;
 
 	need_stall = sna->render_state.gen7.surface_table != wm_binding_table;
 	need_stall &= gen7_emit_drawing_rectangle(sna, op);
@@ -1495,11 +1499,13 @@ static void gen7_emit_composite_state(struct sna *sna,
 				      const struct sna_composite_op *op)
 {
 	uint32_t *binding_table;
-	uint16_t offset;
+	uint16_t offset, dirty;
 
 	gen7_get_batch(sna, op);
 
 	binding_table = gen7_composite_get_binding_table(sna, &offset);
+
+	dirty = kgem_bo_is_dirty(op->dst.bo);
 
 	binding_table[0] =
 		gen7_bind_bo(sna,
@@ -1529,7 +1535,7 @@ static void gen7_emit_composite_state(struct sna *sna,
 		offset = sna->render_state.gen7.surface_table;
 	}
 
-	gen7_emit_state(sna, op, offset);
+	gen7_emit_state(sna, op, offset | dirty);
 }
 
 static void
@@ -1747,7 +1753,7 @@ static void gen7_emit_video_state(struct sna *sna,
 	int src_height[6];
 	int src_pitch[6];
 	uint32_t *binding_table;
-	uint16_t offset;
+	uint16_t offset, dirty;
 	int n_src, n;
 
 	gen7_get_batch(sna, op);
@@ -1785,6 +1791,8 @@ static void gen7_emit_video_state(struct sna *sna,
 
 	binding_table = gen7_composite_get_binding_table(sna, &offset);
 
+	dirty = kgem_bo_is_dirty(op->dst.bo);
+
 	binding_table[0] =
 		gen7_bind_bo(sna,
 			     op->dst.bo, op->dst.width, op->dst.height,
@@ -1801,7 +1809,7 @@ static void gen7_emit_video_state(struct sna *sna,
 					       src_surf_format);
 	}
 
-	gen7_emit_state(sna, op, offset);
+	gen7_emit_state(sna, op, offset | dirty);
 }
 
 static bool
@@ -2777,11 +2785,13 @@ gen7_emit_copy_state(struct sna *sna,
 		     const struct sna_composite_op *op)
 {
 	uint32_t *binding_table;
-	uint16_t offset;
+	uint16_t offset, dirty;
 
 	gen7_get_batch(sna, op);
 
 	binding_table = gen7_composite_get_binding_table(sna, &offset);
+
+	dirty = kgem_bo_is_dirty(op->dst.bo);
 
 	binding_table[0] =
 		gen7_bind_bo(sna,
@@ -2801,7 +2811,7 @@ gen7_emit_copy_state(struct sna *sna,
 	}
 
 	assert(!GEN7_READS_DST(op->u.gen7.flags));
-	gen7_emit_state(sna, op, offset);
+	gen7_emit_state(sna, op, offset | dirty);
 }
 
 static inline bool
@@ -3198,6 +3208,7 @@ fallback:
 static void
 gen7_emit_fill_state(struct sna *sna, const struct sna_composite_op *op)
 {
+	uint16_t dirty;
 	uint32_t *binding_table;
 	uint16_t offset;
 
@@ -3210,6 +3221,8 @@ gen7_emit_fill_state(struct sna *sna, const struct sna_composite_op *op)
 	gen7_get_batch(sna, op);
 
 	binding_table = gen7_composite_get_binding_table(sna, &offset);
+
+	dirty = kgem_bo_is_dirty(op->dst.bo);
 
 	binding_table[0] =
 		gen7_bind_bo(sna,
@@ -3229,7 +3242,7 @@ gen7_emit_fill_state(struct sna *sna, const struct sna_composite_op *op)
 		offset = sna->render_state.gen7.surface_table;
 	}
 
-	gen7_emit_state(sna, op, offset);
+	gen7_emit_state(sna, op, offset | dirty);
 }
 
 static bool
