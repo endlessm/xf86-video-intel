@@ -866,21 +866,22 @@ gen6_emit_state(struct sna *sna,
 		const struct sna_composite_op *op,
 		uint16_t wm_binding_table)
 {
-	bool need_stall = wm_binding_table & 1;
+	bool need_flush, need_stall;
 
 	assert(op->dst.bo->exec);
 
-	if (gen6_emit_cc(sna, GEN6_BLEND(op->u.gen6.flags)))
-		need_stall = false;
+	need_flush =
+		gen6_emit_cc(sna, GEN6_BLEND(op->u.gen6.flags)) &&
+		wm_binding_table & 1;
 	gen6_emit_sampler(sna, GEN6_SAMPLER(op->u.gen6.flags));
 	gen6_emit_sf(sna, GEN6_VERTEX(op->u.gen6.flags) >> 2);
 	gen6_emit_wm(sna, GEN6_KERNEL(op->u.gen6.flags), GEN6_VERTEX(op->u.gen6.flags) >> 2);
 	gen6_emit_vertex_elements(sna, op);
 
-	need_stall |= gen6_emit_binding_table(sna, wm_binding_table & ~1);
+	need_stall = gen6_emit_binding_table(sna, wm_binding_table & ~1);
 	if (gen6_emit_drawing_rectangle(sna, op))
 		need_stall = false;
-	if (kgem_bo_is_dirty(op->src.bo) || kgem_bo_is_dirty(op->mask.bo)) {
+	if (need_flush || kgem_bo_is_dirty(op->src.bo) || kgem_bo_is_dirty(op->mask.bo)) {
 		gen6_emit_flush(sna);
 		kgem_clear_dirty(&sna->kgem);
 		assert(op->dst.bo->exec);
