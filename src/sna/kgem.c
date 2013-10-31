@@ -2357,6 +2357,7 @@ static void kgem_commit(struct kgem *kgem)
 
 		if (!bo->refcnt && !bo->reusable) {
 			assert(!bo->snoop);
+			assert(!bo->proxy);
 			kgem_bo_free(kgem, bo);
 			continue;
 		}
@@ -2451,8 +2452,8 @@ static void kgem_finish_buffers(struct kgem *kgem)
 			if (!DBG_NO_UPLOAD_ACTIVE &&
 			    used + PAGE_SIZE <= bytes(&bo->base) &&
 			    (kgem->has_llc || bo->mmapped == MMAPPED_GTT || bo->base.snoop)) {
-				DBG(("%s: retaining upload buffer (%d/%d)\n",
-				     __FUNCTION__, bo->used, bytes(&bo->base)));
+				DBG(("%s: retaining upload buffer (%d/%d): used=%d, refcnt=%d\n",
+				     __FUNCTION__, bo->used, bytes(&bo->base), used, bo->base.refcnt));
 				bo->used = used;
 				if (bo->base.refcnt == 1) {
 					list_move(&bo->base.list,
@@ -4634,17 +4635,22 @@ void _kgem_bo_destroy(struct kgem *kgem, struct kgem_bo *bo)
 	     __FUNCTION__, bo->handle, bo->proxy != NULL));
 
 	if (bo->proxy) {
+		assert(!bo->reusable);
+		kgem_bo_binding_free(kgem, bo);
+
+		assert(list_is_empty(&bo->list));
 		_list_del(&bo->vma);
 		_list_del(&bo->request);
-		if (bo->io && bo->exec == NULL && bo->domain == DOMAIN_CPU)
-			_kgem_bo_delete_buffer(kgem, bo);
-		kgem_bo_unref(kgem, bo->proxy);
-		kgem_bo_binding_free(kgem, bo);
-		free(bo);
-		return;
-	}
 
-	__kgem_bo_destroy(kgem, bo);
+		if (bo->io && bo->domain == DOMAIN_CPU)
+			_kgem_bo_delete_buffer(kgem, bo);
+
+		kgem_bo_unref(kgem, bo->proxy);
+
+		*(struct kgem_bo **)bo = __kgem_freed_bo;
+		__kgem_freed_bo = bo;
+	} else
+		__kgem_bo_destroy(kgem, bo);
 }
 
 static void __kgem_flush(struct kgem *kgem, struct kgem_bo *bo)
@@ -4993,6 +4999,7 @@ uint32_t kgem_add_reloc(struct kgem *kgem,
 				bo->rq = MAKE_REQUEST(kgem->next_request,
 						      kgem->ring);
 				bo->exec = &_kgem_dummy_exec;
+				bo->domain = DOMAIN_GPU;
 			}
 
 			if (read_write_domain & 0x7fff && !bo->gpu_dirty)
@@ -5505,7 +5512,7 @@ struct kgem_bo *kgem_create_proxy(struct kgem *kgem,
 	bo->proxy = kgem_bo_reference(target);
 	bo->delta = offset;
 
-	if (target->exec) {
+	if (target->exec && !bo->io) {
 		list_move_tail(&bo->request, &kgem->next_request->buffers);
 		bo->exec = &_kgem_dummy_exec;
 	}

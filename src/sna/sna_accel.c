@@ -4264,6 +4264,7 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 		DBG(("%s: discarding cached upload proxy\n", __FUNCTION__));
 		sna_pixmap_free_gpu(sna, priv);
 	}
+	assert(priv->gpu_bo == NULL || priv->gpu_bo->proxy == NULL);
 
 	if (priv->cow || priv->move_to_gpu) {
 		DBG(("%s: no, has COW or pending move-to-gpu\n", __FUNCTION__));

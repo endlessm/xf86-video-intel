@@ -69,4 +69,3 @@ void gen6_render_retire(struct kgem *kgem)
 		sna->render.vertex_index = 0;
 	}
 }
-
