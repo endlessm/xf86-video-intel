@@ -476,6 +476,12 @@ static inline int __kgem_bo_size(struct kgem_bo *bo)
 	return PAGE_SIZE * bo->size.pages.count;
 }
 
+static inline int __kgem_bo_num_pages(struct kgem_bo *bo)
+{
+	assert(bo->proxy == NULL);
+	return bo->size.pages.count;
+}
+
 static inline int kgem_bo_size(struct kgem_bo *bo)
 {
 	if (bo->proxy)
@@ -528,9 +534,9 @@ static inline bool __kgem_bo_is_mappable(struct kgem *kgem,
 		return true;
 
 	if (!bo->presumed_offset)
-		return kgem_bo_size(bo) <= kgem->aperture_mappable / 4;
+		return __kgem_bo_num_pages(bo) <= kgem->aperture_mappable / 4;
 
-	return bo->presumed_offset + kgem_bo_size(bo) <= kgem->aperture_mappable;
+	return bo->presumed_offset / PAGE_SIZE + __kgem_bo_num_pages(bo) <= kgem->aperture_mappable;
 }
 
 static inline bool kgem_bo_is_mappable(struct kgem *kgem,
@@ -565,7 +571,7 @@ static inline bool kgem_bo_can_map(struct kgem *kgem, struct kgem_bo *bo)
 	if (kgem->gen == 021 && bo->tiling == I915_TILING_Y)
 		return false;
 
-	return kgem_bo_size(bo) <= kgem->aperture_mappable / 4;
+	return __kgem_bo_num_pages(bo) <= kgem->aperture_mappable / 4;
 }
 
 static inline bool kgem_bo_can_map__cpu(struct kgem *kgem,

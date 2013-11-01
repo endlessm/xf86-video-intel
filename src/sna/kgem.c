@@ -4717,7 +4717,10 @@ static bool aperture_check(struct kgem *kgem, unsigned num_pages)
 			aperture.aper_available_size -= 2 * kgem->nexec * PAGE_SIZE;
 
 		aperture.aper_available_size -= aperture.aper_size - aperture.aper_available_size;
-		if (num_pages < aperture.aper_available_size / PAGE_SIZE)
+		DBG(("%s: num_pages=%d, estimated max=%ld\n",
+		     __FUNCTION__, num_pages, (long)(aperture.aper_available_size/PAGE_SIZE)));
+
+		if (num_pages <= aperture.aper_available_size / PAGE_SIZE)
 			return true;
 	}
 
@@ -5123,7 +5126,7 @@ void *kgem_bo_map__async(struct kgem *kgem, struct kgem_bo *bo)
 
 	ptr = MAP(bo->map__gtt);
 	if (ptr == NULL) {
-		assert(kgem_bo_size(bo) <= kgem->aperture_mappable / 2);
+		assert(num_pages(bo) <= kgem->aperture_mappable / 2);
 
 		kgem_trim_vma_cache(kgem, MAP_GTT, bucket(bo));
 
@@ -5167,7 +5170,7 @@ void *kgem_bo_map(struct kgem *kgem, struct kgem_bo *bo)
 
 	ptr = MAP(bo->map__gtt);
 	if (ptr == NULL) {
-		assert(kgem_bo_size(bo) <= kgem->aperture_mappable / 2);
+		assert(num_pages(bo) <= kgem->aperture_mappable / 2);
 		assert(kgem->gen != 021 || bo->tiling != I915_TILING_Y);
 
 		kgem_trim_vma_cache(kgem, MAP_GTT, bucket(bo));
@@ -5220,7 +5223,7 @@ void *kgem_bo_map__gtt(struct kgem *kgem, struct kgem_bo *bo)
 
 	ptr = MAP(bo->map__gtt);
 	if (ptr == NULL) {
-		assert(bytes(bo) <= kgem->aperture_mappable / 4);
+		assert(num_pages(bo) <= kgem->aperture_mappable / 4);
 
 		kgem_trim_vma_cache(kgem, MAP_GTT, bucket(bo));
 
