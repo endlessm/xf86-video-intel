@@ -9958,10 +9958,14 @@ sna_poly_rectangle_extents(DrawablePtr drawable, GCPtr gc,
 	} else
 		zero = true;
 
+	DBG(("%s: unclipped original extents: (%d, %d), (%d, %d)\n",
+	     __FUNCTION__, box.x1, box.y1, box.x2, box.y2));
 	clipped = box32_trim_and_translate(&box, drawable, gc);
 	if (!box32_to_box16(&box, out))
 		return 0;
 
+	DBG(("%s: extents: (%d, %d), (%d, %d), clipped? %d\n",
+	     __FUNCTION__, out->x1, out->y1, out->x2, out->y2, clipped));
 	return 1 | clipped << 1 | zero << 2;
 }
 
@@ -10476,7 +10480,7 @@ sna_poly_rectangle(DrawablePtr drawable, GCPtr gc, int n, xRectangle *r)
 		goto fallback;
 	}
 
-	DBG(("%s: fill=_%d [%d], line=%d [%d], join=%d [%d], mask=%lu [%d]\n",
+	DBG(("%s: fill=%d [%d], line=%d [%d], join=%d [%d], mask=%lu [%d]\n",
 	     __FUNCTION__,
 	     gc->fillStyle, gc->fillStyle == FillSolid,
 	     gc->lineStyle, gc->lineStyle == LineSolid,
@@ -10506,12 +10510,19 @@ sna_poly_rectangle(DrawablePtr drawable, GCPtr gc, int n, xRectangle *r)
 	}
 
 fallback:
-	DBG(("%s: fallback\n", __FUNCTION__));
+	DBG(("%s: fallback, clip=%ldx[(%d, %d), (%d, %d)]\n", __FUNCTION__,
+	     (long)RegionNumRects(gc->pCompositeClip),
+	     gc->pCompositeClip->extents.x1, gc->pCompositeClip->extents.y1,
+	     gc->pCompositeClip->extents.x2, gc->pCompositeClip->extents.y2));
 
 	region.data = NULL;
 	if (!region_maybe_clip(&region, gc->pCompositeClip))
 		return;
 
+	DBG(("%s: CPU region=%ldx[(%d, %d), (%d, %d)]\n", __FUNCTION__,
+	     (long)RegionNumRects(&region),
+	     region.extents.x1, region.extents.y1,
+	     region.extents.x2, region.extents.y2));
 	if (!sna_gc_move_to_cpu(gc, drawable, &region))
 		goto out;
 	if (!sna_drawable_move_region_to_cpu(drawable, &region,
@@ -14988,8 +14999,17 @@ sna_validate_gc(GCPtr gc, unsigned long changes, DrawablePtr drawable)
 
 	if (changes & (GCClipMask|GCSubwindowMode) ||
 	    drawable->serialNumber != (gc->serialNumber & DRAWABLE_SERIAL_BITS) ||
-	    (gc->clientClipType != CT_NONE && (changes & (GCClipXOrigin | GCClipYOrigin))))
+	    (gc->clientClipType != CT_NONE && (changes & (GCClipXOrigin | GCClipYOrigin)))) {
+		DBG(("%s: recomputing clip\n", __FUNCTION__));
 		miComputeCompositeClip(gc, drawable);
+		DBG(("%s: composite clip=%ldx[(%d, %d), (%d, %d)]\n",
+		     __FUNCTION__,
+		     (long)RegionNumRects(gc->pCompositeClip),
+		     gc->pCompositeClip->extents.x1,
+		     gc->pCompositeClip->extents.y1,
+		     gc->pCompositeClip->extents.x2,
+		     gc->pCompositeClip->extents.y2));
+	}
 
 	sna_gc(gc)->changes |= changes;
 }
