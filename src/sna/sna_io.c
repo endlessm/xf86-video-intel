@@ -581,6 +581,7 @@ write_boxes_inplace__tiled(struct kgem *kgem,
 {
 	uint8_t *dst;
 
+	assert(kgem_bo_can_map__cpu(kgem, bo, true));
 	assert(bo->tiling == I915_TILING_X);
 
 	dst = kgem_bo_map__cpu(kgem, bo);
@@ -718,7 +719,7 @@ bool sna_write_boxes(struct sna *sna, PixmapPtr dst,
 
 	DBG(("%s x %d, src stride=%d,  src dx=(%d, %d)\n", __FUNCTION__, nbox, stride, src_dx, src_dy));
 
-	if (upload_inplace(kgem, dst_bo, box, nbox, dst->drawable.bitsPerPixel)&&
+	if (upload_inplace(kgem, dst_bo, box, nbox, dst->drawable.bitsPerPixel) &&
 	    write_boxes_inplace(kgem,
 				src, stride, dst->drawable.bitsPerPixel, src_dx, src_dy,
 				dst_bo, dst_dx, dst_dy,
@@ -1039,6 +1040,9 @@ write_boxes_inplace__xor(struct kgem *kgem,
 
 	DBG(("%s x %d, tiling=%d\n", __FUNCTION__, n, bo->tiling));
 
+	if (!kgem_bo_can_map(kgem, bo))
+		return false;
+
 	kgem_bo_submit(kgem, bo);
 
 	dst = kgem_bo_map(kgem, bo);
@@ -1110,14 +1114,17 @@ bool sna_write_boxes__xor(struct sna *sna, PixmapPtr dst,
 
 	DBG(("%s x %d\n", __FUNCTION__, nbox));
 
-	if (upload_inplace__xor(kgem, dst_bo, box, nbox, dst->drawable.bitsPerPixel)) {
-fallback:
-		return write_boxes_inplace__xor(kgem,
-						src, stride, dst->drawable.bitsPerPixel, src_dx, src_dy,
-						dst_bo, dst_dx, dst_dy,
-						box, nbox,
-						and, or);
-	}
+	if (upload_inplace__xor(kgem, dst_bo, box, nbox, dst->drawable.bitsPerPixel) &&
+	    write_boxes_inplace__xor(kgem,
+				     src, stride, dst->drawable.bitsPerPixel, src_dx, src_dy,
+				     dst_bo, dst_dx, dst_dy,
+				     box, nbox,
+				     and, or))
+		return true;
+
+	if (wedged(sna))
+		return false;
+
 
 	can_blt = kgem_bo_can_blt(kgem, dst_bo) &&
 		(box[0].x2 - box[0].x1) * dst->drawable.bitsPerPixel < 8 * (MAXSHORT - 4);
@@ -1406,6 +1413,13 @@ tile:
 
 	sna->blt_state.fill_bo = 0;
 	return true;
+
+fallback:
+	return write_boxes_inplace__xor(kgem,
+					src, stride, dst->drawable.bitsPerPixel, src_dx, src_dy,
+					dst_bo, dst_dx, dst_dy,
+					box, nbox,
+					and, or);
 }
 
 static bool

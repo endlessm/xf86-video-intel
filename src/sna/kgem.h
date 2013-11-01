@@ -530,7 +530,7 @@ static inline bool __kgem_bo_is_mappable(struct kgem *kgem,
 	if (kgem->gen == 021 && bo->tiling == I915_TILING_Y)
 		return false;
 
-	if (kgem->has_llc && bo->tiling == I915_TILING_NONE)
+	if (!bo->tiling && (kgem->has_llc || bo->domain == DOMAIN_CPU))
 		return true;
 
 	if (!bo->presumed_offset)
