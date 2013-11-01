@@ -1110,7 +1110,7 @@ gen7_emit_state(struct sna *sna,
 		need_invalidate = true;
 
 	need_flush =
-		sna->render_state.gen7.emit_flush ||
+		sna->render_state.gen7.emit_flush &&
 		wm_binding_table & GEN7_READS_DST(op->u.gen7.flags);
 	if (ALWAYS_FLUSH)
 		need_flush = true;
