@@ -1726,26 +1726,29 @@ inline static void kgem_bo_move_to_inactive(struct kgem *kgem,
 	kgem->need_expire = true;
 
 	if (bucket(bo) >= NUM_CACHE_BUCKETS) {
-		list_move(&bo->list, &kgem->large_inactive);
-		return;
-	}
-
-	assert(bo->flush == false);
-	list_move(&bo->list, &kgem->inactive[bucket(bo)]);
-	if (bo->map__gtt) {
-		if (bucket(bo) >= NUM_CACHE_BUCKETS ||
-		    !__kgem_bo_is_mappable(kgem, bo)) {
+		if (bo->map__gtt) {
 			munmap(MAP(bo->map__gtt), bytes(bo));
 			bo->map__gtt = NULL;
 		}
+
+		list_move(&bo->list, &kgem->large_inactive);
+	} else {
+		assert(bo->flush == false);
+		list_move(&bo->list, &kgem->inactive[bucket(bo)]);
 		if (bo->map__gtt) {
-			list_add(&bo->vma, &kgem->vma[0].inactive[bucket(bo)]);
-			kgem->vma[0].count++;
+			if (!__kgem_bo_is_mappable(kgem, bo)) {
+				munmap(MAP(bo->map__gtt), bytes(bo));
+				bo->map__gtt = NULL;
+			}
+			if (bo->map__gtt) {
+				list_add(&bo->vma, &kgem->vma[0].inactive[bucket(bo)]);
+				kgem->vma[0].count++;
+			}
 		}
-	}
-	if (bo->map__cpu && !bo->map__gtt) {
-		list_add(&bo->vma, &kgem->vma[1].inactive[bucket(bo)]);
-		kgem->vma[1].count++;
+		if (bo->map__cpu && !bo->map__gtt) {
+			list_add(&bo->vma, &kgem->vma[1].inactive[bucket(bo)]);
+			kgem->vma[1].count++;
+		}
 	}
 }
 
@@ -1787,8 +1790,8 @@ inline static void kgem_bo_remove_from_inactive(struct kgem *kgem,
 	list_del(&bo->list);
 	assert(bo->rq == NULL);
 	assert(bo->exec == NULL);
-	if (bo->map__gtt || bo->map__cpu) {
-		assert(!list_is_empty(&bo->vma));
+	if (!list_is_empty(&bo->vma)) {
+		assert(bo->map__gtt || bo->map__cpu);
 		list_del(&bo->vma);
 		kgem->vma[bo->map__gtt == NULL].count--;
 	}
@@ -2080,6 +2083,7 @@ static void kgem_buffer_release(struct kgem *kgem, struct kgem_buffer *bo)
 		assert(*(struct kgem_bo **)cached->map__gtt == cached);
 		*(struct kgem_bo **)cached->map__gtt = NULL;
 		cached->map__gtt = NULL;
+		assert(cached->map__cpu == NULL);
 
 		kgem_bo_destroy(kgem, cached);
 	}
@@ -3462,6 +3466,8 @@ discard:
 				continue;
 
 			kgem_bo_remove_from_inactive(kgem, bo);
+			assert(list_is_empty(&bo->vma));
+			assert(list_is_empty(&bo->list));
 
 			bo->tiling = I915_TILING_NONE;
 			bo->pitch = 0;
@@ -3557,6 +3563,7 @@ discard:
 		     __FUNCTION__, bo->handle, num_pages(bo),
 		     use_active ? "active" : "inactive"));
 		assert(list_is_empty(&bo->list));
+		assert(list_is_empty(&bo->vma));
 		assert(use_active || bo->domain != DOMAIN_GPU);
 		assert(!bo->needs_flush || use_active);
 		assert_tiling(kgem, bo);
@@ -3578,6 +3585,7 @@ discard:
 		     __FUNCTION__, first->handle, num_pages(first),
 		     use_active ? "active" : "inactive"));
 		assert(list_is_empty(&first->list));
+		assert(list_is_empty(&first->vma));
 		assert(use_active || first->domain != DOMAIN_GPU);
 		assert(!first->needs_flush || use_active);
 		ASSERT_MAYBE_IDLE(kgem, first->handle, !use_active);
@@ -4231,6 +4239,8 @@ large_inactive:
 				bo->domain = DOMAIN_NONE;
 
 				kgem_bo_remove_from_inactive(kgem, bo);
+				assert(list_is_empty(&bo->list));
+				assert(list_is_empty(&bo->vma));
 
 				DBG(("  from inactive vma: pitch=%d, tiling=%d: handle=%d, id=%d\n",
 				     bo->pitch, bo->tiling, bo->handle, bo->unique_id));
@@ -4459,6 +4469,8 @@ search_inactive:
 		}
 
 		kgem_bo_remove_from_inactive(kgem, bo);
+		assert(list_is_empty(&bo->list));
+		assert(list_is_empty(&bo->vma));
 
 		bo->pitch = pitch;
 		bo->tiling = tiling;
