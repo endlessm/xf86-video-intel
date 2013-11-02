@@ -700,7 +700,8 @@ bool sna_tiling_blt_copy_boxes(struct sna *sna, uint8_t alu,
 	int max_size, step;
 	bool ret = false;
 
-	if (!kgem_bo_can_blt(&sna->kgem, src_bo) ||
+	if (wedged(sna) ||
+	    !kgem_bo_can_blt(&sna->kgem, src_bo) ||
 	    !kgem_bo_can_blt(&sna->kgem, dst_bo)) {
 		/* XXX */
 		DBG(("%s: tiling blt fail: src?=%d, dst?=%d\n",

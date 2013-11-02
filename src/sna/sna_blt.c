@@ -2862,7 +2862,7 @@ bool sna_blt_copy_boxes(struct sna *sna, uint8_t alu,
 	    src_bo->tiling, dst_bo->tiling,
 	    src_bo->pitch, dst_bo->pitch));
 
-	if (!kgem_bo_can_blt(kgem, src_bo) || !kgem_bo_can_blt(kgem, dst_bo)) {
+	if (wedged(sna) || !kgem_bo_can_blt(kgem, src_bo) || !kgem_bo_can_blt(kgem, dst_bo)) {
 		DBG(("%s: cannot blt to src? %d or dst? %d\n",
 		     __FUNCTION__,
 		     kgem_bo_can_blt(kgem, src_bo),
