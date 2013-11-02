@@ -5091,7 +5091,7 @@ sna_self_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 		assert(priv->gpu_bo);
 
 		if (alu == GXcopy && priv->clear)
-			goto out;
+			goto free_boxes;
 
 		assert(priv->gpu_bo->proxy == NULL);
 		if (!sna_pixmap_move_to_gpu(pixmap, MOVE_WRITE | MOVE_READ | MOVE_ASYNC_HINT)) {
