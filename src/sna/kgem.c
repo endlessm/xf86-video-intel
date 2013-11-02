@@ -2964,9 +2964,9 @@ void _kgem_submit(struct kgem *kgem)
 
 #if !NDEBUG
 				ret = errno;
-				ErrorF("batch[%d/%d]: %d %d %d, nreloc=%d, nexec=%d, nfence=%d, aperture=%d, fenced=%d, high=%d: errno=%d\n",
+				ErrorF("batch[%d/%d]: %d %d %d, nreloc=%d, nexec=%d, nfence=%d, aperture=%d, fenced=%d, high=%d,%d: errno=%d\n",
 				       kgem->mode, kgem->ring, batch_end, kgem->nbatch, kgem->surface,
-				       kgem->nreloc, kgem->nexec, kgem->nfence, kgem->aperture, kgem->aperture_fenced, kgem->aperture_high, errno);
+				       kgem->nreloc, kgem->nexec, kgem->nfence, kgem->aperture, kgem->aperture_fenced, kgem->aperture_high, kgem->aperture_total, errno);
 
 				for (i = 0; i < kgem->nexec; i++) {
 					struct kgem_bo *bo, *found = NULL;
@@ -4710,14 +4710,14 @@ static bool aperture_check(struct kgem *kgem, unsigned num_pages)
 		     (long)aperture.aper_available_size));
 
 		/* Leave some space in case of alignment issues */
-		aperture.aper_available_size -= 4 * 1024 * 1024;
+		aperture.aper_available_size -= 1024 * 1024;
+		aperture.aper_available_size -= kgem->aperture_mappable * PAGE_SIZE / 2;
 		if (kgem->gen < 040)
 			aperture.aper_available_size -= kgem->aperture_fenced * PAGE_SIZE;
 		if (!kgem->has_llc)
 			aperture.aper_available_size -= 2 * kgem->nexec * PAGE_SIZE;
 
-		aperture.aper_available_size -= aperture.aper_size - aperture.aper_available_size;
-		DBG(("%s: num_pages=%d, estimated max=%ld\n",
+		DBG(("%s: num_pages=%d, estimated max usable=%ld\n",
 		     __FUNCTION__, num_pages, (long)(aperture.aper_available_size/PAGE_SIZE)));
 
 		if (num_pages <= aperture.aper_available_size / PAGE_SIZE)
