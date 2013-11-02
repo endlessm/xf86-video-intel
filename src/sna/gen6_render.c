@@ -3483,8 +3483,10 @@ static void gen6_render_reset(struct sna *sna)
 	sna->render_state.gen6.drawrect_limit = -1;
 	sna->render_state.gen6.surface_table = -1;
 
-	assert(sna->render.vbo == NULL ||
-	       kgem_bo_is_mappable(&sna->kgem, sna->render.vbo));
+	if (sna->render.vbo && !kgem_bo_can_map(&sna->kgem, sna->render.vbo)) {
+		DBG(("%s: discarding unmappable vbo\n", __FUNCTION__));
+		discard_vbo(sna);
+	}
 
 	sna->render.vertex_offset = 0;
 	sna->render.nvertex_reloc = 0;

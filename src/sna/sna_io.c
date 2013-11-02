@@ -278,7 +278,7 @@ fallback:
 		if (box[n].y2 > extents.y2)
 			extents.y2 = box[n].y2;
 	}
-	if (kgem_bo_is_mappable(kgem, src_bo)) {
+	if (kgem_bo_can_map(kgem, src_bo)) {
 		/* Is it worth detiling? */
 		if ((extents.y2 - extents.y1 - 1) * src_bo->pitch < 4096)
 			goto fallback;
@@ -1787,7 +1787,7 @@ bool sna_replace(struct sna *sna, PixmapPtr pixmap,
 			goto done;
 	}
 
-	if (kgem_bo_is_mappable(&sna->kgem, bo) &&
+	if (kgem_bo_can_map(&sna->kgem, bo) &&
 	    (dst = kgem_bo_map(&sna->kgem, bo)) != NULL &&
 	    sigtrap_get() == 0) {
 		memcpy_blt(src, dst, pixmap->drawable.bitsPerPixel,
@@ -1861,7 +1861,7 @@ sna_replace__xor(struct sna *sna, PixmapPtr pixmap,
 		}
 	}
 
-	if (kgem_bo_is_mappable(&sna->kgem, bo) &&
+	if (kgem_bo_can_map(&sna->kgem, bo) &&
 	    (dst = kgem_bo_map(&sna->kgem, bo)) != NULL &&
 	    sigtrap_get() == 0) {
 		memcpy_xor(src, dst, pixmap->drawable.bitsPerPixel,

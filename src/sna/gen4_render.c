@@ -2876,8 +2876,7 @@ static void gen4_render_reset(struct sna *sna)
 	sna->render_state.gen4.drawrect_limit = -1;
 	sna->render_state.gen4.surface_table = -1;
 
-	if (sna->render.vbo &&
-	    !kgem_bo_is_mappable(&sna->kgem, sna->render.vbo)) {
+	if (sna->render.vbo && !kgem_bo_can_map(&sna->kgem, sna->render.vbo)) {
 		DBG(("%s: discarding unmappable vbo\n", __FUNCTION__));
 		discard_vbo(sna);
 	}

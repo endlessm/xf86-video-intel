@@ -1736,7 +1736,7 @@ inline static void kgem_bo_move_to_inactive(struct kgem *kgem,
 		assert(bo->flush == false);
 		list_move(&bo->list, &kgem->inactive[bucket(bo)]);
 		if (bo->map__gtt) {
-			if (!__kgem_bo_is_mappable(kgem, bo)) {
+			if (!kgem_bo_can_map(kgem, bo)) {
 				munmap(MAP(bo->map__gtt), bytes(bo));
 				bo->map__gtt = NULL;
 			}
@@ -6044,7 +6044,7 @@ skip_llc:
 						  CREATE_EXACT | CREATE_INACTIVE | CREATE_GTT_MAP);
 		if (old == NULL) {
 			old = search_linear_cache(kgem, alloc, CREATE_INACTIVE);
-			if (old && !__kgem_bo_is_mappable(kgem, old)) {
+			if (old && !kgem_bo_can_map(kgem, old)) {
 				_kgem_bo_destroy(kgem, old);
 				old = NULL;
 			}
@@ -6052,7 +6052,7 @@ skip_llc:
 		if (old) {
 			DBG(("%s: reusing handle=%d for buffer\n",
 			     __FUNCTION__, old->handle));
-			assert(__kgem_bo_is_mappable(kgem, old));
+			assert(kgem_bo_can_map(kgem, old));
 			assert(!old->snoop);
 			assert(old->rq == NULL);
 

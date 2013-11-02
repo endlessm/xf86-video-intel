@@ -522,79 +522,6 @@ static inline bool kgem_bo_can_blt(struct kgem *kgem,
 	return kgem_bo_blt_pitch_is_ok(kgem, bo);
 }
 
-static inline bool __kgem_bo_is_mappable(struct kgem *kgem,
-					 struct kgem_bo *bo)
-{
-	if (bo->domain == DOMAIN_GTT)
-		return true;
-
-	if (kgem->gen < 040 && bo->tiling &&
-	    bo->presumed_offset & (kgem_bo_fenced_size(kgem, bo) - 1))
-		return false;
-
-	if (kgem->gen == 021 && bo->tiling == I915_TILING_Y)
-		return false;
-
-	if (!bo->tiling && (kgem->has_llc || bo->domain == DOMAIN_CPU))
-		return true;
-
-	if (!bo->presumed_offset)
-		return __kgem_bo_num_pages(bo) <= kgem->aperture_mappable / 4;
-
-	return bo->presumed_offset / PAGE_SIZE + __kgem_bo_num_pages(bo) <= kgem->aperture_mappable;
-}
-
-static inline bool kgem_bo_is_mappable(struct kgem *kgem,
-				       struct kgem_bo *bo)
-{
-	DBG(("%s: domain=%d, offset: %d size: %d\n",
-	     __FUNCTION__, bo->domain, bo->presumed_offset, kgem_bo_size(bo)));
-	assert(bo->refcnt);
-	return __kgem_bo_is_mappable(kgem, bo);
-}
-
-static inline bool kgem_bo_mapped(struct kgem *kgem, struct kgem_bo *bo)
-{
-	DBG(("%s: map=%p:%p, tiling=%d, domain=%d\n",
-	     __FUNCTION__, bo->map__gtt, bo->map__cpu, bo->tiling, bo->domain));
-	assert(bo->refcnt);
-
-	if (bo->tiling == I915_TILING_NONE && (bo->domain == DOMAIN_CPU || kgem->has_llc))
-		return bo->map__cpu != NULL;
-
-	return bo->map__gtt != NULL;
-}
-
-static inline bool kgem_bo_can_map(struct kgem *kgem, struct kgem_bo *bo)
-{
-	if (kgem_bo_mapped(kgem, bo))
-		return true;
-
-	if (!bo->tiling && (kgem->has_llc || bo->domain == DOMAIN_CPU))
-		return true;
-
-	if (kgem->gen == 021 && bo->tiling == I915_TILING_Y)
-		return false;
-
-	return __kgem_bo_num_pages(bo) <= kgem->aperture_mappable / 4;
-}
-
-static inline bool kgem_bo_can_map__cpu(struct kgem *kgem,
-					struct kgem_bo *bo,
-					bool write)
-{
-	if (bo->purged || (bo->scanout && write))
-		return false;
-
-	if (kgem->has_llc)
-		return true;
-
-	if (bo->domain != DOMAIN_CPU)
-		return false;
-
-	return !write || bo->exec == NULL;
-}
-
 static inline bool kgem_bo_is_snoop(struct kgem_bo *bo)
 {
 	assert(bo->refcnt);
@@ -705,6 +632,53 @@ static inline void kgem_bo_mark_dirty(struct kgem_bo *bo)
 
 		__kgem_bo_mark_dirty(bo);
 	} while ((bo = bo->proxy));
+}
+
+static inline bool kgem_bo_mapped(struct kgem *kgem, struct kgem_bo *bo)
+{
+	DBG(("%s: map=%p:%p, tiling=%d, domain=%d\n",
+	     __FUNCTION__, bo->map__gtt, bo->map__cpu, bo->tiling, bo->domain));
+
+	if (bo->tiling == I915_TILING_NONE && (bo->domain == DOMAIN_CPU || kgem->has_llc))
+		return bo->map__cpu != NULL;
+
+	return bo->map__gtt != NULL;
+}
+
+static inline bool kgem_bo_can_map(struct kgem *kgem, struct kgem_bo *bo)
+{
+	DBG(("%s: map=%p:%p, tiling=%d, domain=%d, offset=%d\n",
+	     __FUNCTION__, bo->map__gtt, bo->map__cpu, bo->tiling, bo->domain, bo->presumed_offset));
+
+	if (!bo->tiling && (kgem->has_llc || bo->domain == DOMAIN_CPU))
+		return true;
+
+	if (bo->map__gtt != NULL)
+		return true;
+
+	if (kgem->gen == 021 && bo->tiling == I915_TILING_Y)
+		return false;
+
+	if (!bo->presumed_offset)
+		return __kgem_bo_num_pages(bo) <= kgem->aperture_mappable / 4;
+
+	return bo->presumed_offset / PAGE_SIZE + __kgem_bo_num_pages(bo) <= kgem->aperture_mappable;
+}
+
+static inline bool kgem_bo_can_map__cpu(struct kgem *kgem,
+					struct kgem_bo *bo,
+					bool write)
+{
+	if (bo->purged || (bo->scanout && write))
+		return false;
+
+	if (kgem->has_llc)
+		return true;
+
+	if (bo->domain != DOMAIN_CPU)
+		return false;
+
+	return !write || bo->exec == NULL;
 }
 
 #define KGEM_BUFFER_WRITE	0x1

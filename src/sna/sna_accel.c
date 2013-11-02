@@ -1522,48 +1522,50 @@ sna_pixmap_create_mappable_gpu(PixmapPtr pixmap,
 {
 	struct sna *sna = to_sna_from_pixmap(pixmap);
 	struct sna_pixmap *priv = sna_pixmap(pixmap);
-	unsigned create;
 
 	if (wedged(sna))
-		goto done;
+		goto out;
 
 	if ((priv->create & KGEM_CAN_CREATE_GTT) == 0)
-		goto done;
+		goto out;
 
 	assert_pixmap_damage(pixmap);
 
 	if (can_replace && priv->gpu_bo &&
-	    (!kgem_bo_is_mappable(&sna->kgem, priv->gpu_bo) ||
+	    (!kgem_bo_can_map(&sna->kgem, priv->gpu_bo) ||
 	     __kgem_bo_is_busy(&sna->kgem, priv->gpu_bo))) {
 		if (priv->pinned)
-			goto done;
+			return false;
 
 		DBG(("%s: discard busy GPU bo\n", __FUNCTION__));
 		sna_pixmap_free_gpu(sna, priv);
 	}
 
-	if (priv->gpu_bo)
-		return kgem_bo_is_mappable(&sna->kgem, priv->gpu_bo);
+	if (priv->gpu_bo == NULL) {
+		unsigned create;
 
-	assert_pixmap_damage(pixmap);
+		assert_pixmap_damage(pixmap);
+		assert(priv->gpu_damage == NULL);
 
-	assert(priv->gpu_damage == NULL);
-	assert(priv->gpu_bo == NULL);
+		create = CREATE_GTT_MAP | CREATE_INACTIVE;
+		if (pixmap->usage_hint == SNA_CREATE_FB)
+			create |= CREATE_SCANOUT;
 
-	create = CREATE_GTT_MAP | CREATE_INACTIVE;
-	if (pixmap->usage_hint == SNA_CREATE_FB)
-		create |= CREATE_SCANOUT;
+		priv->gpu_bo =
+			kgem_create_2d(&sna->kgem,
+				       pixmap->drawable.width,
+				       pixmap->drawable.height,
+				       pixmap->drawable.bitsPerPixel,
+				       sna_pixmap_choose_tiling(pixmap, DEFAULT_TILING),
+				       create);
+	}
 
-	priv->gpu_bo =
-		kgem_create_2d(&sna->kgem,
-			       pixmap->drawable.width,
-			       pixmap->drawable.height,
-			       pixmap->drawable.bitsPerPixel,
-			       sna_pixmap_choose_tiling(pixmap, DEFAULT_TILING),
-			       create);
+out:
+	if (priv->gpu_bo == NULL)
+		return false;
 
-done:
-	return priv->gpu_bo && kgem_bo_is_mappable(&sna->kgem, priv->gpu_bo);
+	return (kgem_bo_can_map(&sna->kgem, priv->gpu_bo) &&
+		!kgem_bo_is_busy(priv->gpu_bo));
 }
 
 static inline bool use_cpu_bo_for_download(struct sna *sna,
@@ -1587,7 +1589,7 @@ static inline bool use_cpu_bo_for_download(struct sna *sna,
 
 	/* Is it worth detiling? */
 	assert(box[0].y1 < box[nbox-1].y2);
-	if (kgem_bo_is_mappable(&sna->kgem, priv->gpu_bo) &&
+	if (kgem_bo_can_map(&sna->kgem, priv->gpu_bo) &&
 	    (box[nbox-1].y2 - box[0].y1 - 1) * priv->gpu_bo->pitch < 4096) {
 		DBG(("%s: no, tiny transfer (height=%d, pitch=%d) expect to read inplace\n",
 		     __FUNCTION__, box[nbox-1].y2-box[0].y1, priv->gpu_bo->pitch));
