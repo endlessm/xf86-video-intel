@@ -3401,7 +3401,7 @@ create_gpu_bo:
 
 	if (priv->gpu_damage) {
 		assert(priv->gpu_bo);
-		if (!priv->cpu_damage) {
+		if (!priv->cpu_damage || flags & IGNORE_CPU) {
 			if (sna_damage_contains_box__no_reduce(priv->gpu_damage,
 							       &region.extents)) {
 				DBG(("%s: region wholly contained within GPU damage\n",
