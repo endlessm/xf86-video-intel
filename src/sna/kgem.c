@@ -482,7 +482,7 @@ bool kgem_bo_write(struct kgem *kgem, struct kgem_bo *bo,
 
 	assert(length <= bytes(bo));
 retry:
-	if (gem_write(kgem->fd, bo->handle, 0, length, data)) {
+	if (__gem_write(kgem->fd, bo->handle, 0, length, data)) {
 		int err = errno;
 
 		assert(err != EINVAL);
