@@ -13648,7 +13648,9 @@ sna_poly_fill_rect_stippled_blt(DrawablePtr drawable,
 							   gc, n, rect,
 							   extents, clipped);
 
-	if (extents->x2 - gc->patOrg.x - drawable->x <= stipple->drawable.width &&
+	if (extents->x1 - gc->patOrg.x - drawable->x >= 0 &&
+	    extents->x2 - gc->patOrg.x - drawable->x <= stipple->drawable.width &&
+	    extents->y1 - gc->patOrg.y - drawable->y >= 0 &&
 	    extents->y2 - gc->patOrg.y - drawable->y <= stipple->drawable.height) {
 		if (stipple->drawable.width <= 8 && stipple->drawable.height <= 8)
 			return sna_poly_fill_rect_stippled_8x8_blt(drawable, bo, damage,
