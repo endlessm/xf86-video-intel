@@ -5074,8 +5074,8 @@ uint64_t kgem_add_reloc64(struct kgem *kgem,
 {
 	int index;
 
-	DBG(("%s: handle=%d, pos=%d, delta=%d, domains=%08x\n",
-	     __FUNCTION__, bo ? bo->handle : 0, pos, delta, read_write_domain));
+	DBG(("%s: handle=%d, pos=%d, delta=%ld, domains=%08x\n",
+	     __FUNCTION__, bo ? bo->handle : 0, pos, (long)delta, read_write_domain));
 
 	assert(kgem->gen >= 0100);
 	assert((read_write_domain & 0x7fff) == 0 || bo != NULL);
@@ -5087,8 +5087,8 @@ uint64_t kgem_add_reloc64(struct kgem *kgem,
 		assert(kgem->mode != KGEM_NONE);
 		assert(bo->refcnt);
 		while (bo->proxy) {
-			DBG(("%s: adding proxy [delta=%d] for handle=%d\n",
-			     __FUNCTION__, bo->delta, bo->handle));
+			DBG(("%s: adding proxy [delta=%ld] for handle=%d\n",
+			     __FUNCTION__, (long)bo->delta, bo->handle));
 			delta += bo->delta;
 			assert(bo->handle == bo->proxy->handle);
 			/* need to release the cache upon batch submit */
@@ -5195,8 +5195,8 @@ void *kgem_bo_map__async(struct kgem *kgem, struct kgem_bo *bo)
 {
 	void *ptr;
 
-	DBG(("%s: handle=%d, offset=%d, tiling=%d, map=%p:%p, domain=%d\n", __FUNCTION__,
-	     bo->handle, bo->presumed_offset, bo->tiling, bo->map__gtt, bo->map__cpu, bo->domain));
+	DBG(("%s: handle=%d, offset=%ld, tiling=%d, map=%p:%p, domain=%d\n", __FUNCTION__,
+	     bo->handle, (long)bo->presumed_offset, bo->tiling, bo->map__gtt, bo->map__cpu, bo->domain));
 
 	assert(bo->proxy == NULL);
 	assert(list_is_empty(&bo->list));
@@ -5234,8 +5234,8 @@ void *kgem_bo_map(struct kgem *kgem, struct kgem_bo *bo)
 {
 	void *ptr;
 
-	DBG(("%s: handle=%d, offset=%d, tiling=%d, map=%p:%p, domain=%d\n", __FUNCTION__,
-	     bo->handle, bo->presumed_offset, bo->tiling, bo->map__gtt, bo->map__cpu, bo->domain));
+	DBG(("%s: handle=%d, offset=%ld, tiling=%d, map=%p:%p, domain=%d\n", __FUNCTION__,
+	     bo->handle, (long)bo->presumed_offset, bo->tiling, bo->map__gtt, bo->map__cpu, bo->domain));
 
 	assert(bo->proxy == NULL);
 	assert(list_is_empty(&bo->list));
@@ -5298,8 +5298,8 @@ void *kgem_bo_map__gtt(struct kgem *kgem, struct kgem_bo *bo)
 {
 	void *ptr;
 
-	DBG(("%s: handle=%d, offset=%d, tiling=%d, map=%p:%p, domain=%d\n", __FUNCTION__,
-	     bo->handle, bo->presumed_offset, bo->tiling, bo->map__gtt, bo->map__cpu, bo->domain));
+	DBG(("%s: handle=%d, offset=%ld, tiling=%d, map=%p:%p, domain=%d\n", __FUNCTION__,
+	     bo->handle, (long)bo->presumed_offset, bo->tiling, bo->map__gtt, bo->map__cpu, bo->domain));
 
 	assert(bo->exec == NULL);
 	assert(list_is_empty(&bo->list));

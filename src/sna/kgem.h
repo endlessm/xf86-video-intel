@@ -647,8 +647,8 @@ static inline bool kgem_bo_mapped(struct kgem *kgem, struct kgem_bo *bo)
 
 static inline bool kgem_bo_can_map(struct kgem *kgem, struct kgem_bo *bo)
 {
-	DBG(("%s: map=%p:%p, tiling=%d, domain=%d, offset=%d\n",
-	     __FUNCTION__, bo->map__gtt, bo->map__cpu, bo->tiling, bo->domain, bo->presumed_offset));
+	DBG(("%s: map=%p:%p, tiling=%d, domain=%d, offset=%ld\n",
+	     __FUNCTION__, bo->map__gtt, bo->map__cpu, bo->tiling, bo->domain, (long)bo->presumed_offset));
 
 	if (!bo->tiling && (kgem->has_llc || bo->domain == DOMAIN_CPU))
 		return true;
