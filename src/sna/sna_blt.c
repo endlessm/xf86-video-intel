@@ -156,6 +156,7 @@ static bool sna_blt_fill_init(struct sna *sna,
 
 	blt->pixel = pixel;
 	blt->bpp = bpp;
+	blt->alu = alu;
 
 	kgem_set_mode(kgem, KGEM_BLT, bo);
 	if (!kgem_check_batch(kgem, 14) ||
@@ -233,11 +234,14 @@ noinline static void sna_blt_fill_begin(struct sna *sna,
 	struct kgem *kgem = &sna->kgem;
 	uint32_t *b;
 
-	_kgem_submit(kgem);
-	_kgem_set_mode(kgem, KGEM_BLT);
+	if (kgem->nreloc) {
+		_kgem_submit(kgem);
+		_kgem_set_mode(kgem, KGEM_BLT);
+		assert(kgem->nbatch == 0);
+	}
 
-	assert(kgem->nbatch == 0);
-	b = kgem->batch;
+	assert(kgem->mode == KGEM_BLT);
+	b = kgem->batch + kgem->nbatch;
 	if (sna->kgem.gen >= 0100) {
 		b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 8;
 		if (blt->bpp == 32)
@@ -255,7 +259,7 @@ noinline static void sna_blt_fill_begin(struct sna *sna,
 		b[7] = blt->pixel;
 		b[9] = 0;
 		b[9] = 0;
-		kgem->nbatch = 10;
+		kgem->nbatch += 10;
 	} else {
 		b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 7;
 		if (blt->bpp == 32)
@@ -272,7 +276,7 @@ noinline static void sna_blt_fill_begin(struct sna *sna,
 		b[6] = blt->pixel;
 		b[7] = 0;
 		b[8] = 0;
-		kgem->nbatch = 9;
+		kgem->nbatch += 9;
 	}
 }
 
@@ -1067,6 +1071,7 @@ static void blt_composite_fill_boxes_no_offset__thread(struct sna *sna,
 	DBG(("%s: %08x x %d\n", __FUNCTION__, blt->pixel, nbox));
 
 	sna_vertex_lock(&sna->render);
+	assert(kgem->mode == KGEM_BLT);
 	if (!kgem_check_batch(kgem, 3)) {
 		sna_vertex_wait__locked(&sna->render);
 		sna_blt_fill_begin(sna, blt);
@@ -1177,6 +1182,7 @@ static void blt_composite_fill_boxes__thread(struct sna *sna,
 	DBG(("%s: %08x x %d\n", __FUNCTION__, blt->pixel, nbox));
 
 	sna_vertex_lock(&sna->render);
+	assert(kgem->mode == KGEM_BLT);
 	if (!kgem_check_batch(kgem, 3)) {
 		sna_vertex_wait__locked(&sna->render);
 		sna_blt_fill_begin(sna, blt);
@@ -2730,6 +2736,16 @@ static void sna_blt_fill_op_blt(struct sna *sna,
 				int16_t x, int16_t y,
 				int16_t width, int16_t height)
 {
+	if (sna->blt_state.fill_bo != op->base.u.blt.bo[0]->unique_id) {
+		const struct sna_blt_state *blt = &op->base.u.blt;
+
+		sna_blt_fill_begin(sna, blt);
+
+		sna->blt_state.fill_bo = blt->bo[0]->unique_id;
+		sna->blt_state.fill_pixel = blt->pixel;
+		sna->blt_state.fill_alu = blt->alu;
+	}
+
 	sna_blt_fill_one(sna, &op->base.u.blt, x, y, width, height);
 }
 
@@ -2737,6 +2753,16 @@ fastcall static void sna_blt_fill_op_box(struct sna *sna,
 					 const struct sna_fill_op *op,
 					 const BoxRec *box)
 {
+	if (sna->blt_state.fill_bo != op->base.u.blt.bo[0]->unique_id) {
+		const struct sna_blt_state *blt = &op->base.u.blt;
+
+		sna_blt_fill_begin(sna, blt);
+
+		sna->blt_state.fill_bo = blt->bo[0]->unique_id;
+		sna->blt_state.fill_pixel = blt->pixel;
+		sna->blt_state.fill_alu = blt->alu;
+	}
+
 	_sna_blt_fill_box(sna, &op->base.u.blt, box);
 }
 
@@ -2745,6 +2771,16 @@ fastcall static void sna_blt_fill_op_boxes(struct sna *sna,
 					   const BoxRec *box,
 					   int nbox)
 {
+	if (sna->blt_state.fill_bo != op->base.u.blt.bo[0]->unique_id) {
+		const struct sna_blt_state *blt = &op->base.u.blt;
+
+		sna_blt_fill_begin(sna, blt);
+
+		sna->blt_state.fill_bo = blt->bo[0]->unique_id;
+		sna->blt_state.fill_pixel = blt->pixel;
+		sna->blt_state.fill_alu = blt->alu;
+	}
+
 	_sna_blt_fill_boxes(sna, &op->base.u.blt, box, nbox);
 }
 
