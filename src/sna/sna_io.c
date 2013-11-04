@@ -1841,6 +1841,11 @@ bool sna_replace(struct sna *sna, PixmapPtr pixmap,
 	} else {
 		BoxRec box;
 
+		if (bo != priv->gpu_bo) {
+			kgem_bo_destroy(&sna->kgem, bo);
+			bo = priv->gpu_bo;
+		}
+
 		box.x1 = box.y1 = 0;
 		box.x2 = pixmap->drawable.width;
 		box.y2 = pixmap->drawable.height;
@@ -1849,7 +1854,7 @@ bool sna_replace(struct sna *sna, PixmapPtr pixmap,
 				     bo, 0, 0,
 				     src, stride, 0, 0,
 				     &box, 1))
-			goto err;
+			return false;
 	}
 
 done:
@@ -1860,11 +1865,6 @@ done:
 	}
 
 	return true;
-
-err:
-	if (bo != priv->gpu_bo)
-		kgem_bo_destroy(&sna->kgem, bo);
-	return false;
 }
 
 bool
@@ -1887,7 +1887,8 @@ sna_replace__xor(struct sna *sna, PixmapPtr pixmap,
 
 	kgem_bo_undo(&sna->kgem, bo);
 
-	if (kgem_bo_is_busy(bo)) {
+	if (!kgem_bo_can_map(&sna->kgem, bo) ||
+	    __kgem_bo_is_busy(&sna->kgem, bo)) {
 		struct kgem_bo *new_bo;
 
 		new_bo = kgem_create_2d(&sna->kgem,
@@ -1914,6 +1915,11 @@ sna_replace__xor(struct sna *sna, PixmapPtr pixmap,
 	} else {
 		BoxRec box;
 
+		if (bo != priv->gpu_bo) {
+			kgem_bo_destroy(&sna->kgem, bo);
+			bo = priv->gpu_bo;
+		}
+
 		box.x1 = box.y1 = 0;
 		box.x2 = pixmap->drawable.width;
 		box.y2 = pixmap->drawable.height;
@@ -1923,7 +1929,7 @@ sna_replace__xor(struct sna *sna, PixmapPtr pixmap,
 					  src, stride, 0, 0,
 					  &box, 1,
 					  and, or))
-			goto err;
+			return false;
 	}
 
 	if (bo != priv->gpu_bo) {
@@ -1933,9 +1939,4 @@ sna_replace__xor(struct sna *sna, PixmapPtr pixmap,
 	}
 
 	return true;
-
-err:
-	if (bo != priv->gpu_bo)
-		kgem_bo_destroy(&sna->kgem, bo);
-	return false;
 }
