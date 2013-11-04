@@ -948,7 +948,7 @@ memcpy_xor(const void *src, void *dst, int bpp,
 {
 	const uint8_t *src_bytes;
 	uint8_t *dst_bytes;
-	int i;
+	int i, w;
 
 	assert(width && height);
 	assert(bpp >= 8);
@@ -1001,8 +1001,9 @@ memcpy_xor(const void *src, void *dst, int bpp,
 			}
 		case 4:
 #if USE_SSE2
-			if (width * 4 == dst_stride && dst_stride == src_stride) {
-				width *= height;
+			w = width;
+			if (w * 4 == dst_stride && dst_stride == src_stride) {
+				w *= height;
 				height = 1;
 			}
 
@@ -1012,7 +1013,7 @@ memcpy_xor(const void *src, void *dst, int bpp,
 					const uint32_t *s = (const uint32_t *)src_bytes;
 					__m128i mask = xmm_create_mask_32(or);
 
-					i = width;
+					i = w;
 					while (i && (uintptr_t)d & 15) {
 						*d++ = *s++ | or;
 						i--;
@@ -1079,7 +1080,7 @@ memcpy_xor(const void *src, void *dst, int bpp,
 					uint32_t *d = (uint32_t *)dst_bytes;
 					uint32_t *s = (uint32_t *)src_bytes;
 
-					for (i = 0; i < width; i++)
+					for (i = 0; i < w; i++)
 						d[i] = s[i] | or;
 
 					src_bytes += src_stride;
