@@ -162,14 +162,13 @@ sna_tiling_composite_done(struct sna *sna,
 			int width = step;
 			if (x + width > tile->width)
 				width = tile->width - x;
-			memset(&tmp, 0, sizeof(tmp));
 			if (sna->render.composite(sna, tile->op,
 						  tile->src, tile->mask, tile->dst,
 						  tile->src_x + x,  tile->src_y + y,
 						  tile->mask_x + x, tile->mask_y + y,
 						  tile->dst_x + x,  tile->dst_y + y,
 						  width, height,
-						  &tmp)) {
+						  memset(&tmp, 0, sizeof(tmp)))) {
 				for (n = 0; n < tile->rect_count; n++) {
 					const struct sna_composite_rectangles *r = &tile->rects[n];
 					int x1, x2, dx, y1, y2, dy;

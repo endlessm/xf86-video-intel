@@ -1379,8 +1379,8 @@ blt_composite_copy(struct sna *sna,
 	x2 = x1 + r->width;
 	y2 = y1 + r->height;
 
-	src_x = r->src.x - x1;
-	src_y = r->src.y - y1;
+	src_x = r->src.x - x1 + op->u.blt.sx;
+	src_y = r->src.y - y1 + op->u.blt.sy;
 
 	/* clip against dst */
 	if (x1 < 0)
@@ -1799,6 +1799,7 @@ prepare_blt_copy(struct sna *sna,
 	assert(kgem_bo_can_blt(&sna->kgem, op->dst.bo));
 	assert(kgem_bo_can_blt(&sna->kgem, bo));
 
+	kgem_set_mode(&sna->kgem, KGEM_BLT, op->dst.bo);
 	if (!kgem_check_many_bo_fenced(&sna->kgem, op->dst.bo, bo, NULL)) {
 		kgem_submit(&sna->kgem);
 		if (!kgem_check_many_bo_fenced(&sna->kgem,
@@ -2675,6 +2676,7 @@ sna_blt_composite__convert(struct sna *sna,
 			return false;
 	}
 
+	kgem_set_mode(&sna->kgem, KGEM_BLT, tmp->dst.bo);
 	if (!kgem_check_many_bo_fenced(&sna->kgem, tmp->dst.bo, tmp->src.bo, NULL)) {
 		kgem_submit(&sna->kgem);
 		if (!kgem_check_many_bo_fenced(&sna->kgem,
@@ -2687,7 +2689,7 @@ sna_blt_composite__convert(struct sna *sna,
 
 	DBG(("%s: blt dst offset (%d, %d), source offset (%d, %d), with alpha fixup? %x\n",
 	     __FUNCTION__,
-	     tmp->dst.x, tmp->dst.y, tmp->u.blt.sx, tmp->u.blt.sy, alpha_fixup));
+	     tmp->dst.x, tmp->dst.y, sx, sy, alpha_fixup));
 
 	tmp->u.blt.src_pixmap = NULL;
 	tmp->u.blt.sx = sx;
