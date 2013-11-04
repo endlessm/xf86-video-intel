@@ -374,9 +374,9 @@ retry_mmap:
 	return ptr;
 }
 
-static int __gem_write(int fd, uint32_t handle,
-		       int offset, int length,
-		       const void *src)
+static int gem_write(int fd, uint32_t handle,
+		     int offset, int length,
+		     const void *src)
 {
 	struct drm_i915_gem_pwrite pwrite;
 
@@ -391,9 +391,9 @@ static int __gem_write(int fd, uint32_t handle,
 	return drmIoctl(fd, DRM_IOCTL_I915_GEM_PWRITE, &pwrite);
 }
 
-static int gem_write(int fd, uint32_t handle,
-		     int offset, int length,
-		     const void *src)
+static int gem_write__cachealigned(int fd, uint32_t handle,
+				   int offset, int length,
+				   const void *src)
 {
 	struct drm_i915_gem_pwrite pwrite;
 
@@ -482,7 +482,7 @@ bool kgem_bo_write(struct kgem *kgem, struct kgem_bo *bo,
 
 	assert(length <= bytes(bo));
 retry:
-	if (__gem_write(kgem->fd, bo->handle, 0, length, data)) {
+	if (gem_write(kgem->fd, bo->handle, 0, length, data)) {
 		int err = errno;
 
 		assert(err != EINVAL);
@@ -2550,8 +2550,8 @@ static void kgem_finish_buffers(struct kgem *kgem)
 				     bo->base.handle, shrink->handle));
 
 				assert(bo->used <= bytes(shrink));
-				if (gem_write(kgem->fd, shrink->handle,
-					      0, bo->used, bo->mem) == 0) {
+				if (gem_write__cachealigned(kgem->fd, shrink->handle,
+							    0, bo->used, bo->mem) == 0) {
 					shrink->target_handle =
 						kgem->has_handle_lut ? bo->base.target_handle : shrink->handle;
 					for (n = 0; n < kgem->nreloc; n++) {
@@ -2589,8 +2589,8 @@ static void kgem_finish_buffers(struct kgem *kgem)
 		     __FUNCTION__, bo->base.handle, bo->used, bytes(&bo->base)));
 		ASSERT_IDLE(kgem, bo->base.handle);
 		assert(bo->used <= bytes(&bo->base));
-		gem_write(kgem->fd, bo->base.handle,
-			  0, bo->used, bo->mem);
+		gem_write__cachealigned(kgem->fd, bo->base.handle,
+					0, bo->used, bo->mem);
 		bo->need_io = 0;
 
 decouple:
@@ -2642,9 +2642,9 @@ static int kgem_batch_write(struct kgem *kgem, uint32_t handle, uint32_t size)
 retry:
 	/* If there is no surface data, just upload the batch */
 	if (kgem->surface == kgem->batch_size) {
-		if (gem_write(kgem->fd, handle,
-			      0, sizeof(uint32_t)*kgem->nbatch,
-			      kgem->batch) == 0)
+		if (gem_write__cachealigned(kgem->fd, handle,
+					    0, sizeof(uint32_t)*kgem->nbatch,
+					    kgem->batch) == 0)
 			return 0;
 
 		goto expire;
@@ -2653,26 +2653,26 @@ retry:
 	/* Are the batch pages conjoint with the surface pages? */
 	if (kgem->surface < kgem->nbatch + PAGE_SIZE/sizeof(uint32_t)) {
 		assert(size == PAGE_ALIGN(kgem->batch_size*sizeof(uint32_t)));
-		if (gem_write(kgem->fd, handle,
-				0, kgem->batch_size*sizeof(uint32_t),
-				kgem->batch) == 0)
+		if (gem_write__cachealigned(kgem->fd, handle,
+					    0, kgem->batch_size*sizeof(uint32_t),
+					    kgem->batch) == 0)
 			return 0;
 
 		goto expire;
 	}
 
 	/* Disjoint surface/batch, upload separately */
-	if (gem_write(kgem->fd, handle,
-			0, sizeof(uint32_t)*kgem->nbatch,
-			kgem->batch))
+	if (gem_write__cachealigned(kgem->fd, handle,
+				    0, sizeof(uint32_t)*kgem->nbatch,
+				    kgem->batch))
 		goto expire;
 
 	ret = PAGE_ALIGN(sizeof(uint32_t) * kgem->batch_size);
 	ret -= sizeof(uint32_t) * kgem->surface;
 	assert(size-ret >= kgem->nbatch*sizeof(uint32_t));
-	if (__gem_write(kgem->fd, handle,
-			size - ret, (kgem->batch_size - kgem->surface)*sizeof(uint32_t),
-			kgem->batch + kgem->surface))
+	if (gem_write(kgem->fd, handle,
+		      size - ret, (kgem->batch_size - kgem->surface)*sizeof(uint32_t),
+		      kgem->batch + kgem->surface))
 		goto expire;
 
 	return 0;
@@ -5862,8 +5862,8 @@ struct kgem_bo *kgem_create_buffer(struct kgem *kgem,
 		    size <= bytes(&bo->base)) {
 			DBG(("%s: reusing write buffer for read of %d bytes? used=%d, total=%d\n",
 			     __FUNCTION__, size, bo->used, bytes(&bo->base)));
-			gem_write(kgem->fd, bo->base.handle,
-				  0, bo->used, bo->mem);
+			gem_write__cachealigned(kgem->fd, bo->base.handle,
+						0, bo->used, bo->mem);
 			kgem_buffer_release(kgem, bo);
 			bo->need_io = 0;
 			bo->write = 0;
