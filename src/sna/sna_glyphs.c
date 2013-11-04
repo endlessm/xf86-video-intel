@@ -519,20 +519,7 @@ static void apply_damage_clipped_to_dst(struct sna_composite_op *op,
 
 static inline bool clipped_glyphs(PicturePtr dst, int nlist, GlyphListPtr list, GlyphPtr *glyphs)
 {
-	PixmapPtr pixmap;
 	BoxRec box;
-
-	if (dst->pCompositeClip->data) {
-		DBG(("%s: yes, has complex region\n", __FUNCTION__));
-		return true;
-	}
-
-	pixmap = get_drawable_pixmap(dst->pDrawable);
-	if (dst->pCompositeClip->extents.x2 - dst->pCompositeClip->extents.x1 >= pixmap->drawable.width &&
-	    dst->pCompositeClip->extents.y2 - dst->pCompositeClip->extents.y1 >= pixmap->drawable.height) {
-		DBG(("%s: no, region matches drawable\n", __FUNCTION__));
-		return false;
-	}
 
 	glyph_extents(nlist, list, glyphs, &box);
 	DBG(("%s? glyph extents (%d, %d), (%d, %d), region (%d, %d), (%d, %d): %s\n",
@@ -542,10 +529,9 @@ static inline bool clipped_glyphs(PicturePtr dst, int nlist, GlyphListPtr list, 
 	      box.y1 < dst->pCompositeClip->extents.y1 ||
 	      box.x2 > dst->pCompositeClip->extents.x2 ||
 	      box.y2 > dst->pCompositeClip->extents.y2) ? "yes" : "no"));
-	return (box.x1 < dst->pCompositeClip->extents.x1 ||
-		box.y1 < dst->pCompositeClip->extents.y1 ||
-		box.x2 > dst->pCompositeClip->extents.x2 ||
-		box.y2 > dst->pCompositeClip->extents.y2);
+
+	return pixman_region_contains_rectangle(dst->pCompositeClip,
+						&box) != PIXMAN_REGION_IN;
 }
 
 flatten static bool
