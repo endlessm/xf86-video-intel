@@ -4765,7 +4765,7 @@ bool kgem_check_bo(struct kgem *kgem, ...)
 	int num_exec = 0;
 	int num_pages = 0;
 	bool flush = false;
-	bool active = true;
+	bool busy = true;
 
 	va_start(ap, kgem);
 	while ((bo = va_arg(ap, struct kgem_bo *))) {
@@ -4783,7 +4783,7 @@ bool kgem_check_bo(struct kgem *kgem, ...)
 		num_exec++;
 
 		flush |= bo->flush;
-		active &= bo->rq != NULL;
+		busy &= bo->rq != NULL;
 	}
 	va_end(ap);
 
@@ -4806,7 +4806,7 @@ bool kgem_check_bo(struct kgem *kgem, ...)
 			return false;
 	}
 
-	if (active)
+	if (busy)
 		return true;
 
 	return kgem_flush(kgem, flush);
@@ -4904,7 +4904,7 @@ bool kgem_check_many_bo_fenced(struct kgem *kgem, ...)
 	int num_pages = 0;
 	int fenced_size = 0;
 	bool flush = false;
-	bool active = true;
+	bool busy = true;
 
 	va_start(ap, kgem);
 	while ((bo = va_arg(ap, struct kgem_bo *))) {
@@ -4938,7 +4938,7 @@ bool kgem_check_many_bo_fenced(struct kgem *kgem, ...)
 		}
 
 		flush |= bo->flush;
-		active &= bo->rq != NULL;
+		busy &= bo->rq != NULL;
 	}
 	va_end(ap);
 
@@ -4977,7 +4977,7 @@ bool kgem_check_many_bo_fenced(struct kgem *kgem, ...)
 			return false;
 	}
 
-	if (active)
+	if (busy)
 		return true;
 
 	return kgem_flush(kgem, flush);
