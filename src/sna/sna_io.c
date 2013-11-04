@@ -1304,7 +1304,6 @@ bool sna_write_boxes__xor(struct sna *sna, PixmapPtr dst,
 	if (wedged(sna))
 		return false;
 
-
 	can_blt = kgem_bo_can_blt(kgem, dst_bo) &&
 		(box[0].x2 - box[0].x1) * dst->drawable.bitsPerPixel < 8 * (MAXSHORT - 4);
 	extents = box[0];
@@ -1897,10 +1896,8 @@ sna_replace__xor(struct sna *sna, PixmapPtr pixmap,
 					pixmap->drawable.bitsPerPixel,
 					bo->tiling,
 					CREATE_GTT_MAP | CREATE_INACTIVE);
-		if (new_bo) {
-			kgem_bo_destroy(&sna->kgem, bo);
+		if (new_bo)
 			bo = new_bo;
-		}
 	}
 
 	if (kgem_bo_can_map(&sna->kgem, bo) &&
