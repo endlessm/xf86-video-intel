@@ -3035,7 +3035,7 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 
 	if (priv->cpu_damage == NULL) {
 		list_del(&priv->flush_list);
-		return sna_pixmap_move_to_gpu(pixmap, flags);
+		return sna_pixmap_move_to_gpu(pixmap, MOVE_READ | flags);
 	}
 
 	if (priv->gpu_bo == NULL) {
