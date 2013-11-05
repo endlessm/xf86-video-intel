@@ -6551,6 +6551,8 @@ bool kgem_bo_convert_to_gpu(struct kgem *kgem, struct kgem_bo *bo)
 
 	assert(bo->snoop);
 
+	kgem_bo_submit(kgem, bo);
+
 	if (!gem_set_caching(kgem->fd, bo->handle, UNCACHED))
 		return false;
 
