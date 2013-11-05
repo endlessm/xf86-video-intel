@@ -3282,6 +3282,7 @@ bool sna_blt_copy_boxes(struct sna *sna, uint8_t alu,
 	    !kgem_check_many_bo_fenced(kgem, dst_bo, src_bo, NULL)) {
 		kgem_submit(kgem);
 		if (!kgem_check_many_bo_fenced(kgem, dst_bo, src_bo, NULL))
+			DBG(("%s: not enough room in aperture, fallback to tiling copy\n", __FUNCTION__));
 			return sna_tiling_blt_copy_boxes(sna, alu,
 							 src_bo, src_dx, src_dy,
 							 dst_bo, dst_dx, dst_dy,

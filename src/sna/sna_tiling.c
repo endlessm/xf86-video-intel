@@ -718,6 +718,8 @@ bool sna_tiling_blt_copy_boxes(struct sna *sna, uint8_t alu,
 	}
 	if (max_size > sna->kgem.max_copy_tile_size)
 		max_size = sna->kgem.max_copy_tile_size;
+	if (sna->kgem.gen < 033)
+		max_size /= 2; /* accommodate fence alignment */
 
 	pixman_region_init_rects(&region, box, nbox);
 
