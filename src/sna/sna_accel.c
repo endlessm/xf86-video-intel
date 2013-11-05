@@ -3772,6 +3772,20 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 			tiling = (flags & MOVE_SOURCE_HINT) ? I915_TILING_Y : DEFAULT_TILING;
 			tiling = sna_pixmap_choose_tiling(pixmap, tiling);
 
+			if (tiling == I915_TILING_NONE &&
+			    priv->cpu_bo && !priv->shm &&
+			    kgem_bo_convert_to_gpu(&sna->kgem, priv->cpu_bo)) {
+				assert(!priv->mapped);
+				priv->gpu_bo = priv->cpu_bo;
+				priv->cpu_bo = NULL;
+				priv->ptr = NULL;
+				sna_damage_all(&priv->gpu_damage,
+					       pixmap->drawable.width,
+					       pixmap->drawable.height);
+				sna_damage_destroy(&priv->cpu_damage);
+				goto done;
+			}
+
 			create = 0;
 			if (flags & MOVE_INPLACE_HINT || (priv->cpu_damage && priv->cpu_bo == NULL))
 				create = CREATE_GTT_MAP | CREATE_INACTIVE;
