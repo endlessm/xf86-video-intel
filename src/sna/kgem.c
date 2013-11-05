@@ -2749,6 +2749,7 @@ void kgem_reset(struct kgem *kgem)
 	kgem->nreloc__self = 0;
 	kgem->aperture = 0;
 	kgem->aperture_fenced = 0;
+	kgem->aperture_max_fence = 0;
 	kgem->nbatch = 0;
 	kgem->surface = kgem->batch_size;
 	kgem->mode = KGEM_NONE;
@@ -4724,8 +4725,8 @@ static bool aperture_check(struct kgem *kgem, unsigned num_pages)
 		/* Leave some space in case of alignment issues */
 		aperture.aper_available_size -= 1024 * 1024;
 		aperture.aper_available_size -= kgem->aperture_mappable * PAGE_SIZE / 2;
-		if (kgem->gen < 040)
-			aperture.aper_available_size -= kgem->aperture_fenced * PAGE_SIZE;
+		if (kgem->gen < 033)
+			aperture.aper_available_size -= kgem->aperture_max_fence * PAGE_SIZE;
 		if (!kgem->has_llc)
 			aperture.aper_available_size -= 2 * kgem->nexec * PAGE_SIZE;
 
@@ -4841,10 +4842,12 @@ bool kgem_check_bo_fenced(struct kgem *kgem, struct kgem_bo *bo)
 				}
 			}
 
-			size = kgem->aperture_fenced;
-			size += kgem_bo_fenced_size(kgem, bo);
+			size = kgem_bo_fenced_size(kgem, bo);
+			if (size > kgem->aperture_max_fence)
+				kgem->aperture_max_fence = size;
+			size += kgem->aperture_fenced;
 			if (kgem->gen < 033)
-				size *= 2;
+				size += kgem->aperture_max_fence;
 			if (kgem->aperture_total == kgem->aperture_mappable)
 				size += kgem->aperture;
 			if (size > kgem->aperture_mappable) {
@@ -4885,10 +4888,12 @@ bool kgem_check_bo_fenced(struct kgem *kgem, struct kgem_bo *bo)
 			}
 		}
 
-		size = kgem->aperture_fenced;
-		size += kgem_bo_fenced_size(kgem, bo);
+		size = kgem_bo_fenced_size(kgem, bo);
+		if (size > kgem->aperture_max_fence)
+			kgem->aperture_max_fence = size;
+		size += kgem->aperture_fenced;
 		if (kgem->gen < 033)
-			size *= 2;
+			size += kgem->aperture_max_fence;
 		if (kgem->aperture_total == kgem->aperture_mappable)
 			size += kgem->aperture;
 		if (size > kgem->aperture_mappable) {
@@ -4949,7 +4954,10 @@ bool kgem_check_many_bo_fenced(struct kgem *kgem, ...)
 		num_pages += num_pages(bo);
 		num_exec++;
 		if (kgem->gen < 040 && bo->tiling) {
-			fenced_size += kgem_bo_fenced_size(kgem, bo);
+			uint32_t size = kgem_bo_fenced_size(kgem, bo);
+			if (size > kgem->aperture_max_fence)
+				kgem->aperture_max_fence = size;
+			fenced_size += size;
 			num_fence++;
 		}
 
@@ -4978,7 +4986,7 @@ bool kgem_check_many_bo_fenced(struct kgem *kgem, ...)
 		size = kgem->aperture_fenced;
 		size += fenced_size;
 		if (kgem->gen < 033)
-			size *= 2;
+			size += kgem->aperture_max_fence;
 		if (kgem->aperture_total == kgem->aperture_mappable)
 			size += kgem->aperture;
 		if (size > kgem->aperture_mappable) {
