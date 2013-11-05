@@ -1848,6 +1848,11 @@ static inline bool operate_inplace(struct sna_pixmap *priv, unsigned flags)
 		return false;
 	}
 
+	if (priv->cpu_damage && flags & MOVE_READ) {
+		DBG(("%s: no, has CPU damage and requires readback\n", __FUNCTION__));
+		return false;
+	}
+
 	if (priv->cpu_bo && kgem_bo_is_busy(priv->cpu_bo)) {
 		DBG(("%s: yes, CPU is busy\n", __FUNCTION__));
 		return true;
