@@ -6549,5 +6549,11 @@ bool kgem_bo_convert_to_gpu(struct kgem *kgem, struct kgem_bo *bo)
 	if (kgem->has_llc)
 		return true;
 
-	return gem_set_caching(kgem->fd, bo->handle, UNCACHED);
+	assert(bo->snoop);
+
+	if (!gem_set_caching(kgem->fd, bo->handle, UNCACHED))
+		return false;
+
+	bo->snoop = false;
+	return true;
 }
