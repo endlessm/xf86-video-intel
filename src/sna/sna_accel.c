@@ -11701,6 +11701,8 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 		if (sna->kgem.nbatch == unwind_batch + 8) {
 			sna->kgem.nbatch = unwind_batch;
 			sna->kgem.nreloc = unwind_reloc;
+			if (sna->kgem.nbatch == 0)
+				kgem_bo_undo(&sna->kgem, bo);
 		}
 	}
 done:
