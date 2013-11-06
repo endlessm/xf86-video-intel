@@ -2428,17 +2428,18 @@ static void kgem_finish_buffers(struct kgem *kgem)
 	struct kgem_buffer *bo, *next;
 
 	list_for_each_entry_safe(bo, next, &kgem->batch_buffers, base.list) {
-		DBG(("%s: buffer handle=%d, used=%d, exec?=%d, write=%d, mmapped=%s\n",
+		DBG(("%s: buffer handle=%d, used=%d, exec?=%d, write=%d, mmapped=%s, refcnt=%d\n",
 		     __FUNCTION__, bo->base.handle, bo->used, bo->base.exec!=NULL,
-		     bo->write, bo->mmapped == MMAPPED_CPU ? "cpu" : bo->mmapped == MMAPPED_GTT ? "gtt" : "no"));
+		     bo->write, bo->mmapped == MMAPPED_CPU ? "cpu" : bo->mmapped == MMAPPED_GTT ? "gtt" : "no",
+		     bo->base.refcnt));
 
 		assert(next->base.list.prev == &bo->base.list);
 		assert(bo->base.io);
 		assert(bo->base.refcnt >= 1);
 
 		if (bo->base.refcnt > 1 && !bo->base.exec) {
-			DBG(("%s: skipping unattached handle=%d, used=%d\n",
-			     __FUNCTION__, bo->base.handle, bo->used));
+			DBG(("%s: skipping unattached handle=%d, used=%d, refcnt=%d\n",
+			     __FUNCTION__, bo->base.handle, bo->used, bo->base.refcnt));
 			continue;
 		}
 
@@ -3891,8 +3892,19 @@ unsigned kgem_can_create_2d(struct kgem *kgem,
 		DBG(("%s: tiled[%d] size=%d\n", __FUNCTION__, tiling, size));
 		if (size > 0 && size <= kgem->max_gpu_size)
 			flags |= KGEM_CAN_CREATE_GPU;
+		if (size > kgem->max_gpu_size)
+			flags &= ~KGEM_CAN_CREATE_GPU;
+		if (kgem->gen < 033) {
+			int fence_size = 1024 * 1024;
+			while (fence_size < size)
+				fence_size <<= 1;
+			if (fence_size > kgem->max_gpu_size)
+				flags &= ~KGEM_CAN_CREATE_GPU;
+		}
 		if (size > 0 && size <= PAGE_SIZE*kgem->aperture_mappable/4)
 			flags |= KGEM_CAN_CREATE_GTT;
+		if (size > PAGE_SIZE*kgem->aperture_mappable/4)
+			flags &= ~KGEM_CAN_CREATE_GTT;
 		if (size > kgem->large_object_size)
 			flags |= KGEM_CAN_CREATE_LARGE;
 		if (size > kgem->max_object_size) {
