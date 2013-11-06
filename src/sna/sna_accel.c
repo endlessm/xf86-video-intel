@@ -15151,6 +15151,8 @@ skip:
 	if (sna->kgem.nbatch == unwind_batch + 8) {
 		sna->kgem.nbatch = unwind_batch;
 		sna->kgem.nreloc = unwind_reloc;
+		if (sna->kgem.nbatch == 0)
+			kgem_bo_undo(&sna->kgem, bo);
 	}
 
 	assert_pixmap_damage(pixmap);
