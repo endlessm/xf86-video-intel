@@ -977,7 +977,6 @@ sna_tiling_blt_composite(struct sna *sna,
 			 int bpp,
 			 uint32_t alpha_fixup)
 {
-	assert(op->op == PictOpSrc);
 	assert(op->dst.bo);
 	assert(kgem_bo_can_blt(&sna->kgem, op->dst.bo));
 	assert(kgem_bo_can_blt(&sna->kgem, bo));
