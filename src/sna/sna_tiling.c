@@ -857,7 +857,7 @@ sna_tiling_blt_copy_boxes__with_alpha(struct sna *sna, uint8_t alu,
 				assert(bo->pitch <= 8192);
 				assert(bo->tiling != I915_TILING_Y);
 
-				if (!sna_blt_copy_boxes(sna, alu,
+				if (!sna_blt_copy_boxes(sna, GXcopy,
 							src_bo, src_dx, src_dy,
 							bo, -dx, -dy,
 							bpp, REGION_RECTS(&this), REGION_NUM_RECTS(&this)))
@@ -1087,7 +1087,7 @@ bool sna_tiling_blt_copy_boxes(struct sna *sna, uint8_t alu,
 				assert(bo->pitch <= 8192);
 				assert(bo->tiling != I915_TILING_Y);
 
-				if (!sna_blt_copy_boxes(sna, alu,
+				if (!sna_blt_copy_boxes(sna, GXcopy,
 							src_bo, src_dx, src_dy,
 							bo, -dx, -dy,
 							bpp, REGION_RECTS(&this), REGION_NUM_RECTS(&this)))
