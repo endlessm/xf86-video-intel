@@ -11698,7 +11698,7 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 			} while (--n);
 		}
 
-		if (sna->kgem.nbatch == unwind_batch + 8) {
+		if (sna->kgem.nbatch == unwind_batch + (sna->kgem.gen >= 0100 ? 10 : 8)) {
 			sna->kgem.nbatch = unwind_batch;
 			sna->kgem.nreloc = unwind_reloc;
 			if (sna->kgem.nbatch == 0)
@@ -14405,7 +14405,7 @@ skip:
 		}
 	} while (1);
 
-	if (sna->kgem.nbatch == unwind_batch + 8) {
+	if (sna->kgem.nbatch == unwind_batch + (sna->kgem.gen >= 0100 ? 10 : 8)) {
 		sna->kgem.nbatch = unwind_batch;
 		sna->kgem.nreloc = unwind_reloc;
 		if (sna->kgem.nbatch == 0)
@@ -15150,7 +15150,7 @@ skip:
 		}
 	} while (1);
 
-	if (sna->kgem.nbatch == unwind_batch + 8) {
+	if (sna->kgem.nbatch == unwind_batch + (sna->kgem.gen >= 0100 ? 10 : 8)) {
 		sna->kgem.nbatch = unwind_batch;
 		sna->kgem.nreloc = unwind_reloc;
 		if (sna->kgem.nbatch == 0)
