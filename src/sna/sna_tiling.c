@@ -718,8 +718,6 @@ bool sna_tiling_blt_copy_boxes(struct sna *sna, uint8_t alu,
 	}
 	if (max_size > sna->kgem.max_copy_tile_size)
 		max_size = sna->kgem.max_copy_tile_size;
-	if (sna->kgem.gen < 033)
-		max_size /= 2; /* accommodate fence alignment */
 
 	pixman_region_init_rects(&region, box, nbox);
 
@@ -729,6 +727,8 @@ bool sna_tiling_blt_copy_boxes(struct sna *sna, uint8_t alu,
 		step /= 2;
 	while (step * step * 4 > max_size)
 		step /= 2;
+	if (sna->kgem.gen < 033)
+		step /= 2; /* accommodate severe fence restrictions */
 	if (step == 0) {
 		DBG(("%s: tiles cannot fit into aperture\n", __FUNCTION__));
 		return false;
