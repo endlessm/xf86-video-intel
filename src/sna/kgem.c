@@ -6564,6 +6564,7 @@ kgem_replace_bo(struct kgem *kgem,
 
 bool kgem_bo_convert_to_gpu(struct kgem *kgem, struct kgem_bo *bo)
 {
+	DBG(("%s: converting handle=%d from CPU to GPU\n", __FUNCTION__, bo->handle));
 	assert(bo->tiling == I915_TILING_NONE);
 
 	if (kgem->has_llc)
