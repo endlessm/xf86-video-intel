@@ -1000,13 +1000,13 @@ memcpy_xor(const void *src, void *dst, int bpp,
 				or |= or << 16;
 			}
 		case 4:
-#if USE_SSE2
 			w = width;
 			if (w * 4 == dst_stride && dst_stride == src_stride) {
 				w *= height;
 				height = 1;
 			}
 
+#if USE_SSE2
 			if (have_sse2()) {
 				do {
 					uint32_t *d = (uint32_t *)dst_bytes;
