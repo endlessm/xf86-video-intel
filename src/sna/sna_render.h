@@ -592,6 +592,12 @@ bool sna_tiling_blt_copy_boxes(struct sna *sna, uint8_t alu,
 			       struct kgem_bo *dst_bo, int16_t dst_dx, int16_t dst_dy,
 			       int bpp, const BoxRec *box, int nbox);
 
+bool sna_tiling_blt_composite(struct sna *sna,
+			      struct sna_composite_op *op,
+			      struct kgem_bo *bo,
+			      int bpp,
+			      uint32_t alpha_fixup);
+
 bool sna_blt_composite(struct sna *sna,
 		       uint32_t op,
 		       PicturePtr src,
@@ -629,6 +635,11 @@ bool sna_blt_copy_boxes(struct sna *sna, uint8_t alu,
 			struct kgem_bo *dst_bo, int16_t dst_dx, int16_t dst_dy,
 			int bpp,
 			const BoxRec *box, int n);
+bool sna_blt_copy_boxes__with_alpha(struct sna *sna, uint8_t alu,
+				    struct kgem_bo *src_bo, int16_t src_dx, int16_t src_dy,
+				    struct kgem_bo *dst_bo, int16_t dst_dx, int16_t dst_dy,
+				    int bpp, int alpha_fixup,
+				    const BoxRec *box, int nbox);
 bool sna_blt_copy_boxes_fallback(struct sna *sna, uint8_t alu,
 				 PixmapPtr src, struct kgem_bo *src_bo, int16_t src_dx, int16_t src_dy,
 				 PixmapPtr dst, struct kgem_bo *dst_bo, int16_t dst_dx, int16_t dst_dy,

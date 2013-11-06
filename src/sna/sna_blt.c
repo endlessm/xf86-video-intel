@@ -1734,8 +1734,8 @@ blt_composite_copy_with_alpha(struct sna *sna,
 	x2 = x1 + r->width;
 	y2 = y1 + r->height;
 
-	src_x = r->src.x - x1;
-	src_y = r->src.y - y1;
+	src_x = r->src.x - x1 + op->u.blt.sx;
+	src_y = r->src.y - y1 + op->u.blt.sy;
 
 	/* clip against dst */
 	if (x1 < 0)
@@ -1811,7 +1811,9 @@ prepare_blt_copy(struct sna *sna,
 		if (!kgem_check_many_bo_fenced(&sna->kgem,
 					       op->dst.bo, bo, NULL)) {
 			DBG(("%s: fallback -- no room in aperture\n", __FUNCTION__));
-			return false;
+			return sna_tiling_blt_composite(sna, op, bo,
+							src->drawable.bitsPerPixel,
+							alpha_fixup);
 		}
 		_kgem_set_mode(&sna->kgem, KGEM_BLT);
 	}
@@ -2682,17 +2684,6 @@ sna_blt_composite__convert(struct sna *sna,
 			return false;
 	}
 
-	kgem_set_mode(&sna->kgem, KGEM_BLT, tmp->dst.bo);
-	if (!kgem_check_many_bo_fenced(&sna->kgem, tmp->dst.bo, tmp->src.bo, NULL)) {
-		kgem_submit(&sna->kgem);
-		if (!kgem_check_many_bo_fenced(&sna->kgem,
-					       tmp->dst.bo, tmp->src.bo, NULL)) {
-			DBG(("%s: fallback -- no room in aperture\n", __FUNCTION__));
-			return false;
-		}
-		_kgem_set_mode(&sna->kgem, KGEM_BLT);
-	}
-
 	DBG(("%s: blt dst offset (%d, %d), source offset (%d, %d), with alpha fixup? %x\n",
 	     __FUNCTION__,
 	     tmp->dst.x, tmp->dst.y, sx, sy, alpha_fixup));
@@ -2700,6 +2691,19 @@ sna_blt_composite__convert(struct sna *sna,
 	tmp->u.blt.src_pixmap = NULL;
 	tmp->u.blt.sx = sx;
 	tmp->u.blt.sy = sy;
+
+	kgem_set_mode(&sna->kgem, KGEM_BLT, tmp->dst.bo);
+	if (!kgem_check_many_bo_fenced(&sna->kgem, tmp->dst.bo, tmp->src.bo, NULL)) {
+		kgem_submit(&sna->kgem);
+		if (!kgem_check_many_bo_fenced(&sna->kgem,
+					       tmp->dst.bo, tmp->src.bo, NULL)) {
+			DBG(("%s: fallback -- no room in aperture\n", __FUNCTION__));
+			return sna_tiling_blt_composite(sna, tmp, tmp->src.bo,
+							PICT_FORMAT_BPP(tmp->src.pict_format),
+							alpha_fixup);
+		}
+		_kgem_set_mode(&sna->kgem, KGEM_BLT);
+	}
 
 	if (alpha_fixup) {
 		tmp->blt   = blt_composite_copy_with_alpha;
@@ -3526,6 +3530,148 @@ bool sna_blt_copy_boxes(struct sna *sna, uint8_t alu,
 		kgem->nbatch += 3;
 		assert(kgem->nbatch < kgem->surface);
 	}
+
+	sna->blt_state.fill_bo = 0;
+	return true;
+}
+
+bool sna_blt_copy_boxes__with_alpha(struct sna *sna, uint8_t alu,
+				    struct kgem_bo *src_bo, int16_t src_dx, int16_t src_dy,
+				    struct kgem_bo *dst_bo, int16_t dst_dx, int16_t dst_dy,
+				    int bpp, int alpha_fixup,
+				    const BoxRec *box, int nbox)
+{
+	struct kgem *kgem = &sna->kgem;
+	unsigned src_pitch, br13, cmd;
+
+#if DEBUG_NO_BLT || NO_BLT_COPY_BOXES
+	return false;
+#endif
+
+	DBG(("%s src=(%d, %d) -> (%d, %d) x %d, tiling=(%d, %d), pitch=(%d, %d)\n",
+	     __FUNCTION__, src_dx, src_dy, dst_dx, dst_dy, nbox,
+	    src_bo->tiling, dst_bo->tiling,
+	    src_bo->pitch, dst_bo->pitch));
+
+	if (wedged(sna) || !kgem_bo_can_blt(kgem, src_bo) || !kgem_bo_can_blt(kgem, dst_bo)) {
+		DBG(("%s: cannot blt to src? %d or dst? %d\n",
+		     __FUNCTION__,
+		     kgem_bo_can_blt(kgem, src_bo),
+		     kgem_bo_can_blt(kgem, dst_bo)));
+		return false;
+	}
+
+	cmd = XY_FULL_MONO_PATTERN_BLT | (kgem->gen >= 0100 ? 12 : 10);
+	src_pitch = src_bo->pitch;
+	if (kgem->gen >= 040 && src_bo->tiling) {
+		cmd |= BLT_SRC_TILED;
+		src_pitch >>= 2;
+	}
+	assert(src_pitch <= MAXSHORT);
+
+	br13 = dst_bo->pitch;
+	if (kgem->gen >= 040 && dst_bo->tiling) {
+		cmd |= BLT_DST_TILED;
+		br13 >>= 2;
+	}
+	assert(br13 <= MAXSHORT);
+
+	br13 |= copy_ROP[alu] << 16;
+	switch (bpp) {
+	default: assert(0);
+	case 32: br13 |= 1 << 25; /* RGB8888 */
+	case 16: br13 |= 1 << 24; /* RGB565 */
+	case 8: break;
+	}
+
+	kgem_set_mode(kgem, KGEM_BLT, dst_bo);
+	if (!kgem_check_many_bo_fenced(kgem, dst_bo, src_bo, NULL)) {
+		DBG(("%s: cannot fit src+dst into aperture\n", __FUNCTION__));
+		return false;
+	}
+
+	/* Compare first box against a previous fill */
+	if ((alu == GXcopy || alu == GXclear || alu == GXset) &&
+	    kgem->reloc[kgem->nreloc-1].target_handle == dst_bo->target_handle) {
+		if (kgem->gen >= 0100) {
+			if (kgem->nbatch >= 7 &&
+			    kgem->batch[kgem->nbatch-7] == (XY_COLOR_BLT | (cmd & (BLT_WRITE_ALPHA | BLT_WRITE_RGB)) | 5) &&
+			    kgem->batch[kgem->nbatch-5] == ((uint32_t)(box->y1 + dst_dy) << 16 | (uint16_t)(box->x1 + dst_dx)) &&
+			    kgem->batch[kgem->nbatch-4] == ((uint32_t)(box->y2 + dst_dy) << 16 | (uint16_t)(box->x2 + dst_dx))) {
+				DBG(("%s: deleting last fill\n", __FUNCTION__));
+				kgem->nbatch -= 7;
+				kgem->nreloc--;
+			}
+		} else {
+			if (kgem->nbatch >= 6 &&
+			    kgem->batch[kgem->nbatch-7] == (XY_COLOR_BLT | (cmd & (BLT_WRITE_ALPHA | BLT_WRITE_RGB)) | 4) &&
+			    kgem->batch[kgem->nbatch-4] == ((uint32_t)(box->y1 + dst_dy) << 16 | (uint16_t)(box->x1 + dst_dx)) &&
+			    kgem->batch[kgem->nbatch-3] == ((uint32_t)(box->y2 + dst_dy) << 16 | (uint16_t)(box->x2 + dst_dx))) {
+				DBG(("%s: deleting last fill\n", __FUNCTION__));
+				kgem->nbatch -= 6;
+				kgem->nreloc--;
+			}
+		}
+	}
+
+	while (nbox--) {
+		uint32_t *b;
+
+		if (!kgem_check_batch(kgem, 14) ||
+		    !kgem_check_reloc(kgem, 2)) {
+			_kgem_submit(kgem);
+			_kgem_set_mode(kgem, KGEM_BLT);
+		}
+
+		assert(sna->kgem.mode == KGEM_BLT);
+		b = kgem->batch + kgem->nbatch;
+		b[0] = cmd;
+		b[1] = br13;
+		b[2] = (box->y1 + dst_dy) << 16 | (box->x1 + dst_dx);
+		b[3] = (box->y2 + dst_dy) << 16 | (box->x2 + dst_dx);
+		if (sna->kgem.gen >= 0100) {
+			*(uint64_t *)(b+4) =
+				kgem_add_reloc64(kgem, kgem->nbatch + 4, dst_bo,
+						 I915_GEM_DOMAIN_RENDER << 16 |
+						 I915_GEM_DOMAIN_RENDER |
+						 KGEM_RELOC_FENCED,
+						 0);
+			b[6] = src_pitch;
+			b[7] = (box->y1 + src_dy) << 16 | (box->x1 + src_dx);
+			*(uint64_t *)(b+8) =
+				kgem_add_reloc64(kgem, kgem->nbatch + 8, src_bo,
+						 I915_GEM_DOMAIN_RENDER << 16 |
+						 KGEM_RELOC_FENCED,
+						 0);
+			b[10] = alpha_fixup;
+			b[11] = alpha_fixup;
+			b[12] = 0;
+			b[13] = 0;
+			kgem->nbatch += 14;
+		} else {
+			b[4] = kgem_add_reloc(kgem, kgem->nbatch + 4, dst_bo,
+					      I915_GEM_DOMAIN_RENDER << 16 |
+					      I915_GEM_DOMAIN_RENDER |
+					      KGEM_RELOC_FENCED,
+					      0);
+			b[5] = src_pitch;
+			b[6] = (box->y1 + src_dy) << 16 | (box->x1 + src_dx);
+			b[7] = kgem_add_reloc(kgem, kgem->nbatch + 7, src_bo,
+					      I915_GEM_DOMAIN_RENDER << 16 |
+					      KGEM_RELOC_FENCED,
+					      0);
+			b[8] = alpha_fixup;
+			b[9] = alpha_fixup;
+			b[10] = 0;
+			b[11] = 0;
+			kgem->nbatch += 12;
+		}
+		assert(kgem->nbatch < kgem->surface);
+		box++;
+	}
+
+	if (kgem->nexec > 1 && __kgem_ring_empty(kgem))
+		_kgem_submit(kgem);
 
 	sna->blt_state.fill_bo = 0;
 	return true;
