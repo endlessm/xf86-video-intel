@@ -3918,7 +3918,7 @@ inline int kgem_bo_fenced_size(struct kgem *kgem, struct kgem_bo *bo)
 	else
 		size = 1024 * 1024 / PAGE_SIZE;
 	while (size < num_pages(bo))
-		size *= 2;
+		size <<= 1;
 
 	return size;
 }
