@@ -3692,6 +3692,7 @@ static bool sna_emit_wait_for_scanline_hsw(struct sna *sna,
 	b[15] = 0x44050; /* DERRMR */
 	b[16] = ~0;
 
+	sna->kgem.batch_flags |= I915_EXEC_SECURE;
 	return true;
 }
 
