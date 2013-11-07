@@ -330,7 +330,7 @@ static void *__kgem_bo_map__gtt(struct kgem *kgem, struct kgem_bo *bo)
 	     bo->handle, bytes(bo)));
 	assert(bo->proxy == NULL);
 	assert(!bo->snoop);
-	assert(kgem_bo_can_map(kgem, bo));
+	assert(num_pages(bo) <= kgem->aperture_mappable / 4);
 
 retry_gtt:
 	VG_CLEAR(mmap_arg);
