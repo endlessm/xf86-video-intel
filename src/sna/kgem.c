@@ -3544,6 +3544,9 @@ discard:
 				continue;
 			}
 		} else {
+			if (flags & CREATE_GTT_MAP && !kgem_bo_can_map(kgem, bo))
+				continue;
+
 			if (flags & (CREATE_CPU_MAP | CREATE_GTT_MAP)) {
 				if (first != NULL)
 					break;
