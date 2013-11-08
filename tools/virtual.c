@@ -1475,24 +1475,29 @@ static int record_mouse(struct context *ctx)
 
 static int bad_visual(Visual *visual, int depth)
 {
-	DBG(("%s? depth=%d, visual: bits_per_rgb=%d, red_mask=%08x, green_mask=%08x, blue_mask=%08\n",
+	DBG(("%s? depth=%d, visual: class=%d, bits_per_rgb=%d, red_mask=%08x, green_mask=%08x, blue_mask=%08x\n",
 	     __func__, depth,
+	     visual->class,
 	     visual->bits_per_rgb,
 	     visual->red_mask,
 	     visual->green_mask,
 	     visual->blue_mask));
+
+	if (!(visual->class == TrueColor || visual->class == DirectColor))
+		return 1;
+
 	switch (depth) {
-	case 16: return (visual->bits_per_rgb != 6          ||
+	case 16: return (/* visual->bits_per_rgb != 6          || */
 			 visual->red_mask     != 0x1f << 11 ||
 			 visual->green_mask   != 0x3f << 5  ||
 			 visual->blue_mask    != 0x1f << 0);
 
-	case 24: return (visual->bits_per_rgb != 8          ||
+	case 24: return (/* visual->bits_per_rgb != 8          || */
 			 visual->red_mask     != 0xff << 16 ||
 			 visual->green_mask   != 0xff << 8  ||
 			 visual->blue_mask    != 0xff << 0);
 
-	default: return 0;
+	default: return 1;
 	}
 }
 
