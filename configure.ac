@@ -396,8 +396,8 @@ if test "x$enable_dri" != "xno" -a "x$UMS" = "xyes"; then
 	PKG_CHECK_MODULES(DRI1, [xf86driproto], [DRI1="yes"], [DRI1="no"])
         save_CFLAGS="$CFLAGS"
         save_CPPFLAGS="$CPPFLAGS"
-        CFLAGS="$CFLAGS $XORG_CFLAGS $DRI_CFLAGS $DRM_CFLAGS"
-        CPPFLAGS="$CPPFLAGS $XORG_CFLAGS $DRI_CFLAGS $DRM_CFLAGS"
+        CFLAGS="$CFLAGS $XORG_CFLAGS $DRI1_CFLAGS $DRM_CFLAGS"
+        CPPFLAGS="$CPPFLAGS $XORG_CFLAGS $DRI1_CFLAGS $DRM_CFLAGS"
         AC_CHECK_HEADERS([dri.h sarea.h dristruct.h], [DRI1="yes"], [DRI1="no"],
                 [/* for dri.h */
                  #include <xf86str.h>
@@ -440,7 +440,7 @@ if test "x$enable_dri" != "xno"; then
 	AC_DEFINE_DIR(DRI_DRIVER_PATH, dridriverdir, [Default DRI2 driver path])
 	if test "x$DRI2" != "xno"; then
 		save_CFLAGS=$CFLAGS
-		CFLAGS="$XORG_CFLAGS $DRM_CFLAGS $DRI_CFLAGS $DRI2_CFLAGS"
+		CFLAGS="$XORG_CFLAGS $DRM_CFLAGS $DRI1_CFLAGS $DRI2_CFLAGS"
 		AC_CHECK_HEADERS([dri2.h], DRI2="yes", DRI2="no", [
 #include <dixstruct.h>
 #include <drm.h>
