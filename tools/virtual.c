@@ -260,6 +260,8 @@ can_use_shm(Display *dpy,
 	if (codes) {
 		XShmCompletionEvent e;
 
+		memset(&e, 0, sizeof(e));
+
 		e.type = codes->first_event;
 		e.send_event = 1;
 		e.serial = 1;
@@ -1353,8 +1355,13 @@ static int clone_paint(struct clone *c)
 	DBG(("%s-%s is damaged, last SHM serial: %ld, now %ld\n",
 	     DisplayString(c->dst.dpy), c->dst.name,
 	     (long)c->dst.serial, (long)LastKnownRequestProcessed(c->dst.dpy)));
-	if (c->dst.serial > LastKnownRequestProcessed(c->dst.dpy))
-		return EAGAIN;
+	if (c->dst.serial > LastKnownRequestProcessed(c->dst.dpy)) {
+		while (XPending(c->dst.dpy))
+			;
+
+		if (c->dst.serial > LastKnownRequestProcessed(c->dst.dpy))
+			return EAGAIN;
+	}
 
 	if (FORCE_FULL_REDRAW) {
 		c->damaged.x1 = c->src.x;
@@ -2326,14 +2333,12 @@ static void display_flush_send(struct display *display)
 		return;
 	}
 
+	memset(&e, 0, sizeof(e));
 	e.type = display->shm_event;
 	e.send_event = 1;
-	e.serial = 0;
 	e.drawable = display->root;
 	e.major_code = display->shm_opcode;
 	e.minor_code = X_ShmPutImage;
-	e.shmseg = 0;
-	e.offset = 0;
 
 	XSendEvent(display->dpy, display->root, False, 0, (XEvent *)&e);
 	display_mark_flush(display);
