@@ -1590,10 +1590,15 @@ kgem_add_handle(struct kgem *kgem, struct kgem_bo *bo)
 
 static void kgem_add_bo(struct kgem *kgem, struct kgem_bo *bo)
 {
+	assert(bo->refcnt);
+	assert(bo->proxy == NULL);
+
 	bo->exec = kgem_add_handle(kgem, bo);
 	bo->rq = MAKE_REQUEST(kgem->next_request, kgem->ring);
 
 	list_move_tail(&bo->request, &kgem->next_request->buffers);
+	if (bo->io && !list_is_empty(&bo->list))
+		list_move(&bo->list, &kgem->batch_buffers);
 
 	/* XXX is it worth working around gcc here? */
 	kgem->flush |= bo->flush;
@@ -2073,17 +2078,18 @@ static void kgem_bo_unref(struct kgem *kgem, struct kgem_bo *bo)
 
 static void kgem_buffer_release(struct kgem *kgem, struct kgem_buffer *bo)
 {
+	assert(bo->base.io);
 	while (!list_is_empty(&bo->base.vma)) {
 		struct kgem_bo *cached;
 
 		cached = list_first_entry(&bo->base.vma, struct kgem_bo, vma);
 		assert(cached->proxy == &bo->base);
+		assert(cached != &bo->base);
 		list_del(&cached->vma);
 
 		assert(*(struct kgem_bo **)cached->map__gtt == cached);
 		*(struct kgem_bo **)cached->map__gtt = NULL;
 		cached->map__gtt = NULL;
-		assert(cached->map__cpu == NULL);
 
 		kgem_bo_destroy(kgem, cached);
 	}
@@ -2285,7 +2291,7 @@ bool kgem_retire(struct kgem *kgem)
 {
 	bool retired = false;
 
-	DBG(("%s\n", __FUNCTION__));
+	DBG(("%s, need_retire?=%d\n", __FUNCTION__, kgem->need_retire));
 
 	kgem->need_retire = false;
 
@@ -2460,11 +2466,9 @@ static void kgem_finish_buffers(struct kgem *kgem)
 				DBG(("%s: retaining upload buffer (%d/%d): used=%d, refcnt=%d\n",
 				     __FUNCTION__, bo->used, bytes(&bo->base), used, bo->base.refcnt));
 				bo->used = used;
-				if (bo->base.refcnt == 1) {
-					list_move(&bo->base.list,
-						  &kgem->active_buffers);
-					kgem->need_retire = true;
-				}
+				list_move(&bo->base.list,
+					  &kgem->active_buffers);
+				kgem->need_retire = true;
 				continue;
 			}
 			DBG(("%s: discarding mmapped buffer, used=%d, map type=%d\n",
