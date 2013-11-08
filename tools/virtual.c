@@ -1359,8 +1359,14 @@ static int clone_paint(struct clone *c)
 		while (XPending(c->dst.dpy))
 			;
 
-		if (c->dst.serial > LastKnownRequestProcessed(c->dst.dpy))
-			return EAGAIN;
+		if (c->dst.serial > LastKnownRequestProcessed(c->dst.dpy)) {
+			if (c->dst.display->send++ == 0)
+				return EAGAIN;
+
+			XSync(c->dst.dpy, False);
+			c->dst.display->flush = 0;
+			c->dst.display->send = 0;
+		}
 	}
 
 	if (FORCE_FULL_REDRAW) {
