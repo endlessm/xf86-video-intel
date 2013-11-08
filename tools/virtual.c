@@ -1369,6 +1369,9 @@ static int clone_paint(struct clone *c)
 			XSync(c->dst.dpy, False);
 			c->dst.display->flush = 0;
 			c->dst.display->send = 0;
+
+			/* Event tracking proven unreliable, disable */
+			c->dst.display->shm_event = 0;
 		}
 	}
 
