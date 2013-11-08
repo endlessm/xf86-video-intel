@@ -1363,6 +1363,9 @@ static int clone_paint(struct clone *c)
 			if (c->dst.display->send++ == 0)
 				return EAGAIN;
 
+			DBG(("%s-%s forcing sync (last SHM serial: %ld, now %ld)\n",
+			     DisplayString(c->dst.dpy), c->dst.name,
+			     (long)c->dst.serial, (long)LastKnownRequestProcessed(c->dst.dpy)));
 			XSync(c->dst.dpy, False);
 			c->dst.display->flush = 0;
 			c->dst.display->send = 0;
