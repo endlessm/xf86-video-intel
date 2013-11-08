@@ -111,6 +111,8 @@ struct display {
 
 	int flush;
 	int send;
+	int skip_clone;
+	int skip_frame;
 };
 
 struct output {
@@ -1360,20 +1362,13 @@ static int clone_paint(struct clone *c)
 			;
 
 		if (c->dst.serial > LastKnownRequestProcessed(c->dst.dpy)) {
-			if (c->dst.display->send++ == 0)
-				return EAGAIN;
-
-			DBG(("%s-%s forcing sync (last SHM serial: %ld, now %ld)\n",
-			     DisplayString(c->dst.dpy), c->dst.name,
-			     (long)c->dst.serial, (long)LastKnownRequestProcessed(c->dst.dpy)));
-			XSync(c->dst.dpy, False);
-			c->dst.display->flush = 0;
-			c->dst.display->send = 0;
-
-			/* Event tracking proven unreliable, disable */
-			c->dst.display->shm_event = 0;
+			c->dst.display->skip_clone++;
+			return EAGAIN;
 		}
 	}
+
+	c->dst.display->skip_clone = 0;
+	c->dst.display->skip_frame = 0;
 
 	if (FORCE_FULL_REDRAW) {
 		c->damaged.x1 = c->src.x;
@@ -2361,10 +2356,30 @@ static void display_flush_send(struct display *display)
 	display_mark_flush(display);
 }
 
+static void display_sync(struct display *display)
+{
+	if (display->skip_clone == 0)
+		return;
+
+	if (display->skip_frame++ < 2)
+		return;
+
+	DBG(("%s forcing sync\n", DisplayString(display->dpy)));
+	XSync(display->dpy, False);
+
+	display->flush = 0;
+	display->send = 0;
+
+	/* Event tracking proven unreliable, disable */
+	display->shm_event = 0;
+}
+
 static void display_flush(struct display *display)
 {
 	display_flush_cursor(display);
 	display_flush_send(display);
+
+	display_sync(display);
 
 	if (!display->flush)
 		return;
