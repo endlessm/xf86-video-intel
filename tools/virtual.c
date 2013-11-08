@@ -1102,10 +1102,8 @@ static void display_load_visible_cursor(struct display *display, XFixesCursorIma
 
 	DBG(("%s marking cursor changed\n", DisplayString(display->dpy)));
 	display->cursor_moved++;
-	if (display->cursor != display->invisible_cursor) {
-		display->cursor_visible++;
+	if (display->cursor != display->invisible_cursor)
 		context_enable_timer(display->ctx);
-	}
 }
 
 static void display_cursor_move(struct display *display, int x, int y, int visible)
@@ -1113,7 +1111,7 @@ static void display_cursor_move(struct display *display, int x, int y, int visib
 	DBG(("%s cursor moved (visible=%d, (%d, %d))\n",
 	     DisplayString(display->dpy), visible, x, y));
 	display->cursor_moved++;
-	display->cursor_visible += visible;
+	display->cursor_visible = visible;
 	if (visible) {
 		display->cursor_x = x;
 		display->cursor_y = y;
@@ -1153,7 +1151,6 @@ static void display_flush_cursor(struct display *display)
 	display_mark_flush(display);
 
 	display->cursor_moved = 0;
-	display->cursor_visible = 0;
 }
 
 static void clone_move_cursor(struct clone *c, int x, int y)
