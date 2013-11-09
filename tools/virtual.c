@@ -111,6 +111,8 @@ struct display {
 
 	int flush;
 	int send;
+	int skip_clone;
+	int skip_frame;
 };
 
 struct output {
@@ -259,6 +261,8 @@ can_use_shm(Display *dpy,
 		codes = 0;
 	if (codes) {
 		XShmCompletionEvent e;
+
+		memset(&e, 0, sizeof(e));
 
 		e.type = codes->first_event;
 		e.send_event = 1;
@@ -1098,10 +1102,8 @@ static void display_load_visible_cursor(struct display *display, XFixesCursorIma
 
 	DBG(("%s marking cursor changed\n", DisplayString(display->dpy)));
 	display->cursor_moved++;
-	if (display->cursor != display->invisible_cursor) {
-		display->cursor_visible++;
+	if (display->cursor != display->invisible_cursor)
 		context_enable_timer(display->ctx);
-	}
 }
 
 static void display_cursor_move(struct display *display, int x, int y, int visible)
@@ -1109,7 +1111,7 @@ static void display_cursor_move(struct display *display, int x, int y, int visib
 	DBG(("%s cursor moved (visible=%d, (%d, %d))\n",
 	     DisplayString(display->dpy), visible, x, y));
 	display->cursor_moved++;
-	display->cursor_visible += visible;
+	display->cursor_visible = visible;
 	if (visible) {
 		display->cursor_x = x;
 		display->cursor_y = y;
@@ -1149,7 +1151,6 @@ static void display_flush_cursor(struct display *display)
 	display_mark_flush(display);
 
 	display->cursor_moved = 0;
-	display->cursor_visible = 0;
 }
 
 static void clone_move_cursor(struct clone *c, int x, int y)
@@ -1353,8 +1354,18 @@ static int clone_paint(struct clone *c)
 	DBG(("%s-%s is damaged, last SHM serial: %ld, now %ld\n",
 	     DisplayString(c->dst.dpy), c->dst.name,
 	     (long)c->dst.serial, (long)LastKnownRequestProcessed(c->dst.dpy)));
-	if (c->dst.serial > LastKnownRequestProcessed(c->dst.dpy))
-		return EAGAIN;
+	if (c->dst.serial > LastKnownRequestProcessed(c->dst.dpy)) {
+		while (XPending(c->dst.dpy))
+			;
+
+		if (c->dst.serial > LastKnownRequestProcessed(c->dst.dpy)) {
+			c->dst.display->skip_clone++;
+			return EAGAIN;
+		}
+	}
+
+	c->dst.display->skip_clone = 0;
+	c->dst.display->skip_frame = 0;
 
 	if (FORCE_FULL_REDRAW) {
 		c->damaged.x1 = c->src.x;
@@ -1456,16 +1467,29 @@ static int record_mouse(struct context *ctx)
 
 static int bad_visual(Visual *visual, int depth)
 {
+	DBG(("%s? depth=%d, visual: class=%d, bits_per_rgb=%d, red_mask=%08x, green_mask=%08x, blue_mask=%08x\n",
+	     __func__, depth,
+	     visual->class,
+	     visual->bits_per_rgb,
+	     visual->red_mask,
+	     visual->green_mask,
+	     visual->blue_mask));
+
+	if (!(visual->class == TrueColor || visual->class == DirectColor))
+		return 1;
+
 	switch (depth) {
-	case 16: return (visual->bits_per_rgb != 6 ||
-			 visual->red_mask != 0x1f << 11 ||
-			 visual->green_mask != 0x3f << 5 ||
-			 visual->blue_mask != 0x1f << 0);
-	case 24: return (visual->bits_per_rgb != 8 ||
-			 visual->red_mask != 0xff << 16 ||
-			 visual->green_mask != 0xff << 8 ||
-			 visual->blue_mask != 0xff << 0);
-	default: return 0;
+	case 16: return (/* visual->bits_per_rgb != 6          || */
+			 visual->red_mask     != 0x1f << 11 ||
+			 visual->green_mask   != 0x3f << 5  ||
+			 visual->blue_mask    != 0x1f << 0);
+
+	case 24: return (/* visual->bits_per_rgb != 8          || */
+			 visual->red_mask     != 0xff << 16 ||
+			 visual->green_mask   != 0xff << 8  ||
+			 visual->blue_mask    != 0xff << 0);
+
+	default: return 1;
 	}
 }
 
@@ -2318,23 +2342,41 @@ static void display_flush_send(struct display *display)
 		return;
 	}
 
+	memset(&e, 0, sizeof(e));
 	e.type = display->shm_event;
 	e.send_event = 1;
-	e.serial = 0;
 	e.drawable = display->root;
 	e.major_code = display->shm_opcode;
 	e.minor_code = X_ShmPutImage;
-	e.shmseg = 0;
-	e.offset = 0;
 
 	XSendEvent(display->dpy, display->root, False, 0, (XEvent *)&e);
 	display_mark_flush(display);
+}
+
+static void display_sync(struct display *display)
+{
+	if (display->skip_clone == 0)
+		return;
+
+	if (display->skip_frame++ < 2)
+		return;
+
+	DBG(("%s forcing sync\n", DisplayString(display->dpy)));
+	XSync(display->dpy, False);
+
+	display->flush = 0;
+	display->send = 0;
+
+	/* Event tracking proven unreliable, disable */
+	display->shm_event = 0;
 }
 
 static void display_flush(struct display *display)
 {
 	display_flush_cursor(display);
 	display_flush_send(display);
+
+	display_sync(display);
 
 	if (!display->flush)
 		return;
