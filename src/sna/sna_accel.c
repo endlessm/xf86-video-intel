@@ -15639,6 +15639,8 @@ sna_validate_gc(GCPtr gc, unsigned long changes, DrawablePtr drawable)
 		     gc->pCompositeClip->extents.y2));
 	}
 
+	assert(gc->pCompositeClip);
+
 	sna_gc(gc)->changes |= changes;
 }
 
