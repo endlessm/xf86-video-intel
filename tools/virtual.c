@@ -1136,6 +1136,8 @@ static void display_flush_cursor(struct display *display)
 		y = display->cursor_y++ & 31;
 	}
 
+	DBG(("%s setting cursor position (%d, %d), visible? %d\n",
+	     DisplayString(c->dst.dpy), x, y, display->cursor_visible));
 	XWarpPointer(display->dpy, None, display->root, 0, 0, 0, 0, x, y);
 
 	cursor = None;
@@ -1680,6 +1682,7 @@ static int clone_init_depth(struct clone *clone)
 static int add_display(struct context *ctx, Display *dpy)
 {
 	struct display *display;
+	int first_display = ctx->ndisplay == 0;
 
 	if (is_power_of_2(ctx->ndisplay)) {
 		struct display *new_display;
@@ -1719,10 +1722,11 @@ static int add_display(struct context *ctx, Display *dpy)
 	if (XineramaQueryExtension(dpy, &display->xinerama_event, &display->xinerama_error))
 		display->xinerama_active = XineramaIsActive(dpy);
 
-	display->invisible_cursor = display_load_invisible_cursor(display);
-	display->cursor = None;
-
-	display_cursor_move(display, 0, 0, 0);
+	/* first display (source) is slightly special */
+	if (!first_display) {
+		display->invisible_cursor = display_load_invisible_cursor(display);
+		display_cursor_move(display, 0, 0, 0);
+	}
 
 	return ConnectionNumber(dpy);
 }
