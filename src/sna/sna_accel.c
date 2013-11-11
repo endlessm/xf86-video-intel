@@ -3948,6 +3948,7 @@ static bool must_check sna_gc_move_to_cpu(GCPtr gc,
 	assert(gc->ops == (GCOps *)&sna_gc_ops);
 	gc->ops = (GCOps *)&sna_gc_ops__cpu;
 
+	assert(gc->funcs);
 	sgc->old_funcs = gc->funcs;
 	gc->funcs = (GCFuncs *)&sna_gc_funcs__cpu;
 
@@ -4010,6 +4011,7 @@ static void sna_gc_move_to_gpu(GCPtr gc)
 
 	gc->ops = (GCOps *)&sna_gc_ops;
 	gc->funcs = sna_gc(gc)->old_funcs;
+	assert(gc->funcs);
 	gc->pCompositeClip = sna_gc(gc)->priv;
 	assert(gc->pCompositeClip);
 }
