@@ -313,6 +313,16 @@ _X_EXPORT Status XvMCCreateContext(Display * display, XvPortID port,
 	}
 	drm_intel_bufmgr_gem_enable_reuse(xvmc_driver->bufmgr);
 
+	if (!intelInitBatchBuffer()) {
+		XFree(priv_data);
+		context->privData = NULL;
+
+		dri_bufmgr_destroy(xvmc_driver->bufmgr);
+		xvmc_driver = NULL;
+
+		return BadAlloc;
+	}
+
 	/* call driver hook.
 	 * driver hook should free priv_data after return if success.*/
 	ret =
@@ -320,14 +330,18 @@ _X_EXPORT Status XvMCCreateContext(Display * display, XvPortID port,
 					   priv_data);
 	if (ret) {
 		XVMC_ERR("driver create context failed\n");
+		intelFiniBatchBuffer();
+
 		XFree(priv_data);
 		context->privData = NULL;
+
+		dri_bufmgr_destroy(xvmc_driver->bufmgr);
 		xvmc_driver = NULL;
 		return ret;
 	}
 
+
 	pthread_mutex_init(&xvmc_driver->ctxmutex, NULL);
-	intelInitBatchBuffer();
 	intel_xvmc_dump_open();
 
 	return Success;
