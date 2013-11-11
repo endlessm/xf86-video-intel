@@ -1137,7 +1137,7 @@ static void display_flush_cursor(struct display *display)
 	}
 
 	DBG(("%s setting cursor position (%d, %d), visible? %d\n",
-	     DisplayString(c->dst.dpy), x, y, display->cursor_visible));
+	     DisplayString(display->dpy), x, y, display->cursor_visible));
 	XWarpPointer(display->dpy, None, display->root, 0, 0, 0, 0, x, y);
 
 	cursor = None;
