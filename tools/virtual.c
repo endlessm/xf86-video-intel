@@ -1467,7 +1467,7 @@ static int record_mouse(struct context *ctx)
 
 static int bad_visual(Visual *visual, int depth)
 {
-	DBG(("%s? depth=%d, visual: class=%d, bits_per_rgb=%d, red_mask=%08x, green_mask=%08x, blue_mask=%08x\n",
+	DBG(("%s? depth=%d, visual: class=%d, bits_per_rgb=%d, red_mask=%08lx, green_mask=%08lx, blue_mask=%08lx\n",
 	     __func__, depth,
 	     visual->class,
 	     visual->bits_per_rgb,
