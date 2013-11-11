@@ -1357,9 +1357,7 @@ static int clone_paint(struct clone *c)
 	     DisplayString(c->dst.dpy), c->dst.name,
 	     (long)c->dst.serial, (long)LastKnownRequestProcessed(c->dst.dpy)));
 	if (c->dst.serial > LastKnownRequestProcessed(c->dst.dpy)) {
-		while (XPending(c->dst.dpy))
-			;
-
+		XPending(c->dst.dpy);
 		if (c->dst.serial > LastKnownRequestProcessed(c->dst.dpy)) {
 			c->dst.display->skip_clone++;
 			return EAGAIN;
