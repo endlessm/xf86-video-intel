@@ -3942,6 +3942,8 @@ static bool must_check sna_gc_move_to_cpu(GCPtr gc,
 	long changes = sgc->changes;
 
 	DBG(("%s, changes=%lx\n", __FUNCTION__, changes));
+	assert(drawable);
+	assert(region);
 
 	assert(gc->ops == (GCOps *)&sna_gc_ops);
 	gc->ops = (GCOps *)&sna_gc_ops__cpu;
@@ -3949,6 +3951,7 @@ static bool must_check sna_gc_move_to_cpu(GCPtr gc,
 	sgc->old_funcs = gc->funcs;
 	gc->funcs = (GCFuncs *)&sna_gc_funcs__cpu;
 
+	assert(gc->pCompositeClip);
 	sgc->priv = gc->pCompositeClip;
 	gc->pCompositeClip = region;
 
@@ -3983,7 +3986,6 @@ static bool must_check sna_gc_move_to_cpu(GCPtr gc,
 
 		fbValidateGC(gc, changes, drawable);
 
-		gc->serialNumber = drawable->serialNumber;
 		sgc->serial = drawable->serialNumber;
 	}
 	sgc->changes = 0;
@@ -4009,6 +4011,7 @@ static void sna_gc_move_to_gpu(GCPtr gc)
 	gc->ops = (GCOps *)&sna_gc_ops;
 	gc->funcs = sna_gc(gc)->old_funcs;
 	gc->pCompositeClip = sna_gc(gc)->priv;
+	assert(gc->pCompositeClip);
 }
 
 static inline bool clip_box(BoxPtr box, GCPtr gc)
@@ -4016,6 +4019,7 @@ static inline bool clip_box(BoxPtr box, GCPtr gc)
 	const BoxRec *clip;
 	bool clipped;
 
+	assert(gc->pCompositeClip);
 	clip = &gc->pCompositeClip->extents;
 
 	clipped = !region_is_singular(gc->pCompositeClip);
