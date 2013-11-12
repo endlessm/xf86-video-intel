@@ -204,9 +204,17 @@ static const SymTabRec intel_chipsets[] = {
 	{PCI_CHIP_HASWELL_CRW_E_GT1,		"HD Graphics" }, /* ??? */
 	{PCI_CHIP_HASWELL_CRW_E_GT2,		"HD Graphics" }, /* ??? */
 	{PCI_CHIP_HASWELL_CRW_E_GT3,		"Iris(TM) Pro Graphics 5200" },
-	{-1,					NULL}
+
+	/* Valleyview (Baytail) */
+	{0x0f30, "HD Graphics"},
+	{0x0f31, "HD Graphics"},
+	{0x0f32, "HD Graphics"},
+	{0x0f33, "HD Graphics"},
+	{0x0155, "HD Graphics"},
+	{0x0157, "HD Graphics"},
+
+	{-1, NULL} /* Sentinel */
 };
-#define NUM_CHIPSETS (sizeof(intel_chipsets) / sizeof(intel_chipsets[0]))
 
 static const struct pci_id_match intel_device_match[] = {
 #if UMS
