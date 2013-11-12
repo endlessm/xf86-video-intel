@@ -1331,6 +1331,14 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 	if (kgem->max_gpu_size > totalram / 4)
 		kgem->max_gpu_size = totalram / 4;
 
+	if (kgem->aperture_high > totalram / 2) {
+		kgem->aperture_high = totalram / 2;
+		kgem->aperture_low = kgem->aperture_high / 4;
+		DBG(("%s: reduced aperture watermaks to fit into ram; low=%d [%d], high=%d [%d]\n", __FUNCTION__,
+		     kgem->aperture_low, kgem->aperture_low / (1024*1024),
+		     kgem->aperture_high, kgem->aperture_high / (1024*1024)));
+	}
+
 	kgem->max_cpu_size = kgem->max_object_size;
 
 	half_gpu_max = kgem->max_gpu_size / 2;
