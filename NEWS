@@ -1,3 +1,45 @@
+Snapshot 2.99.906 (2013-11-13)
+==============================
+Several stability fixes required after the recent tweaking of the core
+mechanics to handle the updated TearFree and attempting to make static
+analyzers happy.
+
+ * Fix damage handling when rendering to a partially damaged GPU surface.
+   Regression in 2.99.905
+   https://bugs.freedesktop.org/show_bug.cgi?id=70527
+
+ * Use asprintf() instead of sprintf()
+   Regression in 2.99.905
+   https://bugs.freedesktop.org/show_bug.cgi?id=70835
+
+ * Improve accounting for fence overallocation on older gen2/3, and
+   improve the tiling mechanism to fit into the same aperture constraints
+   https://bugs.freedesktop.org/show_bug.cgi?id=70924
+
+ * Add an extra GPU flush on Sandybridge to fix some rare font corruption
+
+ * Rasterise lines through all clip boxes
+   https://bugs.freedesktop.org/show_bug.cgi?id=70802
+
+ * Fix regression from stricter handling of failures to move a GC to the GPU
+   Regression in 2.99.905
+   https://bugs.freedesktop.org/show_bug.cgi?id=71415
+
+ * Fix various fail along the memcpy_xor paths, including inadequate error
+   handling and integer overflow
+   https://bugs.freedesktop.org/show_bug.cgi?id=70527
+
+ * Fix outside-of-target stipple uploads
+   https://bugs.launchpad.net/bugs/1247785
+
+ * Fix clip detection for long glyphs
+   Incomplete bug fix (causing a regression) in 2.99.905
+   https://bugs.freedesktop.org/show_bug.cgi?id=70527
+
+ * Fix VSync for the render engine (Xv) on Haswell
+   https://bugs.freedesktop.org/show_bug.cgi?id=70527
+
+
 Snapshot 2.99.905 (2013-10-23)
 ==============================
 The highlight for this snapshot is the extension of TearFree to support
