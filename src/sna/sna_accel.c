@@ -1907,6 +1907,15 @@ _sna_pixmap_move_to_cpu(PixmapPtr pixmap, unsigned int flags)
 			kgem_bo_undo(&sna->kgem, priv->cpu_bo);
 	}
 
+	if (flags & MOVE_WRITE && priv->gpu_bo && priv->gpu_bo->proxy) {
+		DBG(("%s: discarding cached upload buffer\n", __FUNCTION__));
+		assert(DAMAGE_IS_ALL(priv->cpu_damage));
+		assert(!priv->pinned);
+		assert(!priv->mapped);
+		kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
+		priv->gpu_bo = NULL;
+	}
+
 	if (DAMAGE_IS_ALL(priv->cpu_damage)) {
 		DBG(("%s: CPU all-damaged\n", __FUNCTION__));
 		assert(priv->gpu_damage == NULL || DAMAGE_IS_ALL(priv->gpu_damage));
@@ -2332,6 +2341,15 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 	}
 
 	assert(priv->gpu_damage == NULL || priv->gpu_bo);
+
+	if (flags & MOVE_WRITE && priv->gpu_bo && priv->gpu_bo->proxy) {
+		DBG(("%s: discarding cached upload buffer\n", __FUNCTION__));
+		assert(DAMAGE_IS_ALL(priv->cpu_damage));
+		assert(!priv->pinned);
+		assert(!priv->mapped);
+		kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
+		priv->gpu_bo = NULL;
+	}
 
 	if (sna_damage_is_all(&priv->cpu_damage,
 			      pixmap->drawable.width,
