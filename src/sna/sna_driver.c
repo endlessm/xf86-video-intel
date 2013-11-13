@@ -83,8 +83,7 @@ sna_load_palette(ScrnInfoPtr scrn, int numColors, int *indices,
 		 LOCO * colors, VisualPtr pVisual)
 {
 	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
-	int i, j, index;
-	int p;
+	int p, n, i, j;
 	uint16_t lut_r[256], lut_g[256], lut_b[256];
 
 	DBG(("%s\n", __FUNCTION__));
@@ -92,48 +91,43 @@ sna_load_palette(ScrnInfoPtr scrn, int numColors, int *indices,
 	for (p = 0; p < xf86_config->num_crtc; p++) {
 		xf86CrtcPtr crtc = xf86_config->crtc[p];
 
+#define C(I,RGB) (colors[I].RGB << 8 | colors[I].RGB)
 		switch (scrn->depth) {
 		case 15:
-			for (i = 0; i < numColors; i++) {
-				index = indices[i];
+			for (n = 0; n < numColors; n++) {
+				i = indices[n];
 				for (j = 0; j < 8; j++) {
-					lut_r[index * 8 + j] =
-					    colors[index].red << 8;
-					lut_g[index * 8 + j] =
-					    colors[index].green << 8;
-					lut_b[index * 8 + j] =
-					    colors[index].blue << 8;
+					lut_r[8*i + j] = C(i, red);
+					lut_g[8*i + j] = C(i, green);
+					lut_b[8*i + j] = C(i, blue);
 				}
 			}
 			break;
 		case 16:
-			for (i = 0; i < numColors; i++) {
-				index = indices[i];
+			for (n = 0; n < numColors; n++) {
+				i = indices[n];
 
-				if (index <= 31) {
+				if (i <= 31) {
 					for (j = 0; j < 8; j++) {
-						lut_r[index * 8 + j] =
-						    colors[index].red << 8;
-						lut_b[index * 8 + j] =
-						    colors[index].blue << 8;
+						lut_r[8*i + j] = C(i, red);
+						lut_b[8*i + j] = C(i, blue);
 					}
 				}
 
-				for (j = 0; j < 4; j++) {
-					lut_g[index * 4 + j] =
-					    colors[index].green << 8;
-				}
+				for (j = 0; j < 4; j++)
+					lut_g[4*i + j] = C(i, green);
 			}
 			break;
 		default:
-			for (i = 0; i < numColors; i++) {
-				index = indices[i];
-				lut_r[index] = colors[index].red << 8;
-				lut_g[index] = colors[index].green << 8;
-				lut_b[index] = colors[index].blue << 8;
+			for (n = 0; n < numColors; n++) {
+				i = indices[n];
+				lut_r[i] = C(i, red);
+				lut_g[i] = C(i, green);
+				lut_b[i] = C(i, blue);
 			}
 			break;
 		}
+#undef C
 
 		/* Make the change through RandR */
 #ifdef RANDR_12_INTERFACE
