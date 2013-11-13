@@ -411,7 +411,6 @@ static Bool fb_supports_depth(int fd, int depth)
 {
 	struct drm_i915_gem_create create;
 	struct drm_mode_fb_cmd fb;
-	struct drm_gem_close close;
 	Bool ret;
 
 	VG_CLEAR(create);
@@ -431,9 +430,7 @@ static Bool fb_supports_depth(int fd, int depth)
 	ret = drmIoctl(fd, DRM_IOCTL_MODE_ADDFB, &fb) == 0;
 	drmModeRmFB(fd, fb.fb_id);
 
-	VG_CLEAR(close);
-	close.handle = create.handle;
-	(void)drmIoctl(fd, DRM_IOCTL_GEM_CLOSE, &close);
+	(void)drmIoctl(fd, DRM_IOCTL_GEM_CLOSE, &create.handle);
 
 	return ret;
 }
