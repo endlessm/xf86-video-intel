@@ -89,6 +89,9 @@ static inline bool untiled_tlb_miss(struct kgem_bo *bo)
 
 static int prefer_blt_bo(struct sna *sna, struct kgem_bo *bo)
 {
+	if (PREFER_RENDER)
+		return PREFER_RENDER < 0;
+
 	if (bo->rq)
 		return RQ_IS_BLT(bo->rq);
 
@@ -116,6 +119,9 @@ inline static bool prefer_blt_ring(struct sna *sna,
 				   struct kgem_bo *bo,
 				   unsigned flags)
 {
+	if (PREFER_RENDER)
+		return PREFER_RENDER < 0;
+
 	assert(!force_blt_ring(sna));
 	assert(!kgem_bo_is_render(bo));
 
@@ -137,6 +143,9 @@ inline static bool prefer_render_ring(struct sna *sna,
 inline static bool
 prefer_blt_composite(struct sna *sna, struct sna_composite_op *tmp)
 {
+	if (PREFER_RENDER)
+		return PREFER_RENDER < 0;
+
 	if (untiled_tlb_miss(tmp->dst.bo) ||
 	    untiled_tlb_miss(tmp->src.bo))
 		return true;
