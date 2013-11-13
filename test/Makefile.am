@@ -12,6 +12,7 @@ stress_TESTS = \
 	render-trapezoid-image \
 	render-fill-copy \
 	render-composite-solid \
+	render-composite-solid-mask \
 	render-copyarea \
 	render-copyarea-size \
 	render-copy-alphaless \
