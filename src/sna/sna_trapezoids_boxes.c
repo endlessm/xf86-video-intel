@@ -197,6 +197,9 @@ composite_aligned_boxes(struct sna *sna,
 		goto done;
 	}
 
+	if (op == PictOpClear && sna->clear)
+		src = sna->clear;
+
 	if (force_fallback ||
 	    !sna->render.composite(sna, op, src, NULL, dst,
 				   src_x,  src_y,
