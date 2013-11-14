@@ -14,6 +14,7 @@ stress_TESTS = \
 	render-composite-solid \
 	render-composite-solid-mask \
 	render-copyarea \
+	render-copyarea-mask \
 	render-copyarea-size \
 	render-copy-alphaless \
 	mixed-stress \
