@@ -206,6 +206,9 @@ static bool _sna_damage_create_boxes(struct sna_damage *damage,
 
 	DBG(("    %s(%d->%d): new\n", __FUNCTION__, count, n));
 
+	if (n > (INT_MAX - sizeof(*box)) / sizeof(BoxRec))
+		return false;
+
 	box = malloc(sizeof(*box) + sizeof(BoxRec)*n);
 	if (box == NULL)
 		return false;
@@ -380,7 +383,7 @@ _sna_damage_create_elt_from_points(struct sna_damage *damage,
 
 	DBG(("    %s(): new elt\n", __FUNCTION__));
 
-	if (! _sna_damage_create_boxes(damage, count))
+	if (!_sna_damage_create_boxes(damage, count))
 		return damage;
 
 	for (i = 0; i < count; i++) {
