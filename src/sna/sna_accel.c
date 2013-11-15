@@ -54,6 +54,11 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
+#ifdef HAVE_VALGRIND
+#include <valgrind.h>
+#include <memcheck.h>
+#endif
+
 #define FAULT_INJECTION 0
 
 #define FORCE_INPLACE 0
@@ -16452,6 +16457,8 @@ static void sna_accel_debug_memory(struct sna *sna)
 	ErrorF("Allocated CPU bo: %d, %ld bytes\n",
 	       sna->debug_memory.cpu_bo_allocs,
 	       (long)sna->debug_memory.cpu_bo_bytes);
+
+	VG(VALGRIND_DO_ADDED_LEAK_CHECK);
 }
 
 #else
