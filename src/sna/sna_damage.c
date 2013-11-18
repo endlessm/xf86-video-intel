@@ -901,9 +901,7 @@ __sna_damage_add_points(struct sna_damage *damage,
 		return damage;
 
 	damage_union(damage, &extents);
-	_sna_damage_create_elt_from_points(damage, p, n, dx, dy);
-
-	return damage;
+	return _sna_damage_create_elt_from_points(damage, p, n, dx, dy);
 }
 
 #if HAS_DEBUG_FULL
