@@ -1109,9 +1109,7 @@ gen7_emit_state(struct sna *sna,
 	if (ALWAYS_INVALIDATE)
 		need_invalidate = true;
 
-	need_flush =
-		sna->render_state.gen7.emit_flush &&
-		wm_binding_table & GEN7_READS_DST(op->u.gen7.flags);
+	need_flush = wm_binding_table & 1 || sna->render_state.gen7.emit_flush;
 	if (ALWAYS_FLUSH)
 		need_flush = true;
 
@@ -1534,6 +1532,9 @@ static void gen7_emit_composite_state(struct sna *sna,
 		sna->kgem.surface += sizeof(struct gen7_surface_state) / sizeof(uint32_t);
 		offset = sna->render_state.gen7.surface_table;
 	}
+
+	if (sna->kgem.batch[sna->render_state.gen7.surface_table] == binding_table[0])
+		dirty = 0;
 
 	gen7_emit_state(sna, op, offset | dirty);
 }
@@ -2810,6 +2811,9 @@ gen7_emit_copy_state(struct sna *sna,
 		offset = sna->render_state.gen7.surface_table;
 	}
 
+	if (sna->kgem.batch[sna->render_state.gen7.surface_table] == binding_table[0])
+		dirty = 0;
+
 	assert(!GEN7_READS_DST(op->u.gen7.flags));
 	gen7_emit_state(sna, op, offset | dirty);
 }
@@ -3241,6 +3245,9 @@ gen7_emit_fill_state(struct sna *sna, const struct sna_composite_op *op)
 			sizeof(struct gen7_surface_state)/sizeof(uint32_t);
 		offset = sna->render_state.gen7.surface_table;
 	}
+
+	if (sna->kgem.batch[sna->render_state.gen7.surface_table] == binding_table[0])
+		dirty = 0;
 
 	gen7_emit_state(sna, op, offset | dirty);
 }
