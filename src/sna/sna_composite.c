@@ -902,15 +902,14 @@ sna_composite_rectangles(CARD8		 op,
 	     RegionExtents(&region)->x2, RegionExtents(&region)->y2,
 	     (long)RegionNumRects(&region)));
 
-	pixmap = get_drawable_pixmap(dst->pDrawable);
-
 	/* XXX xserver-1.8: CompositeRects is not tracked by Damage, so we must
 	 * manually append the damaged regions ourselves.
 	 *
 	 * Note that DamageRegionAppend() will apply the drawable-deltas itself.
 	 */
-	DamageRegionAppend(&pixmap->drawable, &region);
+	DamageRegionAppend(dst->pDrawable, &region);
 
+	pixmap = get_drawable_pixmap(dst->pDrawable);
 	if (get_drawable_deltas(dst->pDrawable, pixmap, &dst_x, &dst_y))
 		pixman_region_translate(&region, dst_x, dst_y);
 
@@ -1141,7 +1140,7 @@ fallback_composite:
 	}
 
 done:
-	DamageRegionProcessPending(&pixmap->drawable);
+	DamageRegionProcessPending(dst->pDrawable);
 
 cleanup_region:
 	pixman_region_fini(&region);
