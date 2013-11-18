@@ -120,4 +120,7 @@ double test_timer_stop(struct test_display *t, struct timespec *tv);
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 #endif
 
+#define REPS(I) (1 << (I))
+#define SETS(I) ((I) < 12 ? 1 << (12 - (I)) : 2)
+
 #endif
