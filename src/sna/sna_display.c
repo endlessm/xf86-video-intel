@@ -1919,6 +1919,7 @@ sna_output_detect(xf86OutputPtr output)
 			sna_output->num_modes = min(old_count, sna_output->num_modes);
 			break;
 		}
+		VG(VALGRIND_MAKE_MEM_DEFINED(sna_output->modes, sizeof(*sna_output->modes)*sna_output->num_modes));
 	}
 
 	DBG(("%s(%s): found %d modes, connection status=%d\n",
