@@ -2005,6 +2005,9 @@ static int last_display_add_clones__randr(struct context *ctx)
 		struct clone *clone = add_clone(ctx);
 		RROutput id;
 
+		if (clone == NULL)
+			return -ENOMEM;
+
 		clone->depth = 24;
 		clone->next = display->clone;
 		display->clone = clone;
@@ -2073,6 +2076,9 @@ static int last_display_add_clones__xinerama(struct context *ctx)
 		struct clone *clone = add_clone(ctx);
 		RROutput id;
 
+		if (clone == NULL)
+			return -ENOMEM;
+
 		if (xi[n].width == 0 || xi[n].height == 0)
 			continue;
 
@@ -2130,14 +2136,18 @@ static int last_display_add_clones__xinerama(struct context *ctx)
 static int last_display_add_clones__display(struct context *ctx)
 {
 	struct display *display = last_display(ctx);
-	struct clone *clone = add_clone(ctx);
 	Display *dpy = display->dpy;
+	struct clone *clone;
 	Screen *scr;
 	char buf[80];
 	int ret;
 	RROutput id;
 
-	DBG(("%s(%s)\n", __func__, DisplayString(display->dpy)));
+
+	DBG(("%s(%s)\n", __func__, DisplayString(dpy)));
+	clone = add_clone(ctx);
+	if (clone == NULL)
+		return -ENOMEM;
 
 	clone->depth = 24;
 	clone->next = display->clone;
@@ -2166,7 +2176,7 @@ static int last_display_add_clones__display(struct context *ctx)
 	ret = clone_init_depth(clone);
 	if (ret) {
 		fprintf(stderr, "Failed to negotiate image format for display \"%s\"\n",
-			DisplayString(display->dpy));
+			DisplayString(dpy));
 		return ret;
 	}
 
@@ -2180,7 +2190,7 @@ static int last_display_add_clones__display(struct context *ctx)
 	ret = clone_update_modes__fixed(clone);
 	if (ret) {
 		fprintf(stderr, "Failed to clone display \"%s\"\n",
-			DisplayString(display->dpy));
+			DisplayString(dpy));
 		return ret;
 	}
 
