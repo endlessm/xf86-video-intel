@@ -803,8 +803,8 @@ mono_trapezoids_span_converter(struct sna *sna,
 	unbounded = (!sna_drawable_is_clear(dst->pDrawable) &&
 		     !operator_is_bounded(op));
 
-	if (op == PictOpClear && mono.sna->clear)
-		src = mono.sna->clear;
+	if (op == PictOpClear && sna->clear)
+		src = sna->clear;
 
 	mono.sna = sna;
 	if (!mono.sna->render.composite(mono.sna, op, src, NULL, dst,
