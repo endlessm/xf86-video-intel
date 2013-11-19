@@ -262,8 +262,7 @@ int main(int argc, char **argv)
 	test_init(&test, argc, argv);
 
 	for (i = 0; i <= DEFAULT_ITERATIONS; i++) {
-		int reps = REPS(i);
-		int sets = SETS(i);
+		int reps = REPS(i), sets = SETS(i);
 		enum target t;
 
 		for (t = TARGET_FIRST; t <= TARGET_LAST; t++) {

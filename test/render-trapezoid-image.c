@@ -585,7 +585,7 @@ int main(int argc, char **argv)
 	test_init(&test, argc, argv);
 
 	for (i = 0; i <= DEFAULT_ITERATIONS; i++) {
-		int reps = REPS(i), SETS(i);
+		int reps = REPS(i), sets = SETS(i);
 
 		for (target = TARGET_FIRST; target <= TARGET_LAST; target++) {
 			pixel_tests(&test, reps, sets, target, 0);
