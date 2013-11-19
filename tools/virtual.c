@@ -1876,7 +1876,7 @@ static int bumblebee_open(struct context *ctx)
 	DBG(("%s query result '%s'\n", __func__, buf));
 
 	if (strncmp(buf, "Value: ", 7))
-		return -ECONNREFUSED;
+		goto err;
 
 	len = 7;
 	while (buf[len] != '\n' && buf[len] != '\0')
