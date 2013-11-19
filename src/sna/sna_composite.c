@@ -877,7 +877,7 @@ sna_composite_rectangles(CARD8		 op,
 	}
 
 	if (num_boxes == 0)
-		return;
+		goto cleanup_boxes;
 
 	if (!pixman_region_init_rects(&region, boxes, num_boxes))
 		goto cleanup_boxes;
