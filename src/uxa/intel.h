@@ -743,4 +743,20 @@ static inline Bool intel_sync_init(ScreenPtr screen) { return 0; }
 void intel_sync_close(ScreenPtr screen);
 #endif
 
+/*
+ * intel_present.c
+ */
+
+#if 0
+#define DebugPresent(x) ErrorF x
+#else
+#define DebugPresent(x)
+#endif
+
+#if HAVE_PRESENT
+Bool intel_present_screen_init(ScreenPtr screen);
+#else
+static inline Bool intel_present_screen_init(ScreenPtr screen) { return 0; }
+#endif
+
 #endif /* _I830_H_ */

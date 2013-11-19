@@ -877,6 +877,7 @@ I830ScreenInit(SCREEN_INIT_ARGS_DECL)
 	 */
 	intel->XvEnabled = TRUE;
 
+	if (!intel_init_initial_framebuffer(scrn))
 		return FALSE;
 
 	intel_batch_init(scrn);
@@ -935,6 +936,9 @@ I830ScreenInit(SCREEN_INIT_ARGS_DECL)
 	if (intel->dri3 == DRI_NONE && intel_dri3_screen_init(screen))
 		intel->dri3 = DRI_ACTIVE;
 #endif
+
+	if (xf86ReturnOptValBool(intel->Options, OPTION_PRESENT, TRUE))
+		intel_present_screen_init(screen);
 
 	xf86SetBackingStore(screen);
 	xf86SetSilkenMouse(screen);
