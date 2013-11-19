@@ -2371,8 +2371,13 @@ fallback_blt:
 		if (!kgem_check_bo(&sna->kgem, dst_bo, src_bo, NULL)) {
 			DBG(("%s: aperture check failed\n", __FUNCTION__));
 			kgem_bo_destroy(&sna->kgem, tmp.src.bo);
-			if (tmp.redirect.real_bo)
+			tmp.src.bo = NULL;
+
+			if (tmp.redirect.real_bo) {
 				kgem_bo_destroy(&sna->kgem, tmp.dst.bo);
+				tmp.redirect.real_bo = NULL;
+			}
+
 			goto fallback_blt;
 		}
 	}
@@ -2421,9 +2426,12 @@ fallback_blt:
 	return true;
 
 fallback_tiled_dst:
-	if (tmp.redirect.real_bo)
+	if (tmp.redirect.real_bo) {
 		kgem_bo_destroy(&sna->kgem, tmp.dst.bo);
+		tmp.redirect.real_bo = NULL;
+	}
 fallback_tiled:
+	assert(tmp.src.bo == NULL);
 	if (sna_blt_compare_depth(&src->drawable, &dst->drawable) &&
 	    sna_blt_copy_boxes(sna, alu,
 			       src_bo, src_dx, src_dy,
