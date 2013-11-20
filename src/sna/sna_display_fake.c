@@ -299,6 +299,9 @@ static bool add_fake_output(struct sna *sna, bool late)
 			    !RROutputSetClones(output->randr_output, clones, j))
 				goto err;
 		}
+
+		RRCrtcSetRotations(crtc->randr_crtc,
+				   RR_Rotate_All | RR_Reflect_All);
 	} else {
 		mask = (1 << ++sna->mode.num_fake) - 1;
 		output->possible_crtcs = mask << sna->mode.num_real_crtc;

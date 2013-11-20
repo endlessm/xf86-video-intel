@@ -1020,4 +1020,7 @@ static inline void sigtrap_put(void)
 	--sigtrap;
 }
 
+#define RR_Rotate_All (RR_Rotate_0 | RR_Rotate_90 | RR_Rotate_180 | RR_Rotate_270)
+#define RR_Reflect_All (RR_Reflect_X | RR_Reflect_Y)
+
 #endif /* _SNA_H */
