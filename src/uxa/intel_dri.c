@@ -593,7 +593,7 @@ I830DRI2DrawableCrtc(DrawablePtr pDraw)
 
 	/* Make sure the CRTC is valid and this is the real front buffer */
 	if (crtc != NULL && !crtc->rotatedData)
-		return crtc;
+                return crtc;
 
 	return NULL;
 }
@@ -726,15 +726,15 @@ i830_dri2_add_frame_event(DRI2FrameEventPtr info)
 }
 
 static void
-i830_dri2_del_frame_event(DrawablePtr drawable, DRI2FrameEventPtr info)
+i830_dri2_del_frame_event(DRI2FrameEventPtr info)
 {
 	list_del(&info->client_resource);
 	list_del(&info->drawable_resource);
 
 	if (info->front)
-		I830DRI2DestroyBuffer(drawable, info->front);
+		I830DRI2DestroyBuffer(NULL, info->front);
 	if (info->back)
-		I830DRI2DestroyBuffer(drawable, info->back);
+		I830DRI2DestroyBuffer(NULL, info->back);
 
 	free(info);
 }
@@ -832,6 +832,24 @@ static drm_intel_bo *get_pixmap_bo(I830DRI2BufferPrivatePtr priv)
 	return bo;
 }
 
+static void
+I830DRI2FlipComplete(uint64_t frame, uint64_t usec, void *pageflip_data)
+{
+        DRI2FrameEventPtr info = pageflip_data;
+
+        I830DRI2FlipEventHandler((uint32_t) frame, usec / 1000000,
+                                 usec % 1000000,
+                                 info);
+}
+
+static void
+I830DRI2FlipAbort(void *pageflip_data)
+{
+        DRI2FrameEventPtr info = pageflip_data;
+
+        i830_dri2_del_frame_event(info);
+}
+
 /*
  * Our internal swap routine takes care of actually exchanging, blitting, or
  * flipping buffers as necessary.
@@ -849,7 +867,9 @@ I830DRI2ScheduleFlip(struct intel_screen_private *intel,
 		info->type = DRI2_SWAP;
 		if (!intel_do_pageflip(intel,
 				       get_pixmap_bo(priv),
-				       info, info->pipe))
+				       info->pipe, FALSE, info,
+                                       I830DRI2FlipComplete,
+                                       I830DRI2FlipAbort))
 			return FALSE;
 
 		I830DRI2ExchangeBuffers(intel, info->front, info->back);
@@ -904,7 +924,7 @@ I830DRI2ScheduleFlip(struct intel_screen_private *intel,
 	}
 
 	old_back = get_pixmap_bo(priv);
-	if (!intel_do_pageflip(intel, old_back, info, info->pipe)) {
+	if (!intel_do_pageflip(intel, old_back, info->pipe, FALSE, info, I830DRI2FlipComplete, I830DRI2FlipAbort)) {
 		intel->back_buffer = new_back;
 		return FALSE;
 	}
@@ -1003,7 +1023,7 @@ void I830DRI2FrameEventHandler(unsigned int frame, unsigned int tv_sec,
 		status = dixLookupDrawable(&drawable, swap_info->drawable_id, serverClient,
 					   M_ANY, DixWriteAccess);
 	if (status != Success) {
-		i830_dri2_del_frame_event(NULL, swap_info);
+		i830_dri2_del_frame_event(swap_info);
 		return;
 	}
 
@@ -1037,7 +1057,7 @@ void I830DRI2FrameEventHandler(unsigned int frame, unsigned int tv_sec,
 		break;
 	}
 
-	i830_dri2_del_frame_event(drawable, swap_info);
+	i830_dri2_del_frame_event(swap_info);
 }
 
 void I830DRI2FlipEventHandler(unsigned int frame, unsigned int tv_sec,
@@ -1098,7 +1118,7 @@ void I830DRI2FlipEventHandler(unsigned int frame, unsigned int tv_sec,
 						   serverClient,
 						   M_ANY, DixWriteAccess);
 			if (chain_drawable == NULL) {
-				i830_dri2_del_frame_event(chain_drawable, chain);
+				i830_dri2_del_frame_event(chain);
 			} else if (!can_exchange(chain_drawable, chain->front, chain->back) ||
 				   !I830DRI2ScheduleFlip(intel, chain_drawable, chain)) {
 				I830DRI2FallbackBlitSwap(chain_drawable,
@@ -1109,7 +1129,7 @@ void I830DRI2FlipEventHandler(unsigned int frame, unsigned int tv_sec,
 						 DRI2_BLIT_COMPLETE,
 						 chain->client ? chain->event_complete : NULL,
 						 chain->event_data);
-				i830_dri2_del_frame_event(chain_drawable, chain);
+				i830_dri2_del_frame_event(chain);
 			}
 		}
 		break;
@@ -1121,7 +1141,7 @@ void I830DRI2FlipEventHandler(unsigned int frame, unsigned int tv_sec,
 		break;
 	}
 
-	i830_dri2_del_frame_event(drawable, flip_info);
+	i830_dri2_del_frame_event(flip_info);
 }
 
 static uint32_t pipe_select(int pipe)
@@ -1132,6 +1152,28 @@ static uint32_t pipe_select(int pipe)
 		return DRM_VBLANK_SECONDARY;
 	else
 		return 0;
+}
+
+static void
+intel_dri2_vblank_handler(ScrnInfoPtr scrn,
+                          xf86CrtcPtr crtc,
+                          uint64_t msc,
+                          uint64_t usec,
+                          void *data)
+{
+        DRI2FrameEventPtr swap_info = data;
+
+        I830DRI2FrameEventHandler((uint32_t) msc, usec / 1000000, usec % 1000000, swap_info);
+}
+
+static void
+intel_dri2_vblank_abort(ScrnInfoPtr scrn,
+                        xf86CrtcPtr crtc,
+                        void *data)
+{
+        DRI2FrameEventPtr swap_info = data;
+
+        i830_dri2_del_frame_event(swap_info);
 }
 
 /*
@@ -1171,6 +1213,7 @@ I830DRI2ScheduleSwap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 	enum DRI2FrameEventType swap_type = DRI2_SWAP;
 	uint64_t current_msc, current_ust;
         uint64_t request_msc;
+        uint32_t seq;
 
 	/* Drawable not displayed... just complete the swap */
 	if (pipe == -1)
@@ -1249,8 +1292,13 @@ I830DRI2ScheduleSwap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 		if (current_msc >= *target_msc)
 			*target_msc = current_msc;
 
+                seq = intel_drm_queue_alloc(scrn, crtc, swap_info, intel_dri2_vblank_handler, intel_dri2_vblank_abort);
+                if (!seq)
+                        goto blit_fallback;
+
 		vbl.request.sequence = intel_crtc_msc_to_sequence(scrn, crtc, *target_msc);
-		vbl.request.signal = (unsigned long)swap_info;
+		vbl.request.signal = seq;
+
 		ret = drmWaitVBlank(intel->drmSubFD, &vbl);
 		if (ret) {
 			xf86DrvMsg(scrn->scrnIndex, X_WARNING,
@@ -1292,12 +1340,14 @@ I830DRI2ScheduleSwap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 	if (request_msc <= current_msc)
 		request_msc += divisor;
 
-        vbl.request.sequence = intel_crtc_msc_to_sequence(scrn, crtc, request_msc);
+        seq = intel_drm_queue_alloc(scrn, crtc, swap_info, intel_dri2_vblank_handler, intel_dri2_vblank_abort);
+        if (!seq)
+                goto blit_fallback;
 
 	/* Account for 1 frame extra pageflip delay if flip > 0 */
-	vbl.request.sequence -= flip;
+        vbl.request.sequence = intel_crtc_msc_to_sequence(scrn, crtc, request_msc) - flip;
+	vbl.request.signal = seq;
 
-	vbl.request.signal = (unsigned long)swap_info;
 	ret = drmWaitVBlank(intel->drmSubFD, &vbl);
 	if (ret) {
 		xf86DrvMsg(scrn->scrnIndex, X_WARNING,
@@ -1316,7 +1366,7 @@ blit_fallback:
 	I830DRI2FallbackBlitSwap(draw, front, back);
 	DRI2SwapComplete(client, draw, 0, 0, 0, DRI2_BLIT_COMPLETE, func, data);
 	if (swap_info)
-	    i830_dri2_del_frame_event(draw, swap_info);
+	    i830_dri2_del_frame_event(swap_info);
 	*target_msc = 0; /* offscreen, so zero out target vblank count */
 	return TRUE;
 }
@@ -1386,6 +1436,7 @@ I830DRI2ScheduleWaitMSC(ClientPtr client, DrawablePtr draw, CARD64 target_msc,
         xf86CrtcPtr crtc = I830DRI2DrawableCrtc(draw);
         int pipe = crtc ? intel_crtc_to_pipe(crtc) : -1;
 	CARD64 current_msc, current_ust, request_msc;
+        uint32_t seq;
 
 	/* Drawable not visible, return immediately */
 	if (pipe == -1)
@@ -1423,12 +1474,17 @@ I830DRI2ScheduleWaitMSC(ClientPtr client, DrawablePtr draw, CARD64 target_msc,
 		 * sending us MSC targets from the past by forcibly updating
 		 * their count on this call.
 		 */
+                seq = intel_drm_queue_alloc(scrn, crtc, wait_info, intel_dri2_vblank_handler, intel_dri2_vblank_abort);
+                if (!seq)
+                        goto out_free;
+
 		if (current_msc >= target_msc)
 			target_msc = current_msc;
 		vbl.request.type =
 			DRM_VBLANK_ABSOLUTE | DRM_VBLANK_EVENT | pipe_select(pipe);
 		vbl.request.sequence = intel_crtc_msc_to_sequence(scrn, crtc, target_msc);
-		vbl.request.signal = (unsigned long)wait_info;
+		vbl.request.signal = seq;
+
 		ret = drmWaitVBlank(intel->drmSubFD, &vbl);
 		if (ret) {
 			static int limit = 5;
@@ -1465,9 +1521,13 @@ I830DRI2ScheduleWaitMSC(ClientPtr client, DrawablePtr draw, CARD64 target_msc,
 	if ((current_msc % divisor) >= remainder)
                 request_msc += divisor;
 
-	vbl.request.sequence = intel_crtc_msc_to_sequence(scrn, crtc, request_msc);
+        seq = intel_drm_queue_alloc(scrn, crtc, wait_info, intel_dri2_vblank_handler, intel_dri2_vblank_abort);
+        if (!seq)
+                goto out_free;
 
-	vbl.request.signal = (unsigned long)wait_info;
+	vbl.request.sequence = intel_crtc_msc_to_sequence(scrn, crtc, request_msc);
+	vbl.request.signal = seq;
+
 	ret = drmWaitVBlank(intel->drmSubFD, &vbl);
 	if (ret) {
 		static int limit = 5;
@@ -1487,7 +1547,7 @@ I830DRI2ScheduleWaitMSC(ClientPtr client, DrawablePtr draw, CARD64 target_msc,
 	return TRUE;
 
 out_free:
-	i830_dri2_del_frame_event(draw, wait_info);
+	i830_dri2_del_frame_event(wait_info);
 out_complete:
 	DRI2WaitMSCComplete(client, draw, target_msc, 0, 0);
 	return TRUE;

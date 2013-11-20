@@ -407,6 +407,20 @@ extern void intel_mode_disable_unused_functions(ScrnInfoPtr scrn);
 extern void intel_mode_remove_fb(intel_screen_private *intel);
 extern void intel_mode_close(intel_screen_private *intel);
 extern void intel_mode_fini(intel_screen_private *intel);
+extern int intel_mode_read_drm_events(intel_screen_private *intel);
+
+typedef void (*intel_drm_handler_proc)(ScrnInfoPtr scrn,
+                                       xf86CrtcPtr crtc,
+                                       uint64_t seq,
+                                       uint64_t usec,
+                                       void *data);
+
+typedef void (*intel_drm_abort_proc)(ScrnInfoPtr scrn,
+                                     xf86CrtcPtr crtc,
+                                     void *data);
+
+extern uint32_t intel_drm_queue_alloc(ScrnInfoPtr scrn, xf86CrtcPtr crtc, void *data, intel_drm_handler_proc handler, intel_drm_abort_proc abort);
+extern void intel_drm_abort(ScrnInfoPtr scrn, Bool (*match)(void *data, void *match_data), void *match_data);
 
 extern int intel_get_pipe_from_crtc_id(drm_intel_bufmgr *bufmgr, xf86CrtcPtr crtc);
 extern int intel_crtc_id(xf86CrtcPtr crtc);
@@ -434,6 +448,12 @@ typedef void (*DRI2SwapEventPtr)(ClientPtr client, void *data, int type,
 				 CARD64 ust, CARD64 msc, CARD64 sbc);
 #endif
 
+typedef void (*intel_pageflip_handler_proc) (uint64_t frame,
+                                             uint64_t usec,
+                                             void *data);
+
+typedef void (*intel_pageflip_abort_proc) (void *data);
+
 typedef struct _DRI2FrameEvent {
 	struct intel_screen_private *intel;
 
@@ -456,7 +476,11 @@ typedef struct _DRI2FrameEvent {
 
 extern Bool intel_do_pageflip(intel_screen_private *intel,
 			      dri_bo *new_front,
-			      DRI2FrameEventPtr flip_info, int ref_crtc_hw_id);
+			      int ref_crtc_hw_id,
+			      Bool async,
+			      void *pageflip_data,
+			      intel_pageflip_handler_proc pageflip_handler,
+			      intel_pageflip_abort_proc pageflip_abort);
 
 static inline intel_screen_private *
 intel_get_screen_private(ScrnInfoPtr scrn)

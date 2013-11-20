@@ -61,6 +61,22 @@
 
 #define KNOWN_MODE_FLAGS ((1<<14)-1)
 
+struct intel_drm_queue {
+        struct list list;
+        xf86CrtcPtr crtc;
+        uint32_t seq;
+        void *data;
+        ScrnInfoPtr scrn;
+        intel_drm_handler_proc handler;
+        intel_drm_abort_proc abort;
+};
+
+static void
+intel_drm_abort_scrn(ScrnInfoPtr scrn);
+
+static uint32_t intel_drm_seq;
+static struct list intel_drm_queue;
+
 struct intel_mode {
 	int fd;
 	uint32_t fb_id;
@@ -68,14 +84,17 @@ struct intel_mode {
 	int cpp;
 
 	drmEventContext event_context;
-	DRI2FrameEventPtr flip_info;
 	int old_fb_id;
 	int flip_count;
 	uint64_t fe_msc;
-        uint64_t fe_usec;
+	uint64_t fe_usec;
 
 	struct list outputs;
 	struct list crtcs;
+
+	void *pageflip_data;
+	intel_pageflip_handler_proc pageflip_handler;
+	intel_pageflip_abort_proc pageflip_abort;
 };
 
 struct intel_pageflip {
@@ -361,6 +380,7 @@ intel_crtc_apply(xf86CrtcPtr crtc)
 
 	if (scrn->pScreen)
 		xf86_reload_cursors(scrn->pScreen);
+        intel_drm_abort_scrn(scrn);
 
 done:
 	free(output_ids);
@@ -1459,10 +1479,27 @@ fail:
 	return FALSE;
 }
 
+static void
+intel_pageflip_handler(ScrnInfoPtr scrn, xf86CrtcPtr crtc,
+                        uint64_t frame, uint64_t usec, void *data);
+
+static void
+intel_pageflip_abort(ScrnInfoPtr scrn, xf86CrtcPtr crtc, void *data);
+
+static void
+intel_pageflip_complete(struct intel_mode *mode);
+
+static void
+intel_drm_abort_seq (ScrnInfoPtr scrn, uint32_t seq);
+
 Bool
 intel_do_pageflip(intel_screen_private *intel,
 		  dri_bo *new_front,
-		  DRI2FrameEventPtr flip_info, int ref_crtc_hw_id)
+		  int ref_crtc_hw_id,
+		  Bool async,
+		  void *pageflip_data,
+		  intel_pageflip_handler_proc pageflip_handler,
+		  intel_pageflip_abort_proc pageflip_abort)
 {
 	ScrnInfoPtr scrn = intel->scrn;
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(scrn);
@@ -1471,6 +1508,8 @@ intel_do_pageflip(intel_screen_private *intel,
 	unsigned int pitch = scrn->displayWidth * intel->cpp;
 	struct intel_pageflip *flip;
 	uint32_t new_fb_id;
+	uint32_t flags;
+	uint32_t seq;
 	int i;
 
 	/*
@@ -1485,6 +1524,10 @@ intel_do_pageflip(intel_screen_private *intel,
 	intel_glamor_flush(intel);
 	intel_batch_submit(scrn);
 
+	mode->pageflip_data = pageflip_data;
+	mode->pageflip_handler = pageflip_handler;
+	mode->pageflip_abort = pageflip_abort;
+
 	/*
 	 * Queue flips on all enabled CRTCs
 	 * Note that if/when we get per-CRTC buffers, we'll have to update this.
@@ -1497,12 +1540,12 @@ intel_do_pageflip(intel_screen_private *intel,
 	mode->fe_msc = 0;
 	mode->fe_usec = 0;
 
+	flags = DRM_MODE_PAGE_FLIP_EVENT;
+	if (async)
+		flags |= DRM_MODE_PAGE_FLIP_ASYNC;
 	for (i = 0; i < config->num_crtc; i++) {
 		if (!intel_crtc_on(config->crtc[i]))
 			continue;
-
-		mode->flip_info = flip_info;
-		mode->flip_count++;
 
 		crtc = config->crtc[i]->driver_private;
 
@@ -1519,19 +1562,38 @@ intel_do_pageflip(intel_screen_private *intel,
 		flip->dispatch_me = (intel_crtc_to_pipe(crtc->crtc) == ref_crtc_hw_id);
 		flip->mode = mode;
 
-		if (drmModePageFlip(mode->fd,
-				    crtc_id(crtc),
-				    new_fb_id,
-				    DRM_MODE_PAGE_FLIP_EVENT, flip)) {
-			xf86DrvMsg(scrn->scrnIndex, X_WARNING,
-				   "flip queue failed: %s\n", strerror(errno));
+		seq = intel_drm_queue_alloc(scrn, config->crtc[i], flip, intel_pageflip_handler, intel_pageflip_abort);
+		if (!seq) {
 			free(flip);
 			goto error_undo;
 		}
+
+again:
+		if (drmModePageFlip(mode->fd,
+				    crtc_id(crtc),
+				    new_fb_id,
+				    flags, (void *)(uintptr_t)seq)) {
+			if (intel_mode_read_drm_events(intel)) {
+				xf86DrvMsg(scrn->scrnIndex, X_WARNING,
+					   "flip queue retry\n");
+				goto again;
+			}
+			xf86DrvMsg(scrn->scrnIndex, X_WARNING,
+				   "flip queue failed: %s\n", strerror(errno));
+			if (seq)
+				intel_drm_abort_seq(scrn, seq);
+			free(flip);
+			goto error_undo;
+		}
+		mode->flip_count++;
 	}
 
 	mode->old_fb_id = mode->fb_id;
 	mode->fb_id = new_fb_id;
+
+	if (!mode->flip_count)
+		intel_pageflip_complete(mode);
+
 	return TRUE;
 
 error_undo:
@@ -1544,12 +1606,106 @@ error_undo:
 error_out:
 	xf86DrvMsg(scrn->scrnIndex, X_WARNING, "Page flip failed: %s\n",
 		   strerror(errno));
+
+	mode->flip_count = 0;
 	return FALSE;
 }
 
 static const xf86CrtcConfigFuncsRec intel_xf86crtc_config_funcs = {
 	intel_xf86crtc_resize
 };
+
+/*
+ * Enqueue a potential drm response; when the associated response
+ * appears, we've got data to pass to the handler from here
+ */
+uint32_t
+intel_drm_queue_alloc(ScrnInfoPtr scrn,
+		      xf86CrtcPtr crtc,
+		      void *data,
+		      intel_drm_handler_proc handler,
+		      intel_drm_abort_proc abort)
+{
+	struct intel_drm_queue  *q;
+
+	q = calloc(1, sizeof(struct intel_drm_queue));
+	if (!q)
+		return 0;
+
+	if (!intel_drm_seq)
+		++intel_drm_seq;
+	q->seq = intel_drm_seq++;
+	q->scrn = scrn;
+	q->crtc = crtc;
+	q->data = data;
+	q->handler = handler;
+	q->abort = abort;
+
+	list_add(&q->list, &intel_drm_queue);
+
+	return q->seq;
+}
+
+/*
+ * Abort one queued DRM entry, removing it
+ * from the list, calling the abort function and
+ * freeing the memory
+ */
+static void
+intel_drm_abort_one(struct intel_drm_queue *q)
+{
+	list_del(&q->list);
+	q->abort(q->scrn, q->crtc, q->data);
+	free(q);
+}
+
+/*
+ * Externally usable abort function that uses a callback to match a single queued
+ * entry to abort
+ */
+void
+intel_drm_abort(ScrnInfoPtr scrn, Bool (*match)(void *data, void *match_data), void *match_data)
+{
+	struct intel_drm_queue *q;
+
+	list_for_each_entry(q, &intel_drm_queue, list) {
+		if (match(q->data, match_data)) {
+			intel_drm_abort_one(q);
+			break;
+		}
+	}
+}
+
+/*
+ * Abort by drm queue sequence number
+ */
+static void
+intel_drm_abort_seq(ScrnInfoPtr scrn, uint32_t seq)
+{
+	struct intel_drm_queue *q;
+
+	list_for_each_entry(q, &intel_drm_queue, list) {
+		if (q->seq == seq) {
+			intel_drm_abort_one(q);
+			break;
+		}
+	}
+}
+
+/*
+ * Abort all queued entries on a specific scrn, used
+ * when resetting the X server
+ */
+static void
+intel_drm_abort_scrn(ScrnInfoPtr scrn)
+{
+	struct intel_drm_queue *q, *tmp;
+
+	list_for_each_entry_safe(q, tmp, &intel_drm_queue, list) {
+		if (q->scrn == scrn)
+			intel_drm_abort_one(q);
+	}
+}
 
 static uint32_t pipe_select(int pipe)
 {
@@ -1652,44 +1808,110 @@ intel_crtc_msc_to_sequence(ScrnInfoPtr scrn, xf86CrtcPtr crtc, uint64_t expect)
         return (uint32_t) (expect - intel_crtc->vblank_offset);
 }
 
+/*
+ * General DRM kernel handler. Looks for the matching sequence number in the
+ * drm event queue and calls the handler for it.
+ */
 static void
-intel_vblank_handler(int fd, unsigned int frame, unsigned int tv_sec,
-		       unsigned int tv_usec, void *event)
+intel_drm_handler(int fd, uint32_t frame, uint32_t sec, uint32_t usec, void *user_ptr)
 {
-	I830DRI2FrameEventHandler(frame, tv_sec, tv_usec, event);
+	uint32_t user_data = (intptr_t)user_ptr;
+	struct intel_drm_queue *q;
+
+	list_for_each_entry(q, &intel_drm_queue, list) {
+		if (q->seq == user_data) {
+			list_del(&q->list);
+			q->handler(q->scrn, q->crtc,
+				   intel_sequence_to_crtc_msc(q->crtc, frame),
+				   (uint64_t)sec * 1000000 + usec, q->data);
+			free(q);
+			break;
+		}
+	}
 }
 
+
+/*
+ * Notify the page flip caller that the flip is
+ * complete
+ */
 static void
-intel_page_flip_handler(int fd, unsigned int frame, unsigned int tv_sec,
-			  unsigned int tv_usec, void *event_data)
+intel_pageflip_complete(struct intel_mode *mode)
 {
-	struct intel_pageflip *flip = event_data;
+	/* Release framebuffer */
+	drmModeRmFB(mode->fd, mode->old_fb_id);
+
+	if (!mode->pageflip_handler)
+		return;
+
+	mode->pageflip_handler(mode->fe_msc, mode->fe_usec,
+			       mode->pageflip_data);
+}
+
+/*
+ * One pageflip event has completed. Update the saved msc/ust values
+ * as needed, then check to see if the whole set of events are
+ * complete and notify the application at that point
+ */
+static struct intel_mode *
+intel_handle_pageflip(struct intel_pageflip *flip, uint64_t msc, uint64_t usec)
+{
 	struct intel_mode *mode = flip->mode;
 
-	/* Is this the event whose info shall be delivered to higher level? */
 	if (flip->dispatch_me) {
 		/* Yes: Cache msc, ust for later delivery. */
-		mode->fe_msc = frame;
-		mode->fe_usec = (uint64_t) tv_sec * 1000000 + tv_usec;
+		mode->fe_msc = msc;
+		mode->fe_usec = usec;
 	}
 	free(flip);
 
 	/* Last crtc completed flip? */
 	mode->flip_count--;
 	if (mode->flip_count > 0)
+		return NULL;
+
+	return mode;
+}
+
+/*
+ * Called from the DRM event queue when a single flip has completed
+ */
+static void
+intel_pageflip_handler(ScrnInfoPtr scrn, xf86CrtcPtr crtc,
+		       uint64_t msc, uint64_t usec, void *data)
+{
+	struct intel_pageflip   *flip = data;
+	struct intel_mode       *mode = intel_handle_pageflip(flip, msc, usec);
+
+	if (!mode)
+		return;
+	intel_pageflip_complete(mode);
+}
+
+/*
+ * Called from the DRM queue abort code when a flip has been aborted
+ */
+static void
+intel_pageflip_abort(ScrnInfoPtr scrn, xf86CrtcPtr crtc, void *data)
+{
+	struct intel_pageflip   *flip = data;
+	struct intel_mode       *mode = intel_handle_pageflip(flip, 0, 0);
+
+	if (!mode)
 		return;
 
 	/* Release framebuffer */
 	drmModeRmFB(mode->fd, mode->old_fb_id);
 
-	if (mode->flip_info == NULL)
+	if (!mode->pageflip_abort)
 		return;
 
-	/* Deliver cached msc, ust from reference crtc to flip event handler */
-	I830DRI2FlipEventHandler((uint32_t) mode->fe_msc, mode->fe_usec / 1000000,
-				 mode->fe_usec % 1000000, mode->flip_info);
+	mode->pageflip_abort(mode->pageflip_data);
 }
 
+/*
+ * Check for pending DRM events and process them.
+ */
 static void
 drm_wakeup_handler(pointer data, int err, pointer p)
 {
@@ -1703,6 +1925,26 @@ drm_wakeup_handler(pointer data, int err, pointer p)
 	read_mask = p;
 	if (FD_ISSET(mode->fd, read_mask))
 		drmHandleEvent(mode->fd, &mode->event_context);
+}
+
+/*
+ * If there are any available, read drm_events
+ */
+int
+intel_mode_read_drm_events(struct intel_screen_private *intel)
+{
+	struct intel_mode *mode = intel->modes;
+	struct pollfd p = { .fd = mode->fd, .events = POLLIN };
+	int r;
+
+	do {
+		r = poll(&p, 1, 0);
+	} while (r == -1 && (errno == EINTR || errno == EAGAIN));
+
+	if (r <= 0)
+		return 0;
+
+	return drmHandleEvent(mode->fd, &mode->event_context);
 }
 
 static drmModeEncoderPtr
@@ -1804,8 +2046,12 @@ Bool intel_mode_pre_init(ScrnInfoPtr scrn, int fd, int cpp)
 	xf86InitialConfiguration(scrn, TRUE);
 
 	mode->event_context.version = DRM_EVENT_CONTEXT_VERSION;
-	mode->event_context.vblank_handler = intel_vblank_handler;
-	mode->event_context.page_flip_handler = intel_page_flip_handler;
+	mode->event_context.vblank_handler = intel_drm_handler;
+	mode->event_context.page_flip_handler = intel_drm_handler;
+
+	/* XXX assumes only one intel screen */
+	list_init(&intel_drm_queue);
+	intel_drm_seq = 0;
 
 	has_flipping = 0;
 	gp.param = I915_PARAM_HAS_PAGEFLIPPING;
@@ -1848,14 +2094,6 @@ intel_mode_remove_fb(intel_screen_private *intel)
 	}
 }
 
-static Bool has_pending_events(int fd)
-{
-	struct pollfd pfd;
-	pfd.fd = fd;
-	pfd.events = POLLIN;
-	return poll(&pfd, 1, 0) == 1;
-}
-
 void
 intel_mode_close(intel_screen_private *intel)
 {
@@ -1864,8 +2102,7 @@ intel_mode_close(intel_screen_private *intel)
 	if (mode == NULL)
 		return;
 
-	while (has_pending_events(mode->fd))
-		drmHandleEvent(mode->fd, &mode->event_context);
+        intel_drm_abort_scrn(intel->scrn);
 
 	RemoveBlockAndWakeupHandlers((BlockHandlerProcPtr)NoopDDA,
 				     drm_wakeup_handler, mode);
@@ -1944,7 +2181,8 @@ Bool intel_crtc_on(xf86CrtcPtr crtc)
 		return FALSE;
 
 	ret = (drm_crtc->mode_valid &&
-	       intel_crtc->mode->fb_id == drm_crtc->buffer_id);
+	       (intel_crtc->mode->fb_id == drm_crtc->buffer_id ||
+		intel_crtc->mode->old_fb_id == drm_crtc->buffer_id));
 	free(drm_crtc);
 
 	return ret;
