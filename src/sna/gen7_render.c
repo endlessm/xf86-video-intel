@@ -1105,17 +1105,20 @@ gen7_emit_state(struct sna *sna,
 
 	assert(op->dst.bo->exec);
 
-	need_invalidate = kgem_bo_is_dirty(op->src.bo) || kgem_bo_is_dirty(op->mask.bo);
-	if (ALWAYS_INVALIDATE)
-		need_invalidate = true;
-
-	need_flush = wm_binding_table & 1 || sna->render_state.gen7.emit_flush;
+	need_flush = wm_binding_table & 1 ||
+		(sna->render_state.gen7.emit_flush && GEN7_READS_DST(op->u.gen7.flags));
 	if (ALWAYS_FLUSH)
 		need_flush = true;
 
 	wm_binding_table &= ~1;
 
 	need_stall = sna->render_state.gen7.surface_table != wm_binding_table;
+
+	need_invalidate = need_stall &&
+		(kgem_bo_is_dirty(op->src.bo) || kgem_bo_is_dirty(op->mask.bo));
+	if (ALWAYS_INVALIDATE)
+		need_invalidate = true;
+
 	need_stall &= gen7_emit_drawing_rectangle(sna, op);
 	if (ALWAYS_STALL)
 		need_stall = true;
@@ -3750,7 +3753,7 @@ static void gen7_render_reset(struct sna *sna)
 	sna->render_state.gen7.kernel = -1;
 	sna->render_state.gen7.drawrect_offset = -1;
 	sna->render_state.gen7.drawrect_limit = -1;
-	sna->render_state.gen7.surface_table = -1;
+	sna->render_state.gen7.surface_table = 0;
 
 	if (sna->render.vbo && !kgem_bo_can_map(&sna->kgem, sna->render.vbo)) {
 		DBG(("%s: discarding unmappable vbo\n", __FUNCTION__));
