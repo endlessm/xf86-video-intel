@@ -1039,6 +1039,8 @@ gen4_emit_state(struct sna *sna,
 	assert(op->dst.bo->exec);
 
 	flush = wm_binding_table & 1;
+	wm_binding_table &= ~1;
+
 	if (kgem_bo_is_dirty(op->src.bo) || kgem_bo_is_dirty(op->mask.bo)) {
 		DBG(("%s: flushing dirty (%d, %d), forced? %d\n", __FUNCTION__,
 		     kgem_bo_is_dirty(op->src.bo),
@@ -1053,7 +1055,7 @@ gen4_emit_state(struct sna *sna,
 	if (flush && op->op > PictOpSrc)
 		OUT_BATCH(MI_FLUSH | MI_INHIBIT_RENDER_CACHE_FLUSH);
 
-	gen4_emit_binding_table(sna, wm_binding_table & ~1);
+	gen4_emit_binding_table(sna, wm_binding_table);
 	gen4_emit_pipelined_pointers(sna, op, op->op, op->u.gen4.wm_kernel);
 	gen4_emit_vertex_elements(sna, op);
 }
@@ -1062,11 +1064,11 @@ static void
 gen4_bind_surfaces(struct sna *sna,
 		   const struct sna_composite_op *op)
 {
-	bool dirty = kgem_bo_is_dirty(op->dst.bo);
 	uint32_t *binding_table;
-	uint16_t offset;
+	uint16_t offset, dirty;
 
 	gen4_get_batch(sna, op);
+	dirty = kgem_bo_is_dirty(op->dst.bo);
 
 	binding_table = gen4_composite_get_binding_table(sna, &offset);
 
@@ -1098,6 +1100,9 @@ gen4_bind_surfaces(struct sna *sna,
 		sna->kgem.surface += sizeof(struct gen4_surface_state_padded) / sizeof(uint32_t);
 		offset = sna->render_state.gen4.surface_table;
 	}
+
+	if (sna->kgem.batch[sna->render_state.gen4.surface_table] == binding_table[0])
+		dirty = 0;
 
 	gen4_emit_state(sna, op, offset | dirty);
 }
@@ -1273,7 +1278,6 @@ static uint32_t gen4_bind_video_source(struct sna *sna,
 static void gen4_video_bind_surfaces(struct sna *sna,
 				     const struct sna_composite_op *op)
 {
-	bool dirty = kgem_bo_is_dirty(op->dst.bo);
 	struct sna_video_frame *frame = op->priv;
 	uint32_t src_surf_format;
 	uint32_t src_surf_base[6];
@@ -1281,7 +1285,7 @@ static void gen4_video_bind_surfaces(struct sna *sna,
 	int src_height[6];
 	int src_pitch[6];
 	uint32_t *binding_table;
-	uint16_t offset;
+	uint16_t offset, dirty;
 	int n_src, n;
 
 	src_surf_base[0] = 0;
@@ -1316,6 +1320,7 @@ static void gen4_video_bind_surfaces(struct sna *sna,
 	}
 
 	gen4_get_batch(sna, op);
+	dirty = kgem_bo_is_dirty(op->dst.bo);
 
 	binding_table = gen4_composite_get_binding_table(sna, &offset);
 	binding_table[0] =
@@ -1333,6 +1338,9 @@ static void gen4_video_bind_surfaces(struct sna *sna,
 					       src_pitch[n],
 					       src_surf_format);
 	}
+
+	if (sna->kgem.batch[sna->render_state.gen4.surface_table] == binding_table[0])
+		dirty = 0;
 
 	gen4_emit_state(sna, op, offset | dirty);
 }
@@ -2252,11 +2260,11 @@ cleanup_dst:
 static void
 gen4_copy_bind_surfaces(struct sna *sna, const struct sna_composite_op *op)
 {
-	bool dirty = kgem_bo_is_dirty(op->dst.bo);
 	uint32_t *binding_table;
-	uint16_t offset;
+	uint16_t offset, dirty;
 
 	gen4_get_batch(sna, op);
+	dirty = kgem_bo_is_dirty(op->dst.bo);
 
 	binding_table = gen4_composite_get_binding_table(sna, &offset);
 
@@ -2276,6 +2284,9 @@ gen4_copy_bind_surfaces(struct sna *sna, const struct sna_composite_op *op)
 		sna->kgem.surface += sizeof(struct gen4_surface_state_padded) / sizeof(uint32_t);
 		offset = sna->render_state.gen4.surface_table;
 	}
+
+	if (sna->kgem.batch[sna->render_state.gen4.surface_table] == binding_table[0])
+		dirty = 0;
 
 	gen4_emit_state(sna, op, offset | dirty);
 }
@@ -2888,7 +2899,7 @@ static void gen4_render_reset(struct sna *sna)
 
 	sna->render_state.gen4.drawrect_offset = -1;
 	sna->render_state.gen4.drawrect_limit = -1;
-	sna->render_state.gen4.surface_table = -1;
+	sna->render_state.gen4.surface_table = 0;
 
 	if (sna->render.vbo && !kgem_bo_can_map(&sna->kgem, sna->render.vbo)) {
 		DBG(("%s: discarding unmappable vbo\n", __FUNCTION__));
