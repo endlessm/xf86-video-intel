@@ -71,9 +71,8 @@ struct intel_mode {
 	DRI2FrameEventPtr flip_info;
 	int old_fb_id;
 	int flip_count;
-	unsigned int fe_frame;
-	unsigned int fe_tv_sec;
-	unsigned int fe_tv_usec;
+	uint64_t fe_msc;
+        uint64_t fe_usec;
 
 	struct list outputs;
 	struct list crtcs;
@@ -97,6 +96,9 @@ struct intel_crtc {
 	struct list link;
 	PixmapPtr scanout_pixmap;
 	uint32_t scanout_fb_id;
+	int32_t vblank_offset;
+	uint32_t msc_prev;
+	uint64_t msc_high;
 };
 
 struct intel_property {
@@ -1492,9 +1494,8 @@ intel_do_pageflip(intel_screen_private *intel,
 	 * Also, flips queued on disabled or incorrectly configured displays
 	 * may never complete; this is a configuration error.
 	 */
-	mode->fe_frame = 0;
-	mode->fe_tv_sec = 0;
-	mode->fe_tv_usec = 0;
+	mode->fe_msc = 0;
+	mode->fe_usec = 0;
 
 	for (i = 0; i < config->num_crtc; i++) {
 		if (!intel_crtc_on(config->crtc[i]))
@@ -1550,6 +1551,107 @@ static const xf86CrtcConfigFuncsRec intel_xf86crtc_config_funcs = {
 	intel_xf86crtc_resize
 };
 
+static uint32_t pipe_select(int pipe)
+{
+	if (pipe > 1)
+		return pipe << DRM_VBLANK_HIGH_CRTC_SHIFT;
+	else if (pipe > 0)
+		return DRM_VBLANK_SECONDARY;
+	else
+		return 0;
+}
+
+/*
+ * Get the current msc/ust value from the kernel
+ */
+static int
+intel_get_msc_ust(ScrnInfoPtr scrn, xf86CrtcPtr crtc, uint32_t *msc, uint64_t *ust)
+{
+	intel_screen_private *intel = intel_get_screen_private(scrn);
+	drmVBlank vbl;
+
+	/* Get current count */
+	vbl.request.type = DRM_VBLANK_RELATIVE | pipe_select(intel_crtc_to_pipe(crtc));
+	vbl.request.sequence = 0;
+	vbl.request.signal = 0;
+	if (drmWaitVBlank(intel->drmSubFD, &vbl)) {
+		*msc = 0;
+		*ust = 0;
+		return BadMatch;
+	} else {
+		*msc = vbl.reply.sequence;
+		*ust = (CARD64) vbl.reply.tval_sec * 1000000 + vbl.reply.tval_usec;
+		return Success;
+	}
+}
+
+/*
+ * Convert a 32-bit kernel MSC sequence number to a 64-bit local sequence
+ * number, adding in the vblank_offset and high 32 bits, and dealing
+ * with 64-bit wrapping
+ */
+uint64_t
+intel_sequence_to_crtc_msc(xf86CrtcPtr crtc, uint32_t sequence)
+{
+	struct intel_crtc *intel_crtc = crtc->driver_private;
+
+        sequence += intel_crtc->vblank_offset;
+        if ((int32_t) (sequence - intel_crtc->msc_prev) < -0x40000000)
+                intel_crtc->msc_high += 0x100000000L;
+        intel_crtc->msc_prev = sequence;
+        return intel_crtc->msc_high + sequence;
+}
+
+/*
+ * Get the current 64-bit adjust MSC and UST value
+ */
+int
+intel_get_crtc_msc_ust(ScrnInfoPtr scrn, xf86CrtcPtr crtc, uint64_t *msc, uint64_t *ust)
+{
+        uint32_t sequence;
+        int ret;
+
+        ret = intel_get_msc_ust(scrn, crtc, &sequence, ust);
+	if (ret)
+		return ret;
+
+        *msc = intel_sequence_to_crtc_msc(crtc, sequence);
+        return 0;
+}
+
+/*
+ * Convert a 64-bit adjusted MSC value into a 32-bit kernel sequence number,
+ * removing the high 32 bits and subtracting out the vblank_offset term.
+ *
+ * This also updates the vblank_offset when it notices that the value should
+ * change.
+ */
+
+#define MAX_VBLANK_OFFSET       1000
+
+uint32_t
+intel_crtc_msc_to_sequence(ScrnInfoPtr scrn, xf86CrtcPtr crtc, uint64_t expect)
+{
+	struct intel_crtc *intel_crtc = crtc->driver_private;
+        uint64_t msc, ust;
+
+	if (intel_get_crtc_msc_ust(scrn, crtc, &msc, &ust) == 0) {
+		int64_t diff = expect - msc;
+
+		/* We're way off here, assume that the kernel has lost its mind
+		 * and smack the vblank back to something sensible
+		 */
+		if (diff < -MAX_VBLANK_OFFSET || diff > MAX_VBLANK_OFFSET) {
+			intel_crtc->vblank_offset += (int32_t) diff;
+			if (intel_crtc->vblank_offset > -MAX_VBLANK_OFFSET &&
+			    intel_crtc->vblank_offset < MAX_VBLANK_OFFSET)
+				intel_crtc->vblank_offset = 0;
+		}
+	}
+
+        return (uint32_t) (expect - intel_crtc->vblank_offset);
+}
+
 static void
 intel_vblank_handler(int fd, unsigned int frame, unsigned int tv_sec,
 		       unsigned int tv_usec, void *event)
@@ -1567,9 +1669,8 @@ intel_page_flip_handler(int fd, unsigned int frame, unsigned int tv_sec,
 	/* Is this the event whose info shall be delivered to higher level? */
 	if (flip->dispatch_me) {
 		/* Yes: Cache msc, ust for later delivery. */
-		mode->fe_frame = frame;
-		mode->fe_tv_sec = tv_sec;
-		mode->fe_tv_usec = tv_usec;
+		mode->fe_msc = frame;
+		mode->fe_usec = (uint64_t) tv_sec * 1000000 + tv_usec;
 	}
 	free(flip);
 
@@ -1585,8 +1686,8 @@ intel_page_flip_handler(int fd, unsigned int frame, unsigned int tv_sec,
 		return;
 
 	/* Deliver cached msc, ust from reference crtc to flip event handler */
-	I830DRI2FlipEventHandler(mode->fe_frame, mode->fe_tv_sec,
-				 mode->fe_tv_usec, mode->flip_info);
+	I830DRI2FlipEventHandler((uint32_t) mode->fe_msc, mode->fe_usec / 1000000,
+				 mode->fe_usec % 1000000, mode->flip_info);
 }
 
 static void

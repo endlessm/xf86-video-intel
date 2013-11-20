@@ -413,6 +413,15 @@ extern int intel_crtc_id(xf86CrtcPtr crtc);
 extern int intel_output_dpms_status(xf86OutputPtr output);
 extern void intel_copy_fb(ScrnInfoPtr scrn);
 
+int
+intel_get_crtc_msc_ust(ScrnInfoPtr scrn, xf86CrtcPtr crtc, uint64_t *msc, uint64_t *ust);
+
+uint32_t
+intel_crtc_msc_to_sequence(ScrnInfoPtr scrn, xf86CrtcPtr crtc, uint64_t expect);
+
+uint64_t
+intel_sequence_to_crtc_msc(xf86CrtcPtr crtc, uint32_t sequence);
+
 enum DRI2FrameEventType {
 	DRI2_SWAP,
 	DRI2_SWAP_CHAIN,
