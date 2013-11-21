@@ -186,6 +186,8 @@ static bool sna_blt_fill_init(struct sna *sna,
 			b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 8;
 			if (bpp == 32)
 				b[0] |= BLT_WRITE_ALPHA | BLT_WRITE_RGB;
+			if (bo->tiling)
+				b[0] |= BLT_DST_TILED;
 			b[1] = blt->br13;
 			b[2] = 0;
 			b[3] = 0;
@@ -204,6 +206,8 @@ static bool sna_blt_fill_init(struct sna *sna,
 			b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 7;
 			if (bpp == 32)
 				b[0] |= BLT_WRITE_ALPHA | BLT_WRITE_RGB;
+			if (bo->tiling)
+				b[0] |= BLT_DST_TILED;
 			b[1] = blt->br13;
 			b[2] = 0;
 			b[3] = 0;
@@ -246,6 +250,8 @@ noinline static void sna_blt_fill_begin(struct sna *sna,
 		b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 8;
 		if (blt->bpp == 32)
 			b[0] |= BLT_WRITE_ALPHA | BLT_WRITE_RGB;
+		if (blt->bo[0]->tiling)
+			b[0] |= BLT_DST_TILED;
 		b[1] = blt->br13;
 		b[2] = 0;
 		b[3] = 0;
@@ -264,6 +270,8 @@ noinline static void sna_blt_fill_begin(struct sna *sna,
 		b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 7;
 		if (blt->bpp == 32)
 			b[0] |= BLT_WRITE_ALPHA | BLT_WRITE_RGB;
+		if (blt->bo[0]->tiling)
+			b[0] |= BLT_DST_TILED;
 		b[1] = blt->br13;
 		b[2] = 0;
 		b[3] = 0;
@@ -3081,6 +3089,8 @@ bool sna_blt_fill_boxes(struct sna *sna, uint8_t alu,
 			b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 8;
 			if (bpp == 32)
 				b[0] |= BLT_WRITE_ALPHA | BLT_WRITE_RGB;
+			if (bo->tiling)
+				b[0] |= BLT_DST_TILED;
 			b[1] = br13;
 			b[2] = 0;
 			b[3] = 0;
@@ -3099,6 +3109,8 @@ bool sna_blt_fill_boxes(struct sna *sna, uint8_t alu,
 			b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 7;
 			if (bpp == 32)
 				b[0] |= BLT_WRITE_ALPHA | BLT_WRITE_RGB;
+			if (bo->tiling)
+				b[0] |= BLT_DST_TILED;
 			b[1] = br13;
 			b[2] = 0;
 			b[3] = 0;
@@ -3163,6 +3175,8 @@ bool sna_blt_fill_boxes(struct sna *sna, uint8_t alu,
 				b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 8;
 				if (bpp == 32)
 					b[0] |= BLT_WRITE_ALPHA | BLT_WRITE_RGB;
+				if (bo->tiling)
+					b[0] |= BLT_DST_TILED;
 				b[1] = br13;
 				b[2] = 0;
 				b[3] = 0;
@@ -3181,6 +3195,8 @@ bool sna_blt_fill_boxes(struct sna *sna, uint8_t alu,
 				b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 7;
 				if (bpp == 32)
 					b[0] |= BLT_WRITE_ALPHA | BLT_WRITE_RGB;
+				if (bo->tiling)
+					b[0] |= BLT_DST_TILED;
 				b[1] = br13;
 				b[2] = 0;
 				b[3] = 0;

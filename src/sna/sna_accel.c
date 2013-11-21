@@ -11427,7 +11427,7 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
 			if (sna->kgem.gen >= 0100) {
-				b[0] = XY_SETUP_BLT | 3 << 20 | 8;
+				b[0] = XY_SETUP_BLT | 3 << 20 | (br00 & BLT_DST_TILED) | 8;
 				b[1] = br13;
 				b[2] = 0;
 				b[3] = 0;
@@ -11446,7 +11446,7 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 							 0);
 				sna->kgem.nbatch += 10;
 			} else {
-				b[0] = XY_SETUP_BLT | 3 << 20 | 6;
+				b[0] = XY_SETUP_BLT | 3 << 20 | (br00 & BLT_DST_TILED) | 6;
 				b[1] = br13;
 				b[2] = 0;
 				b[3] = 0;
@@ -11512,7 +11512,7 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 		assert(sna->kgem.mode == KGEM_BLT);
 		b = sna->kgem.batch + sna->kgem.nbatch;
 		if (sna->kgem.gen >= 0100) {
-			b[0] = XY_SETUP_BLT | 3 << 20 | 8;
+			b[0] = XY_SETUP_BLT | 3 << 20 | (br00 & BLT_DST_TILED) | 8;
 			b[1] = br13;
 			b[2] = 0;
 			b[3] = 0;
@@ -11531,7 +11531,7 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 						 0);
 			sna->kgem.nbatch += 10;
 		} else {
-			b[0] = XY_SETUP_BLT | 3 << 20 | 6;
+			b[0] = XY_SETUP_BLT | 3 << 20 | (br00 & BLT_DST_TILED) | 6;
 			b[1] = br13;
 			b[2] = 0;
 			b[3] = 0;
@@ -11571,7 +11571,7 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 						assert(sna->kgem.mode == KGEM_BLT);
 						b = sna->kgem.batch + sna->kgem.nbatch;
 						if (sna->kgem.gen >= 0100) {
-							b[0] = XY_SETUP_BLT | 3 << 20 | 8;
+							b[0] = XY_SETUP_BLT | 3 << 20 | (br00 & BLT_DST_TILED) | 8;
 							b[1] = br13;
 							b[2] = 0;
 							b[3] = 0;
@@ -11590,7 +11590,7 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 										 0);
 							sna->kgem.nbatch += 10;
 						} else {
-							b[0] = XY_SETUP_BLT | 3 << 20 | 6;
+							b[0] = XY_SETUP_BLT | 3 << 20 | (br00 & BLT_DST_TILED) | 6;
 							b[1] = br13;
 							b[2] = 0;
 							b[3] = 0;
@@ -11665,7 +11665,7 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 							assert(sna->kgem.mode == KGEM_BLT);
 							b = sna->kgem.batch + sna->kgem.nbatch;
 							if (sna->kgem.gen >= 0100) {
-								b[0] = XY_SETUP_BLT | 3 << 20 | 8;
+								b[0] = XY_SETUP_BLT | 3 << 20 | (br00 & BLT_DST_TILED) | 8;
 								b[1] = br13;
 								b[2] = 0;
 								b[3] = 0;
@@ -11684,7 +11684,7 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 											 0);
 								sna->kgem.nbatch += 10;
 							} else {
-								b[0] = XY_SETUP_BLT | 3 << 20 | 6;
+								b[0] = XY_SETUP_BLT | 3 << 20 | (br00 & BLT_DST_TILED) | 6;
 								b[1] = br13;
 								b[2] = 0;
 								b[3] = 0;
@@ -12173,7 +12173,7 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
 			if (sna->kgem.gen >= 0100) {
-				b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20 | 8;
+				b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20 | (br00 & BLT_DST_TILED) | 8;
 				b[1] = br13;
 				b[2] = 0;
 				b[3] = 0;
@@ -12189,7 +12189,7 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 				b[9] = pat[1];
 				sna->kgem.nbatch += 10;
 			} else {
-				b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20 | 7;
+				b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20 | (br00 & BLT_DST_TILED) | 7;
 				b[1] = br13;
 				b[2] = 0;
 				b[3] = 0;
@@ -12245,7 +12245,7 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 		assert(sna->kgem.mode == KGEM_BLT);
 		b = sna->kgem.batch + sna->kgem.nbatch;
 		if (sna->kgem.gen >= 0100) {
-			b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20 | 8;
+			b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20 | (br00 & BLT_DST_TILED) | 8;
 			b[1] = br13;
 			b[2] = 0;
 			b[3] = 0;
@@ -12261,7 +12261,7 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 			b[9] = pat[1];
 			sna->kgem.nbatch += 10;
 		} else {
-			b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20 | 7;
+			b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20 | (br00 & BLT_DST_TILED) | 7;
 			b[1] = br13;
 			b[2] = 0;
 			b[3] = 0;
@@ -12295,7 +12295,7 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 						assert(sna->kgem.mode == KGEM_BLT);
 						b = sna->kgem.batch + sna->kgem.nbatch;
 						if (sna->kgem.gen >= 0100) {
-							b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20 | 8;
+							b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20 | (br00 & BLT_DST_TILED) | 8;
 							b[1] = br13;
 							b[2] = 0;
 							b[3] = 0;
@@ -12311,7 +12311,7 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 							b[9] = pat[1];
 							sna->kgem.nbatch += 10;
 						} else {
-							b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20 | 7;
+							b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20 | (br00 & BLT_DST_TILED) | 7;
 							b[1] = br13;
 							b[2] = 0;
 							b[3] = 0;
@@ -12367,7 +12367,7 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 							assert(sna->kgem.mode == KGEM_BLT);
 							b = sna->kgem.batch + sna->kgem.nbatch;
 							if (sna->kgem.gen >= 0100) {
-								b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20 | 8;
+								b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20 | (br00 & BLT_DST_TILED) | 8;
 								b[1] = br13;
 								b[2] = 0;
 								b[3] = 0;
@@ -12383,7 +12383,7 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 								b[9] = pat[1];
 								sna->kgem.nbatch += 10;
 							} else {
-								b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20 | 7;
+								b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 3 << 20 | (br00 & BLT_DST_TILED) | 7;
 								b[1] = br13;
 								b[2] = 0;
 								b[3] = 0;
