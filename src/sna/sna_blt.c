@@ -257,7 +257,7 @@ noinline static void sna_blt_fill_begin(struct sna *sna,
 					 0);
 		b[6] = blt->pixel;
 		b[7] = blt->pixel;
-		b[9] = 0;
+		b[8] = 0;
 		b[9] = 0;
 		kgem->nbatch += 10;
 	} else {
