@@ -2143,13 +2143,7 @@ gen6_render_composite(struct sna *sna,
 		return true;
 
 	if (gen6_composite_fallback(sna, src, mask, dst))
-		return (mask == NULL &&
-			sna_blt_composite(sna, op,
-					  src, dst,
-					  src_x, src_y,
-					  dst_x, dst_y,
-					  width, height,
-					  tmp, true));
+		goto fallback;
 
 	if (need_tiling(sna, width, height))
 		return sna_tiling_composite(op, src, mask, dst,
@@ -2165,7 +2159,7 @@ gen6_render_composite(struct sna *sna,
 	if (!gen6_composite_set_target(sna, tmp, dst,
 				       dst_x, dst_y, width, height,
 				       op > PictOpSrc || dst->pCompositeClip->data))
-		return false;
+		goto fallback;
 
 	switch (gen6_composite_picture(sna, src, &tmp->src,
 				       src_x, src_y,
@@ -2280,15 +2274,28 @@ gen6_render_composite(struct sna *sna,
 	return true;
 
 cleanup_mask:
-	if (tmp->mask.bo)
+	if (tmp->mask.bo) {
 		kgem_bo_destroy(&sna->kgem, tmp->mask.bo);
+		tmp->mask.bo = NULL;
+	}
 cleanup_src:
-	if (tmp->src.bo)
+	if (tmp->src.bo) {
 		kgem_bo_destroy(&sna->kgem, tmp->src.bo);
+		tmp->src.bo = NULL;
+	}
 cleanup_dst:
-	if (tmp->redirect.real_bo)
+	if (tmp->redirect.real_bo) {
 		kgem_bo_destroy(&sna->kgem, tmp->dst.bo);
-	return false;
+		tmp->redirect.real_bo = NULL;
+	}
+fallback:
+	return (mask == NULL &&
+		sna_blt_composite(sna, op,
+				  src, dst,
+				  src_x, src_y,
+				  dst_x, dst_y,
+				  width, height,
+				  tmp, true));
 }
 
 #if !NO_COMPOSITE_SPANS

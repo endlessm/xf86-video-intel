@@ -3515,7 +3515,7 @@ gen3_render_composite(struct sna *sna,
 				       dst_x, dst_y, width, height)) {
 		DBG(("%s: unable to set render target\n",
 		     __FUNCTION__));
-		return false;
+		goto fallback;
 	}
 
 	tmp->op = op;
@@ -3819,14 +3819,20 @@ gen3_render_composite(struct sna *sna,
 	return true;
 
 cleanup_mask:
-	if (tmp->mask.bo)
+	if (tmp->mask.bo) {
 		kgem_bo_destroy(&sna->kgem, tmp->mask.bo);
+		tmp->mask.bo = NULL;
+	}
 cleanup_src:
-	if (tmp->src.bo)
+	if (tmp->src.bo) {
 		kgem_bo_destroy(&sna->kgem, tmp->src.bo);
+		tmp->src.bo = NULL;
+	}
 cleanup_dst:
-	if (tmp->redirect.real_bo)
+	if (tmp->redirect.real_bo) {
 		kgem_bo_destroy(&sna->kgem, tmp->dst.bo);
+		tmp->redirect.real_bo = NULL;
+	}
 fallback:
 	return (mask == NULL &&
 		sna_blt_composite(sna,
