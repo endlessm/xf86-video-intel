@@ -142,10 +142,11 @@ struct sna_pixmap {
 
 #define SOURCE_BIAS 4
 	uint16_t source_count;
-	uint8_t pinned :3;
+	uint8_t pinned :4;
 #define PIN_SCANOUT 0x1
-#define PIN_DRI 0x2
-#define PIN_PRIME 0x4
+#define PIN_DRI2 0x2
+#define PIN_DRI3 0x4
+#define PIN_PRIME 0x8
 	uint8_t create :4;
 	uint8_t mapped :2;
 #define MAPPED_NONE 0

@@ -91,7 +91,7 @@ static uint32_t pixmap_flink(PixmapPtr pixmap)
 	if (dri_bo_flink(priv->bo, &name) != 0)
 		return 0;
 
-	priv->pinned |= PIN_DRI;
+	priv->pinned |= PIN_DRI2;
 	return name;
 }
 
@@ -982,6 +982,9 @@ can_exchange(DrawablePtr drawable, DRI2BufferPtr front, DRI2BufferPtr back)
 
 	/* prevent an implicit tiling mode change */
 	if (front_intel->tiling != back_intel->tiling)
+		return FALSE;
+
+	if (front_intel->pinned & ~(PIN_SCANOUT | PIN_DRI2))
 		return FALSE;
 
 	return TRUE;

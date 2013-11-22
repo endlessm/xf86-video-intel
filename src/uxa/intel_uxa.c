@@ -1195,7 +1195,7 @@ intel_uxa_share_pixmap_backing(PixmapPtr ppix, ScreenPtr slave, void **fd_handle
 	drm_intel_bo_get_tiling(bo, &tiling, &swizzle);
 
 	if (tiling == I915_TILING_X) {
-		if (priv->pinned & ~PIN_DRI)
+		if (priv->pinned)
 			return FALSE;
 
 	        tiling = I915_TILING_NONE;
@@ -1219,7 +1219,7 @@ intel_uxa_share_pixmap_backing(PixmapPtr ppix, ScreenPtr slave, void **fd_handle
 	}
 	drm_intel_bo_get_tiling(bo, &tiling, &swizzle);
 	drm_intel_bo_gem_export_to_prime(bo, &handle);
-	priv->pinned |= PIN_DRI;
+	priv->pinned |= PIN_PRIME;
 
 	*fd_handle = (void *)(long)handle;
 	return TRUE;

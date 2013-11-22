@@ -1040,7 +1040,7 @@ sna_share_pixmap_backing(PixmapPtr pixmap, ScreenPtr slave, void **fd_handle)
 		     pixmap->drawable.width, pixmap->drawable.height,
 		     pixmap->drawable.serialNumber));
 
-		if (priv->pinned & ~(PIN_DRI | PIN_PRIME)) {
+		if (priv->pinned) {
 			DBG(("%s: can't convert pinned bo\n", __FUNCTION__));
 			return FALSE;
 		}
