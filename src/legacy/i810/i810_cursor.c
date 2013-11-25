@@ -132,8 +132,8 @@ static void I810LoadCursorARGB (ScrnInfoPtr pScrn, CursorPtr pCurs)
    {
       for (x = 0; x < w; x++)
          *pcurs++ = *image++;
-         for (; x < 64; x++)
-            *pcurs++ = 0;
+      for (; x < 64; x++)
+         *pcurs++ = 0;
    }
 
    for (; y < 64; y++)

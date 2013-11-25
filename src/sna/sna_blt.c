@@ -2355,9 +2355,9 @@ fill:
 			hint |= PREFER_GPU;
 			if (dst->pCompositeClip->data == NULL && (width | height))
 				hint |= IGNORE_CPU;
-				if (width == tmp->dst.pixmap->drawable.width &&
-				    height == tmp->dst.pixmap->drawable.height)
-					hint |= REPLACES;
+			if (width == tmp->dst.pixmap->drawable.width &&
+			    height == tmp->dst.pixmap->drawable.height)
+				hint |= REPLACES;
 		}
 		tmp->dst.bo = sna_drawable_use_bo(dst->pDrawable, hint,
 						  &dst_box, &tmp->damage);
