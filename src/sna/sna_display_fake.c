@@ -75,7 +75,7 @@ static const char *reflection_to_str(Rotation rotation)
 	case 0: return "none";
 	case RR_Reflect_X: return "X axis";
 	case RR_Reflect_Y: return "Y axis";
-	case RR_Reflect_X | RR_Reflect_Y: return "X and Y axis";
+	case RR_Reflect_X | RR_Reflect_Y: return "X and Y axes";
 	default: return "invalid";
 	}
 }
