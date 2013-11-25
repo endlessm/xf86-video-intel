@@ -4804,6 +4804,7 @@ bool kgem_check_bo(struct kgem *kgem, ...)
 
 		if (needs_semaphore(kgem, bo)) {
 			DBG(("%s: flushing for required semaphore\n", __FUNCTION__));
+			va_end(ap);
 			return false;
 		}
 
@@ -4974,6 +4975,7 @@ bool kgem_check_many_bo_fenced(struct kgem *kgem, ...)
 
 		if (needs_semaphore(kgem, bo)) {
 			DBG(("%s: flushing for required semaphore\n", __FUNCTION__));
+			va_end(ap);
 			return false;
 		}
 
