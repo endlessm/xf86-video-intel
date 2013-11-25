@@ -22,7 +22,6 @@ SUBDIRS = brw fb
 
 AM_CFLAGS = \
 	@CWARNFLAGS@ \
-	@NOWARNFLAGS@ \
 	-I$(top_srcdir)/src \
 	-I$(top_srcdir)/src/render_program \
 	$(XORG_CFLAGS) \
@@ -135,3 +134,5 @@ git_version.h: $(top_srcdir)/.git/HEAD $(shell sed -e '/ref:/!d' -e 's#ref: *#$(
 	@V=`git describe`; echo "static const char git_version[] = \"$$V\";" > git_version.h
 sna_driver.c: git_version.h
 endif
+
+AM_CFLAGS += @NOWARNFLAGS@
