@@ -769,8 +769,7 @@ mono_trapezoids_span_converter(struct sna *sna,
 
 	trapezoid_origin(&traps[0].left, &dst_x, &dst_y);
 
-	trapezoids_bounds(ntrap, traps, &extents);
-	if (extents.y1 >= extents.y2 || extents.x1 >= extents.x2)
+	if (!trapezoids_bounds(ntrap, traps, &extents))
 		return true;
 
 	DBG(("%s: extents (%d, %d), (%d, %d)\n",
@@ -1049,9 +1048,7 @@ mono_trapezoid_span_inplace(struct sna *sna,
 	int was_clear;
 	int x, y, n;
 
-	trapezoids_bounds(ntrap, traps, &mono.clip.extents);
-	if (mono.clip.extents.y1 >= mono.clip.extents.y2 ||
-	    mono.clip.extents.x1 >= mono.clip.extents.x2)
+	if (!trapezoids_bounds(ntrap, traps, &mono.clip.extents))
 		return true;
 
 	DBG(("%s: extents (%d, %d), (%d, %d)\n",

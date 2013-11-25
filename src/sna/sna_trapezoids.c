@@ -288,8 +288,7 @@ trapezoids_fallback(struct sna *sna,
 
 		trapezoid_origin(&traps[0].left, &dst_x, &dst_y);
 
-		trapezoids_bounds(ntrap, traps, &bounds);
-		if (bounds.y1 >= bounds.y2 || bounds.x1 >= bounds.x2)
+		if (!trapezoids_bounds(ntrap, traps, &bounds))
 			return;
 
 		DBG(("%s: bounds (%d, %d), (%d, %d)\n", __FUNCTION__,
