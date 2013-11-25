@@ -235,7 +235,7 @@ fallback:
 	}
 }
 
-static Bool inline
+static inline Bool
 uxa_copy_n_to_n_two_dir(DrawablePtr pSrcDrawable, DrawablePtr pDstDrawable,
 			GCPtr pGC, BoxPtr pbox, int nbox, int dx, int dy)
 {
