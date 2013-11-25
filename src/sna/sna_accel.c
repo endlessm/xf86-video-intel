@@ -2113,7 +2113,7 @@ skip_inplace_map:
 		    pixmap->drawable.bitsPerPixel == 8 ||
 		    priv->clear_color == (1 << pixmap->drawable.depth) - 1) {
 			memset(pixmap->devPrivate.ptr, priv->clear_color,
-			       pixmap->devKind * pixmap->drawable.height);
+			       (size_t)pixmap->devKind * pixmap->drawable.height);
 		} else {
 			pixman_fill(pixmap->devPrivate.ptr,
 				    pixmap->devKind/sizeof(uint32_t),

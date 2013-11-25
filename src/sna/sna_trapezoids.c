@@ -902,7 +902,7 @@ triangles_fallback(CARD8 op,
 		if (!scratch)
 			return;
 
-		memset(scratch->devPrivate.ptr, 0, scratch->devKind*height);
+		memset(scratch->devPrivate.ptr, 0, (size_t)scratch->devKind*height);
 		image = pixman_image_create_bits(format, width, height,
 						 scratch->devPrivate.ptr,
 						 scratch->devKind);
