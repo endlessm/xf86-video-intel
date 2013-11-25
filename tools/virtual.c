@@ -861,6 +861,34 @@ static void clone_update(struct clone *clone)
 	clone->rr_update = 0;
 }
 
+static int mode_height(const XRRModeInfo *mode, Rotation rotation)
+{
+	switch (rotation & 0xf) {
+	case RR_Rotate_0:
+	case RR_Rotate_180:
+		return mode->height;
+	case RR_Rotate_90:
+	case RR_Rotate_270:
+		return mode->width;
+	default:
+		return 0;
+	}
+}
+
+static int mode_width(const XRRModeInfo *mode, Rotation rotation)
+{
+	switch (rotation & 0xf) {
+	case RR_Rotate_0:
+	case RR_Rotate_180:
+		return mode->width;
+	case RR_Rotate_90:
+	case RR_Rotate_270:
+		return mode->height;
+	default:
+		return 0;
+	}
+}
+
 static int context_update(struct context *ctx)
 {
 	Display *dpy = ctx->display->dpy;
@@ -971,17 +999,18 @@ static int context_update(struct context *ctx)
 			DBG(("%s: source %s enabled (%d, %d)x(%d, %d)\n",
 			     DisplayString(clone->dst.dpy), output->name,
 			     output->x, output->y,
-			     output->mode.width, output->mode.height));
+			     mode_width(&output->mode, output->rotation),
+			     mode_height(&output->mode, output->rotation)));
 
 			if (output->x < x1)
 				x1 = output->x;
 			if (output->y < y1)
 				y1 = output->y;
 
-			v = (int)output->x + output->mode.width;
+			v = (int)output->x + mode_width(&output->mode, output->rotation);
 			if (v > x2)
 				x2 = v;
-			v = (int)output->y + output->mode.height;
+			v = (int)output->y + mode_height(&output->mode, output->rotation);
 			if (v > y2)
 				y2 = v;
 		}
