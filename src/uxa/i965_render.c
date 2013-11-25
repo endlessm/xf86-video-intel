@@ -1260,16 +1260,16 @@ static drm_intel_bo *gen4_create_cc_unit_state(intel_screen_private *intel)
 
 static uint32_t i965_get_card_format(PicturePtr picture)
 {
-	int i;
+	unsigned i;
 
 	for (i = 0; i < sizeof(i965_tex_formats) / sizeof(i965_tex_formats[0]);
-	     i++) {
+	     i++)
 		if (i965_tex_formats[i].fmt == picture->format)
-			break;
-	}
+			return i965_tex_formats[i].card_fmt;
+
 	assert(i != sizeof(i965_tex_formats) / sizeof(i965_tex_formats[0]));
 
-	return i965_tex_formats[i].card_fmt;
+	return 0;
 }
 
 static sampler_state_filter_t sampler_state_filter_from_picture(int filter)
