@@ -59,12 +59,24 @@ static char *outputs_for_crtc(xf86CrtcPtr crtc, char *outputs, int max)
 
 static const char *rotation_to_str(Rotation rotation)
 {
-	switch (rotation) {
+	switch (rotation & RR_Rotate_All) {
+	case 0:
 	case RR_Rotate_0: return "normal";
-	case RR_Rotate_90: return "right";
+	case RR_Rotate_90: return "left";
 	case RR_Rotate_180: return "inverted";
-	case RR_Rotate_270: return "left";
+	case RR_Rotate_270: return "right";
 	default: return "unknown";
+	}
+}
+
+static const char *reflection_to_str(Rotation rotation)
+{
+	switch (rotation & RR_Reflect_All) {
+	case 0: return "none";
+	case RR_Reflect_X: return "X axis";
+	case RR_Reflect_Y: return "Y axis";
+	case RR_Reflect_X | RR_Reflect_Y: return "X and Y axis";
+	default: return "invalid";
 	}
 }
 
@@ -75,10 +87,10 @@ sna_crtc_set_mode_major(xf86CrtcPtr crtc, DisplayModePtr mode,
 	char outputs[256];
 
 	xf86DrvMsg(crtc->scrn->scrnIndex, X_INFO,
-		   "switch to mode %dx%d on %s, position (%d, %d), rotation %s\n",
+		   "switch to mode %dx%d on %s, position (%d, %d), rotation %s, reflection %s\n",
 		   mode->HDisplay, mode->VDisplay,
 		   outputs_for_crtc(crtc, outputs, sizeof(outputs)),
-		   x, y, rotation_to_str(rotation));
+		   x, y, rotation_to_str(rotation), reflection_to_str(rotation));
 
 	return TRUE;
 }
