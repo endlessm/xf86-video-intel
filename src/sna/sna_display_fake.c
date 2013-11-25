@@ -38,10 +38,48 @@ sna_crtc_dpms(xf86CrtcPtr crtc, int mode)
 {
 }
 
+static char *outputs_for_crtc(xf86CrtcPtr crtc, char *outputs, int max)
+{
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(crtc->scrn);
+	int len, i;
+
+	for (i = len = 0; i < config->num_output; i++) {
+		xf86OutputPtr output = config->output[i];
+
+		if (output->crtc != crtc)
+			continue;
+
+		len += snprintf(outputs+len, max-len, "%s, ", output->name);
+	}
+	assert(len >= 2);
+	outputs[len-2] = '\0';
+
+	return outputs;
+}
+
+static const char *rotation_to_str(Rotation rotation)
+{
+	switch (rotation) {
+	case RR_Rotate_0: return "normal";
+	case RR_Rotate_90: return "right";
+	case RR_Rotate_180: return "inverted";
+	case RR_Rotate_270: return "left";
+	default: return "unknown";
+	}
+}
+
 static Bool
 sna_crtc_set_mode_major(xf86CrtcPtr crtc, DisplayModePtr mode,
 			Rotation rotation, int x, int y)
 {
+	char outputs[256];
+
+	xf86DrvMsg(crtc->scrn->scrnIndex, X_INFO,
+		   "switch to mode %dx%d on %s, position (%d, %d), rotation %s\n",
+		   mode->HDisplay, mode->VDisplay,
+		   outputs_for_crtc(crtc, outputs, sizeof(outputs)),
+		   x, y, rotation_to_str(rotation));
+
 	return TRUE;
 }
 

@@ -1499,10 +1499,9 @@ sna_crtc_set_mode_major(xf86CrtcPtr crtc, DisplayModePtr mode,
 		return FALSE;
 
 	xf86DrvMsg(crtc->scrn->scrnIndex, X_INFO,
-		   "switch to mode %dx%d@%.1f on pipe %d using %s, position (%d, %d), rotation %s\n",
+		   "switch to mode %dx%d@%.1f on %s using pipe %d, position (%d, %d), rotation %s\n",
 		   mode->HDisplay, mode->VDisplay, xf86ModeVRefresh(mode),
-		   sna_crtc->pipe,
-		   outputs_for_crtc(crtc, outputs, sizeof(outputs)),
+		   outputs_for_crtc(crtc, outputs, sizeof(outputs)), sna_crtc->pipe,
 		   x, y, rotation_to_str(rotation));
 
 	assert(mode->HDisplay <= sna->mode.kmode->max_width &&
