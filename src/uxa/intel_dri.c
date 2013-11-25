@@ -863,7 +863,7 @@ I830DRI2ScheduleFlip(struct intel_screen_private *intel,
 	}
 
 	if (intel->back_buffer == NULL) {
-		I830DRI2BufferPrivatePtr priv;
+		I830DRI2BufferPrivatePtr drvpriv;
 		PixmapPtr front_pixmap, back_pixmap;
 		ScreenPtr screen;
 
@@ -886,8 +886,8 @@ I830DRI2ScheduleFlip(struct intel_screen_private *intel,
 
 		if ((intel->uxa_flags & UXA_USE_GLAMOR)) {
 			screen = draw->pScreen;
-			priv = info->front->driverPrivate;
-			front_pixmap = priv->pixmap;
+			drvpriv = info->front->driverPrivate;
+			front_pixmap = drvpriv->pixmap;
 
 			back_pixmap = intel_glamor_create_back_pixmap(screen,
 								      front_pixmap,
@@ -1563,8 +1563,8 @@ Bool I830DRI2ScreenInit(ScreenPtr screen)
 	ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
 	intel_screen_private *intel = intel_get_screen_private(scrn);
 	DRI2InfoRec info;
-	int dri2_major = 1;
-	int dri2_minor = 0;
+	int dri2scr_major = 1;
+	int dri2scr_minor = 0;
 #if DRI2INFOREC_VERSION >= 4
 	const char *driverNames[1];
 #endif
@@ -1576,9 +1576,9 @@ Bool I830DRI2ScreenInit(ScreenPtr screen)
 	}
 
 	if (xf86LoaderCheckSymbol("DRI2Version"))
-		DRI2Version(&dri2_major, &dri2_minor);
+		DRI2Version(&dri2scr_major, &dri2scr_minor);
 
-	if (dri2_minor < 1) {
+	if (dri2scr_minor < 1) {
 		xf86DrvMsg(scrn->scrnIndex, X_WARNING,
 			   "DRI2 requires DRI2 module version 1.1.0 or later\n");
 		return FALSE;
