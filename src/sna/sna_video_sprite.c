@@ -315,7 +315,10 @@ sna_video_sprite_show(struct sna *sna,
 		if (video->plane) {
 			memset(&s, 0, sizeof(s));
 			s.plane_id = video->plane;
-			drmIoctl(video->sna->kgem.fd, DRM_IOCTL_MODE_SETPLANE, &s);
+			if (drmIoctl(video->sna->kgem.fd, DRM_IOCTL_MODE_SETPLANE, &s)) {
+				DBG(("SET_PLANE failed to turn off existing sprite: ret=%d\n", errno));
+				return false;
+			}
 		}
 		video->plane = s.plane_id;
 	}
