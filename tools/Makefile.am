@@ -20,7 +20,7 @@
 
 AM_CFLAGS = \
 	@CWARNFLAGS@ \
-	@TOOL_CFLAGS@ \
+	$(TOOL_CFLAGS) \
 	@NOWARNFLAGS@ \
 	$(NULL)
 
@@ -33,7 +33,7 @@ intel_virtual_output_SOURCES = \
 	virtual.c \
 	$(NULL)
 
-intel_virtual_output_LDADD = @TOOL_LIBS@
+intel_virtual_output_LDADD = $(TOOL_LIBS)
 
 EXTRA_DIST = intel-virtual-output.man
 CLEANFILES = $(driverman_DATA)

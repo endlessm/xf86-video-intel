@@ -22,21 +22,21 @@ SUBDIRS = brw fb
 
 AM_CFLAGS = \
 	@CWARNFLAGS@ \
+	@NOWARNFLAGS@ \
 	-I$(top_srcdir)/src \
 	-I$(top_srcdir)/src/render_program \
-	@XORG_CFLAGS@ \
-	@UDEV_CFLAGS@ \
-	@DRM_CFLAGS@ \
-	@NOWARNFLAGS@
+	$(XORG_CFLAGS) \
+	$(UDEV_CFLAGS) \
+	$(DRM_CFLAGS) \
 	$(NULL)
 
 if VALGRIND
-AM_CFLAGS += @VALGRIND_CFLAGS@
+AM_CFLAGS += $(VALGRIND_CFLAGS)
 endif
 
 noinst_LTLIBRARIES = libsna.la
 libsna_la_LDFLAGS = -pthread
-libsna_la_LIBADD = @UDEV_LIBS@ -lm @DRM_LIBS@ brw/libbrw.la fb/libfb.la
+libsna_la_LIBADD = $(UDEV_LIBS) -lm $(DRM_LIBS) brw/libbrw.la fb/libfb.la
 
 libsna_la_SOURCES = \
 	atomic.h \
