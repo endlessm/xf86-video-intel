@@ -121,7 +121,7 @@ static void bench(struct test *t, enum target target, int op, int sf)
 int main(int argc, char **argv)
 {
 	struct test test;
-	int op, sf;
+	unsigned op, sf;
 
 	test_init(&test, argc, argv);
 

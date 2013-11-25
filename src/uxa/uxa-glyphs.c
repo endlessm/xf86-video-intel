@@ -146,7 +146,7 @@ static Bool uxa_realize_glyph_caches(ScreenPtr pScreen)
 		PIXMAN_a8,
 		PIXMAN_a8r8g8b8,
 	};
-	int i;
+	unsigned i;
 
 	if (uxa_screen->glyph_cache_initialized)
 		return TRUE;
