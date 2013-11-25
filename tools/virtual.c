@@ -61,7 +61,6 @@
 #include <signal.h>
 #include <getopt.h>
 #include <limits.h>
-#include <ctype.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <assert.h>

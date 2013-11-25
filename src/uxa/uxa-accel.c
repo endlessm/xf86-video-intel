@@ -36,7 +36,6 @@
 #include <X11/fonts/fontstruct.h>
 #include "dixfontstr.h"
 #include "uxa.h"
-#include "mipict.h"
 
 static void
 uxa_fill_spans(DrawablePtr pDrawable, GCPtr pGC, int n,

@@ -60,7 +60,6 @@
 #include "intel_options.h"
 
 #include <xf86xv.h>
-#include <X11/extensions/Xv.h>
 
 #ifdef SNA_XVMC
 #define _SNA_XVMC_SERVER_

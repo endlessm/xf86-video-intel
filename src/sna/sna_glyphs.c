@@ -67,8 +67,6 @@
 #include "sna_render_inline.h"
 #include "fb/fbpict.h"
 
-#include <mipict.h>
-
 #define FALLBACK 0
 #define NO_GLYPH_CACHE 0
 #define NO_GLYPHS_TO_DST 0

@@ -57,7 +57,6 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <xf86RandR12.h>
 #include <mi.h>
 #include <micmap.h>
-#include <mipict.h>
 
 #include <sys/ioctl.h>
 #include <sys/fcntl.h>

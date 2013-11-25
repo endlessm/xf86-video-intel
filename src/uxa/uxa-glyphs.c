@@ -68,8 +68,6 @@
 #include "uxa-glamor.h"
 #include "common.h"
 
-#include "mipict.h"
-
 /* Width of the pixmaps we use for the caches; this should be less than
  * max texture size of the driver; this may need to actually come from
  * the driver.

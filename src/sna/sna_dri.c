@@ -42,7 +42,6 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <unistd.h>
 
 #include "sna.h"
-#include "sna_reg.h"
 #include "intel_options.h"
 
 #include <xf86drm.h>

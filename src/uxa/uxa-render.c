@@ -30,7 +30,6 @@
 
 #include "uxa-priv.h"
 #include "uxa-glamor.h"
-#include <xorgVersion.h>
 
 #ifdef RENDER
 #include "mipict.h"
