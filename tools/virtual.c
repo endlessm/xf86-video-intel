@@ -899,7 +899,7 @@ static int context_update(struct context *ctx)
 			DBG(("%s-%s: (x=%d, y=%d, rotation=%d, mode=%ld) -> (x=%d, y=%d, rotation=%d, mode=%ld)\n",
 			     DisplayString(dpy), output->name,
 			     output->x, output->y, output->rotation, output->mode.id,
-			     c->x, c->y, output->rotation, c->mode));
+			     c->x, c->y, c->rotation, c->mode));
 
 			changed |= output->rotation |= c->rotation;
 			output->rotation = c->rotation;
@@ -1096,14 +1096,15 @@ err:
 				XRRFreeOutputInfo(o);
 			}
 			if (rr_crtc == 0) {
-				DBG(("%s: failed to find availble CRTC for %s\n",
+				DBG(("%s: failed to find available CRTC for %s\n",
 				     DisplayString(dst->dpy), dst->name));
 				goto err;
 			}
 
-			DBG(("%s: enabling output '%s' (%d,%d)x(%d,%d) on CRTC:%ld\n",
+			DBG(("%s: enabling output '%s' (%d,%d)x(%d,%d), rotation %d, on CRTC:%ld\n",
 			     DisplayString(dst->dpy), dst->name,
-			     dst->x, dst->y, dst->mode.width, dst->mode.height, (long)rr_crtc));
+			     dst->x, dst->y, dst->mode.width, dst->mode.height,
+			     dst->rotation, (long)rr_crtc));
 			ret = XRRSetCrtcConfig(dst->dpy, res, rr_crtc, CurrentTime,
 					       dst->x, dst->y, dst->mode.id, dst->rotation,
 					       &dst->rr_output, 1);
