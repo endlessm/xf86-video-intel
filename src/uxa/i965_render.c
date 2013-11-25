@@ -2109,6 +2109,7 @@ i965_prepare_composite(int op, PicturePtr source_picture,
 	}
 
 	if (mask) {
+		assert(mask_picture != NULL);
 		if (mask_picture->componentAlpha &&
 		    PICT_FORMAT_RGB(mask_picture->format)) {
 			if (i965_blend_op[op].src_alpha) {
