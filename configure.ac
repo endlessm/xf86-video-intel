@@ -283,7 +283,7 @@ PKG_CHECK_MODULES(PCIACCESS, [pciaccess >= 0.10])
 
 AC_ARG_ENABLE(sna,
 	      AS_HELP_STRING([--enable-sna],
-			     [Enable SandyBridge's New Acceleration (SNA) [default=auto]]),
+			     [Enable SandyBridge\'s New Acceleration (SNA) [default=auto]]),
 	      [SNA="$enableval"],
 	      [SNA=auto])
 
