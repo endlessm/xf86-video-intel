@@ -766,10 +766,8 @@ sna_uevent_init(ScrnInfoPtr scrn)
 		return;
 	}
 
-	sna->uevent_handler =
-		xf86AddGeneralHandler(udev_monitor_get_fd(mon),
-				      sna_handle_uevents,
-				      scrn);
+	sna->uevent_handler = xf86AddGeneralHandler(udev_monitor_get_fd(mon),
+						    sna_handle_uevents, scrn);
 	if (!sna->uevent_handler) {
 		udev_monitor_unref(mon);
 		udev_unref(u);

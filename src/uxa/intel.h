@@ -351,7 +351,7 @@ typedef struct intel_screen_private {
 	unsigned debug_flush;
 #if HAVE_UDEV
 	struct udev_monitor *uevent_monitor;
-	InputHandlerProc uevent_handler;
+	pointer uevent_handler;
 #endif
 	Bool has_prime_vmap_flush;
 } intel_screen_private;

@@ -329,7 +329,7 @@ struct sna {
 
 #if HAVE_UDEV
 	struct udev_monitor *uevent_monitor;
-	InputHandlerProc uevent_handler;
+	pointer uevent_handler;
 #endif
 
 	struct {

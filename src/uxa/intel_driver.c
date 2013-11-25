@@ -875,10 +875,8 @@ I830UeventInit(ScrnInfoPtr scrn)
 		return;
 	}
 
-	intel->uevent_handler =
-		xf86AddGeneralHandler(udev_monitor_get_fd(mon),
-				I830HandleUEvents,
-				scrn);
+	intel->uevent_handler = xf86AddGeneralHandler(udev_monitor_get_fd(mon),
+						      I830HandleUEvents, scrn);
 	if (!intel->uevent_handler) {
 		udev_monitor_unref(mon);
 		udev_unref(u);
