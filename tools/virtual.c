@@ -417,6 +417,23 @@ static XRRModeInfo *lookup_mode(XRRScreenResources *res, int id)
 	return NULL;
 }
 
+static void clone_update_edid(struct clone *clone)
+{
+	unsigned long nitems, after;
+	unsigned char *data;
+	int format;
+	Atom type;
+
+	if (XRRGetOutputProperty(clone->dst.dpy, clone->dst.rr_output,
+				 XInternAtom(clone->dst.dpy, "EDID", False),
+				 0, 100, False, False, AnyPropertyType,
+				 &type, &format, &nitems, &after, &data) == Success) {
+		XRRChangeOutputProperty(clone->src.dpy, clone->src.rr_output,
+					XInternAtom(clone->src.dpy, "EDID", False),
+					type, format, PropModeReplace, data, nitems);
+	}
+}
+
 static int clone_update_modes__randr(struct clone *clone)
 {
 	XRRScreenResources *from_res = NULL, *to_res = NULL;
@@ -534,6 +551,7 @@ static int clone_update_modes__randr(struct clone *clone)
 
 		XRRAddOutputMode(clone->src.dpy, clone->src.rr_output, id);
 	}
+	clone_update_edid(clone);
 	XUngrabServer(clone->src.dpy);
 done:
 	ret = 0;
