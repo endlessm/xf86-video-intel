@@ -355,7 +355,9 @@ static void context_enable_timer(struct context *ctx)
 	if (ctx->timer_active)
 		return;
 
-	read(ctx->timer, &count, sizeof(count));
+	/* reset timer */
+	count = read(ctx->timer, &count, sizeof(count));
+
 	ctx->timer_active = 1;
 }
 
@@ -752,6 +754,7 @@ static void init_image(struct clone *clone)
 
 	ret = XInitImage(image);
 	assert(ret);
+	(void)ret;
 }
 
 static int mode_height(const XRRModeInfo *mode, Rotation rotation)
@@ -1159,13 +1162,17 @@ err:
 			     DisplayString(dst->dpy), dst->name,
 			     dst->x, dst->y, dst->mode.width, dst->mode.height,
 			     dst->rotation, (long)rr_crtc));
+
 			ret = XRRSetCrtcConfig(dst->dpy, res, rr_crtc, CurrentTime,
 					       dst->x, dst->y, dst->mode.id, dst->rotation,
 					       &dst->rr_output, 1);
 			DBG(("%s-%s: XRRSetCrtcConfig %s\n", DisplayString(dst->dpy), dst->name, ret ? "failed" : "success"));
+
 			ret = XRRSetPanning(dst->dpy, res, rr_crtc, memset(&panning, 0, sizeof(panning)));
 			DBG(("%s-%s: XRRSetPanning %s\n", DisplayString(dst->dpy), dst->name, ret ? "failed" : "success"));
+
 			dst->rr_crtc = rr_crtc;
+			(void)ret;
 		}
 		XUngrabServer(display->dpy);
 
