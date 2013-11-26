@@ -736,6 +736,34 @@ static void init_image(struct clone *clone)
 	assert(ret);
 }
 
+static int mode_height(const XRRModeInfo *mode, Rotation rotation)
+{
+	switch (rotation & 0xf) {
+	case RR_Rotate_0:
+	case RR_Rotate_180:
+		return mode->height;
+	case RR_Rotate_90:
+	case RR_Rotate_270:
+		return mode->width;
+	default:
+		return 0;
+	}
+}
+
+static int mode_width(const XRRModeInfo *mode, Rotation rotation)
+{
+	switch (rotation & 0xf) {
+	case RR_Rotate_0:
+	case RR_Rotate_180:
+		return mode->width;
+	case RR_Rotate_90:
+	case RR_Rotate_270:
+		return mode->height;
+	default:
+		return 0;
+	}
+}
+
 static void output_init_xfer(struct clone *clone, struct output *output)
 {
 	if (output->use_shm_pixmap) {
@@ -775,6 +803,8 @@ static void output_init_xfer(struct clone *clone, struct output *output)
 
 static int clone_init_xfer(struct clone *clone)
 {
+	int width, height;
+
 	if (clone->src.mode.id == 0) {
 		if (clone->width == 0 && clone->height == 0)
 			return 0;
@@ -792,24 +822,29 @@ static int clone_init_xfer(struct clone *clone)
 			clone->shm.shmaddr = 0;
 		}
 
+		clone->damaged.x2 = clone->damaged.y2 = INT_MIN;
+		clone->damaged.x1 = clone->damaged.y1 = INT_MAX;
 		return 0;
 	}
 
-	if (clone->src.mode.width == clone->width &&
-	    clone->src.mode.height == clone->height)
+	width = mode_width(&clone->src.mode, clone->src.rotation);
+	height = mode_height(&clone->src.mode, clone->src.rotation);
+
+	if (width == clone->width && height == clone->height)
 		return 0;
 
-	DBG(("%s-%s create xfer\n",
-	     DisplayString(clone->dst.dpy), clone->dst.name));
+	DBG(("%s-%s create xfer, %dx%d\n",
+	     DisplayString(clone->dst.dpy), clone->dst.name,
+	     width, height));
 
-	clone->width = clone->src.mode.width;
-	clone->height = clone->src.mode.height;
+	clone->width = width;
+	clone->height = height;
 
 	if (clone->shm.shmaddr)
 		shmdt(clone->shm.shmaddr);
 
 	clone->shm.shmid = shmget(IPC_PRIVATE,
-				  clone->height * stride_for_depth(clone->width, clone->depth),
+				  height * stride_for_depth(width, clone->depth),
 				  IPC_CREAT | 0666);
 	if (clone->shm.shmid == -1)
 		return errno;
@@ -841,9 +876,9 @@ static int clone_init_xfer(struct clone *clone)
 	output_init_xfer(clone, &clone->dst);
 
 	clone->damaged.x1 = clone->src.x;
-	clone->damaged.x2 = clone->src.x + clone->width;
+	clone->damaged.x2 = clone->src.x + width;
 	clone->damaged.y1 = clone->src.y;
-	clone->damaged.y2 = clone->src.y + clone->height;
+	clone->damaged.y2 = clone->src.y + height;
 
 	display_mark_flush(clone->dst.display);
 	return 0;
@@ -859,34 +894,6 @@ static void clone_update(struct clone *clone)
 
 	clone_update_modes__randr(clone);
 	clone->rr_update = 0;
-}
-
-static int mode_height(const XRRModeInfo *mode, Rotation rotation)
-{
-	switch (rotation & 0xf) {
-	case RR_Rotate_0:
-	case RR_Rotate_180:
-		return mode->height;
-	case RR_Rotate_90:
-	case RR_Rotate_270:
-		return mode->width;
-	default:
-		return 0;
-	}
-}
-
-static int mode_width(const XRRModeInfo *mode, Rotation rotation)
-{
-	switch (rotation & 0xf) {
-	case RR_Rotate_0:
-	case RR_Rotate_180:
-		return mode->width;
-	case RR_Rotate_90:
-	case RR_Rotate_270:
-		return mode->height;
-	default:
-		return 0;
-	}
 }
 
 static int context_update(struct context *ctx)
