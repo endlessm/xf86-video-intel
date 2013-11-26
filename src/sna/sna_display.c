@@ -2577,22 +2577,24 @@ static const int subpixel_conv_table[] = {
 	SubPixelNone
 };
 
-static const char *output_names[] = {
-	"None",
-	"VGA",
-	"DVI",
-	"DVI",
-	"DVI",
-	"Composite",
-	"TV",
-	"LVDS",
-	"CTV",
-	"DIN",
-	"DP",
-	"HDMI",
-	"HDMI",
-	"TV",
-	"eDP",
+static const char * const output_names[] = {
+	/* DRM_MODE_CONNECTOR_Unknown */	"None",
+	/* DRM_MODE_CONNECTOR_VGA */		"VGA",
+	/* DRM_MODE_CONNECTOR_DVII */		"DVI",
+	/* DRM_MODE_CONNECTOR_DVID */		"DVI",
+	/* DRM_MODE_CONNECTOR_DVIA */		"DVI",
+	/* DRM_MODE_CONNECTOR_Composite */	"Composite",
+	/* DRM_MODE_CONNECTOR_SVIDEO */		"TV",
+	/* DRM_MODE_CONNECTOR_LVDS */		"LVDS",
+	/* DRM_MODE_CONNECTOR_Component */	"CTV",
+	/* DRM_MODE_CONNECTOR_9PinDIN */	"DIN",
+	/* DRM_MODE_CONNECTOR_DisplayPort */	"DP",
+	/* DRM_MODE_CONNECTOR_HDMIA */		"HDMI",
+	/* DRM_MODE_CONNECTOR_HDMIB */		"HDMI",
+	/* DRM_MODE_CONNECTOR_TV */		"TV",
+	/* DRM_MODE_CONNECTOR_eDP */		"eDP",
+	/* DRM_MODE_CONNECTOR_VIRTUAL */	"Virtual",
+	/* DRM_MODE_CONNECTOR_DSI */		"DSI"
 };
 
 static bool
