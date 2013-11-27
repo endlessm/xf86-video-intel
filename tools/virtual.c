@@ -1044,8 +1044,10 @@ static int context_update(struct context *ctx)
 				y2 = v;
 		}
 
+		x2 -= x1;
+		y2 -= y1;
 		DBG(("%s fb bounds (%d, %d)x(%d, %d)\n", DisplayString(display->dpy),
-		     x1, y1, x2-x1, y2-y1));
+		     x1, y1, x2, y2));
 
 		res = _XRRGetScreenResourcesCurrent(display->dpy, display->root);
 		if (res == NULL)
