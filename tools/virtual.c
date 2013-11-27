@@ -931,7 +931,8 @@ static int context_update(struct context *ctx)
 		return 0;
 
 	DBG(("%s timestamp %ld (last %ld)\n", DisplayString(dpy), res->timestamp, ctx->display->timestamp));
-	if (res->timestamp == ctx->display->timestamp) {
+	if (res->timestamp == ctx->display->timestamp &&
+	    res->timestamp != res->configTimestamp) { /* mutter be damned */
 		XRRFreeScreenResources(res);
 		return 0;
 	}
