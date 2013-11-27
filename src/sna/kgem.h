@@ -339,6 +339,7 @@ static inline void kgem_submit(struct kgem *kgem)
 
 static inline void kgem_bo_submit(struct kgem *kgem, struct kgem_bo *bo)
 {
+	assert(bo->refcnt);
 	if (bo->exec)
 		_kgem_submit(kgem);
 }
@@ -515,6 +516,8 @@ static inline bool kgem_bo_blt_pitch_is_ok(struct kgem *kgem,
 static inline bool kgem_bo_can_blt(struct kgem *kgem,
 				   struct kgem_bo *bo)
 {
+	assert(bo->refcnt);
+
 	if (bo->tiling == I915_TILING_Y) {
 		DBG(("%s: can not blt to handle=%d, tiling=Y\n",
 		     __FUNCTION__, bo->handle));
@@ -538,6 +541,7 @@ bool __kgem_busy(struct kgem *kgem, int handle);
 
 static inline void kgem_bo_mark_busy(struct kgem_bo *bo, int ring)
 {
+	assert(bo->refcnt);
 	bo->rq = (struct kgem_request *)((uintptr_t)bo->rq | ring);
 }
 
@@ -584,9 +588,11 @@ static inline bool kgem_bo_is_render(struct kgem_bo *bo)
 
 static inline void kgem_bo_mark_unreusable(struct kgem_bo *bo)
 {
+	assert(bo->refcnt);
 	while (bo->proxy) {
 		bo->flush = true;
 		bo = bo->proxy;
+		assert(bo->refcnt);
 	}
 	bo->flush = true;
 	bo->reusable = false;
@@ -616,6 +622,8 @@ static inline void __kgem_bo_mark_dirty(struct kgem_bo *bo)
 {
 	DBG(("%s: handle=%d (proxy? %d)\n", __FUNCTION__,
 	     bo->handle, bo->proxy != NULL));
+
+	assert(bo->refcnt);
 
 	bo->exec->flags |= LOCAL_EXEC_OBJECT_WRITE;
 	bo->needs_flush = bo->gpu_dirty = true;
@@ -671,6 +679,8 @@ static inline bool kgem_bo_can_map__cpu(struct kgem *kgem,
 					struct kgem_bo *bo,
 					bool write)
 {
+	assert(bo->refcnt);
+
 	if (bo->purged || (bo->scanout && write))
 		return false;
 
