@@ -3050,11 +3050,8 @@ fallback_blt:
 		if (!kgem_check_bo(&sna->kgem, tmp.dst.bo, tmp.src.bo, NULL)) {
 			if (tmp.src.bo != src_bo)
 				kgem_bo_destroy(&sna->kgem, tmp.src.bo);
-			tmp.src.bo = NULL;
-			if (tmp.redirect.real_bo) {
+			if (tmp.redirect.real_bo)
 				kgem_bo_destroy(&sna->kgem, tmp.dst.bo);
-				tmp.redirect.real_bo = NULL;
-			}
 			goto fallback_blt;
 		}
 		_kgem_set_mode(&sna->kgem, KGEM_RENDER);
@@ -3099,13 +3096,10 @@ fallback_blt:
 	return true;
 
 fallback_tiled_dst:
-	if (tmp.redirect.real_bo) {
+	if (tmp.redirect.real_bo)
 		kgem_bo_destroy(&sna->kgem, tmp.dst.bo);
-		tmp.redirect.real_bo = NULL;
-	}
 fallback_tiled:
 	DBG(("%s: fallback tiled\n", __FUNCTION__));
-	assert(tmp.src.bo == NULL);
 	if (sna_blt_compare_depth(&src->drawable, &dst->drawable) &&
 	    sna_blt_copy_boxes(sna, alu,
 			       src_bo, src_dx, src_dy,
@@ -3367,12 +3361,8 @@ gen7_render_fill_boxes(struct sna *sna,
 		kgem_submit(&sna->kgem);
 		if (!kgem_check_bo(&sna->kgem, dst_bo, NULL)) {
 			kgem_bo_destroy(&sna->kgem, tmp.src.bo);
-			tmp.src.bo = NULL;
-
-			if (tmp.redirect.real_bo) {
+			if (tmp.redirect.real_bo)
 				kgem_bo_destroy(&sna->kgem, tmp.dst.bo);
-				tmp.redirect.real_bo = NULL;
-			}
 
 			return false;
 		}
