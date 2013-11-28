@@ -1215,7 +1215,7 @@ can_flip(struct sna * sna,
 
 	if (sna_pixmap(pixmap)->pinned & ~(PIN_DRI2 | PIN_SCANOUT)) {
 		DBG(("%s -- no, pinned: front %x\n",
-		     __FUNCTION__, get_private(front)->pinned));
+		     __FUNCTION__, sna_pixmap(pixmap)->pinned));
 		return false;
 	}
 
