@@ -4209,7 +4209,9 @@ try_upload_blt(PixmapPtr pixmap, RegionRec *region,
 	assert(priv->gpu_bo);
 	assert(priv->gpu_bo->proxy == NULL);
 
-	if (!__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo)) {
+	if ((priv->create & (KGEM_CAN_CREATE_GTT | KGEM_CAN_CREATE_LARGE)) == KGEM_CAN_CREATE_GTT &&
+	    kgem_bo_can_map(&sna->kgem, priv->gpu_bo) &&
+	    !__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo)) {
 		DBG(("%s: no, target is idle\n", __FUNCTION__));
 		return false;
 	}
