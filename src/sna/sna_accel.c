@@ -1836,7 +1836,7 @@ static inline bool operate_inplace(struct sna_pixmap *priv, unsigned flags)
 		return false;
 	}
 
-	assert((flags & MOVE_ASYNC_HINT) == 0);
+	assert((flags & MOVE_ASYNC_HINT) == 0 || (priv->create & KGEM_CAN_CREATE_LARGE));
 
 	if (priv->move_to_gpu && flags & MOVE_WRITE) {
 		DBG(("%s: no, has pending move-to-gpu\n", __FUNCTION__));
@@ -2561,7 +2561,8 @@ contains_damage:
 				  flags & MOVE_READ ? priv->gpu_damage && !priv->clear : 0)) {
 		if (dx | dy)
 			RegionTranslate(region, -dx, -dy);
-		return false;
+		DBG(("%s: CPU bo allocation failed, trying full move-to-cpu\n", __FUNCTION__));
+		return _sna_pixmap_move_to_cpu(pixmap, flags | MOVE_READ);
 	}
 	assert(pixmap->devPrivate.ptr);
 
