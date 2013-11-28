@@ -6354,13 +6354,21 @@ struct kgem_bo *kgem_upload_source_image(struct kgem *kgem,
 	bo = kgem_create_buffer_2d(kgem,
 				   width, height, bpp,
 				   KGEM_BUFFER_WRITE_INPLACE, &dst);
-	if (bo)
-		memcpy_blt(data, dst, bpp,
-			   stride, bo->pitch,
-			   box->x1, box->y1,
-			   0, 0,
-			   width, height);
+	if (bo == NULL)
+		return NULL;
 
+	if (sigtrap_get()) {
+		kgem_bo_destroy(kgem, bo);
+		return NULL;
+	}
+
+	memcpy_blt(data, dst, bpp,
+		   stride, bo->pitch,
+		   box->x1, box->y1,
+		   0, 0,
+		   width, height);
+
+	sigtrap_put();
 	return bo;
 }
 
