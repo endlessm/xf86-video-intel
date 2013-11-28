@@ -520,11 +520,25 @@ sna_video_copy_data(struct sna_video *video,
 				return true;
 			}
 		} else {
-			if (frame->width*2 == frame->pitch[0]) {
+			int x, y, w, h;
+
+			if (video->textured) {
+				/* XXX support copying cropped extents */
+				x = y = 0;
+				w = frame->width;
+				h = frame->height;
+			} else {
+				x = frame->image.x1;
+				y = frame->image.y1;
+				w = frame->image.x2 - frame->image.x1;
+				h = frame->image.y2 - frame->image.y1;
+			}
+
+			if (w*2 == frame->pitch[0]) {
+				buf += (2U*y * frame->width) + (x << 1);
 				if (frame->bo) {
 					kgem_bo_write(&video->sna->kgem, frame->bo,
-						      buf + (2U*frame->image.y1 * frame->width) + (frame->image.x1 << 1),
-						      2U*(frame->image.y2-frame->image.y1)*frame->width);
+						      buf, 2U*h*frame->width);
 				} else {
 					frame->bo = kgem_create_buffer(&video->sna->kgem, frame->size,
 								       KGEM_BUFFER_WRITE | KGEM_BUFFER_WRITE_INPLACE,
@@ -532,9 +546,7 @@ sna_video_copy_data(struct sna_video *video,
 					if (frame->bo == NULL)
 						return false;
 
-					memcpy(dst,
-					       buf + (frame->image.y1 * frame->width*2) + (frame->image.x1 << 1),
-					       2U*(frame->image.y2-frame->image.y1)*frame->width);
+					memcpy(dst, buf, 2U*h*frame->width);
 				}
 				return true;
 			}
