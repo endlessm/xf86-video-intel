@@ -1203,41 +1203,8 @@ sna_render_picture_extract(struct sna *sna,
 	}
 
 	src_bo = use_cpu_bo(sna, pixmap, &box, true);
-	if (src_bo == NULL) {
+	if (src_bo == NULL)
 		src_bo = move_to_gpu(pixmap, &box, false);
-		if (src_bo == NULL) {
-			struct sna_pixmap *priv = sna_pixmap(pixmap);
-			if (priv) {
-				RegionRec region;
-
-				region.extents = box;
-				region.data = NULL;
-				if (!sna_drawable_move_region_to_cpu(&pixmap->drawable,
-								     &region, MOVE_READ))
-					return 0;
-
-				assert(!priv->mapped);
-				if (pixmap->devPrivate.ptr == NULL)
-					return 0; /* uninitialised */
-			}
-
-			bo = kgem_upload_source_image(&sna->kgem,
-						      pixmap->devPrivate.ptr,
-						      &box,
-						      pixmap->devKind,
-						      pixmap->drawable.bitsPerPixel);
-			if (priv != NULL && bo != NULL &&
-			    box.x2 - box.x1 == pixmap->drawable.width &&
-			    box.y2 - box.y1 == pixmap->drawable.height) {
-				DBG(("%s: adding upload cache to pixmap=%ld\n",
-				     __FUNCTION__, pixmap->drawable.serialNumber));
-				assert(priv->gpu_damage == NULL);
-				assert(priv->gpu_bo == NULL);
-				assert(bo->proxy != NULL);
-				kgem_proxy_bo_attach(bo, &priv->gpu_bo);
-			}
-		}
-	}
 	if (src_bo) {
 		bo = kgem_create_2d(&sna->kgem, w, h,
 				    pixmap->drawable.bitsPerPixel,
@@ -1264,6 +1231,37 @@ sna_render_picture_extract(struct sna *sna,
 				kgem_bo_destroy(&sna->kgem, bo);
 				bo = NULL;
 			}
+		}
+	} else {
+		struct sna_pixmap *priv = sna_pixmap(pixmap);
+		if (priv) {
+			RegionRec region;
+
+			region.extents = box;
+			region.data = NULL;
+			if (!sna_drawable_move_region_to_cpu(&pixmap->drawable,
+							     &region, MOVE_READ))
+				return 0;
+
+			assert(!priv->mapped);
+			if (pixmap->devPrivate.ptr == NULL)
+				return 0; /* uninitialised */
+		}
+
+		bo = kgem_upload_source_image(&sna->kgem,
+					      pixmap->devPrivate.ptr,
+					      &box,
+					      pixmap->devKind,
+					      pixmap->drawable.bitsPerPixel);
+		if (priv != NULL && bo != NULL &&
+		    box.x2 - box.x1 == pixmap->drawable.width &&
+		    box.y2 - box.y1 == pixmap->drawable.height) {
+			DBG(("%s: adding upload cache to pixmap=%ld\n",
+			     __FUNCTION__, pixmap->drawable.serialNumber));
+			assert(priv->gpu_damage == NULL);
+			assert(priv->gpu_bo == NULL);
+			assert(bo->proxy != NULL);
+			kgem_proxy_bo_attach(bo, &priv->gpu_bo);
 		}
 	}
 
