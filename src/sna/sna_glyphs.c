@@ -1140,6 +1140,11 @@ glyphs_via_mask(struct sna *sna,
 		if (mask_image == NULL)
 			goto err_pixmap;
 
+		if (sigtrap_get()) {
+			pixman_image_unref(mask_image);
+			goto err_pixmap;
+		}
+
 		memset(pixmap->devPrivate.ptr, 0, pixmap->devKind*height);
 #if HAS_PIXMAN_GLYPHS
 		if (sna->render.glyph_cache) {
@@ -1275,6 +1280,8 @@ next_image:
 			list++;
 		} while (--nlist);
 		pixman_image_unref(mask_image);
+
+		sigtrap_put();
 
 		mask = CreatePicture(0, &pixmap->drawable,
 				     format, CPComponentAlpha,
@@ -2038,6 +2045,11 @@ glyphs_via_image(struct sna *sna,
 	if (mask_image == NULL)
 		goto err_pixmap;
 
+	if (sigtrap_get()) {
+		pixman_image_unref(mask_image);
+		goto err_pixmap;
+	}
+
 	memset(pixmap->devPrivate.ptr, 0, pixmap->devKind*height);
 #if HAS_PIXMAN_GLYPHS
 	if (sna->render.glyph_cache) {
@@ -2173,6 +2185,7 @@ next_image:
 			list++;
 		} while (--nlist);
 	pixman_image_unref(mask_image);
+	sigtrap_put();
 
 	component_alpha = NeedsComponent(format->format);
 
