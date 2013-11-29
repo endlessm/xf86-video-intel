@@ -2872,6 +2872,31 @@ out_16384:
 	return kgem_create_linear(kgem, size, CREATE_NO_THROTTLE);
 }
 
+#if !NDEBUG
+static void dump_gtt_info(void)
+{
+	int i;
+
+	for (i = 0; i < DRM_MAX_MINOR; i++) {
+		char path[80];
+		FILE *file;
+
+		sprintf(path, "/sys/kernel/debug/dri%d/i915_gem_gtt", i);
+		file = fopen(path, "r");
+		if (file) {
+			size_t len = 0;
+			char *line = NULL;
+
+			while (getline(&line, &len, file) != -1)
+				ErrorF("%s", line);
+			free(line);
+			fclose(file);
+			return;
+		}
+	}
+}
+#endif
+
 void _kgem_submit(struct kgem *kgem)
 {
 	struct kgem_request *rq;
@@ -3023,6 +3048,9 @@ void _kgem_submit(struct kgem *kgem)
 						       (long long)aperture.aper_size,
 						       (long long)aperture.aper_available_size);
 				}
+
+				if (ret == ENOSPC)
+					dump_gtt_info();
 
 				if (DEBUG_SYNC) {
 					int fd = open("/tmp/batchbuffer", O_WRONLY | O_CREAT | O_APPEND, 0666);
