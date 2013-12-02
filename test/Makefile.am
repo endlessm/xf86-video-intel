@@ -1,6 +1,7 @@
 stress_TESTS = \
 	basic-fillrect \
 	basic-tiledrect \
+	basic-stippledrect \
 	basic-rectangle \
 	basic-string \
 	basic-copyarea \
