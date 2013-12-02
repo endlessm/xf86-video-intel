@@ -12086,9 +12086,17 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 
 	get_drawable_deltas(drawable, pixmap, &dx, &dy);
 	{
-		unsigned px = (0 - gc->patOrg.x - dx) & 7;
-		unsigned py = (0 - gc->patOrg.y - dy) & 7;
+		int px, py;
+
+		px = (0 - gc->patOrg.x - drawable->x - dx) % 8;
+		if (px < 0)
+			px += 8;
+
+		py = (0 - gc->patOrg.y - drawable->y - dy) % 8;
+		if (py < 0)
+			py += 8;
 		DBG(("%s: pat offset (%d, %d)\n", __FUNCTION__ ,px, py));
+
 		br00 = XY_SCANLINE_BLT | px << 12 | py << 8 | 3 << 20;
 		br13 = bo->pitch;
 		if (sna->kgem.gen >= 040 && bo->tiling) {
@@ -12133,7 +12141,7 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
 			if (sna->kgem.gen >= 0100) {
-				b[0] = XY_MONO_PAT | (br00 & (BLT_DST_TILED | 0x7<<12 | 0x7<<8)) | 3<<20 | 8;
+				b[0] = XY_MONO_PAT | (br00 & 0x7f00) | 3<<20 | 8;
 				b[1] = br13;
 				b[2] = (r->y + dy) << 16 | (r->x + dx);
 				b[3] = (r->y + r->height + dy) << 16 | (r->x + r->width + dx);
@@ -12149,7 +12157,7 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 				b[9] = pat[1];
 				sna->kgem.nbatch += 10;
 			} else {
-				b[0] = XY_MONO_PAT | (br00 & (BLT_DST_TILED | 0x7<<12 | 0x7<<8)) | 3<<20 | 7;
+				b[0] = XY_MONO_PAT | (br00 & 0x7f00) | 3<<20 | 7;
 				b[1] = br13;
 				b[2] = (r->y + dy) << 16 | (r->x + dx);
 				b[3] = (r->y + r->height + dy) << 16 | (r->x + r->width + dx);
