@@ -1258,10 +1258,6 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 	DBG(("%s: maximum batch size? %d\n", __FUNCTION__,
 	     kgem->batch_size));
 
-	kgem->min_alignment = 4;
-	if (gen < 040)
-		kgem->min_alignment = 64;
-
 	kgem->half_cpu_cache_pages = cpu_cache_size() >> 13;
 	DBG(("%s: last-level cache size: %d bytes, threshold in pages: %d\n",
 	     __FUNCTION__, cpu_cache_size(), kgem->half_cpu_cache_pages));
@@ -1424,7 +1420,7 @@ inline static uint32_t kgem_pitch_alignment(struct kgem *kgem, unsigned flags)
 		return 256;
 	if (flags & CREATE_SCANOUT)
 		return 64;
-	return kgem->min_alignment;
+	return 4;
 }
 
 void kgem_get_tile_size(struct kgem *kgem, int tiling, int pitch,

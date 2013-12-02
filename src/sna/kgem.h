@@ -158,7 +158,6 @@ struct kgem {
 	uint16_t nreloc__self;
 	uint16_t nfence;
 	uint16_t batch_size;
-	uint16_t min_alignment;
 
 	uint32_t flush:1;
 	uint32_t need_expire:1;
