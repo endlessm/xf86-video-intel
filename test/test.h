@@ -31,7 +31,7 @@ struct test {
 		Window root;
 		XShmSegmentInfo shm;
 		int max_shm_size;
-		int width, height;
+		int width, height, depth;
 		XRenderPictFormat *format;
 	} real, ref;
 };
@@ -82,7 +82,7 @@ struct test_target {
 	GC gc;
 	XRenderPictFormat *format;
 	Picture picture;
-	int width, height;
+	int width, height, depth;
 	enum target target;
 };
 

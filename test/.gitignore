@@ -4,6 +4,7 @@ basic-fillrect
 basic-putimage
 basic-lines
 basic-stress
+basic-tiledrect
 render-fill
 render-trapezoid
 render-trapezoid-image

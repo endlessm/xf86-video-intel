@@ -16,12 +16,12 @@ static Window get_root(struct test_display *t)
 	 * can guarantee we do not get clipped by children.
 	 */
 	attr.override_redirect = 1;
-	w= XCreateWindow(t->dpy, DefaultRootWindow(t->dpy),
-			 0, 0, t->width, t->height, 0,
-			 DefaultDepth(t->dpy, DefaultScreen(t->dpy)),
-			 InputOutput,
-			 DefaultVisual(t->dpy, DefaultScreen(t->dpy)),
-			 CWOverrideRedirect, &attr);
+	w = XCreateWindow(t->dpy, DefaultRootWindow(t->dpy),
+			  0, 0, t->width, t->height, 0,
+			  DefaultDepth(t->dpy, DefaultScreen(t->dpy)),
+			  InputOutput,
+			  DefaultVisual(t->dpy, DefaultScreen(t->dpy)),
+			  CWOverrideRedirect, &attr);
 	XMapWindow(t->dpy, w);
 
 	return w;
@@ -125,6 +125,7 @@ static void default_setup(struct test_display *dpy)
 		XRenderFindVisualFormat(dpy->dpy,
 					DefaultVisual(dpy->dpy,
 						      DefaultScreen(dpy->dpy)));
+	dpy->depth = DefaultDepth(dpy->dpy, DefaultScreen(dpy->dpy));
 }
 
 static void test_get_displays(int argc, char **argv,
@@ -136,8 +137,7 @@ static void test_get_displays(int argc, char **argv,
 	shm_setup(real);
 	real->root = get_root(real);
 
-	ref->dpy = ref_display(real->width, real->height,
-			       DefaultDepth(real->dpy, DefaultScreen(real->dpy)));
+	ref->dpy = ref_display(real->width, real->height, real->depth);
 	default_setup(ref);
 	shm_setup(ref);
 	ref->root = get_root(ref);
