@@ -3933,13 +3933,6 @@ unsigned kgem_can_create_2d(struct kgem *kgem,
 			flags |= KGEM_CAN_CREATE_GPU;
 		if (size > kgem->max_gpu_size)
 			flags &= ~KGEM_CAN_CREATE_GPU;
-		if (kgem->gen < 033) {
-			int fence_size = 1024 * 1024;
-			while (fence_size < size)
-				fence_size <<= 1;
-			if (fence_size > kgem->max_gpu_size)
-				flags &= ~KGEM_CAN_CREATE_GPU;
-		}
 		if (size > 0 && size <= PAGE_SIZE*kgem->aperture_mappable/4)
 			flags |= KGEM_CAN_CREATE_GTT;
 		if (size > PAGE_SIZE*kgem->aperture_mappable/4)
@@ -3950,6 +3943,15 @@ unsigned kgem_can_create_2d(struct kgem *kgem,
 			DBG(("%s: too large (tiled) %d > %d\n",
 			     __FUNCTION__, size, kgem->max_object_size));
 			return 0;
+		}
+		if (kgem->gen < 040) {
+			int fence_size = 1024 * 1024;
+			while (fence_size < size)
+				fence_size <<= 1;
+			if (fence_size > kgem->max_gpu_size)
+				flags &= ~KGEM_CAN_CREATE_GPU;
+			if (fence_size > PAGE_SIZE*kgem->aperture_mappable/4)
+				flags &= ~KGEM_CAN_CREATE_GTT;
 		}
 	}
 
