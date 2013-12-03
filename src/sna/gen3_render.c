@@ -3197,6 +3197,7 @@ gen3_composite_set_target(struct sna *sna,
 			if (bo == NULL)
 				return false;
 
+			sna_pixmap_unmap(op->dst.pixmap, priv);
 			kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
 			priv->gpu_bo = bo;
 		}
