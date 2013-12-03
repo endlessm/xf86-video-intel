@@ -1309,6 +1309,7 @@ static PixmapPtr sna_create_pixmap(ScreenPtr screen,
 	priv->stride = pad;
 	priv->create = flags;
 	priv->ptr = ptr;
+	priv->header = ptr == NULL;
 
 	assert(to_sna_from_pixmap(pixmap) == sna);
 	assert(pixmap->drawable.pScreen == screen);
