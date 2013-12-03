@@ -4266,9 +4266,7 @@ try_upload_blt(PixmapPtr pixmap, RegionRec *region,
 
 	if (!DAMAGE_IS_ALL(priv->gpu_damage)) {
 		assert(!priv->clear);
-		if (region->data == NULL &&
-		    w >= pixmap->drawable.width &&
-		    h >= pixmap->drawable.height) {
+		if (region_subsumes_drawable(region, &pixmap->drawable)) {
 			sna_damage_all(&priv->gpu_damage,
 				       pixmap->drawable.width,
 				       pixmap->drawable.height);
@@ -4287,6 +4285,8 @@ try_upload_blt(PixmapPtr pixmap, RegionRec *region,
 			sna_pixmap_free_cpu(sna, priv, priv->cpu);
 		}
 	}
+	priv->clear = false;
+	priv->cpu = false;
 
 	return true;
 }
