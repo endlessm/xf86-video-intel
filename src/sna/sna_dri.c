@@ -463,7 +463,7 @@ static inline void damage(PixmapPtr pixmap, struct sna_pixmap *priv, RegionPtr r
 {
 	assert(priv->gpu_bo);
 	if (DAMAGE_IS_ALL(priv->gpu_damage))
-		return;
+		goto done;
 
 	if (region == NULL) {
 damage_all:
@@ -478,6 +478,7 @@ damage_all:
 			goto damage_all;
 		sna_damage_add(&priv->gpu_damage, region);
 	}
+done:
 	priv->cpu = false;
 	priv->clear = false;
 }
