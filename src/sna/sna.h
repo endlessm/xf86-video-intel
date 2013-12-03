@@ -515,7 +515,6 @@ static inline void sna_pixmap_unmap(PixmapPtr pixmap, struct sna_pixmap *priv)
 	     priv->mapped == MAPPED_CPU ? "cpu" : "gtt"));
 
 	assert_pixmap_map(pixmap, priv);
-	assert(priv->stride && priv->stride);
 
 	pixmap->devPrivate.ptr = PTR(priv->ptr);
 	pixmap->devKind = priv->stride;
