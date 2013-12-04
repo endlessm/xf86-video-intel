@@ -509,6 +509,10 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 		goto cleanup;
 	}
 
+	intel_detect_chipset(scrn, pEnt);
+	xf86DrvMsg(scrn->scrnIndex, X_PROBED, "CPU: %s\n",
+		   sna_cpu_features_to_string(sna->cpu_features, buf));
+
 	preferred_depth = sna->info->gen < 030 ? 15 : 24;
 	if (!fb_supports_depth(fd, preferred_depth))
 		preferred_depth = 24;
@@ -545,8 +549,6 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 		goto cleanup;
 
 	sna_setup_capabilities(scrn, fd);
-
-	intel_detect_chipset(scrn, pEnt);
 
 	kgem_init(&sna->kgem, fd,
 		  xf86GetPciInfoForEntity(pEnt->index),
@@ -593,8 +595,6 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 	if (xf86ReturnOptValBool(sna->Options, OPTION_CRTC_PIXMAPS, FALSE))
 		sna->flags |= SNA_FORCE_SHADOW;
 
-	xf86DrvMsg(scrn->scrnIndex, X_PROBED, "CPU: %s\n",
-		   sna_cpu_features_to_string(sna->cpu_features, buf));
 	xf86DrvMsg(scrn->scrnIndex, X_CONFIG, "Framebuffer %s\n",
 		   sna->tiling & SNA_TILING_FB ? "tiled" : "linear");
 	xf86DrvMsg(scrn->scrnIndex, X_CONFIG, "Pixmaps %s\n",
