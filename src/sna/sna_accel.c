@@ -4241,9 +4241,8 @@ try_upload_blt(PixmapPtr pixmap, RegionRec *region,
 	src_bo->pitch = stride;
 	kgem_bo_mark_unreusable(src_bo);
 
-	DBG(("%s: upload(%d, %d, %d, %d) x %d through a temporary map\n",
-	     __FUNCTION__, x, y, w, h,
-	     RegionNumRects(region)));
+	DBG(("%s: upload(%d, %d, %d, %d) x %ld through a temporary map\n",
+	     __FUNCTION__, x, y, w, h, (long)RegionNumRects(region)));
 
 	if (sigtrap_get() == 0) {
 		ok = sna->render.copy_boxes(sna, GXcopy,
@@ -16502,7 +16501,9 @@ static void sna_accel_debug_memory(struct sna *sna)
 	       sna->debug_memory.cpu_bo_allocs,
 	       (long)sna->debug_memory.cpu_bo_bytes);
 
+#ifdef VALGRIND_DO_ADDED_LEAK_CHECK
 	VG(VALGRIND_DO_ADDED_LEAK_CHECK);
+#endif
 }
 
 #else

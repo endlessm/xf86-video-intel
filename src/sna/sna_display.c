@@ -2117,14 +2117,20 @@ sna_output_panel_edid(xf86OutputPtr output, DisplayModePtr modes)
 
 static char *canonical_mode_name(DisplayModePtr mode)
 {
-	char *str;
+	char tmp[32], *buf;
+	int len;
 
-	if (asprintf(&str, "%dx%d%s",
-		     mode->HDisplay, mode->VDisplay,
-		     mode->Flags & V_INTERLACE ? "i" : "") < 0)
+	len = sprintf(tmp, "%dx%d%s",
+		      mode->HDisplay, mode->VDisplay,
+		      mode->Flags & V_INTERLACE ? "i" : "");
+	if ((unsigned)len >= sizeof(tmp))
 		return NULL;
 
-	return str;
+	buf = malloc(len + 1);
+	if (buf == NULL)
+		return NULL;
+
+	return memcpy(buf, tmp, len + 1);
 }
 
 static DisplayModePtr

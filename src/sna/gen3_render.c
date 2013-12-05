@@ -2669,8 +2669,8 @@ gen3_render_reset(struct sna *sna)
 	state->last_vertex_offset = 0;
 
 	if (sna->render.vbo && !kgem_bo_can_map(&sna->kgem, sna->render.vbo)) {
-		DBG(("%s: discarding vbo as next access will stall: %d\n",
-		     __FUNCTION__, sna->render.vbo->presumed_offset));
+		DBG(("%s: discarding vbo as next access will stall: %lx\n",
+		     __FUNCTION__, (long)sna->render.vbo->presumed_offset));
 		discard_vbo(sna);
 	}
 
