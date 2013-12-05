@@ -416,7 +416,9 @@ static int sigtrap_handler(int sig)
 
 static void sigtrap_init(void)
 {
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,6,99,900,0)
 	OsRegisterSigWrapper(sigtrap_handler);
+#endif
 }
 
 inline static bool
