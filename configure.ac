@@ -99,7 +99,7 @@ gen4asm=no
 if test "x$ASM" != "xno"; then
 	AC_ARG_WITH(gen4asm,
 		    AS_HELP_STRING([--with-gen4asm=PATH],
-				   [Path to intel-gen4asm binary]]]),
+				   [Path to intel-gen4asm binary]),
 		    [path="$withval"],
 		    [path=""])
 	if test -n "$path" ; then
