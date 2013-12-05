@@ -1937,7 +1937,7 @@ _sna_pixmap_move_to_cpu(PixmapPtr pixmap, unsigned int flags)
 		return false;
 	}
 
-	if (USE_INPLACE && (flags & MOVE_READ) == 0 && !priv->cow) {
+	if (USE_INPLACE && (flags & MOVE_READ) == 0 && !(priv->cow || priv->move_to_gpu)) {
 		assert(flags & MOVE_WRITE);
 		DBG(("%s: no readbck, discarding gpu damage [%d], pending clear[%d]\n",
 		     __FUNCTION__, priv->gpu_damage != NULL, priv->clear));
@@ -3014,7 +3014,8 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 	assert_pixmap_contains_box(pixmap, box);
 	assert(priv->gpu_damage == NULL || priv->gpu_bo);
 
-	if (priv->move_to_gpu && !priv->move_to_gpu(sna, priv, flags | (priv->cpu_damage ? MOVE_WRITE : 0))) {
+	if (priv->move_to_gpu &&
+	    !priv->move_to_gpu(sna, priv, flags | MOVE_READ | (priv->cpu_damage ? MOVE_WRITE : 0))) {
 		DBG(("%s: move-to-gpu override failed\n", __FUNCTION__));
 		return NULL;
 	}
