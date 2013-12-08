@@ -668,10 +668,7 @@ static inline bool kgem_bo_can_map(struct kgem *kgem, struct kgem_bo *bo)
 	if (kgem->gen == 021 && bo->tiling == I915_TILING_Y)
 		return false;
 
-	if (!bo->presumed_offset)
-		return __kgem_bo_num_pages(bo) <= kgem->aperture_mappable / 4;
-
-	return bo->presumed_offset / PAGE_SIZE + __kgem_bo_num_pages(bo) <= kgem->aperture_mappable;
+	return __kgem_bo_num_pages(bo) <= kgem->aperture_mappable / 4;
 }
 
 static inline bool kgem_bo_can_map__cpu(struct kgem *kgem,
