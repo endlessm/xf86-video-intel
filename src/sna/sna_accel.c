@@ -3518,7 +3518,7 @@ use_gpu_bo:
 		if (flags & IGNORE_CPU) {
 			region.extents = *box;
 			region.data = NULL;
-			if (region_subsumes_drawable(&region, drawable))
+			if (region_subsumes_drawable(&region, &pixmap->drawable))
 				hint = MOVE_WRITE;
 		}
 
