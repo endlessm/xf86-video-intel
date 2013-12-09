@@ -4098,7 +4098,7 @@ static void transformed_box(BoxRec *box, xf86CrtcPtr crtc)
 }
 
 static void
-sna_crtc_redisplay__fallback(xf86CrtcPtr crtc, RegionPtr region)
+sna_crtc_redisplay__fallback(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo *bo)
 {
 	struct sna *sna = to_sna(crtc->scrn);
 	struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
@@ -4111,7 +4111,7 @@ sna_crtc_redisplay__fallback(xf86CrtcPtr crtc, RegionPtr region)
 
 	DBG(("%s: compositing transformed damage boxes\n", __FUNCTION__));
 
-	ptr = kgem_bo_map__gtt(&sna->kgem, sna_crtc->bo);
+	ptr = kgem_bo_map__gtt(&sna->kgem, bo);
 	if (ptr == NULL)
 		return;
 
@@ -4125,7 +4125,7 @@ sna_crtc_redisplay__fallback(xf86CrtcPtr crtc, RegionPtr region)
 					crtc->mode.VDisplay,
 					sna->front->drawable.depth,
 					sna->front->drawable.bitsPerPixel,
-					sna_crtc->bo->pitch, ptr))
+					bo->pitch, ptr))
 		goto free_pixmap;
 
 	error = sna_render_format_for_depth(sna->front->drawable.depth);
@@ -4156,7 +4156,7 @@ sna_crtc_redisplay__fallback(xf86CrtcPtr crtc, RegionPtr region)
 	if (!dst)
 		goto free_src;
 
-	kgem_bo_sync__gtt(&sna->kgem, sna_crtc->bo);
+	kgem_bo_sync__gtt(&sna->kgem, bo);
 
 	if (sigtrap_get() == 0) { /* paranoia */
 		const BoxRec *b = REGION_RECTS(region);
@@ -4251,7 +4251,7 @@ sna_crtc_redisplay__composite(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo
 				   crtc->mode.HDisplay, crtc->mode.VDisplay,
 				   memset(&tmp, 0, sizeof(tmp)))) {
 		DBG(("%s: unsupported operation!\n", __FUNCTION__));
-		sna_crtc_redisplay__fallback(crtc, region);
+		sna_crtc_redisplay__fallback(crtc, region, bo);
 		goto free_dst;
 	}
 
@@ -4329,7 +4329,7 @@ sna_crtc_redisplay(xf86CrtcPtr crtc, RegionPtr region)
 	if (can_render(sna))
 		sna_crtc_redisplay__composite(crtc, region, sna_crtc->bo);
 	else
-		sna_crtc_redisplay__fallback(crtc, region);
+		sna_crtc_redisplay__fallback(crtc, region, sna_crtc->bo);
 }
 
 struct wait_for_shadow {
@@ -4504,13 +4504,13 @@ void sna_mode_redisplay(struct sna *sna)
 				continue;
 
 			assert(crtc->enabled);
-			assert(crtc->transform_in_use);
+			assert(crtc->transform_in_use || sna->flags & SNA_TEAR_FREE);
 
 			damage.extents = crtc->bounds;
 			damage.data = NULL;
 			RegionIntersect(&damage, &damage, region);
 			if (RegionNotEmpty(&damage))
-				sna_crtc_redisplay__fallback(crtc, &damage);
+				sna_crtc_redisplay__fallback(crtc, &damage, sna_crtc->bo);
 			RegionUninit(&damage);
 		}
 
