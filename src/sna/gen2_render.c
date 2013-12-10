@@ -1593,32 +1593,7 @@ gen2_composite_set_target(struct sna *sna,
 	if (op->dst.bo == NULL)
 		return false;
 
-	if (op->dst.bo->pitch < 8) {
-		struct sna_pixmap *priv;
-		struct kgem_bo *bo;
-
-		priv = sna_pixmap_move_to_gpu (op->dst.pixmap,
-					       MOVE_READ | MOVE_WRITE);
-		if (priv == NULL || priv->pinned)
-			return false;
-
-		assert(op->dst.bo == priv->gpu_bo);
-		bo = kgem_replace_bo(&sna->kgem, priv->gpu_bo,
-				     op->dst.width, op->dst.height, 8,
-				     op->dst.pixmap->drawable.bitsPerPixel);
-		if (bo == NULL)
-			return false;
-
-		sna_pixmap_unmap(op->dst.pixmap, priv);
-		kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
-		priv->gpu_bo = bo;
-
-		op->dst.bo = priv->gpu_bo;
-		op->damage = &priv->gpu_damage;
-		if (sna_damage_is_all(op->damage,
-				      op->dst.width, op->dst.height))
-			op->damage = NULL;
-	}
+	assert((op->dst.bo->pitch & 7) == 0);
 
 	get_drawable_deltas(dst->pDrawable, op->dst.pixmap,
 			    &op->dst.x, &op->dst.y);

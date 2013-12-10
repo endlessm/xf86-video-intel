@@ -3178,36 +3178,11 @@ gen3_composite_set_target(struct sna *sna,
 
 	/* For single-stream mode there should be no minimum alignment
 	 * required, except that the width must be at least 2 elements.
+	 * Furthermore, it appears that the pitch must be a multiple of
+	 * 2 elements.
 	 */
-	if (op->dst.bo->pitch < 2*op->dst.pixmap->drawable.bitsPerPixel) {
-		struct sna_pixmap *priv;
-
-		priv = sna_pixmap_move_to_gpu (op->dst.pixmap,
-					       MOVE_READ | MOVE_WRITE);
-		if (priv == NULL || priv->pinned)
-			return false;
-
-		if (priv->gpu_bo->pitch < 2*op->dst.pixmap->drawable.bitsPerPixel) {
-			struct kgem_bo *bo;
-
-			bo = kgem_replace_bo(&sna->kgem, priv->gpu_bo,
-					     op->dst.width, op->dst.height,
-					     2*op->dst.pixmap->drawable.bitsPerPixel,
-					     op->dst.pixmap->drawable.bitsPerPixel);
-			if (bo == NULL)
-				return false;
-
-			sna_pixmap_unmap(op->dst.pixmap, priv);
-			kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
-			priv->gpu_bo = bo;
-		}
-
-		op->dst.bo = priv->gpu_bo;
-		op->damage = &priv->gpu_damage;
-		if (sna_damage_is_all(op->damage,
-				      op->dst.width, op->dst.height))
-			op->damage = NULL;
-	}
+	if (op->dst.bo->pitch & ((2*op->dst.pixmap->drawable.bitsPerPixel >> 3) - 1))
+		return false;
 
 	get_drawable_deltas(dst->pDrawable, op->dst.pixmap,
 			    &op->dst.x, &op->dst.y);
