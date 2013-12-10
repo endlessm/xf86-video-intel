@@ -1420,7 +1420,7 @@ inline static uint32_t kgem_pitch_alignment(struct kgem *kgem, unsigned flags)
 		return 256;
 	if (flags & CREATE_SCANOUT)
 		return 64;
-	return 4;
+	return 8;
 }
 
 void kgem_get_tile_size(struct kgem *kgem, int tiling, int pitch,
