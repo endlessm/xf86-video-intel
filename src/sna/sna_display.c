@@ -4101,7 +4101,6 @@ static void
 sna_crtc_redisplay__fallback(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo *bo)
 {
 	struct sna *sna = to_sna(crtc->scrn);
-	struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
 	ScreenPtr screen = sna->scrn->pScreen;
 	PictFormatPtr format;
 	PicturePtr src, dst;
