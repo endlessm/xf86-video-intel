@@ -184,6 +184,7 @@ PKG_CHECK_MODULES(TOOL, [xinerama xrandr xdamage xfixes xcursor xtst xrender xex
 if test "x$tools" = "xyes"; then
   AC_CHECK_HEADER([sys/ipc.h], [], [tools=no])
   AC_CHECK_HEADER([sys/shm.h], [], [tools=no])
+  AC_CHECK_HEADER([sys/timerfd.h], [], [tools=no])
 
   if test "$ac_cv_header_sys_ipc_h" = "yes" -a "$ac_cv_header_sys_shm_h" = "yes"; then
       AC_MSG_CHECKING(whether shmctl IPC_RMID allows subsequent attaches)
