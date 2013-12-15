@@ -1353,6 +1353,24 @@ void sna_dri_vblank_handler(struct sna *sna, struct drm_event_vblank *event)
 	if (draw == NULL)
 		goto done;
 
+	if (sna->mode.shadow_flip && !sna->mode.shadow_damage) {
+		drmVBlank vbl;
+
+		/* recursed from wait_for_shadow(), simply requeue */
+		VG_CLEAR(vbl);
+		vbl.request.type =
+			DRM_VBLANK_RELATIVE |
+			DRM_VBLANK_EVENT |
+			pipe_select(info->pipe);
+		vbl.request.sequence = 1;
+		vbl.request.signal = (unsigned long)info;
+
+		if (sna_wait_vblank(sna, &vbl))
+			goto done;
+
+		return;
+	}
+
 	switch (info->type) {
 	case DRI2_FLIP:
 		/* If we can still flip... */
@@ -1616,6 +1634,8 @@ static void sna_dri_flip_event(struct sna *sna,
 	     flip->fe_tv_sec,
 	     flip->fe_tv_usec,
 	     flip->type));
+
+	assert(!sna->mode.shadow_flip);
 
 	if (flip->scanout[1].bo) {
 		struct dri_bo *c = NULL;
