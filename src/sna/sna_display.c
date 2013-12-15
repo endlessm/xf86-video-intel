@@ -4357,6 +4357,7 @@ static bool wait_for_shadow(struct sna *sna, struct sna_pixmap *priv, unsigned f
 		return true;
 
 	assert(sna->mode.shadow_active);
+	assert(bo == sna->mode.shadow);
 
 	assert(priv->gpu_bo->refcnt >= 1);
 	sna->mode.shadow = priv->gpu_bo;

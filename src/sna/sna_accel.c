@@ -1762,7 +1762,6 @@ sna_pixmap_make_cow(struct sna *sna,
 	struct sna_cow *cow;
 
 	assert(src_priv->gpu_bo);
-	assert(src_priv->move_to_gpu == NULL);
 
 	if (!USE_COW)
 		return false;
