@@ -63,7 +63,7 @@
 #define NO_FILL_BOXES 0
 #define NO_VIDEO 0
 
-#define MAX_FLUSH_VERTICES 6
+#define MAX_FLUSH_VERTICES 1 /* was 6, https://bugs.freedesktop.org/show_bug.cgi?id=55500 */
 
 #define GEN4_GRF_BLOCKS(nreg)    ((nreg + 15) / 16 - 1)
 
