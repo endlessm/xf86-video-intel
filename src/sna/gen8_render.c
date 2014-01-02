@@ -1130,8 +1130,7 @@ gen8_emit_state(struct sna *sna,
 
 	need_stall = sna->render_state.gen8.surface_table != wm_binding_table;
 
-	need_invalidate = need_stall &&
-		(kgem_bo_is_dirty(op->src.bo) || kgem_bo_is_dirty(op->mask.bo));
+	need_invalidate = kgem_bo_is_dirty(op->src.bo) || kgem_bo_is_dirty(op->mask.bo);
 	if (ALWAYS_INVALIDATE)
 		need_invalidate = true;
 
