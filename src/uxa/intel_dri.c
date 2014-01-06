@@ -581,7 +581,7 @@ I830DRI2DrawablePipe(DrawablePtr pDraw)
 	ScreenPtr pScreen = pDraw->pScreen;
 	ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
 	BoxRec box, crtcbox;
-	xf86CrtcPtr crtc;
+	xf86CrtcPtr crtc = NULL;
 	int pipe = -1;
 
 	box.x1 = pDraw->x;
@@ -589,7 +589,8 @@ I830DRI2DrawablePipe(DrawablePtr pDraw)
 	box.x2 = box.x1 + pDraw->width;
 	box.y2 = box.y1 + pDraw->height;
 
-	crtc = intel_covering_crtc(pScrn, &box, NULL, &crtcbox);
+	if (pDraw->type != DRAWABLE_PIXMAP)
+		crtc = intel_covering_crtc(pScrn, &box, NULL, &crtcbox);
 
 	/* Make sure the CRTC is valid and this is the real front buffer */
 	if (crtc != NULL && !crtc->rotatedData)
