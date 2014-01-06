@@ -2293,7 +2293,7 @@ sna_output_dpms(xf86OutputPtr output, int dpms)
 	 * record the value before the kernel modifies it
 	 * and reapply it afterwards.
 	 */
-	if (dpms == DPMSModeOff)
+	if (dpms != DPMSModeOn)
 		sna_output_dpms_backlight(output,
 					  sna_output->dpms_mode,
 					  dpms);
@@ -2304,7 +2304,7 @@ sna_output_dpms(xf86OutputPtr output, int dpms)
 					    sna_output->dpms_id,
 					    dpms);
 
-	if (dpms != DPMSModeOff)
+	if (dpms == DPMSModeOn)
 		sna_output_dpms_backlight(output,
 					  sna_output->dpms_mode,
 					  dpms);
