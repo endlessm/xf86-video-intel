@@ -568,6 +568,45 @@ static void gen4_emit_vertex_buffer(struct sna *sna,
 	sna->render.vb_id |= 1 << id;
 }
 
+inline static void
+gen4_emit_pipe_flush(struct sna *sna)
+{
+#if 1
+	OUT_BATCH(GEN4_PIPE_CONTROL | (4 - 2));
+	OUT_BATCH(GEN4_PIPE_CONTROL_WC_FLUSH);
+	OUT_BATCH(0);
+	OUT_BATCH(0);
+#else
+	OUT_BATCH(MI_FLUSH | MI_INHIBIT_RENDER_CACHE_FLUSH);
+#endif
+}
+
+inline static void
+gen4_emit_pipe_break(struct sna *sna)
+{
+#if 1
+	OUT_BATCH(GEN4_PIPE_CONTROL | (4 - 2));
+	OUT_BATCH(0);
+	OUT_BATCH(0);
+	OUT_BATCH(0);
+#else
+	OUT_BATCH(MI_FLUSH | MI_INHIBIT_RENDER_CACHE_FLUSH);
+#endif
+}
+
+inline static void
+gen4_emit_pipe_invalidate(struct sna *sna)
+{
+#if 0
+	OUT_BATCH(GEN4_PIPE_CONTROL | (4 - 2));
+	OUT_BATCH(GEN4_PIPE_CONTROL_WC_FLUSH | GEN4_PIPE_CONTROL_TC_FLUSH);
+	OUT_BATCH(0);
+	OUT_BATCH(0);
+#else
+	OUT_BATCH(MI_FLUSH);
+#endif
+}
+
 static void gen4_emit_primitive(struct sna *sna)
 {
 	if (sna->kgem.nbatch == sna->render_state.gen4.last_primitive) {
@@ -604,7 +643,7 @@ static bool gen4_rectangle_begin(struct sna *sna,
 	ndwords = op->need_magic_ca_pass? 19 : 6;
 	if ((sna->render.vb_id & id) == 0)
 		ndwords += 5;
-	ndwords += 2*FORCE_FLUSH;
+	ndwords += 8*FORCE_FLUSH;
 
 	if (!kgem_check_batch(&sna->kgem, ndwords))
 		return false;
@@ -628,7 +667,7 @@ static int gen4_get_rectangles__flush(struct sna *sna,
 	}
 
 	if (!kgem_check_batch(&sna->kgem,
-			      2*FORCE_FLUSH + (op->need_magic_ca_pass ? 2*19+6 : 6)))
+			      8*FORCE_FLUSH + (op->need_magic_ca_pass ? 2*19+6 : 6)))
 		return 0;
 	if (!kgem_check_reloc_and_exec(&sna->kgem, 2))
 		return 0;
@@ -666,7 +705,7 @@ inline static int gen4_get_rectangles(struct sna *sna,
 									     op->u.gen4.wm_kernel);
 				}
 			}
-			OUT_BATCH(MI_FLUSH | MI_INHIBIT_RENDER_CACHE_FLUSH);
+			gen4_emit_pipe_break(sna);
 			rem = MAX_FLUSH_VERTICES;
 		}
 	} else
@@ -1048,14 +1087,14 @@ gen4_emit_state(struct sna *sna,
 		     kgem_bo_is_dirty(op->src.bo),
 		     kgem_bo_is_dirty(op->mask.bo),
 		     flush));
-		OUT_BATCH(MI_FLUSH);
+		gen4_emit_pipe_invalidate(sna);
 		kgem_clear_dirty(&sna->kgem);
 		kgem_bo_mark_dirty(op->dst.bo);
 		flush = false;
 	}
 	flush &= gen4_emit_drawing_rectangle(sna, op);
 	if (flush && op->op > PictOpSrc)
-		OUT_BATCH(MI_FLUSH | MI_INHIBIT_RENDER_CACHE_FLUSH);
+		gen4_emit_pipe_flush(sna);
 
 	gen4_emit_binding_table(sna, wm_binding_table);
 	gen4_emit_pipelined_pointers(sna, op, op->op, op->u.gen4.wm_kernel);
