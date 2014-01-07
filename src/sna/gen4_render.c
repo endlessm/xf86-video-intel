@@ -79,8 +79,8 @@
 #define URB_GS_ENTRY_SIZE     0
 #define URB_GS_ENTRIES	      0
 
-#define URB_CLIP_ENTRY_SIZE   0
-#define URB_CLIP_ENTRIES      0
+#define URB_CL_ENTRY_SIZE   0
+#define URB_CL_ENTRIES      0
 
 #define URB_SF_ENTRY_SIZE     2
 #define URB_SF_ENTRIES	      64
@@ -767,25 +767,21 @@ gen4_composite_get_binding_table(struct sna *sna, uint16_t *offset)
 static void
 gen4_emit_urb(struct sna *sna)
 {
-	int urb_vs_start, urb_vs_size;
-	int urb_gs_start, urb_gs_size;
-	int urb_clip_start, urb_clip_size;
-	int urb_sf_start, urb_sf_size;
-	int urb_cs_start, urb_cs_size;
+	int urb_vs_end;
+	int urb_gs_end;
+	int urb_cl_end;
+	int urb_sf_end;
+	int urb_cs_end;
 
 	if (!sna->render_state.gen4.needs_urb)
 		return;
 
-	urb_vs_start = 0;
-	urb_vs_size = URB_VS_ENTRIES * URB_VS_ENTRY_SIZE;
-	urb_gs_start = urb_vs_start + urb_vs_size;
-	urb_gs_size = URB_GS_ENTRIES * URB_GS_ENTRY_SIZE;
-	urb_clip_start = urb_gs_start + urb_gs_size;
-	urb_clip_size = URB_CLIP_ENTRIES * URB_CLIP_ENTRY_SIZE;
-	urb_sf_start = urb_clip_start + urb_clip_size;
-	urb_sf_size = URB_SF_ENTRIES * URB_SF_ENTRY_SIZE;
-	urb_cs_start = urb_sf_start + urb_sf_size;
-	urb_cs_size = URB_CS_ENTRIES * URB_CS_ENTRY_SIZE;
+	urb_vs_end =              URB_VS_ENTRIES * URB_VS_ENTRY_SIZE;
+	urb_gs_end = urb_vs_end + URB_GS_ENTRIES * URB_GS_ENTRY_SIZE;
+	urb_cl_end = urb_gs_end + URB_CL_ENTRIES * URB_CL_ENTRY_SIZE;
+	urb_sf_end = urb_cl_end + URB_SF_ENTRIES * URB_SF_ENTRY_SIZE;
+	urb_cs_end = urb_sf_end + URB_CS_ENTRIES * URB_CS_ENTRY_SIZE;
+	assert(urb_cs_end <= 256);
 
 	while ((sna->kgem.nbatch & 15) > 12)
 		OUT_BATCH(MI_NOOP);
@@ -797,11 +793,11 @@ gen4_emit_urb(struct sna *sna)
 		  UF0_GS_REALLOC |
 		  UF0_VS_REALLOC |
 		  1);
-	OUT_BATCH(((urb_clip_start + urb_clip_size) << UF1_CLIP_FENCE_SHIFT) |
-		  ((urb_gs_start + urb_gs_size) << UF1_GS_FENCE_SHIFT) |
-		  ((urb_vs_start + urb_vs_size) << UF1_VS_FENCE_SHIFT));
-	OUT_BATCH(((urb_cs_start + urb_cs_size) << UF2_CS_FENCE_SHIFT) |
-		  ((urb_sf_start + urb_sf_size) << UF2_SF_FENCE_SHIFT));
+	OUT_BATCH(urb_cl_end << UF1_CLIP_FENCE_SHIFT |
+		  urb_gs_end << UF1_GS_FENCE_SHIFT |
+		  urb_vs_end << UF1_VS_FENCE_SHIFT);
+	OUT_BATCH(urb_cs_end << UF2_CS_FENCE_SHIFT |
+		  urb_sf_end << UF2_SF_FENCE_SHIFT);
 
 	/* Constant buffer state */
 	OUT_BATCH(GEN4_CS_URB_STATE | 0);
