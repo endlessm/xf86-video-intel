@@ -601,7 +601,7 @@ static bool gen4_rectangle_begin(struct sna *sna,
 		return true;
 
 	/* 7xpipelined pointers + 6xprimitive + 1xflush */
-	ndwords = op->need_magic_ca_pass? 20 : 6;
+	ndwords = op->need_magic_ca_pass? 19 : 6;
 	if ((sna->render.vb_id & id) == 0)
 		ndwords += 5;
 	ndwords += 2*FORCE_FLUSH;
@@ -628,7 +628,7 @@ static int gen4_get_rectangles__flush(struct sna *sna,
 	}
 
 	if (!kgem_check_batch(&sna->kgem,
-			      2*FORCE_FLUSH + (op->need_magic_ca_pass ? 25 : 6)))
+			      2*FORCE_FLUSH + (op->need_magic_ca_pass ? 2*19+6 : 6)))
 		return 0;
 	if (!kgem_check_reloc_and_exec(&sna->kgem, 2))
 		return 0;
@@ -660,9 +660,11 @@ inline static int gen4_get_rectangles(struct sna *sna,
 		if (rem <= 0) {
 			if (sna->render.vertex_offset) {
 				gen4_vertex_flush(sna);
-				if (gen4_magic_ca_pass(sna, op))
-					gen4_emit_pipelined_pointers(sna, op, op->op,
-								     op->u.gen4.wm_kernel);
+				if (gen4_magic_ca_pass(sna, op)) {
+					if (kgem_check_batch(&sna->kgem, 19+6))
+						gen4_emit_pipelined_pointers(sna, op, op->op,
+									     op->u.gen4.wm_kernel);
+				}
 			}
 			OUT_BATCH(MI_FLUSH | MI_INHIBIT_RENDER_CACHE_FLUSH);
 			rem = MAX_FLUSH_VERTICES;
