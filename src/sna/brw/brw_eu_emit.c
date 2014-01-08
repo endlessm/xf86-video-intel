@@ -1802,7 +1802,7 @@ void brw_SAMPLE(struct brw_compile *p,
 {
 	assert(writemask);
 
-	if (writemask != WRITEMASK_XYZW) {
+	if (p->gen < 050 || writemask != WRITEMASK_XYZW) {
 		struct brw_reg m1 = brw_message_reg(msg_reg_nr);
 
 		writemask = ~writemask & WRITEMASK_XYZW;
