@@ -343,6 +343,8 @@ static void assert_pixmap_damage(PixmapPtr p)
 		return;
 
 	assert(priv->gpu_damage == NULL || priv->gpu_bo);
+	assert(priv->gpu_bo == NULL || priv->gpu_bo->refcnt);
+	assert(priv->cpu_bo == NULL || priv->cpu_bo->refcnt);
 	assert_pixmap_map(p, priv);
 
 	if (priv->clear) {
@@ -395,6 +397,8 @@ static void assert_pixmap_damage(PixmapPtr p)
 #define assert_pixmap_damage(p) do { \
 	struct sna_pixmap *priv__ = sna_pixmap(p); \
 	assert(priv__ == NULL || priv__->gpu_damage == NULL || priv__->gpu_bo); \
+	assert(priv__ == NULL || priv__->gpu_bo == NULL || priv__->gpu_bo->refcnt); \
+	assert(priv__ == NULL || priv__->cpu_bo == NULL || priv__->cpu_bo->refcnt); \
 } while (0)
 #else
 #define assert_pixmap_damage(p)
