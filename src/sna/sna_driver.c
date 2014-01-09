@@ -709,7 +709,8 @@ sna_handle_uevents(int fd, void *closure)
 
 	if (memcmp(&s.st_rdev, &udev_devnum, sizeof (dev_t)) == 0 &&
 	    hotplug && atoi(hotplug) == 1) {
-		DBG(("%s: hotplug event\n", __FUNCTION__));
+		DBG(("%s: hotplug event (vtSema?=%d)\n",
+		     __FUNCTION__, sna->scrn->vtSema));
 		if (sna->scrn->vtSema) {
 			sna_mode_update(sna);
 			RRGetInfo(xf86ScrnToScreen(scrn), TRUE);
@@ -1103,6 +1104,8 @@ static Bool sna_enter_vt(VT_FUNC_ARGS_DECL)
 		return FALSE;
 
 	if (sna->flags & SNA_REPROBE) {
+		DBG(("%s: reporting deferred hotplug event\n",
+		     __FUNCTION__));
 		RRGetInfo(xf86ScrnToScreen(scrn), TRUE);
 		sna->flags &= ~SNA_REPROBE;
 	}
