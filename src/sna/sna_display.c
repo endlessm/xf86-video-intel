@@ -897,6 +897,105 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 	return true;
 }
 
+struct wait_for_shadow {
+	RegionRec region;
+	struct kgem_bo *bo;
+};
+
+static bool wait_for_shadow(struct sna *sna, struct sna_pixmap *priv, unsigned flags)
+{
+	struct wait_for_shadow *wait = priv->move_to_gpu_data;
+	struct kgem_bo *bo = wait->bo;
+	PixmapPtr pixmap = priv->pixmap;
+	DamagePtr damage;
+	bool ret = true;
+
+	DBG(("%s: flags=%x, shadow_flip=%d, handle=%d, wait=%d, old=%d\n",
+	     __FUNCTION__, flags, sna->mode.shadow_flip,
+	     priv->gpu_bo->handle, wait->bo->handle, sna->mode.shadow->handle));
+
+	assert(wait->bo != priv->gpu_bo);
+
+	if (flags == 0 || pixmap != sna->front || !sna->mode.shadow_damage)
+		goto done;
+
+	if ((flags & MOVE_WRITE) == 0)
+		return true;
+
+	assert(sna->mode.shadow_active);
+	assert(bo == sna->mode.shadow);
+
+	assert(priv->gpu_bo->refcnt >= 1);
+	sna->mode.shadow = priv->gpu_bo;
+
+	damage = sna->mode.shadow_damage;
+	sna->mode.shadow_damage = NULL;
+
+	while (sna->mode.shadow_flip && sna_mode_has_pending_events(sna))
+		sna_mode_wakeup(sna);
+
+	if (sna->mode.shadow_flip) {
+		bo = kgem_create_2d(&sna->kgem,
+				    pixmap->drawable.width,
+				    pixmap->drawable.height,
+				    pixmap->drawable.bitsPerPixel,
+				    priv->gpu_bo->tiling,
+				    CREATE_EXACT | CREATE_SCANOUT);
+		if (bo != NULL) {
+			DBG(("%s: replacing still-attached GPU bo\n",
+			     __FUNCTION__));
+
+			kgem_bo_destroy(&sna->kgem, wait->bo);
+			RegionUninit(&wait->region);
+
+			wait->region.extents.x1 = 0;
+			wait->region.extents.y1 = 0;
+			wait->region.extents.x2 = pixmap->drawable.width;
+			wait->region.extents.y2 = pixmap->drawable.height;
+			wait->region.data = NULL;
+		} else {
+			while (sna->mode.shadow_flip &&
+			       sna_mode_wait_for_event(sna))
+				sna_mode_wakeup(sna);
+
+			bo = wait->bo;
+		}
+	}
+
+	sna->mode.shadow_damage = damage;
+
+	if (flags & MOVE_READ) {
+		DBG(("%s: copying existing GPU damage: %ldx(%d, %d), (%d, %d)\n",
+		     __FUNCTION__, (long)REGION_NUM_RECTS(&wait->region),
+		     wait->region.extents.x1, wait->region.extents.y1,
+		     wait->region.extents.x2, wait->region.extents.y2));
+		ret = sna->render.copy_boxes(sna, GXcopy,
+					     pixmap, priv->gpu_bo, 0, 0,
+					     pixmap, bo, 0, 0,
+					     REGION_RECTS(&wait->region),
+					     REGION_NUM_RECTS(&wait->region),
+					     0);
+	}
+
+	if (priv->cow)
+		sna_pixmap_undo_cow(sna, priv, 0);
+
+	sna_pixmap_unmap(pixmap, priv);
+	priv->gpu_bo = bo;
+
+	sna_dri_pixmap_update_bo(sna, pixmap);
+
+done:
+	kgem_bo_destroy(&sna->kgem, wait->bo);
+	RegionUninit(&wait->region);
+	free(wait);
+
+	priv->move_to_gpu_data = NULL;
+	priv->move_to_gpu = NULL;
+
+	return ret;
+}
+
 static bool sna_mode_enable_shadow(struct sna *sna)
 {
 	ScreenPtr screen = sna->scrn->pScreen;
@@ -918,10 +1017,16 @@ static bool sna_mode_enable_shadow(struct sna *sna)
 
 static void sna_mode_disable_shadow(struct sna *sna)
 {
+	struct sna_pixmap *priv;
+
 	if (!sna->mode.shadow_damage)
 		return;
 
 	DBG(("%s\n", __FUNCTION__));
+
+	priv = sna_pixmap(sna->front);
+	if (priv->move_to_gpu == wait_for_shadow)
+		priv->move_to_gpu(sna, priv, 0);
 
 	DamageUnregister(&sna->front->drawable, sna->mode.shadow_damage);
 	DamageDestroy(sna->mode.shadow_damage);
@@ -4329,105 +4434,6 @@ sna_crtc_redisplay(xf86CrtcPtr crtc, RegionPtr region)
 		sna_crtc_redisplay__composite(crtc, region, sna_crtc->bo);
 	else
 		sna_crtc_redisplay__fallback(crtc, region, sna_crtc->bo);
-}
-
-struct wait_for_shadow {
-	RegionRec region;
-	struct kgem_bo *bo;
-};
-
-static bool wait_for_shadow(struct sna *sna, struct sna_pixmap *priv, unsigned flags)
-{
-	struct wait_for_shadow *wait = priv->move_to_gpu_data;
-	struct kgem_bo *bo = wait->bo;
-	PixmapPtr pixmap = priv->pixmap;
-	DamagePtr damage;
-	bool ret = true;
-
-	DBG(("%s: flags=%x, shadow_flip=%d, handle=%d, wait=%d, old=%d\n",
-	     __FUNCTION__, flags, sna->mode.shadow_flip,
-	     priv->gpu_bo->handle, wait->bo->handle, sna->mode.shadow->handle));
-
-	assert(wait->bo != priv->gpu_bo);
-
-	if (flags == 0 || pixmap != sna->front || !sna->mode.shadow_damage)
-		goto done;
-
-	if ((flags & MOVE_WRITE) == 0)
-		return true;
-
-	assert(sna->mode.shadow_active);
-	assert(bo == sna->mode.shadow);
-
-	assert(priv->gpu_bo->refcnt >= 1);
-	sna->mode.shadow = priv->gpu_bo;
-
-	damage = sna->mode.shadow_damage;
-	sna->mode.shadow_damage = NULL;
-
-	while (sna->mode.shadow_flip && sna_mode_has_pending_events(sna))
-		sna_mode_wakeup(sna);
-
-	if (sna->mode.shadow_flip) {
-		bo = kgem_create_2d(&sna->kgem,
-				    pixmap->drawable.width,
-				    pixmap->drawable.height,
-				    pixmap->drawable.bitsPerPixel,
-				    priv->gpu_bo->tiling,
-				    CREATE_EXACT | CREATE_SCANOUT);
-		if (bo != NULL) {
-			DBG(("%s: replacing still-attached GPU bo\n",
-			     __FUNCTION__));
-
-			kgem_bo_destroy(&sna->kgem, wait->bo);
-			RegionUninit(&wait->region);
-
-			wait->region.extents.x1 = 0;
-			wait->region.extents.y1 = 0;
-			wait->region.extents.x2 = pixmap->drawable.width;
-			wait->region.extents.y2 = pixmap->drawable.height;
-			wait->region.data = NULL;
-		} else {
-			while (sna->mode.shadow_flip &&
-			       sna_mode_wait_for_event(sna))
-				sna_mode_wakeup(sna);
-
-			bo = wait->bo;
-		}
-	}
-
-	sna->mode.shadow_damage = damage;
-
-	if (flags & MOVE_READ) {
-		DBG(("%s: copying existing GPU damage: %ldx(%d, %d), (%d, %d)\n",
-		     __FUNCTION__, (long)REGION_NUM_RECTS(&wait->region),
-		     wait->region.extents.x1, wait->region.extents.y1,
-		     wait->region.extents.x2, wait->region.extents.y2));
-		ret = sna->render.copy_boxes(sna, GXcopy,
-					     pixmap, priv->gpu_bo, 0, 0,
-					     pixmap, bo, 0, 0,
-					     REGION_RECTS(&wait->region),
-					     REGION_NUM_RECTS(&wait->region),
-					     0);
-	}
-
-	if (priv->cow)
-		sna_pixmap_undo_cow(sna, priv, 0);
-
-	sna_pixmap_unmap(pixmap, priv);
-	priv->gpu_bo = bo;
-
-	sna_dri_pixmap_update_bo(sna, pixmap);
-
-done:
-	kgem_bo_destroy(&sna->kgem, wait->bo);
-	RegionUninit(&wait->region);
-	free(wait);
-
-	priv->move_to_gpu_data = NULL;
-	priv->move_to_gpu = NULL;
-
-	return ret;
 }
 
 static void set_bo(PixmapPtr pixmap, struct kgem_bo *bo, RegionPtr region)

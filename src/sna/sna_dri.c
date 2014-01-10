@@ -1299,8 +1299,27 @@ static void chain_swap(struct sna *sna,
 
 	DBG(("%s: emitting chained vsync'ed blit\n", __FUNCTION__));
 
-	chain->bo = __sna_dri_copy_region(sna, draw, NULL,
-					  chain->back, chain->front, true);
+	if (sna->mode.shadow_flip && !sna->mode.shadow_damage) {
+		/* recursed from wait_for_shadow(), simply requeue */
+		DBG(("%s -- recursed from wait_for_shadow(), requeuing\n", __FUNCTION__));
+		chain->type = DRI2_SWAP;
+
+		VG_CLEAR(vbl);
+		vbl.request.type =
+			DRM_VBLANK_RELATIVE |
+			DRM_VBLANK_EVENT |
+			pipe_select(chain->pipe);
+		vbl.request.sequence = 1;
+		vbl.request.signal = (unsigned long)chain;
+
+		if (!sna_wait_vblank(sna, &vbl))
+			return;
+
+		DBG(("%s -- requeue failed, errno=%d\n", __FUNCTION__, errno));
+	} else {
+		chain->bo = __sna_dri_copy_region(sna, draw, NULL,
+						  chain->back, chain->front, true);
+	}
 
 	DRI2SwapComplete(chain->client, draw,
 			 frame, tv_sec, tv_usec,
@@ -1339,6 +1358,7 @@ static bool sna_dri_blit_complete(struct sna *sna,
 			return false;
 	}
 
+	DBG(("%s: blit finished\n", __FUNCTION__));
 	return true;
 }
 
@@ -1350,25 +1370,9 @@ void sna_dri_vblank_handler(struct sna *sna, struct drm_event_vblank *event)
 	DBG(("%s(type=%d)\n", __FUNCTION__, info->type));
 
 	draw = info->draw;
-	if (draw == NULL)
+	if (draw == NULL) {
+		DBG(("%s -- drawable gone\n", __FUNCTION__));
 		goto done;
-
-	if (sna->mode.shadow_flip && !sna->mode.shadow_damage) {
-		drmVBlank vbl;
-
-		/* recursed from wait_for_shadow(), simply requeue */
-		VG_CLEAR(vbl);
-		vbl.request.type =
-			DRM_VBLANK_RELATIVE |
-			DRM_VBLANK_EVENT |
-			pipe_select(info->pipe);
-		vbl.request.sequence = 1;
-		vbl.request.signal = (unsigned long)info;
-
-		if (sna_wait_vblank(sna, &vbl))
-			goto done;
-
-		return;
 	}
 
 	switch (info->type) {
@@ -1380,9 +1384,29 @@ void sna_dri_vblank_handler(struct sna *sna, struct drm_event_vblank *event)
 
 		/* else fall through to blit */
 	case DRI2_SWAP:
-		info->bo = __sna_dri_copy_region(sna, draw, NULL,
-						 info->back, info->front, true);
-		info->type = DRI2_SWAP_WAIT;
+		if (sna->mode.shadow_flip && !sna->mode.shadow_damage) {
+			drmVBlank vbl;
+
+			/* recursed from wait_for_shadow(), simply requeue */
+			DBG(("%s -- recursed from wait_for_shadow(), requeuing\n", __FUNCTION__));
+
+			VG_CLEAR(vbl);
+			vbl.request.type =
+				DRM_VBLANK_RELATIVE |
+				DRM_VBLANK_EVENT |
+				pipe_select(info->pipe);
+			vbl.request.sequence = 1;
+			vbl.request.signal = (unsigned long)info;
+
+			if (!sna_wait_vblank(sna, &vbl))
+				return;
+
+			DBG(("%s -- requeue failed, errno=%d\n", __FUNCTION__, errno));
+		} else {
+			info->bo = __sna_dri_copy_region(sna, draw, NULL,
+							 info->back, info->front, true);
+			info->type = DRI2_SWAP_WAIT;
+		}
 		/* fall through to SwapComplete */
 	case DRI2_SWAP_WAIT:
 		if (!sna_dri_blit_complete(sna, info))
@@ -1439,7 +1463,7 @@ sna_dri_immediate_blit(struct sna *sna,
 		sync = false;
 
 	DBG(("%s: emitting immediate blit, throttling client, synced? %d, chained? %d, send-event? %d\n",
-	     __FUNCTION__, sync, sna_dri_window_get_chain((WindowPtr)draw) == info,
+	     __FUNCTION__, sync, sna_dri_window_get_chain((WindowPtr)draw) != info,
 	     event));
 
 	if (sync) {
@@ -1470,9 +1494,12 @@ sna_dri_immediate_blit(struct sna *sna,
 				vbl.request.signal = (unsigned long)info;
 				ret = !sna_wait_vblank(sna, &vbl);
 			}
-		} else
+		} else {
+			DBG(("%s: pending blit, chained\n", __FUNCTION__));
 			ret = true;
+		}
 	} else {
+		DBG(("%s: immediate blit\n", __FUNCTION__));
 		info->bo = __sna_dri_copy_region(sna, draw, NULL,
 						 info->back, info->front, false);
 		if (event)
