@@ -1867,10 +1867,12 @@ static void kgem_bo_move_to_scanout(struct kgem *kgem, struct kgem_bo *bo)
 	assert(!bo->snoop);
 	assert(!bo->io);
 
-	if (bo->purged) {
-		DBG(("%s: discarding purged scanout - external name?\n",
-		     __FUNCTION__));
-		kgem_bo_free(kgem, bo);
+	if (bo->purged) { /* for stolen fb */
+		if (!bo->exec) {
+			DBG(("%s: discarding purged scanout - stolen?\n",
+			     __FUNCTION__));
+			kgem_bo_free(kgem, bo);
+		}
 		return;
 	}
 
