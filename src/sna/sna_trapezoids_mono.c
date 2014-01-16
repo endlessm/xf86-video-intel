@@ -40,7 +40,7 @@
 #include <mipict.h>
 
 #if 0
-#define __DBG(x) ErrorF x
+#define __DBG(x) LogF x
 #else
 #define __DBG(x)
 #endif
@@ -390,17 +390,17 @@ mono_merge_unsorted_edges(struct mono_edge *head, struct mono_edge *unsorted)
 static inline void
 __dbg_mono_edges(const char *function, struct mono_edge *edges)
 {
-	ErrorF("%s: ", function);
+	DBG(("%s: ", function));
 	while (edges) {
 		if (edges->x.quo < INT16_MAX << 16) {
-			ErrorF("(%d.%06d)+(%d.%06d)x%d, ",
-			       edges->x.quo, edges->x.rem,
-			       edges->dxdy.quo, edges->dxdy.rem,
-			       edges->dy*edges->dir);
+			DBG(("(%d.%06d)+(%d.%06d)x%d, ",
+			     edges->x.quo, edges->x.rem,
+			     edges->dxdy.quo, edges->dxdy.rem,
+			     edges->dy*edges->dir));
 		}
 		edges = edges->next;
 	}
-	ErrorF("\n");
+	DBG(("\n"));
 }
 #define DBG_MONO_EDGES(x) __dbg_mono_edges(__FUNCTION__, x)
 static inline void

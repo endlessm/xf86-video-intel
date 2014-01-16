@@ -153,8 +153,8 @@ static void __sna_fallback_flush(DrawablePtr d)
 		if (memcmp(src, dst, tmp->drawable.width * tmp->drawable.bitsPerPixel >> 3)) {
 			for (j = 0; src[j] == dst[j]; j++)
 				;
-			ErrorF("mismatch at (%d, %d)\n",
-			       8*j / tmp->drawable.bitsPerPixel, i);
+			ERR(("mismatch at (%d, %d)\n",
+			     8*j / tmp->drawable.bitsPerPixel, i));
 			abort();
 		}
 		src += pixmap->devKind;
@@ -248,12 +248,11 @@ static void _assert_pixmap_contains_box(PixmapPtr pixmap, const BoxRec *box, con
 	    box->x2 > pixmap->drawable.width ||
 	    box->y2 > pixmap->drawable.height)
 	{
-		ErrorF("%s: damage box is beyond the pixmap: box=(%d, %d), (%d, %d), pixmap=(%d, %d)\n",
-		       __FUNCTION__,
-		       box->x1, box->y1, box->x2, box->y2,
-		       pixmap->drawable.width,
-		       pixmap->drawable.height);
-		assert(0);
+		FatalError("%s: damage box is beyond the pixmap: box=(%d, %d), (%d, %d), pixmap=(%d, %d)\n",
+			   function,
+			   box->x1, box->y1, box->x2, box->y2,
+			   pixmap->drawable.width,
+			   pixmap->drawable.height);
 	}
 }
 
@@ -324,12 +323,11 @@ static void _assert_drawable_contains_box(DrawablePtr drawable, const BoxRec *bo
 	    box->x2 > drawable->x + drawable->width ||
 	    box->y2 > drawable->y + drawable->height)
 	{
-		ErrorF("%s: damage box is beyond the drawable: box=(%d, %d), (%d, %d), drawable=(%d, %d)x(%d, %d)\n",
-		       __FUNCTION__,
-		       box->x1, box->y1, box->x2, box->y2,
-		       drawable->x, drawable->y,
-		       drawable->width, drawable->height);
-		assert(0);
+		FatalError("%s: damage box is beyond the drawable: box=(%d, %d), (%d, %d), drawable=(%d, %d)x(%d, %d)\n",
+			   function,
+			   box->x1, box->y1, box->x2, box->y2,
+			   drawable->x, drawable->y,
+			   drawable->width, drawable->height);
 	}
 }
 
@@ -831,6 +829,26 @@ create_pixmap(struct sna *sna, ScreenPtr screen,
 }
 
 static PixmapPtr
+create_pixmap_hdr(struct sna *sna, int usage)
+{
+	PixmapPtr pixmap;
+
+	pixmap = sna->freed_pixmap;
+	sna->freed_pixmap = pixmap->devPrivate.ptr;
+	assert(pixmap->refcnt == 0);
+
+	pixmap->usage_hint = usage;
+	pixmap->refcnt = 1;
+	pixmap->drawable.serialNumber = NEXT_SERIAL_NUMBER;
+
+#if DEBUG_MEMORY
+	sna->debug_memory.pixmap_allocs++;
+#endif
+
+	return pixmap;
+}
+
+static PixmapPtr
 sna_pixmap_create_shm(ScreenPtr screen,
 		      int width, int height, int depth,
 		      char *addr)
@@ -860,18 +878,12 @@ fallback:
 	}
 
 	if (sna->freed_pixmap) {
-		pixmap = sna->freed_pixmap;
-		sna->freed_pixmap = pixmap->devPrivate.ptr;
-		assert(pixmap->refcnt == 0);
-
-		pixmap->usage_hint = 0;
-		pixmap->refcnt = 1;
+		pixmap = create_pixmap_hdr(sna, 0);
 
 		pixmap->drawable.width = width;
 		pixmap->drawable.height = height;
 		pixmap->drawable.depth = depth;
 		pixmap->drawable.bitsPerPixel = bpp;
-		pixmap->drawable.serialNumber = NEXT_SERIAL_NUMBER;
 
 		DBG(("%s: serial=%ld, %dx%d\n",
 		     __FUNCTION__,
@@ -958,18 +970,12 @@ sna_pixmap_create_scratch(ScreenPtr screen,
 
 	/* you promise never to access this via the cpu... */
 	if (sna->freed_pixmap) {
-		pixmap = sna->freed_pixmap;
-		sna->freed_pixmap = pixmap->devPrivate.ptr;
-		assert(pixmap->refcnt == 0);
-
-		pixmap->usage_hint = CREATE_PIXMAP_USAGE_SCRATCH;
-		pixmap->refcnt = 1;
+		pixmap = create_pixmap_hdr(sna, CREATE_PIXMAP_USAGE_SCRATCH);
 
 		pixmap->drawable.width = width;
 		pixmap->drawable.height = height;
 		pixmap->drawable.depth = depth;
 		pixmap->drawable.bitsPerPixel = bpp;
-		pixmap->drawable.serialNumber = NEXT_SERIAL_NUMBER;
 
 		DBG(("%s: serial=%ld, usage=%d, %dx%d\n",
 		     __FUNCTION__,
@@ -3679,12 +3685,7 @@ sna_pixmap_create_upload(ScreenPtr screen,
 				     CREATE_PIXMAP_USAGE_SCRATCH);
 
 	if (sna->freed_pixmap) {
-		pixmap = sna->freed_pixmap;
-		sna->freed_pixmap = pixmap->devPrivate.ptr;
-		assert(pixmap->refcnt == 0);
-
-		pixmap->drawable.serialNumber = NEXT_SERIAL_NUMBER;
-		pixmap->refcnt = 1;
+		pixmap = create_pixmap_hdr(sna, CREATE_PIXMAP_USAGE_SCRATCH);
 	} else {
 		pixmap = create_pixmap(sna, screen, 0, 0, depth,
 				       CREATE_PIXMAP_USAGE_SCRATCH);
@@ -16519,14 +16520,14 @@ static bool sna_accel_do_debug_memory(struct sna *sna)
 
 static void sna_accel_debug_memory(struct sna *sna)
 {
-	ErrorF("Allocated pixmaps: %d\n",
-	       sna->debug_memory.pixmap_allocs);
-	ErrorF("Allocated bo: %d, %ld bytes\n",
-	       sna->kgem.debug_memory.bo_allocs,
-	       (long)sna->kgem.debug_memory.bo_bytes);
-	ErrorF("Allocated CPU bo: %d, %ld bytes\n",
-	       sna->debug_memory.cpu_bo_allocs,
-	       (long)sna->debug_memory.cpu_bo_bytes);
+	DBG(("Allocated pixmaps: %d\n",
+	     sna->debug_memory.pixmap_allocs));
+	DBG(("Allocated bo: %d, %ld bytes\n",
+	     sna->kgem.debug_memory.bo_allocs,
+	     (long)sna->kgem.debug_memory.bo_bytes));
+	DBG(("Allocated CPU bo: %d, %ld bytes\n",
+	     sna->debug_memory.cpu_bo_allocs,
+	     (long)sna->debug_memory.cpu_bo_bytes));
 
 #ifdef VALGRIND_DO_ADDED_LEAK_CHECK
 	VG(VALGRIND_DO_ADDED_LEAK_CHECK);
@@ -16997,8 +16998,8 @@ set_tv:
 	sna->kgem.scanout_busy = false;
 
 	if (FAULT_INJECTION && (rand() % FAULT_INJECTION) == 0) {
-		ErrorF("%s hardware acceleration\n",
-		       sna->kgem.wedged ? "Re-enabling" : "Disabling");
+		DBG(("%s hardware acceleration\n",
+		     sna->kgem.wedged ? "Re-enabling" : "Disabling"));
 		kgem_submit(&sna->kgem);
 		sna->kgem.wedged = !sna->kgem.wedged;
 	}

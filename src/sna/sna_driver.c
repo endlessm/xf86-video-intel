@@ -1185,7 +1185,7 @@ static Bool sna_pm_event(SCRN_ARG_TYPE arg, pmEvent event, Bool undo)
 		break;
 
 	default:
-		ErrorF("sna_pm_event: received APM event %d\n", event);
+		ERR(("sna_pm_event: received APM event %d\n", event));
 	}
 	return TRUE;
 }
@@ -1250,3 +1250,14 @@ Bool sna_init_scrn(ScrnInfoPtr scrn, int entity_num)
 
 	return TRUE;
 }
+
+#if HAS_DEBUG_FULL
+_X_ATTRIBUTE_PRINTF(1, 0) void LogF(const char *f, ...)
+{
+	va_list ap;
+
+	va_start(ap, f);
+	LogVWrite(1, f, ap);
+	va_end(ap);
+}
+#endif

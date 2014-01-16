@@ -39,12 +39,6 @@
 
 #include <mipict.h>
 
-#if 0
-#define __DBG(x) ErrorF x
-#else
-#define __DBG(x)
-#endif
-
 /* TODO: Emit unantialiased and MSAA triangles. */
 
 #ifndef MAX

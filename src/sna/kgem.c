@@ -347,8 +347,8 @@ retry_gtt:
 		if (kgem_cleanup_cache(kgem))
 			goto retry_gtt;
 
-		ErrorF("%s: failed to retrieve GTT offset for handle=%d: %d\n",
-		       __FUNCTION__, bo->handle, err);
+		ERR(("%s: failed to retrieve GTT offset for handle=%d: %d\n",
+		     __FUNCTION__, bo->handle, err));
 		return NULL;
 	}
 
@@ -366,8 +366,8 @@ retry_mmap:
 		if (kgem_cleanup_cache(kgem))
 			goto retry_mmap;
 
-		ErrorF("%s: failed to mmap handle=%d, %d bytes, into GTT domain: %d\n",
-		       __FUNCTION__, bo->handle, bytes(bo), err);
+		ERR(("%s: failed to mmap handle=%d, %d bytes, into GTT domain: %d\n",
+		     __FUNCTION__, bo->handle, bytes(bo), err));
 		ptr = NULL;
 	}
 
@@ -494,8 +494,8 @@ retry:
 		if (kgem_cleanup_cache(kgem))
 			goto retry;
 
-		ErrorF("%s: failed to write %d bytes into BO handle=%d: %d\n",
-		       __FUNCTION__, length, bo->handle, err);
+		ERR(("%s: failed to write %d bytes into BO handle=%d: %d\n",
+		     __FUNCTION__, length, bo->handle, err));
 		return false;
 	}
 
@@ -2162,7 +2162,7 @@ static bool kgem_retire__flushing(struct kgem *kgem)
 		int count = 0;
 		list_for_each_entry(bo, &kgem->flushing, request)
 			count++;
-		ErrorF("%s: %d bo on flushing list\n", __FUNCTION__, count);
+		DBG(("%s: %d bo on flushing list\n", __FUNCTION__, count));
 	}
 #endif
 
@@ -2272,8 +2272,8 @@ static bool kgem_retire__requests_ring(struct kgem *kgem, int ring)
 					      struct kgem_request,
 					      list)->bo;
 
-		ErrorF("%s: ring=%d, %d outstanding requests, oldest=%d\n",
-		       __FUNCTION__, ring, count, bo ? bo->handle : 0);
+		DBG(("%s: ring=%d, %d outstanding requests, oldest=%d\n",
+		     __FUNCTION__, ring, count, bo ? bo->handle : 0));
 	}
 #endif
 
@@ -2699,8 +2699,8 @@ expire:
 	if (kgem_cleanup_cache(kgem))
 		goto retry;
 
-	ErrorF("%s: failed to write batch (handle=%d): %d\n",
-	       __FUNCTION__, handle, ret);
+	ERR(("%s: failed to write batch (handle=%d): %d\n",
+	     __FUNCTION__, handle, ret));
 	return ret;
 }
 
@@ -3234,8 +3234,8 @@ bool kgem_expire_cache(struct kgem *kgem)
 		int snoop_count = 0;
 		list_for_each_entry(bo, &kgem->snoop, list)
 			snoop_count++, snoop_size += bytes(bo);
-		ErrorF("%s: still allocated %d bo, %ld bytes, in snoop cache\n",
-		       __FUNCTION__, snoop_count, snoop_size);
+		DBG(("%s: still allocated %d bo, %ld bytes, in snoop cache\n",
+		     __FUNCTION__, snoop_count, snoop_size));
 	}
 #endif
 
@@ -3310,8 +3310,8 @@ bool kgem_expire_cache(struct kgem *kgem)
 		for (i = 0; i < ARRAY_SIZE(kgem->inactive); i++)
 			list_for_each_entry(bo, &kgem->inactive[i], list)
 				inactive_count++, inactive_size += bytes(bo);
-		ErrorF("%s: still allocated %d bo, %ld bytes, in inactive cache\n",
-		       __FUNCTION__, inactive_count, inactive_size);
+		DBG(("%s: still allocated %d bo, %ld bytes, in inactive cache\n",
+		     __FUNCTION__, inactive_count, inactive_size));
 	}
 #endif
 
@@ -5452,8 +5452,8 @@ retry:
 		if (kgem_cleanup_cache(kgem))
 			goto retry;
 
-		ErrorF("%s: failed to mmap handle=%d, %d bytes, into CPU domain: %d\n",
-		       __FUNCTION__, bo->handle, bytes(bo), err);
+		ERR(("%s: failed to mmap handle=%d, %d bytes, into CPU domain: %d\n",
+		     __FUNCTION__, bo->handle, bytes(bo), err));
 		return NULL;
 	}
 
