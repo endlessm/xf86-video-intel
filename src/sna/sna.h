@@ -503,13 +503,17 @@ PixmapPtr sna_pixmap_create_unattached(ScreenPtr screen,
 				       int width, int height, int depth);
 void sna_pixmap_destroy(PixmapPtr pixmap);
 
-#define assert_pixmap_map(pixmap, priv) \
-	assert(priv->mapped == false || pixmap->devPrivate.ptr == (priv->mapped == MAPPED_CPU ? MAP(priv->gpu_bo->map__cpu) : MAP(priv->gpu_bo->map__gtt)));
+#define assert_pixmap_map(pixmap, priv)  do { \
+	assert(priv->mapped != MAPPED_NONE || pixmap->devPrivate.ptr == PTR(priv->ptr)); \
+	assert(priv->mapped == MAPPED_NONE || pixmap->devPrivate.ptr == (priv->mapped == MAPPED_CPU ? MAP(priv->gpu_bo->map__cpu) : MAP(priv->gpu_bo->map__gtt))); \
+} while (0)
 
 static inline void sna_pixmap_unmap(PixmapPtr pixmap, struct sna_pixmap *priv)
 {
-	if (priv->mapped == MAPPED_NONE)
+	if (priv->mapped == MAPPED_NONE) {
+		assert(pixmap->devPrivate.ptr == PTR(priv->ptr));
 		return;
+	}
 
 	DBG(("%s: pixmap=%ld dropping %s mapping\n",
 	     __FUNCTION__, pixmap->drawable.serialNumber,
