@@ -4307,11 +4307,17 @@ sna_crtc_redisplay__composite(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo
 	DBG(("%s: compositing transformed damage boxes\n", __FUNCTION__));
 
 	pixmap = sna_pixmap_create_unattached(screen,
-					      crtc->mode.HDisplay,
-					      crtc->mode.VDisplay,
-					      sna->front->drawable.depth);
+					      0, 0, sna->front->drawable.depth);
 	if (pixmap == NullPixmap)
 		return;
+
+	if (!screen->ModifyPixmapHeader(pixmap,
+					crtc->mode.HDisplay,
+					crtc->mode.VDisplay,
+					sna->front->drawable.depth,
+					sna->front->drawable.bitsPerPixel,
+					bo->pitch, NULL))
+		goto free_pixmap;
 
 	if (!sna_pixmap_attach_to_bo(pixmap, bo))
 		goto free_pixmap;
