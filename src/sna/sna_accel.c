@@ -3681,11 +3681,13 @@ sna_pixmap_create_upload(ScreenPtr screen,
 	if (sna->freed_pixmap) {
 		pixmap = sna->freed_pixmap;
 		sna->freed_pixmap = pixmap->devPrivate.ptr;
+		assert(pixmap->refcnt == 0);
 
 		pixmap->drawable.serialNumber = NEXT_SERIAL_NUMBER;
 		pixmap->refcnt = 1;
 	} else {
-		pixmap = create_pixmap(sna, screen, 0, 0, depth, 0);
+		pixmap = create_pixmap(sna, screen, 0, 0, depth,
+				       CREATE_PIXMAP_USAGE_SCRATCH);
 		if (!pixmap)
 			return NullPixmap;
 
@@ -3725,6 +3727,8 @@ sna_pixmap_create_upload(ScreenPtr screen,
 
 	pixmap->devKind = priv->gpu_bo->pitch;
 	pixmap->devPrivate.ptr = ptr;
+	priv->ptr = MAKE_STATIC_PTR(ptr);
+	priv->stride = priv->gpu_bo->pitch;
 
 	pixmap->usage_hint = 0;
 	if (!kgem_buffer_is_inplace(priv->gpu_bo))
