@@ -1567,7 +1567,7 @@ Bool I830DRI2ScreenInit(ScreenPtr screen)
 	int dri2scr_major = 1;
 	int dri2scr_minor = 0;
 #if DRI2INFOREC_VERSION >= 4
-	const char *driverNames[1];
+	const char *driverNames[2];
 #endif
 
 	if (intel->force_fallback) {
@@ -1634,9 +1634,10 @@ Bool I830DRI2ScreenInit(ScreenPtr screen)
 	info.ScheduleSwap = I830DRI2ScheduleSwap;
 	info.GetMSC = I830DRI2GetMSC;
 	info.ScheduleWaitMSC = I830DRI2ScheduleWaitMSC;
-	info.numDrivers = 1;
+	info.numDrivers = 2;
 	info.driverNames = driverNames;
 	driverNames[0] = info.driverName;
+	driverNames[1] = info.driverName;
 #endif
 
 	return DRI2ScreenInit(screen, &info);

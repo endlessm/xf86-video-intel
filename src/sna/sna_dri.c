@@ -2463,7 +2463,7 @@ bool sna_dri_open(struct sna *sna, ScreenPtr screen)
 	DRI2InfoRec info;
 	int major = 1, minor = 0;
 #if DRI2INFOREC_VERSION >= 4
-	const char *driverNames[1];
+	const char *driverNames[2];
 #endif
 
 	DBG(("%s()\n", __FUNCTION__));
@@ -2507,9 +2507,10 @@ bool sna_dri_open(struct sna *sna, ScreenPtr screen)
 	info.ScheduleSwap = sna_dri_schedule_swap;
 	info.GetMSC = sna_dri_get_msc;
 	info.ScheduleWaitMSC = sna_dri_schedule_wait_msc;
-	info.numDrivers = 1;
+	info.numDrivers = 2;
 	info.driverNames = driverNames;
 	driverNames[0] = info.driverName;
+	driverNames[1] = info.driverName;
 #endif
 
 #if DRI2INFOREC_VERSION >= 6
