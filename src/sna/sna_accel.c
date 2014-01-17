@@ -3834,9 +3834,11 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 			    priv->cpu_bo && !priv->shm &&
 			    kgem_bo_convert_to_gpu(&sna->kgem, priv->cpu_bo)) {
 				assert(!priv->mapped);
+				assert(!IS_STATIC_PTR(priv->ptr));
 				priv->gpu_bo = priv->cpu_bo;
 				priv->cpu_bo = NULL;
 				priv->ptr = NULL;
+				pixmap->devPrivate.ptr = NULL;
 				sna_damage_all(&priv->gpu_damage,
 					       pixmap->drawable.width,
 					       pixmap->drawable.height);
