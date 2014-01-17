@@ -2227,7 +2227,7 @@ done:
 	priv->cpu =
 		(flags & (MOVE_INPLACE_HINT | MOVE_ASYNC_HINT)) == 0 &&
 		!DAMAGE_IS_ALL(priv->gpu_damage);
-	assert(pixmap->devPrivate.ptr);
+	assert(pixmap->devPrivate.ptr == PTR(priv->ptr));
 	assert(pixmap->devKind);
 	assert_pixmap_damage(pixmap);
 	assert(has_coherent_ptr(sna, sna_pixmap(pixmap), flags));
@@ -2882,7 +2882,7 @@ out:
 	priv->cpu =
 		(flags & (MOVE_INPLACE_HINT | MOVE_ASYNC_HINT)) == 0 &&
 		!DAMAGE_IS_ALL(priv->gpu_damage);
-	assert(pixmap->devPrivate.ptr);
+	assert(pixmap->devPrivate.ptr == PTR(priv->ptr));
 	assert(pixmap->devKind);
 	assert_pixmap_damage(pixmap);
 	assert(has_coherent_ptr(sna, sna_pixmap(pixmap), flags));
