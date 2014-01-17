@@ -54,6 +54,8 @@
 #define FORCE_NONRECTILINEAR_SPANS -1
 #define FORCE_FLUSH 1 /* https://bugs.freedesktop.org/show_bug.cgi?id=55500 */
 
+#define ALWAYS_FLUSH 1
+
 #define NO_COMPOSITE 0
 #define NO_COMPOSITE_SPANS 0
 #define NO_COPY 0
@@ -584,7 +586,7 @@ gen4_emit_pipe_flush(struct sna *sna)
 inline static void
 gen4_emit_pipe_break(struct sna *sna)
 {
-#if 1
+#if !ALWAYS_FLUSH
 	OUT_BATCH(GEN4_PIPE_CONTROL | (4 - 2));
 	OUT_BATCH(0);
 	OUT_BATCH(0);
@@ -1078,7 +1080,7 @@ gen4_emit_state(struct sna *sna,
 	flush = wm_binding_table & 1;
 	wm_binding_table &= ~1;
 
-	if (kgem_bo_is_dirty(op->src.bo) || kgem_bo_is_dirty(op->mask.bo)) {
+	if (ALWAYS_FLUSH || kgem_bo_is_dirty(op->src.bo) || kgem_bo_is_dirty(op->mask.bo)) {
 		DBG(("%s: flushing dirty (%d, %d), forced? %d\n", __FUNCTION__,
 		     kgem_bo_is_dirty(op->src.bo),
 		     kgem_bo_is_dirty(op->mask.bo),
@@ -1138,7 +1140,7 @@ gen4_bind_surfaces(struct sna *sna,
 		offset = sna->render_state.gen4.surface_table;
 	}
 
-	if (sna->kgem.batch[sna->render_state.gen4.surface_table] == binding_table[0])
+	if (!ALWAYS_FLUSH && sna->kgem.batch[sna->render_state.gen4.surface_table] == binding_table[0])
 		dirty = 0;
 
 	gen4_emit_state(sna, op, offset | dirty);
@@ -1376,7 +1378,7 @@ static void gen4_video_bind_surfaces(struct sna *sna,
 					       src_surf_format);
 	}
 
-	if (sna->kgem.batch[sna->render_state.gen4.surface_table] == binding_table[0])
+	if (!ALWAYS_FLUSH && sna->kgem.batch[sna->render_state.gen4.surface_table] == binding_table[0])
 		dirty = 0;
 
 	gen4_emit_state(sna, op, offset | dirty);
@@ -2322,7 +2324,7 @@ gen4_copy_bind_surfaces(struct sna *sna, const struct sna_composite_op *op)
 		offset = sna->render_state.gen4.surface_table;
 	}
 
-	if (sna->kgem.batch[sna->render_state.gen4.surface_table] == binding_table[0])
+	if (!ALWAYS_FLUSH && sna->kgem.batch[sna->render_state.gen4.surface_table] == binding_table[0])
 		dirty = 0;
 
 	gen4_emit_state(sna, op, offset | dirty);
