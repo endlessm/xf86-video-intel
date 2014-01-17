@@ -79,11 +79,11 @@ static int __intel_get_device_id(int fd)
 	return devid;
 }
 
-int intel_entity_get_devid(int index)
+int intel_entity_get_devid(int idx)
 {
 	struct intel_device *dev;
 
-	dev = xf86GetEntityPrivate(index, intel_device_key)->ptr;
+	dev = xf86GetEntityPrivate(idx, intel_device_key)->ptr;
 	if (dev == NULL)
 		return 0;
 
