@@ -2879,7 +2879,7 @@ static void dump_gtt_info(void)
 		char path[80];
 		FILE *file;
 
-		sprintf(path, "/sys/kernel/debug/dri%d/i915_gem_gtt", i);
+		sprintf(path, "/sys/kernel/debug/dri/%d/i915_gem_gtt", i);
 		file = fopen(path, "r");
 		if (file) {
 			size_t len = 0;
@@ -2902,7 +2902,7 @@ static void dump_fence_regs(void)
 		char path[80];
 		FILE *file;
 
-		sprintf(path, "/sys/kernel/debug/dri%d/i915_gem_fence_regs", i);
+		sprintf(path, "/sys/kernel/debug/dri/%d/i915_gem_fence_regs", i);
 		file = fopen(path, "r");
 		if (file) {
 			size_t len = 0;
