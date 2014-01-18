@@ -2893,6 +2893,29 @@ static void dump_gtt_info(void)
 		}
 	}
 }
+
+static void dump_fence_regs(void)
+{
+	int i;
+
+	for (i = 0; i < DRM_MAX_MINOR; i++) {
+		char path[80];
+		FILE *file;
+
+		sprintf(path, "/sys/kernel/debug/dri%d/i915_gem_fence_regs", i);
+		file = fopen(path, "r");
+		if (file) {
+			size_t len = 0;
+			char *line = NULL;
+
+			while (getline(&line, &len, file) != -1)
+				ErrorF("%s", line);
+			free(line);
+			fclose(file);
+			return;
+		}
+	}
+}
 #endif
 
 void _kgem_submit(struct kgem *kgem)
@@ -3049,6 +3072,8 @@ void _kgem_submit(struct kgem *kgem)
 
 				if (ret == ENOSPC)
 					dump_gtt_info();
+				if (ret == EDEADLK)
+					dump_fence_regs();
 
 				if (DEBUG_SYNC) {
 					int fd = open("/tmp/batchbuffer", O_WRONLY | O_CREAT | O_APPEND, 0666);
