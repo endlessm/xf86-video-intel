@@ -2871,50 +2871,45 @@ out_16384:
 }
 
 #if !NDEBUG
-static void dump_gtt_info(void)
+static bool dump_file(const char *path)
+{
+	FILE *file;
+	size_t len = 0;
+	char *line = NULL;
+
+	file = fopen(path, "r");
+	if (file == NULL)
+		return false;
+
+	while (getline(&line, &len, file) != -1)
+		ErrorF("%s", line);
+
+	free(line);
+	fclose(file);
+	return true;
+}
+
+static void dump_debugfs(const char *name)
 {
 	int i;
 
 	for (i = 0; i < DRM_MAX_MINOR; i++) {
 		char path[80];
-		FILE *file;
 
-		sprintf(path, "/sys/kernel/debug/dri/%d/i915_gem_gtt", i);
-		file = fopen(path, "r");
-		if (file) {
-			size_t len = 0;
-			char *line = NULL;
-
-			while (getline(&line, &len, file) != -1)
-				ErrorF("%s", line);
-			free(line);
-			fclose(file);
+		sprintf(path, "/sys/kernel/debug/dri/%d/%s", i, name);
+		if (dump_file(path))
 			return;
-		}
 	}
+}
+
+static void dump_gtt_info(void)
+{
+	dump_debugfs("i915_gem_gtt");
 }
 
 static void dump_fence_regs(void)
 {
-	int i;
-
-	for (i = 0; i < DRM_MAX_MINOR; i++) {
-		char path[80];
-		FILE *file;
-
-		sprintf(path, "/sys/kernel/debug/dri/%d/i915_gem_fence_regs", i);
-		file = fopen(path, "r");
-		if (file) {
-			size_t len = 0;
-			char *line = NULL;
-
-			while (getline(&line, &len, file) != -1)
-				ErrorF("%s", line);
-			free(line);
-			fclose(file);
-			return;
-		}
-	}
+	dump_debugfs("i915_gem_fence_regs");
 }
 #endif
 
