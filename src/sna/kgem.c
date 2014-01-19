@@ -3016,16 +3016,18 @@ void _kgem_submit(struct kgem *kgem)
 				ret = drmIoctl(kgem->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain);
 			}
 			if (ret == -1) {
-				DBG(("%s: GPU hang detected [%d]\n",
-				     __FUNCTION__, errno));
+				ret = errno;
 				kgem_throttle(kgem);
-				kgem->wedged = true;
+				if (!kgem->wedged) {
+					xf86DrvMsg(kgem_get_screen_index(kgem), X_ERROR,
+						   "Failed to submit rendering commands, disabling acceleration.\n");
+					kgem->wedged = true;
+				}
 
 #if !NDEBUG
-				ret = errno;
 				ErrorF("batch[%d/%d]: %d %d %d, nreloc=%d, nexec=%d, nfence=%d, aperture=%d, fenced=%d, high=%d,%d: errno=%d\n",
 				       kgem->mode, kgem->ring, batch_end, kgem->nbatch, kgem->surface,
-				       kgem->nreloc, kgem->nexec, kgem->nfence, kgem->aperture, kgem->aperture_fenced, kgem->aperture_high, kgem->aperture_total, errno);
+				       kgem->nreloc, kgem->nexec, kgem->nfence, kgem->aperture, kgem->aperture_fenced, kgem->aperture_high, kgem->aperture_total, ret);
 
 				for (i = 0; i < kgem->nexec; i++) {
 					struct kgem_bo *bo, *found = NULL;
