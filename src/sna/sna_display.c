@@ -4530,7 +4530,17 @@ void sna_mode_redisplay(struct sna *sna)
 		return;
 	}
 
-	assert(sna_pixmap(sna->front)->move_to_gpu == NULL);
+	{
+		struct sna_pixmap *priv;
+
+		priv = sna_pixmap(sna->front);
+		assert(priv != NULL);
+
+		if (priv->move_to_gpu)
+			(void)priv->move_to_gpu(sna, priv, 0);
+
+		assert(priv->move_to_gpu == NULL);
+	}
 
 	for (i = 0; i < config->num_crtc; i++) {
 		xf86CrtcPtr crtc = config->crtc[i];
