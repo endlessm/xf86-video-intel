@@ -1031,6 +1031,38 @@ static int kgem_get_screen_index(struct kgem *kgem)
 	return sna->scrn->scrnIndex;
 }
 
+static int __find_debugfs(struct kgem *kgem)
+{
+	int i;
+
+	for (i = 0; i < DRM_MAX_MINOR; i++) {
+		char path[80];
+
+		sprintf(path, "/sys/kernel/debug/dri/%d/i915_wedged", i);
+		if (access(path, R_OK) == 0)
+			return i;
+
+		sprintf(path, "/debug/dri/%d/i915_wedged", i);
+		if (access(path, R_OK) == 0)
+			return i;
+	}
+
+	return -1;
+}
+
+static int kgem_get_minor(struct kgem *kgem)
+{
+	struct stat st;
+
+	if (fstat(kgem->fd, &st))
+		return __find_debugfs(kgem);
+
+	if (!S_ISCHR(st.st_mode))
+		return __find_debugfs(kgem);
+
+	return st.st_rdev & 0x63;
+}
+
 static bool kgem_init_pinned_batches(struct kgem *kgem)
 {
 	int count[2] = { 16, 4 };
@@ -2889,27 +2921,31 @@ static bool dump_file(const char *path)
 	return true;
 }
 
-static void dump_debugfs(const char *name)
+static void dump_debugfs(struct kgem *kgem, const char *name)
 {
-	int i;
+	char path[80];
+	int minor = kgem_get_minor(kgem);
 
-	for (i = 0; i < DRM_MAX_MINOR; i++) {
-		char path[80];
+	if (minor < 0)
+		return;
 
-		sprintf(path, "/sys/kernel/debug/dri/%d/%s", i, name);
-		if (dump_file(path))
-			return;
-	}
+	sprintf(path, "/sys/kernel/debug/dri/%d/%s", minor, name);
+	if (dump_file(path))
+		return;
+
+	sprintf(path, "/debug/dri/%d/%s", minor, name);
+	if (dump_file(path))
+		return;
 }
 
-static void dump_gtt_info(void)
+static void dump_gtt_info(struct kgem *kgem)
 {
-	dump_debugfs("i915_gem_gtt");
+	dump_debugfs(kgem, "i915_gem_gtt");
 }
 
-static void dump_fence_regs(void)
+static void dump_fence_regs(struct kgem *kgem)
 {
-	dump_debugfs("i915_gem_fence_regs");
+	dump_debugfs(kgem, "i915_gem_fence_regs");
 }
 #endif
 
@@ -3068,9 +3104,9 @@ void _kgem_submit(struct kgem *kgem)
 				}
 
 				if (ret == ENOSPC)
-					dump_gtt_info();
+					dump_gtt_info(kgem);
 				if (ret == EDEADLK)
-					dump_fence_regs();
+					dump_fence_regs(kgem);
 
 				if (DEBUG_SYNC) {
 					int fd = open("/tmp/batchbuffer", O_WRONLY | O_CREAT | O_APPEND, 0666);
@@ -3096,26 +3132,24 @@ void _kgem_submit(struct kgem *kgem)
 
 static void find_hang_state(struct kgem *kgem, char *path, int maxlen)
 {
-	int i;
+	int minor = kgem_get_minor(kgem);
 
 	/* Search for our hang state in a few canonical locations.
 	 * In the unlikely event of having multiple devices, we
 	 * will need to check which minor actually corresponds to ours.
 	 */
 
-	for (i = 0; i < DRM_MAX_MINOR; i++) {
-		snprintf(path, maxlen, "/sys/class/drm/card%d/error", i);
-		if (access(path, R_OK) == 0)
-			return;
+	snprintf(path, maxlen, "/sys/class/drm/card%d/error", minor);
+	if (access(path, R_OK) == 0)
+		return;
 
-		snprintf(path, maxlen, "/sys/kernel/debug/dri%d/i915_error_state", i);
-		if (access(path, R_OK) == 0)
-			return;
+	snprintf(path, maxlen, "/sys/kernel/debug/dri/%d/i915_error_state", minor);
+	if (access(path, R_OK) == 0)
+		return;
 
-		snprintf(path, maxlen, "/debug/dri%d/i915_error_state", i);
-		if (access(path, R_OK) == 0)
-			return;
-	}
+	snprintf(path, maxlen, "/debug/dri/%d/i915_error_state", minor);
+	if (access(path, R_OK) == 0)
+		return;
 
 	path[0] = '\0';
 }
