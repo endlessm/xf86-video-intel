@@ -1099,8 +1099,10 @@ static int context_update(struct context *ctx)
 			RRCrtc rr_crtc;
 			Status ret;
 
-			DBG(("%s: copying configuration from %s (mode=%ld) to %s\n",
-			     DisplayString(dst->dpy), src->name, (long)src->mode.id, dst->name));
+			DBG(("%s: copying configuration from %s (mode=%ld: %s) to %s\n",
+			     DisplayString(dst->dpy),
+			     src->name, (long)src->mode.id, src->mode.name,
+			     dst->name));
 
 			if (src->mode.id == 0) {
 err:
@@ -1140,8 +1142,10 @@ err:
 
 				id = XRRCreateMode(dst->dpy, dst->window, &m);
 				if (id) {
-					DBG(("%s(%s-%s): adding mode %ld: %s\n", __func__,
-					     DisplayString(dst->dpy), dst->name, (long)id, src->mode.name));
+					DBG(("%s: adding mode %ld: %s to %s\n",
+					     DisplayString(dst->dpy),
+					     (long)id, src->mode.name,
+					     dst->name));
 					XRRAddOutputMode(dst->dpy, dst->rr_output, id);
 					dst->mode.id = id;
 				} else {
