@@ -533,6 +533,8 @@ static int clone_update_modes__randr(struct clone *clone)
 			old = &to_res->modes[j];
 			if (mode_equal(mode, old)) {
 				id = old->id;
+				DBG(("%s(%s-%s): reusing mode %ld: %s\n", __func__,
+				     DisplayString(clone->src.dpy), clone->src.name, id, mode->name));
 				break;
 			}
 		}
@@ -1120,9 +1122,27 @@ err:
 				}
 			}
 			if (dst->mode.id == 0) {
-				DBG(("%s: failed to find suitable mode for %s\n",
-				     DisplayString(dst->dpy), dst->name));
-				goto err;
+				XRRModeInfo m;
+				char buf[256];
+				RRMode id;
+
+				/* XXX User names must be unique! */
+				m = src->mode;
+				m.nameLength = snprintf(buf, sizeof(buf),
+							"%s.%ld-%s", src->name, (long)src->mode.id, src->mode.name);
+				m.name = buf;
+
+				id = XRRCreateMode(dst->dpy, dst->window, &m);
+				if (id) {
+					DBG(("%s(%s-%s): adding mode %ld: %s\n", __func__,
+					     DisplayString(dst->dpy), dst->name, (long)id, src->mode.name));
+					XRRAddOutputMode(dst->dpy, dst->rr_output, id);
+					dst->mode.id = id;
+				} else {
+					DBG(("%s: failed to find suitable mode for %s\n",
+					     DisplayString(dst->dpy), dst->name));
+					goto err;
+				}
 			}
 
 			rr_crtc = dst->rr_crtc;
@@ -1161,10 +1181,10 @@ err:
 				goto err;
 			}
 
-			DBG(("%s: enabling output '%s' (%d,%d)x(%d,%d), rotation %d, on CRTC:%ld\n",
+			DBG(("%s: enabling output '%s' (%d,%d)x(%d,%d), rotation %d, on CRTC:%ld, using mode %ld\n",
 			     DisplayString(dst->dpy), dst->name,
 			     dst->x, dst->y, dst->mode.width, dst->mode.height,
-			     dst->rotation, (long)rr_crtc));
+			     dst->rotation, (long)rr_crtc, dst->mode.id));
 
 			ret = XRRSetCrtcConfig(dst->dpy, res, rr_crtc, CurrentTime,
 					       dst->x, dst->y, dst->mode.id, dst->rotation,
