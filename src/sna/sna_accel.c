@@ -5656,10 +5656,12 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 					   region, dx, dy,
 					   bitplane, closure);
 
-	DBG(("%s (boxes=%dx[(%d, %d), (%d, %d)...], src=+(%d, %d), alu=%d, src.size=%dx%d, dst.size=%dx%d)\n",
+	DBG(("%s (boxes=%dx[(%d, %d), (%d, %d)...], src=+(%d, %d), dst=+(%d, %d), alu=%d, src.size=%dx%d, dst.size=%dx%d)\n",
 	     __FUNCTION__, n,
 	     box[0].x1, box[0].y1, box[0].x2, box[0].y2,
-	     dx, dy, alu,
+	     dx, dy,
+	     get_drawable_dx(dst), get_drawable_dy(dst),
+	     alu,
 	     src_pixmap->drawable.width, src_pixmap->drawable.height,
 	     dst_pixmap->drawable.width, dst_pixmap->drawable.height));
 
@@ -6247,14 +6249,22 @@ sna_do_copy(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	region.extents.y2 = bound(dy, height);
 	region.data = NULL;
 
-	DBG(("%s: dst extents (%d, %d), (%d, %d)\n", __FUNCTION__,
+	DBG(("%s: dst extents (%d, %d), (%d, %d), dst clip extents (%d, %d), (%d, %d), dst size=%dx%d\n", __FUNCTION__,
 	     region.extents.x1, region.extents.y1,
-	     region.extents.x2, region.extents.y2));
+	     region.extents.x2, region.extents.y2,
+	     gc->pCompositeClip->extents.x1, gc->pCompositeClip->extents.y1,
+	     gc->pCompositeClip->extents.x2, gc->pCompositeClip->extents.y2,
+	     dst->width, dst->height));
 
 	if (!box_intersect(&region.extents, &gc->pCompositeClip->extents)) {
 		DBG(("%s: dst clipped out\n", __FUNCTION__));
 		return NULL;
 	}
+
+	DBG(("%s: clipped dst extents (%d, %d), (%d, %d)\n", __FUNCTION__,
+	     region.extents.x1, region.extents.y1,
+	     region.extents.x2, region.extents.y2));
+	assert_drawable_contains_box(dst, &region.extents);
 
 	region.extents.x1 = clamp(region.extents.x1, sx - dx);
 	region.extents.x2 = clamp(region.extents.x2, sx - dx);
@@ -6263,6 +6273,10 @@ sna_do_copy(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 
 	src_extents = region.extents;
 	expose = true;
+
+	DBG(("%s: unclipped src extents (%d, %d), (%d, %d)\n", __FUNCTION__,
+	     region.extents.x1, region.extents.y1,
+	     region.extents.x2, region.extents.y2));
 
 	if (region.extents.x1 < src->x)
 		region.extents.x1 = src->x;
