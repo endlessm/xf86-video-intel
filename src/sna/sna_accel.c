@@ -6401,14 +6401,14 @@ sna_copy_area(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	if (gc->planemask == 0)
 		return NULL;
 
-	DBG(("%s: src=(%d, %d)x(%d, %d)+(%d, %d) -> dst=(%d, %d)+(%d, %d); alu=%d, pm=%lx\n",
+	DBG(("%s: src=(%d, %d)x(%d, %d)+(%d, %d) -> dst=(%d, %d)+(%d, %d); alu=%d, pm=%lx, depth=%d\n",
 	     __FUNCTION__,
 	     src_x, src_y, width, height, src->x, src->y,
 	     dst_x, dst_y, dst->x, dst->y,
-	     gc->alu, gc->planemask));
+	     gc->alu, gc->planemask, gc->depth));
 
 	if (FORCE_FALLBACK || !ACCEL_COPY_AREA || wedged(sna) ||
-	    !PM_IS_SOLID(dst, gc->planemask))
+	    !PM_IS_SOLID(dst, gc->planemask) || gc->depth < 8)
 		copy = sna_fallback_copy_boxes;
 	else if (src == dst)
 		copy = sna_self_copy_boxes;
