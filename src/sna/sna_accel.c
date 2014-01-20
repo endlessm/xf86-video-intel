@@ -15704,7 +15704,8 @@ static GCOps sna_gc_ops__tmp = {
 static void
 sna_validate_gc(GCPtr gc, unsigned long changes, DrawablePtr drawable)
 {
-	DBG(("%s changes=%lx\n", __FUNCTION__, changes));
+	DBG(("%s changes=%lx, previous serial=%lx, drawable=%lx\n", __FUNCTION__,
+	     changes, gc->serialNumber, drawable->serialNumber));
 
 	if (changes & (GCClipMask|GCSubwindowMode) ||
 	    drawable->serialNumber != (gc->serialNumber & DRAWABLE_SERIAL_BITS) ||
@@ -15721,6 +15722,10 @@ sna_validate_gc(GCPtr gc, unsigned long changes, DrawablePtr drawable)
 	}
 
 	assert(gc->pCompositeClip);
+	assert(RegionNil(gc->pCompositeClip) || gc->pCompositeClip->extents.x1 >= drawable->x);
+	assert(RegionNil(gc->pCompositeClip) || gc->pCompositeClip->extents.y1 >= drawable->y);
+	assert(RegionNil(gc->pCompositeClip) || gc->pCompositeClip->extents.x2 - drawable->x <= drawable->width);
+	assert(RegionNil(gc->pCompositeClip) || gc->pCompositeClip->extents.y2 - drawable->y <= drawable->height);
 
 	sna_gc(gc)->changes |= changes;
 }
