@@ -205,6 +205,12 @@ static int
 _check_error_handler(Display     *display,
 		     XErrorEvent *event)
 {
+	DBG(("X11 error from display %s, serial=%ld, error=%d, req=%d.%d\n",
+	     DisplayString(display),
+	     event->serial,
+	     event->error_code,
+	     event->request_code,
+	     event->minor_code));
 	_x_error_occurred = 1;
 	return False; /* ignored */
 }
