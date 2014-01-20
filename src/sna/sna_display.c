@@ -838,7 +838,7 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 	struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(crtc->scrn);
 	struct drm_mode_crtc arg;
-	uint32_t output_ids[16];
+	uint32_t output_ids[32];
 	int output_count = 0;
 	int i;
 
@@ -861,7 +861,8 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 		     (uint32_t)output->possible_crtcs,
 		     (uint32_t)output->possible_clones));
 		output_ids[output_count] = to_connector_id(output);
-		output_count++;
+		if (++output_count == ARRAY_SIZE(output_ids))
+			return false;
 	}
 
 	VG_CLEAR(arg);
