@@ -6338,7 +6338,7 @@ sna_do_copy(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 
 	if (!box_empty(&region.extents))
 		copy(src, dst, gc, &region, sx-dx, sy-dy, bitPlane, closure);
-	assert(gc->pCompsiteClip != &region);
+	assert(gc->pCompositeClip != &region);
 	RegionUninit(&region);
 
 	/* Pixmap sources generate a NoExposed (we return NULL to do this) */
