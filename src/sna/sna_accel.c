@@ -4021,7 +4021,8 @@ static bool must_check sna_gc_move_to_cpu(GCPtr gc,
 	} else
 		changes &= ~GCClipMask;
 
-	if (changes || drawable->serialNumber != sgc->serial) {
+	if (changes || drawable->serialNumber != (sgc->serial & DRAWABLE_SERIAL_BITS)) {
+		long tmp = gc->serialNumber;
 		gc->serialNumber = sgc->serial;
 
 		if (fb_gc(gc)->bpp != drawable->bitsPerPixel) {
@@ -4042,8 +4043,7 @@ static bool must_check sna_gc_move_to_cpu(GCPtr gc,
 		}
 
 		fbValidateGC(gc, changes, drawable);
-
-		sgc->serial = drawable->serialNumber;
+		gc->serialNumber = tmp;
 	}
 	sgc->changes = 0;
 
@@ -15733,6 +15733,7 @@ sna_validate_gc(GCPtr gc, unsigned long changes, DrawablePtr drawable)
 	assert(RegionNil(gc->pCompositeClip) || gc->pCompositeClip->extents.y2 - drawable->y <= drawable->height);
 
 	sna_gc(gc)->changes |= changes;
+	sna_gc(gc)->serial = gc->serialNumber;
 }
 
 static const GCFuncs sna_gc_funcs = {
