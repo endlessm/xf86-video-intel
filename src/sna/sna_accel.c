@@ -2366,7 +2366,8 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 
 	priv = sna_pixmap(pixmap);
 	if (priv == NULL) {
-		DBG(("%s: not attached to %p\n", __FUNCTION__, pixmap));
+		DBG(("%s: not attached to pixmap %ld (depth %d)\n",
+		     __FUNCTION__, pixmap->drawable.serialNumber, pixmap->drawable.depth));
 		return true;
 	}
 
@@ -3996,7 +3997,7 @@ static bool must_check sna_gc_move_to_cpu(GCPtr gc,
 	struct sna_gc *sgc = sna_gc(gc);
 	long changes = sgc->changes;
 
-	DBG(("%s, changes=%lx\n", __FUNCTION__, changes));
+	DBG(("%s(%p) changes=%lx\n", __FUNCTION__, gc, changes));
 	assert(drawable);
 	assert(region);
 
@@ -4061,6 +4062,8 @@ static bool must_check sna_gc_move_to_cpu(GCPtr gc,
 
 static void sna_gc_move_to_gpu(GCPtr gc)
 {
+	DBG(("%s(%p)\n", __FUNCTION__, gc));
+
 	assert(gc->ops == (GCOps *)&sna_gc_ops__cpu);
 	assert(gc->funcs == (GCFuncs *)&sna_gc_funcs__cpu);
 
@@ -6335,6 +6338,7 @@ sna_do_copy(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 
 	if (!box_empty(&region.extents))
 		copy(src, dst, gc, &region, sx-dx, sy-dy, bitPlane, closure);
+	assert(gc->pCompsiteClip != &region);
 	RegionUninit(&region);
 
 	/* Pixmap sources generate a NoExposed (we return NULL to do this) */
@@ -15704,21 +15708,24 @@ static GCOps sna_gc_ops__tmp = {
 static void
 sna_validate_gc(GCPtr gc, unsigned long changes, DrawablePtr drawable)
 {
-	DBG(("%s changes=%lx, previous serial=%lx, drawable=%lx\n", __FUNCTION__,
+	DBG(("%s(%p) changes=%lx, previous serial=%lx, drawable=%lx\n", __FUNCTION__, gc,
 	     changes, gc->serialNumber, drawable->serialNumber));
+
+	assert(gc->pCompositeClip != sna_gc(gc)->priv);
 
 	if (changes & (GCClipMask|GCSubwindowMode) ||
 	    drawable->serialNumber != (gc->serialNumber & DRAWABLE_SERIAL_BITS) ||
 	    (gc->clientClipType != CT_NONE && (changes & (GCClipXOrigin | GCClipYOrigin)))) {
 		DBG(("%s: recomputing clip\n", __FUNCTION__));
 		miComputeCompositeClip(gc, drawable);
-		DBG(("%s: composite clip=%ldx[(%d, %d), (%d, %d)]\n",
+		DBG(("%s: composite clip=%ldx[(%d, %d), (%d, %d)] [%p]\n",
 		     __FUNCTION__,
 		     (long)RegionNumRects(gc->pCompositeClip),
 		     gc->pCompositeClip->extents.x1,
 		     gc->pCompositeClip->extents.y1,
 		     gc->pCompositeClip->extents.x2,
-		     gc->pCompositeClip->extents.y2));
+		     gc->pCompositeClip->extents.y2,
+		     gc->pCompositeClip));
 	}
 
 	assert(gc->pCompositeClip);
