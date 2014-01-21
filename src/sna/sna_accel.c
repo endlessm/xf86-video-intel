@@ -15711,8 +15711,6 @@ sna_validate_gc(GCPtr gc, unsigned long changes, DrawablePtr drawable)
 	DBG(("%s(%p) changes=%lx, previous serial=%lx, drawable=%lx\n", __FUNCTION__, gc,
 	     changes, gc->serialNumber, drawable->serialNumber));
 
-	assert(gc->pCompositeClip == NULL || gc->pCompositeClip != sna_gc(gc)->priv);
-
 	if (changes & (GCClipMask|GCSubwindowMode) ||
 	    drawable->serialNumber != (gc->serialNumber & DRAWABLE_SERIAL_BITS) ||
 	    (gc->clientClipType != CT_NONE && (changes & (GCClipXOrigin | GCClipYOrigin)))) {
