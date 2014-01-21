@@ -1423,6 +1423,8 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 
 		DBG(("%s: attaching to single shadow pixmap\n", __FUNCTION__));
 		if (sna->mode.shadow == NULL) {
+			BoxRec box;
+
 			bo = kgem_create_2d(&sna->kgem,
 					    sna->scrn->virtualX,
 					    sna->scrn->virtualY,
@@ -1431,6 +1433,18 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 					    CREATE_SCANOUT);
 			if (bo == NULL)
 				return NULL;
+
+			box.x1 = box.y1 = 0;
+			box.x2 = sna->scrn->virtualX;
+			box.y2 = sna->scrn->virtualY;
+
+			if (!sna->render.copy_boxes(sna, GXcopy,
+						    sna->front, sna_pixmap(sna->front)->gpu_bo, 0, 0,
+						    sna->front, bo, 0, 0,
+						    &box, 1, COPY_LAST)) {
+				kgem_bo_destroy(&sna->kgem, bo);
+				return NULL;
+			}
 
 			if (!get_fb(sna, bo,
 				    sna->scrn->virtualX,
