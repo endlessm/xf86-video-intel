@@ -944,6 +944,11 @@ blt_composite_fill_box__cpu(struct sna *sna,
 			    const struct sna_composite_op *op,
 			    const BoxRec *box)
 {
+	assert(box->x1 >= 0);
+	assert(box->y1 >= 0);
+	assert(box->x2 <= op->dst.pixmap->drawable.width);
+	assert(box->y2 <= op->dst.pixmap->drawable.height);
+
 	pixman_fill(op->dst.pixmap->devPrivate.ptr,
 		    op->dst.pixmap->devKind / sizeof(uint32_t),
 		    op->dst.pixmap->drawable.bitsPerPixel,
@@ -957,6 +962,11 @@ blt_composite_fill_boxes__cpu(struct sna *sna,
 			      const BoxRec *box, int n)
 {
 	do {
+		assert(box->x1 >= 0);
+		assert(box->y1 >= 0);
+		assert(box->x2 <= op->dst.pixmap->drawable.width);
+		assert(box->y2 <= op->dst.pixmap->drawable.height);
+
 		pixman_fill(op->dst.pixmap->devPrivate.ptr,
 			    op->dst.pixmap->devKind / sizeof(uint32_t),
 			    op->dst.pixmap->drawable.bitsPerPixel,
@@ -1327,9 +1337,9 @@ prepare_blt_clear(struct sna *sna,
 	op->done = nop_done;
 
 	if (!sna_blt_fill_init(sna, &op->u.blt,
-				 op->dst.bo,
-				 op->dst.pixmap->drawable.bitsPerPixel,
-				 GXclear, 0))
+			       op->dst.bo,
+			       op->dst.pixmap->drawable.bitsPerPixel,
+			       GXclear, 0))
 		return false;
 
 	return begin_blt(sna, op);
