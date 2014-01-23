@@ -206,7 +206,7 @@ static bool sna_blt_fill_init(struct sna *sna,
 			b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 7;
 			if (bpp == 32)
 				b[0] |= BLT_WRITE_ALPHA | BLT_WRITE_RGB;
-			if (bo->tiling)
+			if (bo->tiling && kgem->gen >= 040)
 				b[0] |= BLT_DST_TILED;
 			b[1] = blt->br13;
 			b[2] = 0;
@@ -270,7 +270,7 @@ noinline static void sna_blt_fill_begin(struct sna *sna,
 		b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 7;
 		if (blt->bpp == 32)
 			b[0] |= BLT_WRITE_ALPHA | BLT_WRITE_RGB;
-		if (blt->bo[0]->tiling)
+		if (blt->bo[0]->tiling && kgem->gen >= 040)
 			b[0] |= BLT_DST_TILED;
 		b[1] = blt->br13;
 		b[2] = 0;
@@ -3124,7 +3124,7 @@ bool sna_blt_fill_boxes(struct sna *sna, uint8_t alu,
 			b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 7;
 			if (bpp == 32)
 				b[0] |= BLT_WRITE_ALPHA | BLT_WRITE_RGB;
-			if (bo->tiling)
+			if (bo->tiling && kgem->gen >= 040)
 				b[0] |= BLT_DST_TILED;
 			b[1] = br13;
 			b[2] = 0;
@@ -3210,7 +3210,7 @@ bool sna_blt_fill_boxes(struct sna *sna, uint8_t alu,
 				b[0] = XY_SETUP_MONO_PATTERN_SL_BLT | 7;
 				if (bpp == 32)
 					b[0] |= BLT_WRITE_ALPHA | BLT_WRITE_RGB;
-				if (bo->tiling)
+				if (bo->tiling && kgem->gen >= 040)
 					b[0] |= BLT_DST_TILED;
 				b[1] = br13;
 				b[2] = 0;
