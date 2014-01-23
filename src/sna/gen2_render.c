@@ -1826,6 +1826,7 @@ gen2_render_composite(struct sna *sna,
 		      int16_t mask_x, int16_t mask_y,
 		      int16_t dst_x,  int16_t dst_y,
 		      int16_t width,  int16_t height,
+		      unsigned flags,
 		      struct sna_composite_op *tmp)
 {
 	DBG(("%s()\n", __FUNCTION__));
@@ -1841,7 +1842,7 @@ gen2_render_composite(struct sna *sna,
 			      src_x, src_y,
 			      dst_x, dst_y,
 			      width, height,
-			      tmp, false))
+			      flags, tmp))
 		return true;
 
 	if (gen2_composite_fallback(sna, src, mask, dst))
@@ -2053,7 +2054,7 @@ fallback:
 				  src_x, src_y,
 				  dst_x, dst_y,
 				  width, height,
-				  tmp, true));
+				  flags | COMPOSITE_FALLBACK, tmp));
 }
 
 fastcall static void

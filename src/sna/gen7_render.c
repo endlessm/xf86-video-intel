@@ -2405,6 +2405,7 @@ gen7_render_composite(struct sna *sna,
 		      int16_t msk_x, int16_t msk_y,
 		      int16_t dst_x, int16_t dst_y,
 		      int16_t width, int16_t height,
+		      unsigned flags,
 		      struct sna_composite_op *tmp)
 {
 	if (op >= ARRAY_SIZE(gen7_blend_op))
@@ -2420,7 +2421,7 @@ gen7_render_composite(struct sna *sna,
 			      src_x, src_y,
 			      dst_x, dst_y,
 			      width, height,
-			      tmp, false))
+			      flags, tmp))
 		return true;
 
 	if (gen7_composite_fallback(sna, src, mask, dst))
@@ -2576,7 +2577,7 @@ fallback:
 				  src_x, src_y,
 				  dst_x, dst_y,
 				  width, height,
-				  tmp, true));
+				  flags | COMPOSITE_FALLBACK, tmp));
 }
 
 #if !NO_COMPOSITE_SPANS

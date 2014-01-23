@@ -622,7 +622,7 @@ glyphs_to_dst(struct sna *sna,
 							   op, src, p->atlas, dst,
 							   0, 0, 0, 0, 0, 0,
 							   0, 0,
-							   &tmp))
+							   COMPOSITE_PARTIAL, &tmp))
 					return false;
 
 				glyph_atlas = p->atlas;
@@ -785,7 +785,7 @@ glyphs0_to_dst(struct sna *sna,
 							   op, src, p->atlas, dst,
 							   0, 0, 0, 0, 0, 0,
 							   0, 0,
-							   &tmp))
+							   COMPOSITE_PARTIAL, &tmp))
 					return false;
 
 				glyph_atlas = p->atlas;
@@ -954,7 +954,7 @@ glyphs_slow(struct sna *sna,
 						   y - glyph->info.y,
 						   glyph->info.width,
 						   glyph->info.height,
-						   memset(&tmp, 0, sizeof(tmp))))
+						   COMPOSITE_PARTIAL, memset(&tmp, 0, sizeof(tmp))))
 				return false;
 
 			rects = REGION_RECTS(dst->pCompositeClip);
@@ -1351,13 +1351,13 @@ next_image:
 									   p->atlas, NULL, mask,
 									   0, 0, 0, 0, 0, 0,
 									   0, 0,
-									   &tmp);
+									   COMPOSITE_PARTIAL, &tmp);
 					} else {
 						ok = sna->render.composite(sna, PictOpAdd,
 									   sna->render.white_picture, p->atlas, mask,
 									   0, 0, 0, 0, 0, 0,
 									   0, 0,
-									   &tmp);
+									   COMPOSITE_PARTIAL, &tmp);
 					}
 					if (!ok) {
 						DBG(("%s: fallback -- can not handle PictOpAdd of glyph onto mask!\n",

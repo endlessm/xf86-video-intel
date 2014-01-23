@@ -93,6 +93,7 @@ no_render_composite(struct sna *sna,
 		    int16_t mask_x, int16_t mask_y,
 		    int16_t dst_x, int16_t dst_y,
 		    int16_t width, int16_t height,
+		    unsigned flags,
 		    struct sna_composite_op *tmp)
 {
 	DBG(("%s (op=%d, mask? %d)\n", __FUNCTION__, op, mask != NULL));
@@ -109,7 +110,7 @@ no_render_composite(struct sna *sna,
 				 src_x, src_y,
 				 dst_x, dst_y,
 				 width, height,
-				 tmp, true);
+				 flags | COMPOSITE_FALLBACK, tmp);
 	(void)mask_x;
 	(void)mask_y;
 }
@@ -849,7 +850,7 @@ fixup:
 						   0, 0,
 						   b.x1, b.y1,
 						   b.x2 - b.x1, b.y2 - b.y1,
-						   &op))
+						   0, &op))
 				goto cleanup_src;
 
 			op.box(sna, &op, &b);

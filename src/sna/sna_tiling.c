@@ -168,7 +168,7 @@ sna_tiling_composite_done(struct sna *sna,
 						  tile->mask_x + x, tile->mask_y + y,
 						  tile->dst_x + x,  tile->dst_y + y,
 						  width, height,
-						  memset(&tmp, 0, sizeof(tmp)))) {
+						  COMPOSITE_PARTIAL, memset(&tmp, 0, sizeof(tmp)))) {
 				for (n = 0; n < tile->rect_count; n++) {
 					const struct sna_composite_rectangles *r = &tile->rects[n];
 					int x1, x2, dx, y1, y2, dy;

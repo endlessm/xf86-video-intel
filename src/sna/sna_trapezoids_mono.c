@@ -813,7 +813,7 @@ mono_trapezoids_span_converter(struct sna *sna,
 				       mono.clip.extents.x1,  mono.clip.extents.y1,
 				       mono.clip.extents.x2 - mono.clip.extents.x1,
 				       mono.clip.extents.y2 - mono.clip.extents.y1,
-				       memset(&mono.op, 0, sizeof(mono.op))))
+				       COMPOSITE_PARTIAL, memset(&mono.op, 0, sizeof(mono.op))))
 		return false;
 
 	num_threads = 1;
@@ -924,7 +924,6 @@ mono_trapezoids_span_converter(struct sna *sna,
 				      traps[n].top, traps[n].bottom,
 				      &traps[n].right.p1, &traps[n].right.p2, -1);
 		}
-		memset(&mono.op, 0, sizeof(mono.op));
 		if (mono.sna->render.composite(mono.sna,
 					       PictOpClear,
 					       mono.sna->clear, NULL, dst,
@@ -933,7 +932,7 @@ mono_trapezoids_span_converter(struct sna *sna,
 					       mono.clip.extents.x1,  mono.clip.extents.y1,
 					       mono.clip.extents.x2 - mono.clip.extents.x1,
 					       mono.clip.extents.y2 - mono.clip.extents.y1,
-					       &mono.op)) {
+					       COMPOSITE_PARTIAL, memset(&mono.op, 0, sizeof(mono.op)))) {
 			mono_render(&mono);
 			mono.op.done(mono.sna, &mono.op);
 		}
@@ -1273,14 +1272,13 @@ mono_trap_span_converter(struct sna *sna,
 			      &p1, &p2, -1);
 	}
 
-	memset(&mono.op, 0, sizeof(mono.op));
 	if (mono.sna->render.composite(mono.sna, PictOpAdd, src, NULL, dst,
-					0, 0,
-					0, 0,
-					mono.clip.extents.x1,  mono.clip.extents.y1,
-					mono.clip.extents.x2 - mono.clip.extents.x1,
-					mono.clip.extents.y2 - mono.clip.extents.y1,
-					&mono.op)) {
+				       0, 0,
+				       0, 0,
+				       mono.clip.extents.x1,  mono.clip.extents.y1,
+				       mono.clip.extents.x2 - mono.clip.extents.x1,
+				       mono.clip.extents.y2 - mono.clip.extents.y1,
+				       COMPOSITE_PARTIAL, memset(&mono.op, 0, sizeof(mono.op)))) {
 		mono_render(&mono);
 		mono.op.done(mono.sna, &mono.op);
 	}
@@ -1356,7 +1354,6 @@ mono_triangles_span_converter(struct sna *sna,
 			      &tri[n].p3, &tri[n].p1, 1);
 	}
 
-	memset(&mono.op, 0, sizeof(mono.op));
 	if (mono.sna->render.composite(mono.sna, op, src, NULL, dst,
 				       src_x + mono.clip.extents.x1 - dst_x - dx,
 				       src_y + mono.clip.extents.y1 - dst_y - dy,
@@ -1364,7 +1361,7 @@ mono_triangles_span_converter(struct sna *sna,
 				       mono.clip.extents.x1,  mono.clip.extents.y1,
 				       mono.clip.extents.x2 - mono.clip.extents.x1,
 				       mono.clip.extents.y2 - mono.clip.extents.y1,
-				       &mono.op)) {
+				       COMPOSITE_PARTIAL, memset(&mono.op, 0, sizeof(mono.op)))) {
 		if (mono.clip.data == NULL && mono.op.damage == NULL)
 			mono.span = mono_span__fast;
 		else
@@ -1402,7 +1399,6 @@ mono_triangles_span_converter(struct sna *sna,
 				      &tri[n].p3, &tri[n].p1, 1);
 		}
 
-		memset(&mono.op, 0, sizeof(mono.op));
 		if (mono.sna->render.composite(mono.sna,
 					       PictOpClear,
 					       mono.sna->clear, NULL, dst,
@@ -1411,7 +1407,7 @@ mono_triangles_span_converter(struct sna *sna,
 					       mono.clip.extents.x1,  mono.clip.extents.y1,
 					       mono.clip.extents.x2 - mono.clip.extents.x1,
 					       mono.clip.extents.y2 - mono.clip.extents.y1,
-					       &mono.op)) {
+					       COMPOSITE_PARTIAL, memset(&mono.op, 0, sizeof(mono.op)))) {
 			if (mono.clip.data == NULL && mono.op.damage == NULL)
 				mono.span = mono_span__fast;
 			else

@@ -200,7 +200,7 @@ composite_aligned_boxes(struct sna *sna,
 				   clip.extents.x1,  clip.extents.y1,
 				   clip.extents.x2 - clip.extents.x1,
 				   clip.extents.y2 - clip.extents.y1,
-				   memset(&tmp, 0, sizeof(tmp)))) {
+				   COMPOSITE_PARTIAL, memset(&tmp, 0, sizeof(tmp)))) {
 		unsigned int flags;
 		pixman_box16_t *b;
 		int i, count;

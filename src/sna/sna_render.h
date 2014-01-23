@@ -231,7 +231,10 @@ struct sna_render {
 			  int16_t msk_x, int16_t msk_y,
 			  int16_t dst_x, int16_t dst_y,
 			  int16_t w, int16_t h,
+			  unsigned flags,
 			  struct sna_composite_op *tmp);
+#define COMPOSITE_PARTIAL 0x1
+#define COMPOSITE_FALLBACK 0x80000000
 
 	bool (*check_composite_spans)(struct sna *sna, uint8_t op,
 				      PicturePtr dst, PicturePtr src,
@@ -661,8 +664,8 @@ bool sna_blt_composite(struct sna *sna,
 		       int16_t src_x, int16_t src_y,
 		       int16_t dst_x, int16_t dst_y,
 		       int16_t width, int16_t height,
-		       struct sna_composite_op *tmp,
-		       bool fallback);
+		       unsigned flags,
+		       struct sna_composite_op *tmp);
 bool sna_blt_composite__convert(struct sna *sna,
 				int x, int y,
 				int width, int height,
