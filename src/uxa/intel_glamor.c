@@ -95,12 +95,14 @@ intel_glamor_pre_init(ScrnInfoPtr scrn)
 	if (!intel_glamor_enabled(intel))
 		return TRUE;
 
+#if XORG_VERSION_CURRENT < XORG_VERSION_NUMERIC(1,15,0,0,0)
 	if (!xf86LoaderCheckSymbol("glamor_egl_init")) {
 		xf86DrvMsg(scrn->scrnIndex,  X_ERROR,
 			   "glamor requires Load \"glamoregl\" in "
 			   "Section \"Module\", disabling.\n");
 		return TRUE;
 	}
+#endif
 
 	/* Load glamor module */
 	if ((glamor_module = xf86LoadSubModule(scrn, GLAMOR_EGL_MODULE_NAME))) {
