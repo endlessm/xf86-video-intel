@@ -3151,9 +3151,11 @@ static bool
 gen3_composite_set_target(struct sna *sna,
 			  struct sna_composite_op *op,
 			  PicturePtr dst,
-			  int x, int y, int w, int h)
+			  int x, int y, int w, int h,
+			  bool partial)
 {
 	BoxRec box;
+	unsigned hint;
 
 	op->dst.pixmap = get_drawable_pixmap(dst->pDrawable);
 	op->dst.format = dst->format;
@@ -3168,9 +3170,14 @@ gen3_composite_set_target(struct sna *sna,
 	} else
 		sna_render_picture_extents(dst, &box);
 
-	op->dst.bo = sna_drawable_use_bo(dst->pDrawable,
-					 PREFER_GPU | FORCE_GPU | RENDER_GPU,
-					 &box, &op->damage);
+	hint = PREFER_GPU | FORCE_GPU | RENDER_GPU;
+	if (!partial) {
+		hint |= IGNORE_CPU;
+		if (w == op->dst.width && h == op->dst.height)
+			hint |= REPLACES;
+	}
+
+	op->dst.bo = sna_drawable_use_bo(dst->pDrawable, hint, &box, &op->damage);
 	if (op->dst.bo == NULL)
 		return false;
 
@@ -3196,6 +3203,12 @@ gen3_composite_set_target(struct sna *sna,
 	     op->damage ? *op->damage : (void *)-1));
 
 	assert(op->dst.bo->proxy == NULL);
+
+	if ((too_large(op->dst.width, op->dst.height) ||
+	     !gen3_check_pitch_3d(op->dst.bo)) &&
+	    !sna_render_composite_redirect(sna, op, x, y, w, h, partial))
+		return false;
+
 	return true;
 }
 
@@ -3489,7 +3502,8 @@ gen3_render_composite(struct sna *sna,
 					    tmp);
 
 	if (!gen3_composite_set_target(sna, tmp, dst,
-				       dst_x, dst_y, width, height)) {
+				       dst_x, dst_y, width, height,
+				       flags & COMPOSITE_PARTIAL || op > PictOpSrc || dst->pCompositeClip->data)) {
 		DBG(("%s: unable to set render target\n",
 		     __FUNCTION__));
 		goto fallback;
@@ -3497,14 +3511,6 @@ gen3_render_composite(struct sna *sna,
 
 	tmp->op = op;
 	tmp->rb_reversed = gen3_dst_rb_reversed(tmp->dst.format);
-	if (too_large(tmp->dst.width, tmp->dst.height) ||
-	    !gen3_check_pitch_3d(tmp->dst.bo)) {
-		if (!sna_render_composite_redirect(sna, tmp,
-						   dst_x, dst_y, width, height,
-						   op > PictOpSrc || dst->pCompositeClip->data))
-			goto fallback;
-	}
-
 	tmp->u.gen3.num_constants = 0;
 	tmp->src.u.gen3.type = SHADER_TEXTURE;
 	tmp->src.is_affine = true;
@@ -4848,7 +4854,8 @@ gen3_render_composite_spans(struct sna *sna,
 	}
 
 	if (!gen3_composite_set_target(sna, &tmp->base, dst,
-				       dst_x, dst_y, width, height)) {
+				       dst_x, dst_y, width, height,
+				       true)) {
 		DBG(("%s: unable to set render target\n",
 		     __FUNCTION__));
 		return false;
@@ -4856,14 +4863,6 @@ gen3_render_composite_spans(struct sna *sna,
 
 	tmp->base.op = op;
 	tmp->base.rb_reversed = gen3_dst_rb_reversed(tmp->base.dst.format);
-	if (too_large(tmp->base.dst.width, tmp->base.dst.height) ||
-	    !gen3_check_pitch_3d(tmp->base.dst.bo)) {
-		if (!sna_render_composite_redirect(sna, &tmp->base,
-						   dst_x, dst_y, width, height,
-						   true))
-			return false;
-	}
-
 	tmp->base.src.u.gen3.type = SHADER_TEXTURE;
 	tmp->base.src.is_affine = true;
 	DBG(("%s: preparing source\n", __FUNCTION__));

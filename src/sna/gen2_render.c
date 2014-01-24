@@ -1570,9 +1570,11 @@ static bool
 gen2_composite_set_target(struct sna *sna,
 			  struct sna_composite_op *op,
 			  PicturePtr dst,
-			  int x, int y, int w, int h)
+			  int x, int y, int w, int h,
+			  bool partial)
 {
 	BoxRec box;
+	unsigned hint;
 
 	op->dst.pixmap = get_drawable_pixmap(dst->pDrawable);
 	op->dst.format = dst->format;
@@ -1587,9 +1589,14 @@ gen2_composite_set_target(struct sna *sna,
 	} else
 		sna_render_picture_extents(dst, &box);
 
-	op->dst.bo = sna_drawable_use_bo (dst->pDrawable,
-					  PREFER_GPU | FORCE_GPU | RENDER_GPU,
-					  &box, &op->damage);
+	hint = PREFER_GPU | FORCE_GPU | RENDER_GPU;
+	if (!partial) {
+		hint |= IGNORE_CPU;
+		if (w == op->dst.width && h == op->dst.height)
+			hint |= REPLACES;
+	}
+
+	op->dst.bo = sna_drawable_use_bo(dst->pDrawable, hint, &box, &op->damage);
 	if (op->dst.bo == NULL)
 		return false;
 
@@ -1607,6 +1614,12 @@ gen2_composite_set_target(struct sna *sna,
 	     op->damage ? *op->damage : (void *)-1));
 
 	assert(op->dst.bo->proxy == NULL);
+
+	if (((too_large(op->dst.width, op->dst.height) ||
+	      op->dst.bo->pitch > MAX_3D_PITCH)) &&
+	    !sna_render_composite_redirect(sna, op, x, y, w, h, partial))
+		return false;
+
 	return true;
 }
 
@@ -1856,22 +1869,15 @@ gen2_render_composite(struct sna *sna,
 					    width,  height,
 					    tmp);
 
+	tmp->op = op;
+	sna_render_composite_redirect_init(tmp);
+
 	if (!gen2_composite_set_target(sna, tmp, dst,
-				       dst_x, dst_y, width, height)) {
+				       dst_x, dst_y, width, height,
+				       flags & COMPOSITE_PARTIAL || op > PictOpSrc || dst->pCompositeClip->data != NULL)) {
 		DBG(("%s: unable to set render target\n",
 		     __FUNCTION__));
 		goto fallback;
-	}
-
-	tmp->op = op;
-
-	sna_render_composite_redirect_init(tmp);
-	if (too_large(tmp->dst.width, tmp->dst.height) ||
-	    tmp->dst.bo->pitch > MAX_3D_PITCH) {
-		if (!sna_render_composite_redirect(sna, tmp,
-						   dst_x, dst_y, width, height,
-						   op > PictOpSrc || dst->pCompositeClip->data != NULL))
-			goto fallback;
 	}
 
 	switch (gen2_composite_picture(sna, src, &tmp->src,
@@ -2531,22 +2537,14 @@ gen2_render_composite_spans(struct sna *sna,
 						  width, height, flags, tmp);
 	}
 
+	tmp->base.op = op;
+	sna_render_composite_redirect_init(&tmp->base);
 	if (!gen2_composite_set_target(sna, &tmp->base, dst,
-				       dst_x, dst_y, width, height)) {
+				       dst_x, dst_y, width, height,
+				       true)) {
 		DBG(("%s: unable to set render target\n",
 		     __FUNCTION__));
 		return false;
-	}
-
-	tmp->base.op = op;
-
-	sna_render_composite_redirect_init(&tmp->base);
-	if (too_large(tmp->base.dst.width, tmp->base.dst.height) ||
-	    tmp->base.dst.bo->pitch > MAX_3D_PITCH) {
-		if (!sna_render_composite_redirect(sna, &tmp->base,
-						   dst_x, dst_y, width, height,
-						   true))
-			return false;
 	}
 
 	switch (gen2_composite_picture(sna, src, &tmp->base.src,
