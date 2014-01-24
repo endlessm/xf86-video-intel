@@ -3137,7 +3137,7 @@ gen3_align_vertex(struct sna *sna,
 	if ((int)sna->render.vertex_size - vertex_index * op->floats_per_vertex < 2*op->floats_per_rect) {
 		DBG(("%s: flushing vertex buffer: new index=%d, max=%d\n",
 		     __FUNCTION__, vertex_index, sna->render.vertex_size / op->floats_per_vertex));
-		if (gen3_vertex_finish(sna) < op->floats_per_vertex)
+		if (gen3_vertex_finish(sna) < 2*op->floats_per_vertex)
 			kgem_submit(&sna->kgem);
 
 		vertex_index = (sna->render.vertex_used + op->floats_per_vertex - 1) / op->floats_per_vertex;

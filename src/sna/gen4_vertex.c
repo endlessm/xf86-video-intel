@@ -48,7 +48,7 @@ void gen4_vertex_align(struct sna *sna, const struct sna_composite_op *op)
 	if ((int)sna->render.vertex_size - vertex_index * op->floats_per_vertex < 2*op->floats_per_rect) {
 		DBG(("%s: flushing vertex buffer: new index=%d, max=%d\n",
 		     __FUNCTION__, vertex_index, sna->render.vertex_size / op->floats_per_vertex));
-		if (gen4_vertex_finish(sna) < op->floats_per_rect) {
+		if (gen4_vertex_finish(sna) < 2*op->floats_per_rect) {
 			kgem_submit(&sna->kgem);
 			_kgem_set_mode(&sna->kgem, KGEM_RENDER);
 		}
