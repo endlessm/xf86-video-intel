@@ -1256,8 +1256,18 @@ _X_ATTRIBUTE_PRINTF(1, 0) void LogF(const char *f, ...)
 {
 	va_list ap;
 
+	/* As we not only may be called from any context, we may also
+	 * be called from a thread whilst the main thread is handling
+	 * signals, therefore we have to use the signal-safe variants
+	 * or else we trip over false positive assertions.
+	 */
+
 	va_start(ap, f);
-	LogVWrite(1, f, ap);
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,12,99,901,0)
+	LogVMessageVerbSigSafe(X_NONE, 1, f, ap);
+#else
+	LogVMessageVerb(X_NONE, 1, f, ap);
+#endif
 	va_end(ap);
 }
 #endif
