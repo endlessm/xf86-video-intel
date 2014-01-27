@@ -191,214 +191,6 @@ struct sna_damage *sna_damage_create(void)
 	return _sna_damage_create();
 }
 
-static bool _sna_damage_create_boxes(struct sna_damage *damage,
-				     int count)
-{
-	struct sna_damage_box *box;
-	int n;
-
-	box = list_entry(damage->embedded_box.list.prev,
-			 struct sna_damage_box,
-			 list);
-	n = 4*box->size;
-	if (n < count)
-		n = ALIGN(count, 64);
-
-	DBG(("    %s(%d->%d): new\n", __FUNCTION__, count, n));
-
-	if (n > (INT_MAX - sizeof(*box)) / sizeof(BoxRec))
-		return false;
-
-	box = malloc(sizeof(*box) + sizeof(BoxRec)*n);
-	if (box == NULL)
-		return false;
-
-	list_add_tail(&box->list, &damage->embedded_box.list);
-
-	box->size = damage->remain = n;
-	damage->box = (BoxRec *)(box + 1);
-	return true;
-}
-
-static struct sna_damage *
-_sna_damage_create_elt(struct sna_damage *damage,
-		       const BoxRec *boxes, int count)
-{
-	int n;
-
-	DBG(("    %s: prev=(remain %d), count=%d\n",
-	     __FUNCTION__, damage->remain, count));
-
-	damage->dirty = true;
-	n = count;
-	if (n > damage->remain)
-		n = damage->remain;
-	if (n) {
-		memcpy(damage->box, boxes, n * sizeof(BoxRec));
-		damage->box += n;
-		damage->remain -= n;
-
-		count -= n;
-		boxes += n;
-		if (count == 0)
-			return damage;
-	}
-
-	DBG(("    %s(): new elt\n", __FUNCTION__));
-
-	if (_sna_damage_create_boxes(damage, count)) {
-		memcpy(damage->box, boxes, count * sizeof(BoxRec));
-		damage->box += count;
-		damage->remain -= count;
-	}
-	assert(damage->remain >= 0);
-
-	return damage;
-}
-
-static struct sna_damage *
-_sna_damage_create_elt_from_boxes(struct sna_damage *damage,
-				  const BoxRec *boxes, int count,
-				  int16_t dx, int16_t dy)
-{
-	int i, n;
-
-	DBG(("    %s: prev=(remain %d)\n", __FUNCTION__, damage->remain));
-
-	damage->dirty = true;
-	n = count;
-	if (n > damage->remain)
-		n = damage->remain;
-	if (n) {
-		for (i = 0; i < n; i++) {
-			damage->box[i].x1 = boxes[i].x1 + dx;
-			damage->box[i].x2 = boxes[i].x2 + dx;
-			damage->box[i].y1 = boxes[i].y1 + dy;
-			damage->box[i].y2 = boxes[i].y2 + dy;
-		}
-		damage->box += n;
-		damage->remain -= n;
-
-		count -= n;
-		boxes += n;
-		if (count == 0)
-			return damage;
-	}
-
-	DBG(("    %s(): new elt\n", __FUNCTION__));
-
-	if (!_sna_damage_create_boxes(damage, count))
-		return damage;
-
-	for (i = 0; i < count; i++) {
-		damage->box[i].x1 = boxes[i].x1 + dx;
-		damage->box[i].x2 = boxes[i].x2 + dx;
-		damage->box[i].y1 = boxes[i].y1 + dy;
-		damage->box[i].y2 = boxes[i].y2 + dy;
-	}
-	damage->box += count;
-	damage->remain -= count;
-	assert(damage->remain >= 0);
-
-	return damage;
-}
-
-static struct sna_damage *
-_sna_damage_create_elt_from_rectangles(struct sna_damage *damage,
-				       const xRectangle *r, int count,
-				       int16_t dx, int16_t dy)
-{
-	int i, n;
-
-	DBG(("    %s: prev=(remain %d), count=%d\n",
-	     __FUNCTION__, damage->remain, count));
-
-	damage->dirty = true;
-	n = count;
-	if (n > damage->remain)
-		n = damage->remain;
-	if (n) {
-		for (i = 0; i < n; i++) {
-			damage->box[i].x1 = r[i].x + dx;
-			damage->box[i].x2 = damage->box[i].x1 + r[i].width;
-			damage->box[i].y1 = r[i].y + dy;
-			damage->box[i].y2 = damage->box[i].y1 + r[i].height;
-		}
-		damage->box += n;
-		damage->remain -= n;
-
-		count -= n;
-		r += n;
-		if (count == 0)
-			return damage;
-	}
-
-	DBG(("    %s(): new elt\n", __FUNCTION__));
-
-	if (!_sna_damage_create_boxes(damage, count))
-		return damage;
-
-	for (i = 0; i < count; i++) {
-		damage->box[i].x1 = r[i].x + dx;
-		damage->box[i].x2 = damage->box[i].x1 + r[i].width;
-		damage->box[i].y1 = r[i].y + dy;
-		damage->box[i].y2 = damage->box[i].y1 + r[i].height;
-	}
-	damage->box += count;
-	damage->remain -= count;
-	assert(damage->remain >= 0);
-
-	return damage;
-}
-
-static struct sna_damage *
-_sna_damage_create_elt_from_points(struct sna_damage *damage,
-				   const DDXPointRec *p, int count,
-				   int16_t dx, int16_t dy)
-{
-	int i, n;
-
-	DBG(("    %s: prev=(remain %d), count=%d\n",
-	     __FUNCTION__, damage->remain, count));
-
-	damage->dirty = true;
-	n = count;
-	if (n > damage->remain)
-		n = damage->remain;
-	if (n) {
-		for (i = 0; i < n; i++) {
-			damage->box[i].x1 = p[i].x + dx;
-			damage->box[i].x2 = damage->box[i].x1 + 1;
-			damage->box[i].y1 = p[i].y + dy;
-			damage->box[i].y2 = damage->box[i].y1 + 1;
-		}
-		damage->box += n;
-		damage->remain -= n;
-
-		count -= n;
-		p += n;
-		if (count == 0)
-			return damage;
-	}
-
-	DBG(("    %s(): new elt\n", __FUNCTION__));
-
-	if (!_sna_damage_create_boxes(damage, count))
-		return damage;
-
-	for (i = 0; i < count; i++) {
-		damage->box[i].x1 = p[i].x + dx;
-		damage->box[i].x2 = damage->box[i].x1 + 1;
-		damage->box[i].y1 = p[i].y + dy;
-		damage->box[i].y2 = damage->box[i].y1 + 1;
-	}
-	damage->box += count;
-	damage->remain -= count;
-	assert(damage->remain >= 0);
-
-	return damage;
-}
-
 static void free_list(struct list *head)
 {
 	while (!list_is_empty(head)) {
@@ -533,6 +325,264 @@ done:
 	reset_embedded_box(damage);
 
 	DBG(("    reduce: after region.n=%ld\n", (long)REGION_NUM_RECTS(region)));
+}
+
+
+static bool _sna_damage_create_boxes(struct sna_damage *damage,
+				     int count)
+{
+	struct sna_damage_box *box;
+	int n;
+
+	box = list_entry(damage->embedded_box.list.prev,
+			 struct sna_damage_box,
+			 list);
+	n = 4*box->size;
+	if (n < count)
+		n = ALIGN(count, 64);
+
+	DBG(("    %s(%d->%d): new\n", __FUNCTION__, count, n));
+
+	if (n >= (INT_MAX - sizeof(*box)) / sizeof(BoxRec))
+		return false;
+
+	box = malloc(sizeof(*box) + sizeof(BoxRec)*n);
+	if (box == NULL)
+		return false;
+
+	list_add_tail(&box->list, &damage->embedded_box.list);
+
+	box->size = damage->remain = n;
+	damage->box = (BoxRec *)(box + 1);
+	return true;
+}
+
+static struct sna_damage *
+_sna_damage_create_elt(struct sna_damage *damage,
+		       const BoxRec *boxes, int count)
+{
+	int n;
+
+	DBG(("    %s: prev=(remain %d), count=%d\n",
+	     __FUNCTION__, damage->remain, count));
+
+restart:
+	n = count;
+	if (n > damage->remain)
+		n = damage->remain;
+	if (n) {
+		memcpy(damage->box, boxes, n * sizeof(BoxRec));
+		damage->box += n;
+		damage->remain -= n;
+		damage->dirty = true;
+
+		count -= n;
+		boxes += n;
+		if (count == 0)
+			return damage;
+	}
+
+	DBG(("    %s(): new elt\n", __FUNCTION__));
+
+	if (!_sna_damage_create_boxes(damage, count)) {
+		unsigned mode;
+
+		if (!damage->dirty)
+			return damage;
+
+		mode = damage->mode;
+		__sna_damage_reduce(damage);
+		damage->mode = mode;
+
+		goto restart;
+	}
+
+	memcpy(damage->box, boxes, count * sizeof(BoxRec));
+	damage->box += count;
+	damage->remain -= count;
+	damage->dirty = true;
+	assert(damage->remain >= 0);
+
+	return damage;
+}
+
+static struct sna_damage *
+_sna_damage_create_elt_from_boxes(struct sna_damage *damage,
+				  const BoxRec *boxes, int count,
+				  int16_t dx, int16_t dy)
+{
+	int i, n;
+
+	DBG(("    %s: prev=(remain %d)\n", __FUNCTION__, damage->remain));
+
+restart:
+	n = count;
+	if (n > damage->remain)
+		n = damage->remain;
+	if (n) {
+		for (i = 0; i < n; i++) {
+			damage->box[i].x1 = boxes[i].x1 + dx;
+			damage->box[i].x2 = boxes[i].x2 + dx;
+			damage->box[i].y1 = boxes[i].y1 + dy;
+			damage->box[i].y2 = boxes[i].y2 + dy;
+		}
+		damage->box += n;
+		damage->remain -= n;
+		damage->dirty = true;
+
+		count -= n;
+		boxes += n;
+		if (count == 0)
+			return damage;
+	}
+
+	DBG(("    %s(): new elt\n", __FUNCTION__));
+
+	if (!_sna_damage_create_boxes(damage, count)) {
+		unsigned mode;
+
+		if (!damage->dirty)
+			return damage;
+
+		mode = damage->mode;
+		__sna_damage_reduce(damage);
+		damage->mode = mode;
+
+		goto restart;
+	}
+
+	for (i = 0; i < count; i++) {
+		damage->box[i].x1 = boxes[i].x1 + dx;
+		damage->box[i].x2 = boxes[i].x2 + dx;
+		damage->box[i].y1 = boxes[i].y1 + dy;
+		damage->box[i].y2 = boxes[i].y2 + dy;
+	}
+	damage->box += count;
+	damage->remain -= count;
+	damage->dirty = true;
+	assert(damage->remain >= 0);
+
+	return damage;
+}
+
+static struct sna_damage *
+_sna_damage_create_elt_from_rectangles(struct sna_damage *damage,
+				       const xRectangle *r, int count,
+				       int16_t dx, int16_t dy)
+{
+	int i, n;
+
+	DBG(("    %s: prev=(remain %d), count=%d\n",
+	     __FUNCTION__, damage->remain, count));
+
+restart:
+	n = count;
+	if (n > damage->remain)
+		n = damage->remain;
+	if (n) {
+		for (i = 0; i < n; i++) {
+			damage->box[i].x1 = r[i].x + dx;
+			damage->box[i].x2 = damage->box[i].x1 + r[i].width;
+			damage->box[i].y1 = r[i].y + dy;
+			damage->box[i].y2 = damage->box[i].y1 + r[i].height;
+		}
+		damage->box += n;
+		damage->remain -= n;
+		damage->dirty = true;
+
+		count -= n;
+		r += n;
+		if (count == 0)
+			return damage;
+	}
+
+	DBG(("    %s(): new elt\n", __FUNCTION__));
+
+	if (!_sna_damage_create_boxes(damage, count)) {
+		unsigned mode;
+
+		if (!damage->dirty)
+			return damage;
+
+		mode = damage->mode;
+		__sna_damage_reduce(damage);
+		damage->mode = mode;
+
+		goto restart;
+	}
+
+	for (i = 0; i < count; i++) {
+		damage->box[i].x1 = r[i].x + dx;
+		damage->box[i].x2 = damage->box[i].x1 + r[i].width;
+		damage->box[i].y1 = r[i].y + dy;
+		damage->box[i].y2 = damage->box[i].y1 + r[i].height;
+	}
+	damage->box += count;
+	damage->remain -= count;
+	damage->dirty = true;
+	assert(damage->remain >= 0);
+
+	return damage;
+}
+
+static struct sna_damage *
+_sna_damage_create_elt_from_points(struct sna_damage *damage,
+				   const DDXPointRec *p, int count,
+				   int16_t dx, int16_t dy)
+{
+	int i, n;
+
+	DBG(("    %s: prev=(remain %d), count=%d\n",
+	     __FUNCTION__, damage->remain, count));
+
+restart:
+	n = count;
+	if (n > damage->remain)
+		n = damage->remain;
+	if (n) {
+		for (i = 0; i < n; i++) {
+			damage->box[i].x1 = p[i].x + dx;
+			damage->box[i].x2 = damage->box[i].x1 + 1;
+			damage->box[i].y1 = p[i].y + dy;
+			damage->box[i].y2 = damage->box[i].y1 + 1;
+		}
+		damage->box += n;
+		damage->remain -= n;
+		damage->dirty = true;
+
+		count -= n;
+		p += n;
+		if (count == 0)
+			return damage;
+	}
+
+	DBG(("    %s(): new elt\n", __FUNCTION__));
+
+	if (!_sna_damage_create_boxes(damage, count)) {
+		unsigned mode;
+
+		if (!damage->dirty)
+			return damage;
+
+		mode = damage->mode;
+		__sna_damage_reduce(damage);
+		damage->mode = mode;
+
+		goto restart;
+	}
+
+	for (i = 0; i < count; i++) {
+		damage->box[i].x1 = p[i].x + dx;
+		damage->box[i].x2 = damage->box[i].x1 + 1;
+		damage->box[i].y1 = p[i].y + dy;
+		damage->box[i].y2 = damage->box[i].y1 + 1;
+	}
+	damage->box += count;
+	damage->remain -= count;
+	damage->dirty = true;
+	assert(damage->remain >= 0);
+
+	return damage;
 }
 
 static void damage_union(struct sna_damage *damage, const BoxRec *box)
