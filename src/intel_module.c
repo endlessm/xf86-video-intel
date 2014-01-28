@@ -441,7 +441,7 @@ _xf86findDriver(const char *ident, XF86ConfDevicePtr p)
 	return NULL;
 }
 
-static enum accel_method { UXA, SNA } get_accel_method(void)
+static enum accel_method { SNA, UXA, GLAMOR } get_accel_method(void)
 {
 	enum accel_method accel_method = DEFAULT_ACCEL_METHOD;
 	XF86ConfDevicePtr dev;
@@ -460,7 +460,7 @@ static enum accel_method { UXA, SNA } get_accel_method(void)
 			else if (strcasecmp(s, "uxa") == 0)
 				accel_method = UXA;
 			else if (strcasecmp(s, "glamor") == 0)
-				accel_method = UXA;
+				accel_method = GLAMOR;
 		}
 	}
 
@@ -517,7 +517,9 @@ intel_scrn_create(DriverPtr		driver,
 	case SNA: return sna_init_scrn(scrn, entity_num);
 #endif
 #if USE_UXA
-	case UXA: return intel_init_scrn(scrn);
+	case GLAMOR:
+	case UXA:
+		  return intel_init_scrn(scrn);
 #endif
 
 	default: break;

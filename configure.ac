@@ -535,10 +535,23 @@ if test "x$accel" = "xuxa"; then
 		AC_MSG_ERROR([UXA requested as default, but is not enabled])
 	fi
 fi
-AC_MSG_RESULT($accel)
-if test "x$accel" = "xnone" -a "x$KMS" = "xyes"; then
-	AC_MSG_ERROR([No default acceleration option])
+
+if test "x$accel" = "xglamor"; then
+	if test "x$GLAMOR" != "xno"; then
+		AC_DEFINE(DEFAULT_ACCEL_METHOD, GLAMOR, [Default acceleration method])
+		have_accel="yes"
+	else
+		AC_MSG_ERROR([glamor acceleration requested as default, but is not enabled])
+	fi
 fi
+
+if test "x$have_accel" = "xnone"; then
+	if test "x$KMS" = "xyes"; then
+		AC_MSG_ERROR([Invalid default acceleration option])
+	fi
+	accel="none"
+fi
+AC_MSG_RESULT($accel)
 
 xp_msg=""
 
