@@ -245,8 +245,20 @@ static void assert_tiling(struct kgem *kgem, struct kgem_bo *bo)
 	(void)do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_GET_TILING, &tiling);
 	assert(tiling.tiling_mode == bo->tiling);
 }
+
+static void assert_bo_retired(struct kgem_bo *bo)
+{
+	DBG(("%s: handle=%d, domain: %d exec? %d, rq? %d\n", __FUNCTION__,
+	     bo->handle, bo->domain, bo->exec != NULL, bo->rq != NULL));
+	assert(bo->refcnt);
+	assert(bo->rq == NULL);
+	assert(bo->exec == NULL);
+	assert(list_is_empty(&bo->request));
+}
+
 #else
 #define assert_tiling(kgem, bo)
+#define assert_bo_retired(bo)
 #endif
 
 static void kgem_sna_reset(struct kgem *kgem)
@@ -493,6 +505,25 @@ static void kgem_bo_retire(struct kgem *kgem, struct kgem_bo *bo)
 	assert(list_is_empty(&bo->vma));
 
 	if (bo->rq) {
+		__kgem_bo_clear_busy(bo);
+		kgem_retire(kgem);
+	} else {
+		assert(!bo->needs_flush);
+		ASSERT_IDLE(kgem, bo->handle);
+	}
+
+	assert_bo_retired(bo);
+}
+
+static void kgem_bo_maybe_retire(struct kgem *kgem, struct kgem_bo *bo)
+{
+	DBG(("%s: retiring bo handle=%d (needed flush? %d), rq? %d [busy?=%d]\n",
+	     __FUNCTION__, bo->handle, bo->needs_flush, bo->rq != NULL,
+	     __kgem_busy(kgem, bo->handle)));
+	assert(bo->exec == NULL);
+	assert(list_is_empty(&bo->vma));
+
+	if (bo->rq) {
 		if (!__kgem_busy(kgem, bo->handle)) {
 			__kgem_bo_clear_busy(bo);
 			kgem_retire(kgem);
@@ -532,7 +563,7 @@ retry:
 
 	DBG(("%s: flush=%d, domain=%d\n", __FUNCTION__, bo->flush, bo->domain));
 	if (bo->exec == NULL) {
-		kgem_bo_retire(kgem, bo);
+		kgem_bo_maybe_retire(kgem, bo);
 		bo->domain = DOMAIN_NONE;
 	}
 	bo->gtt_dirty = true;
@@ -5693,9 +5724,13 @@ void kgem_bo_sync__cpu_full(struct kgem *kgem, struct kgem_bo *bo, bool write)
 		set_domain.write_domain = write ? I915_GEM_DOMAIN_CPU : 0;
 
 		if (do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain) == 0) {
-			if (bo->exec == NULL)
+			if (write) {
 				kgem_bo_retire(kgem, bo);
-			bo->domain = write ? DOMAIN_CPU : DOMAIN_NONE;
+				bo->domain = DOMAIN_CPU;
+			} else {
+				kgem_bo_maybe_retire(kgem, bo);
+				bo->domain = DOMAIN_NONE;
+			}
 		}
 	}
 }
@@ -6540,7 +6575,7 @@ void kgem_buffer_read_sync(struct kgem *kgem, struct kgem_bo *_bo)
 			     offset, length))
 			return;
 	}
-	kgem_bo_retire(kgem, &bo->base);
+	kgem_bo_maybe_retire(kgem, &bo->base);
 	bo->base.domain = DOMAIN_NONE;
 }
 
