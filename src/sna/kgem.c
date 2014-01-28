@@ -5488,11 +5488,13 @@ void *kgem_bo_map(struct kgem *kgem, struct kgem_bo *bo)
 		set_domain.handle = bo->handle;
 		set_domain.read_domains = I915_GEM_DOMAIN_GTT;
 		set_domain.write_domain = I915_GEM_DOMAIN_GTT;
-		if (do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain) == 0) {
-			kgem_bo_retire(kgem, bo);
-			bo->domain = DOMAIN_GTT;
-			bo->gtt_dirty = true;
+		if (do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain)) {
+			DBG(("%s: sync: GPU hang detected\n", __FUNCTION__));
+			kgem_throttle(kgem);
 		}
+		kgem_bo_retire(kgem, bo);
+		bo->domain = DOMAIN_GTT;
+		bo->gtt_dirty = true;
 	}
 
 	return ptr;
@@ -5687,10 +5689,12 @@ void kgem_bo_sync__cpu(struct kgem *kgem, struct kgem_bo *bo)
 		set_domain.read_domains = I915_GEM_DOMAIN_CPU;
 		set_domain.write_domain = I915_GEM_DOMAIN_CPU;
 
-		if (do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain) == 0) {
-			kgem_bo_retire(kgem, bo);
-			bo->domain = DOMAIN_CPU;
+		if (do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain)) {
+			DBG(("%s: sync: GPU hang detected\n", __FUNCTION__));
+			kgem_throttle(kgem);
 		}
+		kgem_bo_retire(kgem, bo);
+		bo->domain = DOMAIN_CPU;
 	}
 }
 
@@ -5723,14 +5727,16 @@ void kgem_bo_sync__cpu_full(struct kgem *kgem, struct kgem_bo *bo, bool write)
 		set_domain.read_domains = I915_GEM_DOMAIN_CPU;
 		set_domain.write_domain = write ? I915_GEM_DOMAIN_CPU : 0;
 
-		if (do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain) == 0) {
-			if (write) {
-				kgem_bo_retire(kgem, bo);
-				bo->domain = DOMAIN_CPU;
-			} else {
-				kgem_bo_maybe_retire(kgem, bo);
-				bo->domain = DOMAIN_NONE;
-			}
+		if (do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain)) {
+			DBG(("%s: sync: GPU hang detected\n", __FUNCTION__));
+			kgem_throttle(kgem);
+		}
+		if (write) {
+			kgem_bo_retire(kgem, bo);
+			bo->domain = DOMAIN_CPU;
+		} else {
+			kgem_bo_maybe_retire(kgem, bo);
+			bo->domain = DOMAIN_NONE;
 		}
 	}
 }
@@ -5756,11 +5762,13 @@ void kgem_bo_sync__gtt(struct kgem *kgem, struct kgem_bo *bo)
 		set_domain.read_domains = I915_GEM_DOMAIN_GTT;
 		set_domain.write_domain = I915_GEM_DOMAIN_GTT;
 
-		if (do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain) == 0) {
-			kgem_bo_retire(kgem, bo);
-			bo->domain = DOMAIN_GTT;
-			bo->gtt_dirty = true;
+		if (do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain)) {
+			DBG(("%s: sync: GPU hang detected\n", __FUNCTION__));
+			kgem_throttle(kgem);
 		}
+		kgem_bo_retire(kgem, bo);
+		bo->domain = DOMAIN_GTT;
+		bo->gtt_dirty = true;
 	}
 }
 
@@ -6566,9 +6574,10 @@ void kgem_buffer_read_sync(struct kgem *kgem, struct kgem_bo *_bo)
 		set_domain.read_domains =
 			bo->mmapped == MMAPPED_CPU ? I915_GEM_DOMAIN_CPU : I915_GEM_DOMAIN_GTT;
 
-		if (do_ioctl(kgem->fd,
-			     DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain))
-			return;
+		if (do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain)) {
+			DBG(("%s: sync: GPU hang detected\n", __FUNCTION__));
+			kgem_throttle(kgem);
+		}
 	} else {
 		if (gem_read(kgem->fd,
 			     bo->base.handle, (char *)bo->mem+offset,
