@@ -2418,11 +2418,12 @@ sna_output_dpms(xf86OutputPtr output, int dpms)
 					  sna_output->dpms_mode,
 					  dpms);
 
-	if (output->crtc)
-		drmModeConnectorSetProperty(sna->kgem.fd,
-					    sna_output->id,
-					    sna_output->dpms_id,
-					    dpms);
+	if (output->crtc &&
+	    drmModeConnectorSetProperty(sna->kgem.fd,
+					sna_output->id,
+					sna_output->dpms_id,
+					dpms))
+		dpms = sna_output->dpms_mode;
 
 	if (dpms == DPMSModeOn)
 		sna_output_dpms_backlight(output,
