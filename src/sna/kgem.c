@@ -562,10 +562,9 @@ retry:
 	}
 
 	DBG(("%s: flush=%d, domain=%d\n", __FUNCTION__, bo->flush, bo->domain));
-	if (bo->exec == NULL) {
+	if (bo->exec == NULL)
 		kgem_bo_maybe_retire(kgem, bo);
-		bo->domain = DOMAIN_NONE;
-	}
+	bo->domain = DOMAIN_NONE;
 	bo->gtt_dirty = true;
 	return true;
 }
@@ -5735,10 +5734,9 @@ void kgem_bo_sync__cpu_full(struct kgem *kgem, struct kgem_bo *bo, bool write)
 			kgem_bo_retire(kgem, bo);
 			bo->domain = DOMAIN_CPU;
 		} else {
-			if (bo->exec == NULL) {
+			if (bo->exec == NULL)
 				kgem_bo_maybe_retire(kgem, bo);
-				bo->domain = DOMAIN_NONE;
-			}
+			bo->domain = DOMAIN_NONE;
 		}
 	}
 }
