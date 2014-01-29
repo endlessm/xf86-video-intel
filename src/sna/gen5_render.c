@@ -499,6 +499,7 @@ gen5_bind_bo(struct sna *sna,
 		if (offset) {
 			if (is_dst)
 				kgem_bo_mark_dirty(bo);
+			assert(offset >= sna->kgem.surface);
 			return offset * sizeof(uint32_t);
 		}
 	}

@@ -514,6 +514,7 @@ gen4_bind_bo(struct sna *sna,
 	/* After the first bind, we manage the cache domains within the batch */
 	offset = kgem_bo_get_binding(bo, format | is_dst << 31);
 	if (offset) {
+		assert(offset >= sna->kgem.surface);
 		if (is_dst)
 			kgem_bo_mark_dirty(bo);
 		return offset * sizeof(uint32_t);

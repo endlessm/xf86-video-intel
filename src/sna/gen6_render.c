@@ -1052,6 +1052,7 @@ gen6_bind_bo(struct sna *sna,
 		DBG(("[%x]  bo(handle=%d), format=%d, reuse %s binding\n",
 		     offset, bo->handle, format,
 		     is_dst ? "render" : "sampler"));
+		assert(offset >= sna->kgem.surface);
 		if (is_dst)
 			kgem_bo_mark_dirty(bo);
 		return offset * sizeof(uint32_t);
