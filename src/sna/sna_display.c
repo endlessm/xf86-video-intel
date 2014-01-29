@@ -4492,8 +4492,10 @@ void sna_mode_redisplay(struct sna *sna)
 	if (!sna->mode.shadow_damage)
 		return;
 
-	DBG(("%s: posting shadow damage? %d\n",
-	     __FUNCTION__, !RegionNil(DamageRegion(sna->mode.shadow_damage))));
+	DBG(("%s: posting shadow damage? %d (flips pending? %D)\n",
+	     __FUNCTION__,
+	     !RegionNil(DamageRegion(sna->mode.shadow_damage)),
+	     sna->mode.shadow_flip));
 	assert((sna->flags & SNA_IS_HOSTED) == 0);
 	assert(sna->mode.shadow_active);
 
@@ -4554,8 +4556,19 @@ void sna_mode_redisplay(struct sna *sna)
 		priv = sna_pixmap(sna->front);
 		assert(priv != NULL);
 
-		if (priv->move_to_gpu)
+		if (priv->move_to_gpu) {
+			if (priv->move_to_gpu == wait_for_shadow) {
+				/* No damage written to new scanout
+				 * (backbuffer), ignore redisplay request
+				 * and continue with the current intact
+				 * scanout (frontbuffer).
+				 */
+				RegionEmpty(region);
+				return;
+			}
+
 			(void)priv->move_to_gpu(sna, priv, 0);
+		}
 
 		assert(priv->move_to_gpu == NULL);
 	}
@@ -4565,9 +4578,15 @@ void sna_mode_redisplay(struct sna *sna)
 		struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
 		RegionRec damage;
 
-		if (sna_crtc == NULL ||
-		    !sna_crtc->shadow ||
-		    sna_crtc->bo == sna->mode.shadow)
+		if (sna_crtc == NULL)
+			continue;
+
+		DBG(("%s: crtc[%d] shadow? %d, transformed? %d\n",
+		     __FUNCTION__, i,
+		     sna_crtc->shadow,
+		     sna_crtc->bo != sna->mode.shadow));
+
+		if (!sna_crtc->shadow || sna_crtc->bo == sna->mode.shadow)
 			continue;
 
 		assert(crtc->enabled);
@@ -4714,6 +4733,11 @@ disable2:
 			kgem_bo_destroy(&sna->kgem, old);
 			crtc->bo = kgem_bo_reference(new);
 		}
+
+		DBG(("%s: flipped %d outputs, shadow active? %d\n",
+		     __FUNCTION__,
+		     sna->mode.shadow_flip,
+		     sna->mode.shadow ? sna->mode.shadow->handle : 0));
 
 		if (sna->mode.shadow) {
 			assert(old == sna->mode.shadow);
