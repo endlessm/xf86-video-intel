@@ -6457,6 +6457,7 @@ struct sna_fill_spans {
 	PixmapPtr pixmap;
 	RegionRec region;
 	unsigned flags;
+	uint32_t phase;
 	struct kgem_bo *bo;
 	struct sna_damage **damage;
 	int16_t dx, dy;
@@ -6630,9 +6631,7 @@ sna_poly_point__dash(DrawablePtr drawable, GCPtr gc,
 		     int mode, int n, DDXPointPtr pt)
 {
 	struct sna_fill_spans *data = sna_gc(gc)->priv;
-	struct sna_fill_op *op = data->op;
-
-	if (op->base.u.blt.pixel == gc->fgPixel)
+	if (data->phase == gc->fgPixel)
 		sna_poly_point__fill(drawable, gc, mode, n, pt);
 }
 
@@ -6641,9 +6640,7 @@ sna_poly_point__dash_clip_extents(DrawablePtr drawable, GCPtr gc,
 				  int mode, int n, DDXPointPtr pt)
 {
 	struct sna_fill_spans *data = sna_gc(gc)->priv;
-	struct sna_fill_op *op = data->op;
-
-	if (op->base.u.blt.pixel == gc->fgPixel)
+	if (data->phase == gc->fgPixel)
 		sna_poly_point__fill_clip_extents(drawable, gc, mode, n, pt);
 }
 
@@ -6652,9 +6649,7 @@ sna_poly_point__dash_clip_boxes(DrawablePtr drawable, GCPtr gc,
 				  int mode, int n, DDXPointPtr pt)
 {
 	struct sna_fill_spans *data = sna_gc(gc)->priv;
-	struct sna_fill_op *op = data->op;
-
-	if (op->base.u.blt.pixel == gc->fgPixel)
+	if (data->phase == gc->fgPixel)
 		sna_poly_point__fill_clip_boxes(drawable, gc, mode, n, pt);
 }
 
@@ -6707,9 +6702,7 @@ sna_fill_spans__dash(DrawablePtr drawable,
 		     DDXPointPtr pt, int *width, int sorted)
 {
 	struct sna_fill_spans *data = sna_gc(gc)->priv;
-	struct sna_fill_op *op = data->op;
-
-	if (op->base.u.blt.pixel == gc->fgPixel)
+	if (data->phase == gc->fgPixel)
 		sna_fill_spans__fill(drawable, gc, n, pt, width, sorted);
 }
 
@@ -6750,9 +6743,7 @@ sna_fill_spans__dash_offset(DrawablePtr drawable,
 			    DDXPointPtr pt, int *width, int sorted)
 {
 	struct sna_fill_spans *data = sna_gc(gc)->priv;
-	struct sna_fill_op *op = data->op;
-
-	if (op->base.u.blt.pixel == gc->fgPixel)
+	if (data->phase == gc->fgPixel)
 		sna_fill_spans__fill_offset(drawable, gc, n, pt, width, sorted);
 }
 
@@ -6805,9 +6796,7 @@ sna_fill_spans__dash_clip_extents(DrawablePtr drawable,
 				  DDXPointPtr pt, int *width, int sorted)
 {
 	struct sna_fill_spans *data = sna_gc(gc)->priv;
-	struct sna_fill_op *op = data->op;
-
-	if (op->base.u.blt.pixel == gc->fgPixel)
+	if (data->phase == gc->fgPixel)
 		sna_fill_spans__fill_clip_extents(drawable, gc, n, pt, width, sorted);
 }
 
@@ -6889,9 +6878,7 @@ sna_fill_spans__dash_clip_boxes(DrawablePtr drawable,
 				DDXPointPtr pt, int *width, int sorted)
 {
 	struct sna_fill_spans *data = sna_gc(gc)->priv;
-	struct sna_fill_op *op = data->op;
-
-	if (op->base.u.blt.pixel == gc->fgPixel)
+	if (data->phase == gc->fgPixel)
 		sna_fill_spans__fill_clip_boxes(drawable, gc, n, pt, width, sorted);
 }
 
@@ -9206,7 +9193,11 @@ spans_fallback:
 				}
 				assert(gc->miTranslate);
 
-				DBG(("%s: miZeroLine (solid dash)\n", __FUNCTION__));
+				DBG(("%s: miZeroLine (solid dash, clipped? %d (complex? %d)), fg pass [%08x]\n",
+				     __FUNCTION__,
+				     !!(data.flags & 2), data.flags & 2 && !region_is_singular(&data.region),
+				     gc->fgPixel));
+
 				if (!sna_fill_init_blt(&fill,
 						       data.sna, data.pixmap,
 						       data.bo, gc->alu, color,
@@ -9214,14 +9205,21 @@ spans_fallback:
 					goto fallback;
 
 				gc->ops = &sna_gc_ops__tmp;
+				data.phase = gc->fgPixel;
 				miZeroDashLine(drawable, gc, mode, n, pt);
 				fill.done(data.sna, &fill);
 
+				DBG(("%s: miZeroLine (solid dash, clipped? %d (complex? %d)), bg pass [%08x]\n",
+				     __FUNCTION__,
+				     !!(data.flags & 2), data.flags & 2 && !region_is_singular(&data.region),
+				     gc->bgPixel));
+
 				if (sna_fill_init_blt(&fill,
-						       data.sna, data.pixmap,
-						       data.bo, gc->alu,
-						       gc->bgPixel,
-						       FILL_POINTS | FILL_SPANS)) {
+						      data.sna, data.pixmap,
+						      data.bo, gc->alu,
+						      gc->bgPixel,
+						      FILL_POINTS | FILL_SPANS)) {
+					data.phase = gc->bgPixel;
 					miZeroDashLine(drawable, gc, mode, n, pt);
 					fill.done(data.sna, &fill);
 				}
