@@ -1933,7 +1933,9 @@ try_blt(struct sna *sna,
 
 	if (src->pDrawable) {
 		bo = __sna_drawable_peek_bo(src->pDrawable);
-		if (bo && bo->rq)
+		if (bo == NULL)
+			return true;
+		else if (bo->rq)
 			return RQ_IS_BLT(bo->rq);
 	}
 
