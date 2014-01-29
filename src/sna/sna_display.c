@@ -4492,7 +4492,7 @@ void sna_mode_redisplay(struct sna *sna)
 	if (!sna->mode.shadow_damage)
 		return;
 
-	DBG(("%s: posting shadow damage? %d (flips pending? %D)\n",
+	DBG(("%s: posting shadow damage? %d (flips pending? %d)\n",
 	     __FUNCTION__,
 	     !RegionNil(DamageRegion(sna->mode.shadow_damage)),
 	     sna->mode.shadow_flip));
