@@ -5735,8 +5735,10 @@ void kgem_bo_sync__cpu_full(struct kgem *kgem, struct kgem_bo *bo, bool write)
 			kgem_bo_retire(kgem, bo);
 			bo->domain = DOMAIN_CPU;
 		} else {
-			kgem_bo_maybe_retire(kgem, bo);
-			bo->domain = DOMAIN_NONE;
+			if (bo->exec == NULL) {
+				kgem_bo_maybe_retire(kgem, bo);
+				bo->domain = DOMAIN_NONE;
+			}
 		}
 	}
 }
