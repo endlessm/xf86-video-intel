@@ -6592,6 +6592,8 @@ uint32_t kgem_bo_get_binding(struct kgem_bo *bo, uint32_t format)
 {
 	struct kgem_bo_binding *b;
 
+	assert(bo->refcnt);
+
 	for (b = &bo->binding; b && b->offset; b = b->next)
 		if (format == b->format)
 			return b->offset;
@@ -6602,6 +6604,8 @@ uint32_t kgem_bo_get_binding(struct kgem_bo *bo, uint32_t format)
 void kgem_bo_set_binding(struct kgem_bo *bo, uint32_t format, uint16_t offset)
 {
 	struct kgem_bo_binding *b;
+
+	assert(bo->refcnt);
 
 	for (b = &bo->binding; b; b = b->next) {
 		if (b->offset)
