@@ -208,7 +208,7 @@ struct sna_gc {
 	long changes;
 	long serial;
 
-	GCFuncs *old_funcs;
+	const GCFuncs *old_funcs;
 	void *priv;
 };
 

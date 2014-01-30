@@ -4068,7 +4068,7 @@ static void sna_gc_move_to_gpu(GCPtr gc)
 	assert(gc->funcs == (GCFuncs *)&sna_gc_funcs__cpu);
 
 	gc->ops = (GCOps *)&sna_gc_ops;
-	gc->funcs = sna_gc(gc)->old_funcs;
+	gc->funcs = (GCFuncs *)sna_gc(gc)->old_funcs;
 	assert(gc->funcs);
 	gc->pCompositeClip = sna_gc(gc)->priv;
 	assert(gc->pCompositeClip);
