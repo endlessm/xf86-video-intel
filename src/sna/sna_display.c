@@ -352,7 +352,7 @@ sna_output_backlight_init(xf86OutputPtr output)
 
 	DBG(("%s: found 'wscons'\n", __FUNCTION__));
 
-	sna_output->backlight_iface = "wscons";
+	sna_output->backlight_iface = strdup("wscons");
 	sna_output->backlight_max = param.max;
 	sna_output->backlight_active_level = param.curval;
 }
@@ -471,14 +471,14 @@ has_user_backlight_override(xf86OutputPtr output)
 {
 	struct sna_output *sna_output = output->driver_private;
 	struct sna *sna = to_sna(output->scrn);
-	char *str;
+	const char *str;
 	int max;
 
 	str = xf86GetOptValString(sna->Options, OPTION_BACKLIGHT);
 	if (str == NULL)
 		return NULL;
 
-	sna_output->backlight_iface = str;
+	sna_output->backlight_iface = (char *)str;
 	max = sna_output_backlight_get_max(output);
 	sna_output->backlight_iface = NULL;
 	if (max <= 0) {
@@ -488,7 +488,7 @@ has_user_backlight_override(xf86OutputPtr output)
 		return NULL;
 	}
 
-	return str;
+	return strdup(str);
 }
 
 static char *
