@@ -3388,7 +3388,7 @@ static void crtc_init_gamma(xf86CrtcPtr crtc) { }
 
 static const char *preferred_mode(xf86OutputPtr output)
 {
-	char *mode;
+	const char *mode;
 
 	mode = xf86GetOptValString(output->options, OPTION_PREFERRED_MODE);
 	if (mode)
