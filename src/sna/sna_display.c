@@ -2311,7 +2311,7 @@ sna_output_get_modes(xf86OutputPtr output)
 	if (current && (current->name == NULL || *current->name == '\0')) {
 		char *str = canonical_mode_name(current);
 		if (str) {
-			free(current->name);
+			free((char *)current->name);
 			current->name = str;
 		}
 	}
