@@ -447,7 +447,6 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 	char buf[1024];
 	rgb defaultWeight = { 0, 0, 0 };
 	EntityInfoPtr pEnt;
-	int preferred_depth;
 	Gamma zeros = { 0.0, 0.0, 0.0 };
 	int fd;
 
@@ -513,11 +512,7 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 	xf86DrvMsg(scrn->scrnIndex, X_PROBED, "CPU: %s\n",
 		   sna_cpu_features_to_string(sna->cpu_features, buf));
 
-	preferred_depth = sna->info->gen < 030 ? 15 : 24;
-	if (!fb_supports_depth(fd, preferred_depth))
-		preferred_depth = 24;
-
-	if (!xf86SetDepthBpp(scrn, preferred_depth, 0, 0,
+	if (!xf86SetDepthBpp(scrn, 24, 0, 0,
 			     Support32bppFb |
 			     SupportConvert24to32 | PreferConvert24to32))
 		goto cleanup;
