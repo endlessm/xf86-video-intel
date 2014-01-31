@@ -1,3 +1,64 @@
+Snapshot 2.99.908 (2013-01-31)
+==============================
+A couple of regressions dashed the hopes that .907 was to be the final
+release candidate, so time to start the cycle again after applying a few
+more bugfixes.
+
+  * Fix invalid pageflipping of GLXPixmaps by UXA.
+    https://bugs.freedesktop.org/show_bug.cgi?id=73282
+
+  * Consistently treat DPMS Suspend/Standy as Off, otherwise we may
+    incorrectly restore the backlight in UXA.
+
+  * Fix disabling the backlight in UXA when querying the value whilst off
+    https://bugs.freedesktop.org/show_bug.cgi?id=73181.
+
+  * Invalidate between every operation if rendering into the source or mask.
+    Fixes regression in 2.99.907 on Ivybridge (seen in KDE)
+    https://bugs.freedesktop.org/show_bug.cgi?id=73208
+
+  * Check for available batch buffer state before restoring state on gen4,
+    otherwise we overwrite surface state with commands and cause a GPU hang.
+    https://bugs.freedesktop.org/show_bug.cgi?id=73348
+
+  * Prevent an invalid free by TearFree
+    https://bugs.freedesktop.org/show_bug.cgi?id=73469
+
+  * Fix confusion in TearFree when it tried to pageflip to a stale bo
+    https://bugs.freedesktop.org/show_bug.cgi?id=70905
+
+  * Initialise TearFree contents with the current frontbuffer upon creation,
+    otherwise old content may be visible for significant fractions of a
+    second after resume or DPMS on
+    https://bugs.freedesktop.org/show_bug.cgi?id=73842
+
+  * Nullify the old pointer into a CPU mmapping of the bo when promoting it
+    on the GPU. Eventually that old pointer becomes invalid and will cause
+    the Xserver to crash.
+    Fixes regression in 2.99.906
+    https://bugs.freedesktop.org/show_bug.cgi?id=73351
+
+  * Restore the serialNumber on the GC correctly after falling back to
+    software. This was seen to cause corruption with Wine.
+    https://bugs.freedesktop.org/show_bug.cgi?id=73856
+
+  * Do not ignore CPU damage on a pixmap unless the Composite operation
+    will completely overwrite it. This was observed in xfce4.
+    https://bugs.freedesktop.org/show_bug.cgi?id=69528
+
+  * Skip fake outputs during initial probe as they can cause a NULL pointer
+    dereference.
+    https://bugs.freedesktop.org/show_bug.cgi?id=73981
+
+  * Fix rendering of dashed zero-width lines onto 24bit buffers
+    https://bugzilla.redhat.com/show_bug.cgi?id=1059152
+
+  * Cap the freed Pixmap cache and reuse it more often
+    Fixes a regression in 2.99.907 that caused the memory used by X to
+    grow until it was cleaned up during server regreneration
+    https://bugs.launchpad.net/ubuntu/+source/xserver-xorg-video-intel/+bug/1272338
+
+
 Snapshot 2.99.907 (2013-12-30)
 ==============================
 The highlight here is that things seem to be quietening down on the bug
