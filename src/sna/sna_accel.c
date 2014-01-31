@@ -909,16 +909,16 @@ fallback:
 		}
 	}
 
+	pixmap->drawable.width = width;
+	pixmap->drawable.height = height;
+	pixmap->drawable.depth = depth;
+	pixmap->drawable.bitsPerPixel = bpp;
+
 	DBG(("%s: serial=%ld, %dx%d\n",
 	     __FUNCTION__,
 	     pixmap->drawable.serialNumber,
 	     pixmap->drawable.width,
 	     pixmap->drawable.height));
-
-	pixmap->drawable.width = width;
-	pixmap->drawable.height = height;
-	pixmap->drawable.depth = depth;
-	pixmap->drawable.bitsPerPixel = bpp;
 
 	priv->cpu_bo = kgem_create_map(&sna->kgem, addr, pitch*height, false);
 	if (priv->cpu_bo == NULL) {
@@ -997,18 +997,18 @@ sna_pixmap_create_scratch(ScreenPtr screen,
 		}
 	}
 
+	pixmap->drawable.width = width;
+	pixmap->drawable.height = height;
+	pixmap->drawable.depth = depth;
+	pixmap->drawable.bitsPerPixel = bpp;
+	pixmap->devPrivate.ptr = NULL;
+
 	DBG(("%s: serial=%ld, usage=%d, %dx%d\n",
 	     __FUNCTION__,
 	     pixmap->drawable.serialNumber,
 	     pixmap->usage_hint,
 	     pixmap->drawable.width,
 	     pixmap->drawable.height));
-
-	pixmap->drawable.width = width;
-	pixmap->drawable.height = height;
-	pixmap->drawable.depth = depth;
-	pixmap->drawable.bitsPerPixel = bpp;
-	pixmap->devPrivate.ptr = NULL;
 
 	priv->stride = PixmapBytePad(width, depth);
 	priv->header = true;
