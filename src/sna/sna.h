@@ -348,6 +348,7 @@ struct sna {
 #if DEBUG_MEMORY
 	struct {
 		int pixmap_allocs;
+		int pixmap_cached;
 		int cpu_bo_allocs;
 		size_t shadow_pixels_bytes;
 		size_t cpu_bo_bytes;

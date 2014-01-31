@@ -829,13 +829,30 @@ create_pixmap(struct sna *sna, ScreenPtr screen,
 }
 
 static PixmapPtr
-create_pixmap_hdr(struct sna *sna, int usage)
+__pop_freed_pixmap(struct sna *sna)
 {
 	PixmapPtr pixmap;
 
+	assert(sna->freed_pixmap);
+
 	pixmap = sna->freed_pixmap;
 	sna->freed_pixmap = pixmap->devPrivate.ptr;
+
 	assert(pixmap->refcnt == 0);
+	assert(sna_pixmap(pixmap));
+	assert(sna_pixmap(pixmap)->header);
+
+#if DEBUG_MEMORY
+	sna->debug_memory.pixmap_cached--;
+#endif
+
+	return pixmap;
+}
+
+static PixmapPtr
+create_pixmap_hdr(struct sna *sna, int usage)
+{
+	PixmapPtr pixmap = __pop_freed_pixmap(sna);
 
 	pixmap->usage_hint = usage;
 	pixmap->refcnt = 1;
@@ -1372,6 +1389,9 @@ static void __sna_free_pixmap(struct sna *sna,
 		assert(pixmap->drawable.pScreen == sna->scrn->pScreen);
 		pixmap->devPrivate.ptr = sna->freed_pixmap;
 		sna->freed_pixmap = pixmap;
+#if DEBUG_MEMORY
+		sna->debug_memory.pixmap_cached++;
+#endif
 	} else {
 		free(priv);
 		FreePixmap(pixmap);
@@ -1383,6 +1403,7 @@ static Bool sna_destroy_pixmap(PixmapPtr pixmap)
 	struct sna *sna;
 	struct sna_pixmap *priv;
 
+	assert(pixmap->refcnt > 0);
 	if (--pixmap->refcnt)
 		return TRUE;
 
@@ -16523,12 +16544,23 @@ static void sna_accel_throttle(struct sna *sna)
 		sna_accel_disarm_timer(sna, THROTTLE_TIMER);
 }
 
+static void sna_pixmap_expire(struct sna *sna)
+{
+	while (sna->freed_pixmap) {
+		PixmapPtr pixmap = __pop_freed_pixmap(sna);
+		free(sna_pixmap(pixmap));
+		FreePixmap(pixmap);
+	}
+}
+
 static void sna_accel_expire(struct sna *sna)
 {
 	DBG(("%s (time=%ld)\n", __FUNCTION__, (long)TIME));
 
 	if (!kgem_expire_cache(&sna->kgem))
 		sna_accel_disarm_timer(sna, EXPIRE_TIMER);
+
+	sna_pixmap_expire(sna);
 }
 
 #ifdef DEBUG_MEMORY
@@ -16545,8 +16577,9 @@ static bool sna_accel_do_debug_memory(struct sna *sna)
 
 static void sna_accel_debug_memory(struct sna *sna)
 {
-	ErrorF("Allocated pixmaps: %d, bo: %d, %ld bytes (CPU bo: %d, %ld bytes)\n",
+	ErrorF("Allocated pixmaps: %d (cached: %d), bo: %d, %ld bytes (CPU bo: %d, %ld bytes)\n",
 	       sna->debug_memory.pixmap_allocs,
+	       sna->debug_memory.pixmap_cached,
 	       sna->kgem.debug_memory.bo_allocs,
 	       (long)sna->kgem.debug_memory.bo_bytes,
 	       sna->debug_memory.cpu_bo_allocs,
@@ -16938,13 +16971,7 @@ void sna_accel_close(struct sna *sna)
 	sna_gradients_close(sna);
 	sna_glyphs_close(sna);
 
-	while (sna->freed_pixmap) {
-		PixmapPtr pixmap = sna->freed_pixmap;
-		sna->freed_pixmap = pixmap->devPrivate.ptr;
-		assert(pixmap->refcnt == 0);
-		free(sna_pixmap(pixmap));
-		FreePixmap(pixmap);
-	}
+	sna_pixmap_expire(sna);
 
 	DeleteCallback(&FlushCallback, sna_accel_flush_callback, sna);
 	RemoveGeneralSocket(sna->kgem.fd);
