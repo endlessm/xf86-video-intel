@@ -228,7 +228,6 @@ static void debug_alloc__bo(struct kgem *kgem, struct kgem_bo *bo)
 	debug_alloc(kgem, bytes(bo));
 }
 #else
-#define debug_alloc(k, b)
 #define debug_alloc__bo(k, b)
 #endif
 
@@ -4696,10 +4695,9 @@ create:
 		bo->pitch = pitch;
 	} else {
 		if (flags & CREATE_EXACT) {
-			if (bo->pitch != pitch || bo->tiling != tiling) {
-				kgem_bo_free(kgem, bo);
-				return NULL;
-			}
+			gem_close(kgem->fd, handle);
+			free(bo);
+			return NULL;
 		}
 	}
 
@@ -5949,8 +5947,8 @@ create_snoopable_buffer(struct kgem *kgem, unsigned alloc)
 				return NULL;
 			}
 
-			debug_alloc(kgem, alloc);
 			__kgem_bo_init(&bo->base, handle, alloc);
+			debug_alloc__bo(kgem, &bo->base);
 			DBG(("%s: created CPU (LLC) handle=%d for buffer, size %d\n",
 			     __FUNCTION__, bo->base.handle, alloc));
 		}
@@ -5985,8 +5983,8 @@ create_snoopable_buffer(struct kgem *kgem, unsigned alloc)
 				return NULL;
 			}
 
-			debug_alloc(kgem, alloc);
 			__kgem_bo_init(&bo->base, handle, alloc);
+			debug_alloc__bo(kgem, &bo->base);
 			DBG(("%s: created CPU handle=%d for buffer, size %d\n",
 			     __FUNCTION__, bo->base.handle, alloc));
 		}
@@ -6029,8 +6027,8 @@ free_caching:
 			return NULL;
 		}
 
-		debug_alloc(kgem, alloc);
 		__kgem_bo_init(&bo->base, handle, alloc);
+		debug_alloc__bo(kgem, &bo->base);
 		DBG(("%s: created snoop handle=%d for buffer\n",
 		     __FUNCTION__, bo->base.handle));
 
@@ -6200,10 +6198,9 @@ struct kgem_bo *kgem_create_buffer(struct kgem *kgem,
 				goto skip_llc;
 			}
 			__kgem_bo_init(&bo->base, handle, alloc);
+			debug_alloc__bo(kgem, &bo->base);
 			DBG(("%s: created LLC handle=%d for buffer\n",
 			     __FUNCTION__, bo->base.handle));
-
-			debug_alloc(kgem, alloc);
 		}
 
 		assert(bo->mmapped);
@@ -6366,7 +6363,7 @@ skip_llc:
 			     __FUNCTION__, handle));
 
 			__kgem_bo_init(&bo->base, handle, alloc);
-			debug_alloc(kgem, alloc * PAGE_SIZE);
+			debug_alloc__bo(kgem, &bo->base);
 		}
 
 		assert(bo->mmapped);

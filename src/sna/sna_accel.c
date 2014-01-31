@@ -3863,6 +3863,10 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 			    kgem_bo_convert_to_gpu(&sna->kgem, priv->cpu_bo)) {
 				assert(!priv->mapped);
 				assert(!IS_STATIC_PTR(priv->ptr));
+#ifdef DEBUG_MEMORY
+				sna->debug_memory.cpu_bo_allocs--;
+				sna->debug_memory.cpu_bo_bytes -= kgem_bo_size(priv->cpu_bo);
+#endif
 				priv->gpu_bo = priv->cpu_bo;
 				priv->cpu_bo = NULL;
 				priv->ptr = NULL;
