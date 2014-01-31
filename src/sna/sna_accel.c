@@ -16545,14 +16545,12 @@ static bool sna_accel_do_debug_memory(struct sna *sna)
 
 static void sna_accel_debug_memory(struct sna *sna)
 {
-	DBG(("Allocated pixmaps: %d\n",
-	     sna->debug_memory.pixmap_allocs));
-	DBG(("Allocated bo: %d, %ld bytes\n",
-	     sna->kgem.debug_memory.bo_allocs,
-	     (long)sna->kgem.debug_memory.bo_bytes));
-	DBG(("Allocated CPU bo: %d, %ld bytes\n",
-	     sna->debug_memory.cpu_bo_allocs,
-	     (long)sna->debug_memory.cpu_bo_bytes));
+	ErrorF("Allocated pixmaps: %d, bo: %d, %ld bytes (CPU bo: %d, %ld bytes)\n",
+	       sna->debug_memory.pixmap_allocs,
+	       sna->kgem.debug_memory.bo_allocs,
+	       (long)sna->kgem.debug_memory.bo_bytes,
+	       sna->debug_memory.cpu_bo_allocs,
+	       (long)sna->debug_memory.cpu_bo_bytes);
 
 #ifdef VALGRIND_DO_ADDED_LEAK_CHECK
 	VG(VALGRIND_DO_ADDED_LEAK_CHECK);
