@@ -2424,17 +2424,11 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 		if (flags & MOVE_WRITE)
 			sna_pixmap_free_gpu(sna, priv);
 
-		goto contains_damage;
-	}
+		if ((flags & MOVE_READ) == 0 &&
+		    priv->cpu_bo && !priv->cpu_bo->flush &&
+		    __kgem_bo_is_busy(&sna->kgem, priv->cpu_bo))
+			sna_pixmap_free_cpu(sna, priv, false);
 
-	if (priv->cpu &&
-	    priv->cpu_damage &&
-	    sna_damage_contains_box__no_reduce(priv->cpu_damage,
-					       &region->extents)) {
-		DBG(("%s: pixmap=%ld CPU damage contains region\n",
-		     __FUNCTION__, pixmap->drawable.serialNumber));
-
-contains_damage:
 		sna_pixmap_unmap(pixmap, priv);
 		assert(priv->mapped == MAPPED_NONE);
 		if (pixmap->devPrivate.ptr == NULL &&
