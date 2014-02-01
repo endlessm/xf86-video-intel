@@ -2412,29 +2412,30 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 	if (sna_damage_is_all(&priv->cpu_damage,
 			      pixmap->drawable.width,
 			      pixmap->drawable.height)) {
+		bool discard_gpu = priv->cpu;
+
 		DBG(("%s: pixmap=%ld all damaged on CPU\n",
 		     __FUNCTION__, pixmap->drawable.serialNumber));
 		assert(!priv->clear);
 
 		sna_damage_destroy(&priv->gpu_damage);
 
-		if (flags & MOVE_WRITE)
-			sna_pixmap_free_gpu(sna, priv);
-
 		if ((flags & MOVE_READ) == 0 &&
 		    priv->cpu_bo && !priv->cpu_bo->flush &&
 		    __kgem_bo_is_busy(&sna->kgem, priv->cpu_bo)) {
 			if (!region_subsumes_pixmap(region, pixmap)) {
-				if (priv->gpu_bo) {
-					sna_damage_subtract(&priv->cpu_damage, region);
-					if (sna_pixmap_move_to_gpu(pixmap, MOVE_READ | MOVE_ASYNC_HINT)) {
-						sna_pixmap_free_cpu(sna, priv, false);
-						sna_damage_add(&priv->cpu_damage, region);
-					}
+				sna_damage_subtract(&priv->cpu_damage, region);
+				if (sna_pixmap_move_to_gpu(pixmap, MOVE_READ | MOVE_ASYNC_HINT)) {
+					sna_pixmap_free_cpu(sna, priv, false);
+					sna_damage_add(&priv->cpu_damage, region);
+					discard_gpu = false;
 				}
 			} else
 				sna_pixmap_free_cpu(sna, priv, false);
 		}
+
+		if (flags & MOVE_WRITE && discard_gpu)
+			sna_pixmap_free_gpu(sna, priv);
 
 		sna_pixmap_unmap(pixmap, priv);
 		assert(priv->mapped == MAPPED_NONE);
