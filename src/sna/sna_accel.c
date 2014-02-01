@@ -3689,7 +3689,7 @@ cpu_fail:
 		goto cpu_fail;
 
 	if (!sna_drawable_move_region_to_cpu(&pixmap->drawable, &region,
-					     (flags & IGNORE_CPU ? MOVE_READ : 0) | MOVE_WRITE | MOVE_ASYNC_HINT)) {
+					     (flags & IGNORE_CPU ? 0 : MOVE_READ) | MOVE_WRITE | MOVE_ASYNC_HINT)) {
 		DBG(("%s: failed to move-to-cpu, fallback\n", __FUNCTION__));
 		goto cpu_fail;
 	}
