@@ -322,7 +322,7 @@ if test "x$GLAMOR" != "xno"; then
 	if test "x$UXA" != "xyes"; then
 		AC_MSG_ERROR([Glamor acceleration requested but UXA is not enabled])
 	fi
-	PKG_CHECK_MODULES(LIBGLAMOR, [glamor >= 0.3.1])
+	PKG_CHECK_MODULES(LIBGLAMOR, [glamor >= 0.6.0])
 	PKG_CHECK_MODULES(LIBGLAMOR_EGL, [glamor-egl])
 	AC_DEFINE(USE_GLAMOR, 1, [Enable glamor acceleration])
 fi

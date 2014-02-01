@@ -52,6 +52,17 @@ intel_glamor_exchange_buffers(struct intel_screen_private *intel,
 	glamor_egl_exchange_buffers(src, dst);
 }
 
+XF86VideoAdaptorPtr intel_glamor_xv_init(ScreenPtr screen, int num_ports)
+{
+	ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
+	intel_screen_private *intel = intel_get_screen_private(scrn);
+
+	if ((intel->uxa_flags & UXA_USE_GLAMOR) == 0)
+		return NULL;
+
+	return glamor_xv_init(screen, num_ports);
+}
+
 Bool
 intel_glamor_create_screen_resources(ScreenPtr screen)
 {
