@@ -2424,6 +2424,9 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 		    priv->cpu_bo && !priv->cpu_bo->flush &&
 		    __kgem_bo_is_busy(&sna->kgem, priv->cpu_bo)) {
 			if (!region_subsumes_pixmap(region, pixmap)) {
+				if (get_drawable_deltas(drawable, pixmap, &dx, &dy))
+					RegionTranslate(region, dx, dy);
+
 				sna_damage_subtract(&priv->cpu_damage, region);
 				if (sna_pixmap_move_to_gpu(pixmap, MOVE_READ | MOVE_ASYNC_HINT)) {
 					sna_pixmap_free_cpu(sna, priv, false);
