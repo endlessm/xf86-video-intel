@@ -2433,6 +2433,9 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 					sna_damage_add(&priv->cpu_damage, region);
 					discard_gpu = false;
 				}
+
+				if (dx | dy)
+					RegionTranslate(region, -dx, -dy);
 			} else
 				sna_pixmap_free_cpu(sna, priv, false);
 		}
