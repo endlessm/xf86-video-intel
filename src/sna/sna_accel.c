@@ -546,9 +546,6 @@ static void __sna_pixmap_free_cpu(struct sna *sna, struct sna_pixmap *priv)
 
 static void sna_pixmap_free_cpu(struct sna *sna, struct sna_pixmap *priv, bool active)
 {
-	assert(priv->cpu_damage == NULL);
-	assert(list_is_empty(&priv->flush_list));
-
 	if (active)
 		return;
 
@@ -2426,8 +2423,20 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 
 		if ((flags & MOVE_READ) == 0 &&
 		    priv->cpu_bo && !priv->cpu_bo->flush &&
-		    __kgem_bo_is_busy(&sna->kgem, priv->cpu_bo))
-			sna_pixmap_free_cpu(sna, priv, false);
+		    __kgem_bo_is_busy(&sna->kgem, priv->cpu_bo)) {
+			bool free_cpu = false;
+
+			if (!region_subsumes_pixmap(region, pixmap)) {
+				if (priv->gpu_bo) {
+					sna_damage_subtract(&priv->cpu_damage, region);
+					free_cpu = sna_pixmap_move_to_gpu(pixmap, MOVE_READ | MOVE_ASYNC_HINT);
+				}
+			} else
+				free_cpu = true;
+
+			if (free_cpu)
+				sna_pixmap_free_cpu(sna, priv, false);
+		}
 
 		sna_pixmap_unmap(pixmap, priv);
 		assert(priv->mapped == MAPPED_NONE);

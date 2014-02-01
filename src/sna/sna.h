@@ -637,6 +637,16 @@ region_subsumes_drawable(RegionPtr region, DrawablePtr drawable)
 }
 
 static inline bool
+region_subsumes_pixmap(RegionPtr region, PixmapPtr pixmap)
+{
+	if (region->data)
+		return false;
+
+	return (region->extents.x2 - region->extents.x1 >= pixmap->drawable.width &&
+		region->extents.y2 - region->extents.y1 >= pixmap->drawable.height);
+}
+
+static inline bool
 region_subsumes_damage(const RegionRec *region, struct sna_damage *damage)
 {
 	const BoxRec *re, *de;
