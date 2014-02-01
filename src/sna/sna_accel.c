@@ -2420,19 +2420,45 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 
 		sna_damage_destroy(&priv->gpu_damage);
 
-		if ((flags & MOVE_READ) == 0 &&
+		if ((flags & (MOVE_READ | MOVE_ASYNC_HINT)) == 0 &&
 		    priv->cpu_bo && !priv->cpu_bo->flush &&
 		    __kgem_bo_is_busy(&sna->kgem, priv->cpu_bo)) {
+			DBG(("%s: active CPU bo replacing\n", __FUNCTION__));
+			assert(!priv->shm);
+			assert(!IS_STATIC_PTR(priv->ptr));
+
 			if (!region_subsumes_pixmap(region, pixmap)) {
+				DBG(("%s: partial replacement\n", __FUNCTION__));
 				if (get_drawable_deltas(drawable, pixmap, &dx, &dy))
 					RegionTranslate(region, dx, dy);
 
-				sna_damage_subtract(&priv->cpu_damage, region);
-				if (sna_pixmap_move_to_gpu(pixmap, MOVE_READ | MOVE_ASYNC_HINT)) {
-					sna_pixmap_free_cpu(sna, priv, false);
-					sna_damage_add(&priv->cpu_damage, region);
-					discard_gpu = false;
+				if (sna->kgem.has_llc &&
+				    sna_pixmap_choose_tiling(pixmap,
+							     DEFAULT_TILING) == I915_TILING_NONE) {
+#ifdef DEBUG_MEMORY
+					sna->debug_memory.cpu_bo_allocs--;
+					sna->debug_memory.cpu_bo_bytes -= kgem_bo_size(priv->cpu_bo);
+#endif
+					DBG(("%s: promoting CPU bo to GPU bo\n", __FUNCTION__));
+					sna_pixmap_free_gpu(sna, priv);
+					priv->gpu_bo = priv->cpu_bo;
+					priv->cpu_bo = NULL;
+					priv->ptr = NULL;
+					pixmap->devPrivate.ptr = NULL;
+
+					sna_damage_destroy(&priv->cpu_damage);
+				} else {
+					DBG(("%s: pushing surrounding damage to GPU bo\n", __FUNCTION__));
+					sna_damage_subtract(&priv->cpu_damage, region);
+					assert(priv->cpu_damage);
+					if (sna_pixmap_move_to_gpu(pixmap, MOVE_READ | MOVE_ASYNC_HINT)) {
+						sna_pixmap_free_cpu(sna, priv, false);
+						if (priv->flush)
+							sna_add_flush_pixmap(sna, priv, priv->gpu_bo);
+						discard_gpu = false;
+					}
 				}
+				sna_damage_add(&priv->cpu_damage, region);
 
 				if (dx | dy)
 					RegionTranslate(region, -dx, -dy);
