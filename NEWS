@@ -1,3 +1,15 @@
+Snapshot 2.99.909 (2013-02-01)
+==============================
+Pass the brown paper bag. Ridiculously stupid bug in last minute coding.
+
+  * Add Xv support using glamor acceleration in addition to adaptors
+    provided by the UXA backend.
+
+  * Fix overeager discarding of CPU damage
+    Regression in 2.99.908 :(
+    https://bugs.freedesktop.org/show_bug.cgi?id=74327
+
+
 Snapshot 2.99.908 (2013-01-31)
 ==============================
 A couple of regressions dashed the hopes that .907 was to be the final
