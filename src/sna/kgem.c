@@ -6743,13 +6743,18 @@ kgem_replace_bo(struct kgem *kgem,
 	return dst;
 }
 
-bool kgem_bo_convert_to_gpu(struct kgem *kgem, struct kgem_bo *bo)
+bool kgem_bo_convert_to_gpu(struct kgem *kgem,
+			    struct kgem_bo *bo,
+			    unsigned flags)
 {
-	DBG(("%s: converting handle=%d from CPU to GPU\n", __FUNCTION__, bo->handle));
+	DBG(("%s: converting handle=%d from CPU to GPU, flags=%x\n", __FUNCTION__, bo->handle));
 	assert(bo->tiling == I915_TILING_NONE);
 
 	if (kgem->has_llc)
 		return true;
+
+	if (flags & MOVE_ASYNC_HINT && __kgem_bo_is_busy(kgem, bo))
+		return false;
 
 	assert(bo->snoop);
 
