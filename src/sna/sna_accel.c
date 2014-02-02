@@ -2432,7 +2432,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 				if (get_drawable_deltas(drawable, pixmap, &dx, &dy))
 					RegionTranslate(region, dx, dy);
 
-				if (sna->kgem.has_llc &&
+				if (sna->kgem.has_llc && !priv->pinned &&
 				    sna_pixmap_choose_tiling(pixmap,
 							     DEFAULT_TILING) == I915_TILING_NONE) {
 #ifdef DEBUG_MEMORY
@@ -2440,13 +2440,17 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 					sna->debug_memory.cpu_bo_bytes -= kgem_bo_size(priv->cpu_bo);
 #endif
 					DBG(("%s: promoting CPU bo to GPU bo\n", __FUNCTION__));
-					sna_pixmap_free_gpu(sna, priv);
+					if (priv->gpu_bo)
+						sna_pixmap_free_gpu(sna, priv);
 					priv->gpu_bo = priv->cpu_bo;
 					priv->cpu_bo = NULL;
 					priv->ptr = NULL;
 					pixmap->devPrivate.ptr = NULL;
 
-					sna_damage_destroy(&priv->cpu_damage);
+					priv->gpu_damage = priv->cpu_damage;
+					priv->cpu_damage = NULL;
+
+					discard_gpu = false;
 				} else {
 					DBG(("%s: pushing surrounding damage to GPU bo\n", __FUNCTION__));
 					sna_damage_subtract(&priv->cpu_damage, region);
@@ -2456,6 +2460,12 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 						if (priv->flush)
 							sna_add_flush_pixmap(sna, priv, priv->gpu_bo);
 						discard_gpu = false;
+
+						assert(priv->cpu_damage == NULL);
+						sna_damage_all(&priv->gpu_damage,
+							       pixmap->drawable.width,
+							       pixmap->drawable.height);
+						sna_damage_subtract(&priv->gpu_damage, region);
 					}
 				}
 				sna_damage_add(&priv->cpu_damage, region);
@@ -3959,9 +3969,9 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 	if (priv->cpu_damage == NULL)
 		goto done;
 
-	if (DAMAGE_IS_ALL(priv->cpu_damage) &&
+	if (DAMAGE_IS_ALL(priv->cpu_damage) && priv->cpu_bo &&
+	    !priv->pinned && !priv->shm &&
 	    priv->gpu_bo->tiling == I915_TILING_NONE &&
-	    priv->cpu_bo && !priv->shm &&
 	    kgem_bo_convert_to_gpu(&sna->kgem, priv->cpu_bo, flags)) {
 		assert(!priv->mapped);
 		assert(!IS_STATIC_PTR(priv->ptr));
