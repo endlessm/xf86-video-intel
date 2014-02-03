@@ -575,8 +575,10 @@ inline static void
 gen4_emit_pipe_flush(struct sna *sna)
 {
 #if 1
-	OUT_BATCH(GEN4_PIPE_CONTROL | (4 - 2));
-	OUT_BATCH(GEN4_PIPE_CONTROL_WC_FLUSH);
+	OUT_BATCH(GEN4_PIPE_CONTROL |
+		  GEN4_PIPE_CONTROL_WC_FLUSH |
+		  (4 - 2));
+	OUT_BATCH(0);
 	OUT_BATCH(0);
 	OUT_BATCH(0);
 #else
@@ -600,14 +602,13 @@ gen4_emit_pipe_break(struct sna *sna)
 inline static void
 gen4_emit_pipe_invalidate(struct sna *sna)
 {
-#if 0
-	OUT_BATCH(GEN4_PIPE_CONTROL | (4 - 2));
-	OUT_BATCH(GEN4_PIPE_CONTROL_WC_FLUSH | GEN4_PIPE_CONTROL_TC_FLUSH);
+	OUT_BATCH(GEN4_PIPE_CONTROL |
+		  GEN4_PIPE_CONTROL_WC_FLUSH |
+		  (sna->kgem.gen >= 045 ? GEN4_PIPE_CONTROL_TC_FLUSH : 0) |
+		  (4 - 2));
 	OUT_BATCH(0);
 	OUT_BATCH(0);
-#else
-	OUT_BATCH(MI_FLUSH);
-#endif
+	OUT_BATCH(0);
 }
 
 static void gen4_emit_primitive(struct sna *sna)
