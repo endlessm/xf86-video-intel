@@ -506,12 +506,13 @@ static void kgem_bo_retire(struct kgem *kgem, struct kgem_bo *bo)
 	if (bo->rq) {
 		__kgem_bo_clear_busy(bo);
 		kgem_retire(kgem);
+		assert_bo_retired(bo);
 	} else {
+		assert(bo->exec == NULL);
+		assert(list_is_empty(&bo->request));
 		assert(!bo->needs_flush);
 		ASSERT_IDLE(kgem, bo->handle);
 	}
-
-	assert_bo_retired(bo);
 }
 
 static void kgem_bo_maybe_retire(struct kgem *kgem, struct kgem_bo *bo)
