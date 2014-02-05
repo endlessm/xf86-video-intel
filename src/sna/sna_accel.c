@@ -1975,7 +1975,7 @@ _sna_pixmap_move_to_cpu(PixmapPtr pixmap, unsigned int flags)
 		goto done;
 	}
 
-	if (priv->move_to_gpu && !priv->move_to_gpu(sna, priv, MOVE_READ)) {
+	if (priv->move_to_gpu && !priv->move_to_gpu(sna, priv, priv->gpu_damage ? flags & MOVE_READ: 0)) {
 		DBG(("%s: move-to-gpu override failed\n", __FUNCTION__));
 		return false;
 	}
