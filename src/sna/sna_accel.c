@@ -11955,8 +11955,9 @@ sna_poly_fill_rect_tiled_blt(DrawablePtr drawable,
 	int tile_width, tile_height;
 	int16_t dx, dy;
 
-	DBG(("%s x %d [(%d, %d)x(%d, %d)...]\n",
-	     __FUNCTION__, n, rect->x, rect->y, rect->width, rect->height));
+	DBG(("%s x %d [(%d, %d)x(%d, %d)...], clipped? %d\n",
+	     __FUNCTION__, n, rect->x, rect->y, rect->width, rect->height,
+	     clipped));
 
 	tile_width = tile->drawable.width;
 	tile_height = tile->drawable.height;
@@ -12014,6 +12015,7 @@ sna_poly_fill_rect_tiled_blt(DrawablePtr drawable,
 	}
 
 	get_drawable_deltas(drawable, pixmap, &dx, &dy);
+	DBG(("%s: drawable offset into pixmap = (%d, %d)\n", __FUNCTION__, dx, dy));
 	if (!clipped) {
 		dx += drawable->x;
 		dy += drawable->y;
@@ -12070,6 +12072,8 @@ sna_poly_fill_rect_tiled_blt(DrawablePtr drawable,
 
 		if (clip.data == NULL) {
 			const BoxRec *box = &clip.extents;
+			DBG(("%s: single clip box [(%d, %d), (%d, %d)]",
+			     __FUNCTION__, box->x1, box->y1, box->x2, box->y2));
 			while (n--) {
 				BoxRec r;
 
@@ -12078,6 +12082,13 @@ sna_poly_fill_rect_tiled_blt(DrawablePtr drawable,
 				r.x2 = bound(r.x1, rect->width);
 				r.y2 = bound(r.y1, rect->height);
 				rect++;
+
+				DBG(("%s: rectangle [(%d, %d), (%d, %d)]\n",
+				     __FUNCTION__, r.x1, r.y1, r.x2, r.y2));
+				assert(r.x1 + dx >= 0);
+				assert(r.y1 + dy >= 0);
+				assert(r.x2 + dx <= pixmap->drawable.width);
+				assert(r.y2 + dy <= pixmap->drawable.height);
 
 				if (box_intersect(&r, box)) {
 					int height = r.y2 - r.y1;
@@ -12140,11 +12151,23 @@ sna_poly_fill_rect_tiled_blt(DrawablePtr drawable,
 				region.extents.y2 = bound(region.extents.y1, rect->height);
 				rect++;
 
+				DBG(("%s: rectangle [(%d, %d), (%d, %d)]\n",
+				     __FUNCTION__,
+				     region.extents.x1,
+				     region.extents.y1,
+				     region.extents.x2,
+				     region.extents.y2));
+				assert(region.extents.x1 + dx >= 0);
+				assert(region.extents.y1 + dy >= 0);
+				assert(region.extents.x2 + dx <= pixmap->drawable.width);
+				assert(region.extents.y2 + dy <= pixmap->drawable.height);
+
 				region.data = NULL;
 				RegionIntersect(&region, &region, &clip);
 
 				nbox = RegionNumRects(&region);
 				box = RegionRects(&region);
+				DBG(("%s: split into %d boxes after clipping\n", __FUNCTION__, nbox));
 				while (nbox--) {
 					int height = box->y2 - box->y1;
 					int dst_y = box->y1;
