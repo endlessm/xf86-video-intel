@@ -870,9 +870,10 @@ create_pixmap_hdr(struct sna *sna, ScreenPtr screen,
 		assert(pixmap->drawable.type == DRAWABLE_PIXMAP);
 		assert(pixmap->drawable.class == 0);
 		assert(pixmap->drawable.pScreen == screen);
-		assert(pixmap->drawable.id == 0);
 		assert(pixmap->drawable.x == 0);
 		assert(pixmap->drawable.y == 0);
+
+		pixmap->drawable.id = 0;
 
 		pixmap->drawable.depth = depth;
 		pixmap->drawable.bitsPerPixel = bits_per_pixel(depth);
