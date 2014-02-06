@@ -11389,6 +11389,8 @@ sna_pixmap_get_source_bo(PixmapPtr pixmap)
 {
 	struct sna_pixmap *priv = sna_pixmap(pixmap);
 
+	DBG(("%s(pixmap=%ld)\n", __FUNCTION__, pixmap->drawable.serialNumber));
+
 	if (priv == NULL) {
 		struct kgem_bo *upload;
 		struct sna *sna = to_sna_from_pixmap(pixmap);
@@ -11988,7 +11990,8 @@ sna_poly_fill_rect_tiled_blt(DrawablePtr drawable,
 	}
 
 	get_drawable_deltas(drawable, pixmap, &dx, &dy);
-	DBG(("%s: drawable offset into pixmap = (%d, %d)\n", __FUNCTION__, dx, dy));
+	DBG(("%s: drawable offset into pixmap(%ld) = (%d, %d)\n",
+	     __FUNCTION__, pixmap->drawable.serialNumber, dx, dy));
 	if (!clipped) {
 		dx += drawable->x;
 		dy += drawable->y;
