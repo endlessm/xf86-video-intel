@@ -846,18 +846,56 @@ __pop_freed_pixmap(struct sna *sna)
 	return pixmap;
 }
 
-static PixmapPtr
-create_pixmap_hdr(struct sna *sna, int usage)
+inline static PixmapPtr
+create_pixmap_hdr(struct sna *sna, ScreenPtr screen,
+		  int width, int height, int depth, int usage,
+		  struct sna_pixmap **priv)
 {
-	PixmapPtr pixmap = __pop_freed_pixmap(sna);
+	PixmapPtr pixmap;
 
-	pixmap->usage_hint = usage;
-	pixmap->refcnt = 1;
-	pixmap->drawable.serialNumber = NEXT_SERIAL_NUMBER;
+	if (sna->freed_pixmap == NULL) {
+		pixmap = create_pixmap(sna, screen, 0, 0, depth, usage);
+		if (pixmap == NullPixmap)
+			return NullPixmap;
+
+		*priv = sna_pixmap_attach(pixmap);
+		if (!*priv) {
+			FreePixmap(pixmap);
+			return NullPixmap;
+		}
+	} else {
+		pixmap = __pop_freed_pixmap(sna);
+		*priv = _sna_pixmap_reset(pixmap);
+
+		assert(pixmap->drawable.type == DRAWABLE_PIXMAP);
+		assert(pixmap->drawable.class == 0);
+		assert(pixmap->drawable.pScreen == screen);
+		assert(pixmap->drawable.id == 0);
+		assert(pixmap->drawable.x == 0);
+		assert(pixmap->drawable.y == 0);
+
+		pixmap->drawable.depth = depth;
+		pixmap->drawable.bitsPerPixel = bits_per_pixel(depth);
+		pixmap->drawable.serialNumber = NEXT_SERIAL_NUMBER;
+
+		pixmap->devKind = 0;
+		pixmap->devPrivate.ptr = NULL;
+
+#ifdef COMPOSITE
+		pixmap->screen_x = 0;
+		pixmap->screen_y = 0;
+#endif
 
 #if DEBUG_MEMORY
-	sna->debug_memory.pixmap_allocs++;
+		sna->debug_memory.pixmap_allocs++;
 #endif
+
+		pixmap->refcnt = 1;
+	}
+
+	pixmap->drawable.width = width;
+	pixmap->drawable.height = height;
+	pixmap->usage_hint = usage;
 
 	return pixmap;
 }
@@ -891,31 +929,9 @@ fallback:
 		return pixmap;
 	}
 
-	if (sna->freed_pixmap) {
-		pixmap = create_pixmap_hdr(sna, 0);
-		priv = _sna_pixmap_reset(pixmap);
-	} else {
-		pixmap = create_pixmap(sna, screen, 0, 0, depth, 0);
-		if (pixmap == NullPixmap)
-			return NullPixmap;
-
-		priv = sna_pixmap_attach(pixmap);
-		if (!priv) {
-			FreePixmap(pixmap);
-			return NullPixmap;
-		}
-	}
-
-	pixmap->drawable.width = width;
-	pixmap->drawable.height = height;
-	pixmap->drawable.depth = depth;
-	pixmap->drawable.bitsPerPixel = bpp;
-
-	DBG(("%s: serial=%ld, %dx%d\n",
-	     __FUNCTION__,
-	     pixmap->drawable.serialNumber,
-	     pixmap->drawable.width,
-	     pixmap->drawable.height));
+	pixmap = create_pixmap_hdr(sna, screen, width, height, depth, 0, &priv);
+	if (pixmap == NullPixmap)
+		goto fallback;
 
 	priv->cpu_bo = kgem_create_map(&sna->kgem, addr, pitch*height, false);
 	if (priv->cpu_bo == NULL) {
@@ -940,6 +956,13 @@ fallback:
 
 	pixmap->devKind = pitch;
 	pixmap->devPrivate.ptr = addr;
+
+	DBG(("%s: serial=%ld, %dx%d, usage=%d\n",
+	     __FUNCTION__,
+	     pixmap->drawable.serialNumber,
+	     pixmap->drawable.width,
+	     pixmap->drawable.height,
+	     pixmap->usage_hint));
 	return pixmap;
 }
 
@@ -978,34 +1001,9 @@ sna_pixmap_create_scratch(ScreenPtr screen,
 	tiling = kgem_choose_tiling(&sna->kgem, tiling, width, height, bpp);
 
 	/* you promise never to access this via the cpu... */
-	if (sna->freed_pixmap) {
-		pixmap = create_pixmap_hdr(sna, CREATE_PIXMAP_USAGE_SCRATCH);
-		priv = _sna_pixmap_reset(pixmap);
-	} else {
-		pixmap = create_pixmap(sna, screen, 0, 0, depth,
-				       CREATE_PIXMAP_USAGE_SCRATCH);
-		if (pixmap == NullPixmap)
-			return NullPixmap;
-
-		priv = sna_pixmap_attach(pixmap);
-		if (!priv) {
-			FreePixmap(pixmap);
-			return NullPixmap;
-		}
-	}
-
-	pixmap->drawable.width = width;
-	pixmap->drawable.height = height;
-	pixmap->drawable.depth = depth;
-	pixmap->drawable.bitsPerPixel = bpp;
-	pixmap->devPrivate.ptr = NULL;
-
-	DBG(("%s: serial=%ld, usage=%d, %dx%d\n",
-	     __FUNCTION__,
-	     pixmap->drawable.serialNumber,
-	     pixmap->usage_hint,
-	     pixmap->drawable.width,
-	     pixmap->drawable.height));
+	pixmap = create_pixmap_hdr(sna, screen, width, height, depth, CREATE_PIXMAP_USAGE_SCRATCH, &priv);
+	if (pixmap == NullPixmap)
+		return NullPixmap;
 
 	priv->stride = PixmapBytePad(width, depth);
 	priv->header = true;
@@ -1023,7 +1021,14 @@ sna_pixmap_create_scratch(ScreenPtr screen,
 
 	assert(to_sna_from_pixmap(pixmap) == sna);
 	assert(pixmap->drawable.pScreen == screen);
+	assert(pixmap->refcnt == 1);
 
+	DBG(("%s: serial=%ld, %dx%d, usage=%d\n",
+	     __FUNCTION__,
+	     pixmap->drawable.serialNumber,
+	     pixmap->drawable.width,
+	     pixmap->drawable.height,
+	     pixmap->usage_hint));
 	return pixmap;
 }
 
@@ -1316,34 +1321,9 @@ static PixmapPtr sna_create_pixmap(ScreenPtr screen,
 		DBG(("%s: creating GPU pixmap %dx%d, stride=%d, flags=%x\n",
 		     __FUNCTION__, width, height, pad, flags));
 
-		if (sna->freed_pixmap) {
-			pixmap = create_pixmap_hdr(sna, CREATE_PIXMAP_USAGE_SCRATCH);
-			priv = _sna_pixmap_reset(pixmap);
-		} else {
-			pixmap = create_pixmap(sna, screen, 0, 0, depth, usage);
-			if (pixmap == NullPixmap)
-				return NullPixmap;
-
-			priv = sna_pixmap_attach(pixmap);
-			if (priv == NULL) {
-				free(pixmap);
-				goto fallback;
-			}
-		}
-
-		DBG(("%s: serial=%ld, usage=%d, %dx%d\n",
-		     __FUNCTION__,
-		     pixmap->drawable.serialNumber,
-		     pixmap->usage_hint,
-		     pixmap->drawable.width,
-		     pixmap->drawable.height));
-
-		pixmap->drawable.width = width;
-		pixmap->drawable.height = height;
-		pixmap->drawable.depth = depth;
-		pixmap->drawable.bitsPerPixel = bits_per_pixel(depth);
-		pixmap->devKind = pad;
-		pixmap->devPrivate.ptr = NULL;
+		pixmap = create_pixmap_hdr(sna, screen, width, height, depth, usage, &priv);
+		if (pixmap == NullPixmap)
+			return NullPixmap;
 
 		priv->header = true;
 		ptr = NULL;
@@ -1355,7 +1335,14 @@ static PixmapPtr sna_create_pixmap(ScreenPtr screen,
 
 	assert(to_sna_from_pixmap(pixmap) == sna);
 	assert(pixmap->drawable.pScreen == screen);
+	assert(pixmap->refcnt == 1);
 
+	DBG(("%s: serial=%ld, %dx%d, usage=%d\n",
+	     __FUNCTION__,
+	     pixmap->drawable.serialNumber,
+	     pixmap->drawable.width,
+	     pixmap->drawable.height,
+	     pixmap->usage_hint));
 	return pixmap;
 
 fallback:
@@ -3759,26 +3746,11 @@ sna_pixmap_create_upload(ScreenPtr screen,
 		return create_pixmap(sna, screen, width, height, depth,
 				     CREATE_PIXMAP_USAGE_SCRATCH);
 
-	if (sna->freed_pixmap) {
-		pixmap = create_pixmap_hdr(sna, CREATE_PIXMAP_USAGE_SCRATCH);
-		priv = _sna_pixmap_reset(pixmap);
-	} else {
-		pixmap = create_pixmap(sna, screen, 0, 0, depth,
-				       CREATE_PIXMAP_USAGE_SCRATCH);
-		if (!pixmap)
-			return NullPixmap;
-
-		priv = sna_pixmap_attach(pixmap);
-		if (!priv) {
-			FreePixmap(pixmap);
-			return NullPixmap;
-		}
-	}
-
-	pixmap->drawable.width = width;
-	pixmap->drawable.height = height;
-	pixmap->drawable.depth = depth;
-	pixmap->drawable.bitsPerPixel = bits_per_pixel(depth);
+	pixmap = create_pixmap_hdr(sna, screen,
+				   width, height, depth, CREATE_PIXMAP_USAGE_SCRATCH,
+				   &priv);
+	if (!pixmap)
+		return NullPixmap;
 
 	priv->gpu_bo = kgem_create_buffer_2d(&sna->kgem,
 					     width, height,
@@ -3807,11 +3779,12 @@ sna_pixmap_create_upload(ScreenPtr screen,
 	if (!kgem_buffer_is_inplace(priv->gpu_bo))
 		pixmap->usage_hint = 1;
 
-	DBG(("%s: serial=%ld, usage=%d\n",
+	DBG(("%s: serial=%ld, %dx%d, usage=%d\n",
 	     __FUNCTION__,
 	     pixmap->drawable.serialNumber,
+	     pixmap->drawable.width,
+	     pixmap->drawable.height,
 	     pixmap->usage_hint));
-
 	return pixmap;
 }
 
