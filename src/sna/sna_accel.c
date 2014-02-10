@@ -2688,7 +2688,8 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 			box++;
 		} while (--n);
 
-		if (region->extents.x2 - region->extents.x1 > 1 ||
+		if (flags & MOVE_WRITE ||
+		    region->extents.x2 - region->extents.x1 > 1 ||
 		    region->extents.y2 - region->extents.y1 > 1) {
 			sna_damage_subtract(&priv->gpu_damage, region);
 			priv->clear = false;
