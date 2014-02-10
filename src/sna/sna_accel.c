@@ -2440,6 +2440,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 					priv->gpu_damage = priv->cpu_damage;
 					priv->cpu_damage = NULL;
 
+					sna_damage_subtract(&priv->gpu_damage, region);
 					discard_gpu = false;
 				} else {
 					DBG(("%s: pushing surrounding damage to GPU bo\n", __FUNCTION__));
@@ -2449,13 +2450,13 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 						sna_pixmap_free_cpu(sna, priv, false);
 						if (priv->flush)
 							sna_add_flush_pixmap(sna, priv, priv->gpu_bo);
-						discard_gpu = false;
 
 						assert(priv->cpu_damage == NULL);
 						sna_damage_all(&priv->gpu_damage,
 							       pixmap->drawable.width,
 							       pixmap->drawable.height);
 						sna_damage_subtract(&priv->gpu_damage, region);
+						discard_gpu = false;
 					}
 				}
 				sna_damage_add(&priv->cpu_damage, region);
