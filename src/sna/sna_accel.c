@@ -1960,6 +1960,7 @@ _sna_pixmap_move_to_cpu(PixmapPtr pixmap, unsigned int flags)
 	if (DAMAGE_IS_ALL(priv->cpu_damage)) {
 		DBG(("%s: CPU all-damaged\n", __FUNCTION__));
 		assert(priv->gpu_damage == NULL || DAMAGE_IS_ALL(priv->gpu_damage));
+		assert(priv->gpu_damage == NULL || (flags & MOVE_WRITE) == 0);
 		goto done;
 	}
 
@@ -2391,6 +2392,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 	if (flags & MOVE_WRITE && priv->gpu_bo && priv->gpu_bo->proxy) {
 		DBG(("%s: discarding cached upload buffer\n", __FUNCTION__));
 		assert(DAMAGE_IS_ALL(priv->cpu_damage));
+		assert(priv->gpu_damage == NULL);
 		assert(!priv->pinned);
 		assert(!priv->mapped);
 		kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
@@ -2664,11 +2666,20 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 	}
 
 	assert(priv->gpu_bo->proxy == NULL);
+
+	if ((flags & MOVE_READ) == 0) {
+		assert(flags & MOVE_WRITE);
+		sna_damage_subtract(&priv->gpu_damage, region);
+		priv->clear = false;
+		goto done;
+	}
+
 	if (priv->clear) {
 		int n = RegionNumRects(region);
 		BoxPtr box = RegionRects(region);
 
 		assert(DAMAGE_IS_ALL(priv->gpu_damage));
+		assert(priv->cpu_damage == NULL);
 
 		DBG(("%s: pending clear, doing partial fill\n", __FUNCTION__));
 		if (priv->cpu_bo) {
@@ -2694,12 +2705,6 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 			sna_damage_subtract(&priv->gpu_damage, region);
 			priv->clear = false;
 		}
-		goto done;
-	}
-
-	if ((flags & MOVE_READ) == 0) {
-		assert(flags & MOVE_WRITE);
-		sna_damage_subtract(&priv->gpu_damage, region);
 		goto done;
 	}
 
