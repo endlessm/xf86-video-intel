@@ -328,6 +328,7 @@ if test "x$GLAMOR" != "xno"; then
 fi
 
 PKG_CHECK_MODULES(XORG, [xorg-server >= $required_xorg_server_version xproto fontsproto pixman-1 >= $required_pixman_version $REQUIRED_MODULES])
+ABI_VERSION=`$PKG_CONFIG --variable=abi_videodrv xorg-server`
 
 if test "x$ONLY_UMS" = "xyes"; then
 	UMS="yes"
@@ -726,6 +727,7 @@ fi
 
 echo ""
 echo "AC_PACKAGE_STRING will be compiled with:"
+echo "  Xorg Video ABI version: $ABI_VERSION"
 echo "  Acceleration backends:$accel_msg"
 echo "  Additional debugging support?$debug_msg"
 echo "  Support for Kernel Mode Setting? $KMS"
