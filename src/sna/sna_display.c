@@ -3780,6 +3780,7 @@ sna_covering_crtc(struct sna *sna, const BoxRec *box, xf86CrtcPtr desired)
 }
 
 #define MI_LOAD_REGISTER_IMM			(0x22<<23)
+#define MI_STORE_REGISTER_MEM			(0x24<<23 | 1<<22)
 
 static bool sna_emit_wait_for_scanline_hsw(struct sna *sna,
 					   xf86CrtcPtr crtc,
@@ -3965,6 +3966,7 @@ static bool sna_emit_wait_for_scanline_gen6(struct sna *sna,
 	assert(y1 >= 0);
 	assert(y2 > y1);
 	assert(sna->kgem.mode == KGEM_RENDER);
+	assert(pipe == 0 || pipe == 1);
 
 	/* Always program one less than the desired value */
 	if (--y1 < 0)
@@ -3980,18 +3982,32 @@ static bool sna_emit_wait_for_scanline_gen6(struct sna *sna,
 	event = 1 << (3*full_height + pipe*8);
 
 	b = kgem_get_batch(&sna->kgem);
-	sna->kgem.nbatch += 10;
+
+	/* Both the LRI and WAIT_FOR_EVENT must be in the same cacheline */
+	if (((sna->kgem.nbatch + 6) >> 4) != (sna->kgem.nbatch + 9) >> 4) {
+		int dw = sna->kgem.nbatch + 6;
+		dw = ALIGN(dw, 16) - dw;
+		while (dw--)
+			*b++ = MI_NOOP;
+	}
 
 	b[0] = MI_LOAD_REGISTER_IMM | 1;
 	b[1] = 0x44050; /* DERRMR */
 	b[2] = ~event;
-	b[3] = MI_LOAD_REGISTER_IMM | 1;
-	b[4] = 0x4f100; /* magic */
-	b[5] = (1 << 31) | (1 << 30) | pipe << 29 | (y1 << 16) | y2;
-	b[6] = MI_WAIT_FOR_EVENT | event;
-	b[7] = MI_LOAD_REGISTER_IMM | 1;
-	b[8] = 0x44050; /* DERRMR */
-	b[9] = ~0;
+	b[3] = MI_STORE_REGISTER_MEM | 1;
+	b[4] = 0x44050; /* DERRMR */
+	b[5] = kgem_add_reloc(&sna->kgem,
+			      &b[5] - sna->kgem.batch, NULL,
+			      I915_GEM_DOMAIN_INSTRUCTION << 16, 0);
+	b[6] = MI_LOAD_REGISTER_IMM | 1;
+	b[7] = 0x4f100; /* magic */
+	b[8] = (1 << 31) | (1 << 30) | pipe << 29 | (y1 << 16) | y2;
+	b[9] = MI_WAIT_FOR_EVENT | event;
+	b[10] = MI_LOAD_REGISTER_IMM | 1;
+	b[11] = 0x44050; /* DERRMR */
+	b[12] = ~0;
+
+	sna->kgem.nbatch = b - sna->kgem.batch + 13;
 
 	sna->kgem.batch_flags |= I915_EXEC_SECURE;
 	return true;
