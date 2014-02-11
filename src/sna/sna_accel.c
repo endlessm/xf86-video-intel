@@ -1964,11 +1964,6 @@ _sna_pixmap_move_to_cpu(PixmapPtr pixmap, unsigned int flags)
 		goto done;
 	}
 
-	if (priv->move_to_gpu && !priv->move_to_gpu(sna, priv, priv->gpu_damage ? flags & MOVE_READ: 0)) {
-		DBG(("%s: move-to-gpu override failed\n", __FUNCTION__));
-		return false;
-	}
-
 	if (USE_INPLACE && (flags & MOVE_READ) == 0 && !(priv->cow || priv->move_to_gpu)) {
 		assert(flags & MOVE_WRITE);
 		DBG(("%s: no readbck, discarding gpu damage [%d], pending clear[%d]\n",
@@ -2139,67 +2134,80 @@ skip_inplace_map:
 	assert(priv->mapped == MAPPED_NONE);
 	assert(pixmap->devPrivate.ptr == PTR(priv->ptr));
 
-	if (priv->clear) {
-		DBG(("%s: applying clear [%08x] size=%dx%d, stride=%d (total=%d)\n",
-		     __FUNCTION__, priv->clear_color, pixmap->drawable.width, pixmap->drawable.height,
-		     pixmap->devKind, pixmap->devKind * pixmap->drawable.height));
+	if (flags & MOVE_READ) {
+		if (priv->clear) {
+			DBG(("%s: applying clear [%08x] size=%dx%d, stride=%d (total=%d)\n",
+			     __FUNCTION__, priv->clear_color, pixmap->drawable.width, pixmap->drawable.height,
+			     pixmap->devKind, pixmap->devKind * pixmap->drawable.height));
 
-		if (priv->cpu_bo) {
-			DBG(("%s: syncing CPU bo\n", __FUNCTION__));
-			kgem_bo_sync__cpu(&sna->kgem, priv->cpu_bo);
-			assert(pixmap->devPrivate.ptr == MAP(priv->cpu_bo->map__cpu));
+			if (priv->cpu_bo) {
+				DBG(("%s: syncing CPU bo\n", __FUNCTION__));
+				kgem_bo_sync__cpu(&sna->kgem, priv->cpu_bo);
+				assert(pixmap->devPrivate.ptr == MAP(priv->cpu_bo->map__cpu));
+			}
+
+			if (priv->clear_color == 0 ||
+			    pixmap->drawable.bitsPerPixel == 8 ||
+			    priv->clear_color == (1 << pixmap->drawable.depth) - 1) {
+				memset(pixmap->devPrivate.ptr, priv->clear_color,
+				       (size_t)pixmap->devKind * pixmap->drawable.height);
+			} else {
+				pixman_fill(pixmap->devPrivate.ptr,
+					    pixmap->devKind/sizeof(uint32_t),
+					    pixmap->drawable.bitsPerPixel,
+					    0, 0,
+					    pixmap->drawable.width,
+					    pixmap->drawable.height,
+					    priv->clear_color);
+			}
+
+			sna_damage_all(&priv->cpu_damage,
+				       pixmap->drawable.width,
+				       pixmap->drawable.height);
+			sna_pixmap_free_gpu(sna, priv);
+			assert(priv->gpu_damage == NULL);
+			assert(priv->clear == false);
 		}
 
-		if (priv->clear_color == 0 ||
-		    pixmap->drawable.bitsPerPixel == 8 ||
-		    priv->clear_color == (1 << pixmap->drawable.depth) - 1) {
-			memset(pixmap->devPrivate.ptr, priv->clear_color,
-			       (size_t)pixmap->devKind * pixmap->drawable.height);
-		} else {
-			pixman_fill(pixmap->devPrivate.ptr,
-				    pixmap->devKind/sizeof(uint32_t),
-				    pixmap->drawable.bitsPerPixel,
-				    0, 0,
-				    pixmap->drawable.width,
-				    pixmap->drawable.height,
-				    priv->clear_color);
-		}
+		if (priv->gpu_damage) {
+			BoxPtr box;
+			int n;
 
-		sna_damage_all(&priv->cpu_damage,
-			       pixmap->drawable.width,
-			       pixmap->drawable.height);
+			DBG(("%s: flushing GPU damage\n", __FUNCTION__));
+			assert(priv->gpu_bo);
+
+			n = sna_damage_get_boxes(priv->gpu_damage, &box);
+			if (n) {
+				bool ok = false;
+
+				if (priv->move_to_gpu && !priv->move_to_gpu(sna, priv, MOVE_READ)) {
+					DBG(("%s: move-to-gpu override failed\n", __FUNCTION__));
+					return false;
+				}
+
+
+				if (use_cpu_bo_for_download(sna, priv, n, box)) {
+					DBG(("%s: using CPU bo for download from GPU\n", __FUNCTION__));
+					ok = sna->render.copy_boxes(sna, GXcopy,
+								    pixmap, priv->gpu_bo, 0, 0,
+								    pixmap, priv->cpu_bo, 0, 0,
+								    box, n, COPY_LAST);
+				}
+				if (!ok) {
+					assert(has_coherent_ptr(sna, sna_pixmap(pixmap), MOVE_READ));
+					sna_read_boxes(sna, pixmap, priv->gpu_bo,
+						       box, n);
+				}
+			}
+
+			__sna_damage_destroy(DAMAGE_PTR(priv->gpu_damage));
+			priv->gpu_damage = NULL;
+		}
+	} else {
+		assert(flags & MOVE_WRITE);
 		sna_pixmap_free_gpu(sna, priv);
 		assert(priv->gpu_damage == NULL);
 		assert(priv->clear == false);
-	}
-
-	if (priv->gpu_damage) {
-		BoxPtr box;
-		int n;
-
-		DBG(("%s: flushing GPU damage\n", __FUNCTION__));
-		assert(priv->gpu_bo);
-
-		n = sna_damage_get_boxes(priv->gpu_damage, &box);
-		if (n) {
-			bool ok = false;
-
-			if (use_cpu_bo_for_download(sna, priv, n, box)) {
-				DBG(("%s: using CPU bo for download from GPU\n", __FUNCTION__));
-				ok = sna->render.copy_boxes(sna, GXcopy,
-							    pixmap, priv->gpu_bo, 0, 0,
-							    pixmap, priv->cpu_bo, 0, 0,
-							    box, n, COPY_LAST);
-			}
-			if (!ok) {
-				assert(has_coherent_ptr(sna, sna_pixmap(pixmap), MOVE_READ));
-				sna_read_boxes(sna, pixmap, priv->gpu_bo,
-					       box, n);
-			}
-		}
-
-		__sna_damage_destroy(DAMAGE_PTR(priv->gpu_damage));
-		priv->gpu_damage = NULL;
 	}
 
 	if (flags & MOVE_WRITE || priv->create & KGEM_CAN_CREATE_LARGE) {
@@ -2364,7 +2372,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 	struct sna_pixmap *priv;
 	int16_t dx, dy;
 
-	DBG(("%s(pixmap=%ld (%dx%d), [(%d, %d), (%d, %d)], flags=%d)\n",
+	DBG(("%s(pixmap=%ld (%dx%d), [(%d, %d), (%d, %d)], flags=%x)\n",
 	     __FUNCTION__, pixmap->drawable.serialNumber,
 	     pixmap->drawable.width, pixmap->drawable.height,
 	     RegionExtents(region)->x1, RegionExtents(region)->y1,
