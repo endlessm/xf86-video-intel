@@ -2115,7 +2115,8 @@ static int last_display_add_clones__randr(struct context *ctx)
 
 	display_init_randr_hpd(display);
 
-	res = _XRRGetScreenResourcesCurrent(display->dpy, display->root);
+	/* Force a probe of outputs on initial connection */
+	res = XRRGetScreenResources(display->dpy, display->root);
 	if (res == NULL)
 		return -ENOMEM;
 
