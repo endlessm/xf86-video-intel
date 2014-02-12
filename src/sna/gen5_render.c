@@ -1049,7 +1049,7 @@ gen5_emit_state(struct sna *sna,
 	}
 	gen5_emit_vertex_elements(sna, op);
 
-	if (kgem_bo_is_dirty(op->src.bo) || kgem_bo_is_dirty(op->mask.bo)) {
+	if (ALWAYS_FLUSH || kgem_bo_is_dirty(op->src.bo) || kgem_bo_is_dirty(op->mask.bo)) {
 		DBG(("%s: flushing dirty (%d, %d)\n", __FUNCTION__,
 		     kgem_bo_is_dirty(op->src.bo),
 		     kgem_bo_is_dirty(op->mask.bo)));
@@ -1058,7 +1058,7 @@ gen5_emit_state(struct sna *sna,
 		kgem_bo_mark_dirty(op->dst.bo);
 		flush = false;
 	}
-	if (flush || ALWAYS_FLUSH) {
+	if (flush) {
 		DBG(("%s: forcing flush\n", __FUNCTION__));
 		gen5_emit_pipe_flush(sna);
 	}
