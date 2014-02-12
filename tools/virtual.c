@@ -475,6 +475,8 @@ static int clone_update_modes__randr(struct clone *clone)
 	if (to_info == NULL)
 		goto err;
 
+	DBG(("%s: dst.rr_crtc=%ld, now %ld\n",
+	     __func__, (long)clone->dst.rr_crtc, (long)from_info->crtc));
 	if (clone->dst.rr_crtc == from_info->crtc) {
 		for (i = 0; i < to_info->nmode; i++) {
 			XRRModeInfo *mode, *old;
@@ -482,6 +484,11 @@ static int clone_update_modes__randr(struct clone *clone)
 			mode = lookup_mode(to_res, to_info->modes[i]);
 			if (mode == NULL)
 				break;
+
+			DBG(("%s(%s-%s): lookup mode %s\n", __func__,
+			     DisplayString(clone->src.dpy), clone->src.name,
+			     mode->name));
+
 			for (j = 0; j < from_info->nmode; j++) {
 				old = lookup_mode(from_res, from_info->modes[j]);
 				if (old && mode_equal(mode, old)) {
@@ -489,8 +496,12 @@ static int clone_update_modes__randr(struct clone *clone)
 					break;
 				}
 			}
-			if (mode)
+			if (mode) {
+				DBG(("%s(%s-%s): unknown mode %s\n", __func__,
+				     DisplayString(clone->src.dpy), clone->src.name,
+				     mode->name));
 				break;
+			}
 		}
 		if (i == from_info->nmode && i == to_info->nmode) {
 			DBG(("%s(%s-%s): no change in output\n", __func__,
@@ -982,7 +993,7 @@ static int context_update(struct context *ctx)
 			changed |= output->y != c->y;
 			output->y = c->y;
 
-			changed |= output->mode.id != mode;
+			changed |= output->mode.id != c->mode;
 			mode = c->mode;
 			XRRFreeCrtcInfo(c);
 		} else {
@@ -992,6 +1003,9 @@ static int context_update(struct context *ctx)
 		}
 		output->rr_crtc = o->crtc;
 		XRRFreeOutputInfo(o);
+
+		DBG(("%s-%s crtc changed? %d\n",
+		     DisplayString(ctx->clones[n].dst.display->dpy), ctx->clones[n].dst.name, changed));
 
 		if (mode) {
 			if (output->mode.id != mode) {
@@ -1007,7 +1021,7 @@ static int context_update(struct context *ctx)
 			output->mode.id = 0;
 		}
 
-		DBG(("%s-%s changed? %d\n",
+		DBG(("%s-%s output changed? %d\n",
 		     DisplayString(ctx->clones[n].dst.display->dpy), ctx->clones[n].dst.name, changed));
 
 		if (changed)
