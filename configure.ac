@@ -578,6 +578,17 @@ if test "x$CREATE2" = "xyes"; then
 	xp_msg="$xp_msg create2"
 fi
 
+AC_ARG_ENABLE(rotation,
+	      AS_HELP_STRING([--enable-rotation],
+			     [Enable use of native rotations (experimental) [default=no]]),
+	      [ROTATION="$enableval"],
+	      [ROTATION="no"])
+AM_CONDITIONAL(USE_ROTATION, test "x$ROTATION" = "xyes")
+if test "x$ROTATION" = "xyes"; then
+	AC_DEFINE(USE_ROTATION,1,[Assume "rotation" support])
+	xp_msg="$xp_msg rotation"
+fi
+
 AC_ARG_ENABLE(userptr,
 	      AS_HELP_STRING([--enable-userptr],
 			     [Enable use of userptr (experimental) [default=no]]),

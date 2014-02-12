@@ -105,6 +105,10 @@ struct sna_crtc {
 	uint8_t id;
 	uint8_t pipe;
 	uint8_t plane;
+
+	uint32_t rotation_id;
+	uint32_t supported_rotations;
+	uint32_t rotation, last_rotation;
 };
 
 struct sna_property {
@@ -842,9 +846,34 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 	int output_count = 0;
 	int i;
 
-	DBG(("%s\n", __FUNCTION__));
+	DBG(("%s CRTC:%d [pipe=%d]\n", __FUNCTION__, sna_crtc->id, sna_crtc->pipe));
 
 	assert(config->num_output < ARRAY_SIZE(output_ids));
+
+	if (sna_crtc->rotation != sna_crtc->last_rotation) {
+		assert(sna_crtc->rotation_id);
+
+		DBG(("%s: disabling CRTC:%d [pipe=%d] before changing rotation from %x to %x\n",
+		     __FUNCTION__, sna_crtc->id, sna_crtc->pipe,
+		     sna_crtc->last_rotation, sna_crtc->rotation));
+
+		memset(&arg, 0, sizeof(arg));
+		arg.crtc_id = sna_crtc->id;
+		(void)drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_SETCRTC, &arg);
+
+		if (drmModeObjectSetProperty(sna->kgem.fd, sna_crtc->id,
+					     DRM_MODE_OBJECT_CRTC,
+					     sna_crtc->rotation_id,
+					     sna_crtc->rotation)) {
+			ERR(("%s: set-rotation failed (rotation-id=%d, rotation=%d) on CRTC:%d [pipe=%d], errno=%d\n",
+			     __FUNCTION__, sna_crtc->rotation_id, sna_crtc->rotation, sna_crtc->id, sna_crtc->pipe, errno));
+			return false;
+		}
+
+		sna_crtc->last_rotation = sna_crtc->rotation;
+		DBG(("%s: CRTC:%d [pipe=%d] rotation set to %x\n",
+		     __FUNCTION__, sna_crtc->id, sna_crtc->pipe, sna_crtc->rotation));
+	}
 
 	for (i = 0; i < config->num_output; i++) {
 		xf86OutputPtr output = config->output[i];
@@ -1101,6 +1130,15 @@ sna_crtc_disable(xf86CrtcPtr crtc)
 	arg.crtc_id = sna_crtc->id;
 	(void)drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_SETCRTC, &arg);
 
+	if (sna_crtc->last_rotation != RR_Rotate_0) {
+		assert(sna_crtc->rotation_id);
+		(void)drmModeObjectSetProperty(sna->kgem.fd, sna_crtc->id,
+					       DRM_MODE_OBJECT_CRTC,
+					       sna_crtc->rotation_id,
+					       RR_Rotate_0);
+		sna_crtc->last_rotation = RR_Rotate_0;
+	}
+
 	sna_crtc_disable_shadow(sna, sna_crtc);
 
 	if (sna_crtc->bo) {
@@ -1333,8 +1371,19 @@ static bool use_shadow(struct sna *sna, xf86CrtcPtr crtc)
 			       &crtc_to_fb,
 			       &f_crtc_to_fb,
 			       &f_fb_to_crtc)) {
-		DBG(("%s: RandR transform present\n", __FUNCTION__));
-		return true;
+		bool needs_transform = true;
+		DBG(("%s: natively supported rotation? rotation=%x & supported=%x == %d\n",
+		     __FUNCTION__, crtc->rotation, to_sna_crtc(crtc)->supported_rotations,
+		     !!(crtc->rotation & to_sna_crtc(crtc)->supported_rotations)));
+		if (to_sna_crtc(crtc)->supported_rotations & crtc->rotation)
+			needs_transform = RRTransformCompute(crtc->x, crtc->y,
+							     crtc->mode.HDisplay, crtc->mode.VDisplay,
+							     RR_Rotate_0, transform,
+							     NULL, NULL, NULL);
+		if (needs_transform) {
+			DBG(("%s: RandR transform present\n", __FUNCTION__));
+			return true;
+		}
 	}
 
 	/* And finally check that it is entirely visible */
@@ -1365,6 +1414,8 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 	struct kgem_bo *bo;
 
 	sna_crtc->transform = false;
+	sna_crtc->rotation = RR_Rotate_0;
+
 	if (sna_crtc->scanout_pixmap) {
 		DBG(("%s: attaching to scanout pixmap\n", __FUNCTION__));
 
@@ -1468,6 +1519,7 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 			return NULL;
 
 		assert(!sna_crtc->shadow);
+		sna_crtc->rotation = crtc->rotation;
 		return kgem_bo_reference(bo);
 	}
 }
@@ -1913,6 +1965,77 @@ sna_crtc_find_plane(struct sna *sna, int pipe)
 #endif
 }
 
+static void
+sna_crtc_init__rotation(struct sna *sna, struct sna_crtc *sna_crtc)
+{
+	drmModeObjectPropertiesPtr props;
+
+	sna_crtc->supported_rotations = RR_Rotate_0;
+	sna_crtc->rotation = sna_crtc->last_rotation = RR_Rotate_0;
+
+#if USE_ROTATION
+	props = drmModeObjectGetProperties(sna->kgem.fd,
+					   sna_crtc->id,
+					   DRM_MODE_OBJECT_CRTC);
+	if (props) {
+		int i, j;
+
+		DBG(("%s: CRTC:%d has %d props\n", __FUNCTION__, sna_crtc->id, props->count_props));
+
+		for (i = 0; i < props->count_props; i++) {
+			struct drm_mode_get_property prop;
+			struct drm_mode_property_enum *enums;
+
+			memset(&prop, 0, sizeof(prop));
+			prop.prop_id = props->props[i];
+			if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPERTY, &prop))
+				continue;
+
+			DBG(("%s: prop[%d] .id=%d, .name=%s, .flags=%x, .value=%ld\n", __FUNCTION__, i,
+			     props->props[i], prop.name, prop.flags, props->prop_values[i]));
+			if ((prop.flags & DRM_MODE_PROP_BITMASK) == 0)
+				continue;
+
+			if (strcmp(prop.name, "rotation"))
+				continue;
+
+			/* Note that this property only controls the primary
+			 * plane, not the cursor or sprite planes.
+			 */
+			sna_crtc->rotation_id = props->props[i];
+			sna_crtc->rotation = sna_crtc->last_rotation = props->prop_values[i];
+
+			DBG(("%s: found rotation property .id=%d, num_enums=%d\n",
+			     __FUNCTION__, prop.prop_id, prop.count_enum_blobs));
+			enums = malloc(prop.count_enum_blobs * sizeof(struct drm_mode_property_enum));
+			if (enums != NULL) {
+				prop.count_values = 0;
+				prop.enum_blob_ptr = (uintptr_t)enums;
+
+				if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPERTY, &prop) == 0) {
+					/* XXX we assume that the mapping between kernel enum and
+					 * RandR remains fixed for our lifetimes.
+					 */
+					for (j = 0; j < prop.count_enum_blobs; j++) {
+						DBG(("%s: CRTC:%d rotation[%d] = %s [%x]\n", __FUNCTION__, sna_crtc->id, j,
+						     enums[j].name, enums[j].value));
+						sna_crtc->supported_rotations |= 1 << enums[j].value;
+					}
+				}
+
+				free(enums);
+			}
+
+			break;
+		}
+
+		drmModeFreeObjectProperties(props);
+	}
+#endif
+	DBG(("%s: CRTC:%d [pipe=%d], supported-rotations=%x, current-rotation=%x\n",
+	     __FUNCTION__, sna_crtc->id, sna_crtc->pipe, sna_crtc->supported_rotations, sna_crtc->last_rotation));
+}
+
 static bool
 sna_crtc_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 {
@@ -1921,7 +2044,7 @@ sna_crtc_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 	struct sna_crtc *sna_crtc;
 	struct drm_i915_get_pipe_from_crtc_id get_pipe;
 
-	DBG(("%s\n", __FUNCTION__));
+	DBG(("%s(%d)\n", __FUNCTION__, num));
 
 	sna_crtc = calloc(sizeof(struct sna_crtc), 1);
 	if (sna_crtc == NULL)
@@ -1962,6 +2085,8 @@ sna_crtc_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 	}
 	DBG(("%s: created handle=%d for cursor on CRTC:%d\n",
 	     __FUNCTION__, sna_crtc->cursor, sna_crtc->id));
+
+	sna_crtc_init__rotation(sna, sna_crtc);
 
 	crtc->driver_private = sna_crtc;
 	DBG(("%s: attached crtc[%d] id=%d, pipe=%d\n",
