@@ -2203,11 +2203,6 @@ skip_inplace_map:
 			__sna_damage_destroy(DAMAGE_PTR(priv->gpu_damage));
 			priv->gpu_damage = NULL;
 		}
-	} else {
-		assert(flags & MOVE_WRITE);
-		sna_pixmap_free_gpu(sna, priv);
-		assert(priv->gpu_damage == NULL);
-		assert(priv->clear == false);
 	}
 
 	if (flags & MOVE_WRITE || priv->create & KGEM_CAN_CREATE_LARGE) {
@@ -2216,8 +2211,9 @@ mark_damage:
 		sna_damage_all(&priv->cpu_damage,
 			       pixmap->drawable.width,
 			       pixmap->drawable.height);
-		assert(priv->gpu_damage == NULL);
 		sna_pixmap_free_gpu(sna, priv);
+		assert(priv->gpu_damage == NULL);
+		assert(priv->clear == false);
 
 		if (priv->flush) {
 			assert(!priv->shm);
