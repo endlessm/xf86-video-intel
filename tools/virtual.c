@@ -1073,17 +1073,34 @@ static int context_update(struct context *ctx)
 				y2 = v;
 		}
 
-		x2 -= x1;
-		y2 -= y1;
 		DBG(("%s fb bounds (%d, %d)x(%d, %d)\n", DisplayString(display->dpy),
 		     x1, y1, x2, y2));
 
+		XGrabServer(display->dpy);
 		res = _XRRGetScreenResourcesCurrent(display->dpy, display->root);
 		if (res == NULL)
-			continue;
+			goto ungrab;
 
-		XGrabServer(display->dpy);
+		if (x2 <= x1 || y2 <= y1) {
+			/* Nothing enabled, preserve the current fb, and turn everything off */
+			for (clone = display->clone; clone; clone = clone->next) {
+				struct output *dst = &clone->dst;
 
+				if (!dst->rr_crtc)
+					continue;
+
+				DBG(("%s: disabling output '%s'\n",
+				     DisplayString(dst->dpy), dst->name));
+				XRRSetCrtcConfig(dst->dpy, res, dst->rr_crtc, CurrentTime,
+						0, 0, None, RR_Rotate_0, NULL, 0);
+				dst->rr_crtc = 0;
+				dst->mode.id = 0;
+			}
+			goto free_res;
+		}
+
+		x2 -= x1;
+		y2 -= y1;
 		DBG(("%s: current size %dx%d, need %dx%d\n",
 		     DisplayString(display->dpy),
 		     display->width, display->height,
@@ -1100,7 +1117,7 @@ static int context_update(struct context *ctx)
 				DBG(("%s: disabling output '%s'\n",
 				     DisplayString(dst->dpy), dst->name));
 				XRRSetCrtcConfig(dst->dpy, res, dst->rr_crtc, CurrentTime,
-						0, 0, None, RR_Rotate_0, NULL, 0);
+						 0, 0, None, RR_Rotate_0, NULL, 0);
 				dst->rr_crtc = 0;
 				dst->mode.id = 0;
 			}
@@ -1230,9 +1247,10 @@ err:
 			dst->rr_crtc = rr_crtc;
 			(void)ret;
 		}
-		XUngrabServer(display->dpy);
-
+free_res:
 		XRRFreeScreenResources(res);
+ungrab:
+		XUngrabServer(display->dpy);
 	}
 
 	ctx->active = NULL;
