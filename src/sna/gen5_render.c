@@ -1017,7 +1017,7 @@ gen5_emit_vertex_elements(struct sna *sna,
 inline static void
 gen5_emit_pipe_flush(struct sna *sna)
 {
-#if 0
+#if 1
 	OUT_BATCH(GEN5_PIPE_CONTROL |
 		  GEN5_PIPE_CONTROL_WC_FLUSH |
 		  (4 - 2));
