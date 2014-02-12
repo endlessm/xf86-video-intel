@@ -54,6 +54,8 @@
 #define DBG_NO_STATE_CACHE 0
 #define DBG_NO_SURFACE_CACHE 0
 
+#define ALWAYS_FLUSH 0
+
 #define MAX_3D_SIZE 8192
 
 #define GEN5_GRF_BLOCKS(nreg)    ((nreg + 15) / 16 - 1)
@@ -1056,7 +1058,7 @@ gen5_emit_state(struct sna *sna,
 		kgem_bo_mark_dirty(op->dst.bo);
 		flush = false;
 	}
-	if (flush) {
+	if (flush || ALWAYS_FLUSH) {
 		DBG(("%s: forcing flush\n", __FUNCTION__));
 		gen5_emit_pipe_flush(sna);
 	}
