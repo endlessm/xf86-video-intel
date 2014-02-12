@@ -3755,6 +3755,7 @@ discard:
 struct kgem_bo *kgem_create_for_name(struct kgem *kgem, uint32_t name)
 {
 	struct drm_gem_open open_arg;
+	struct drm_i915_gem_get_tiling tiling;
 	struct kgem_bo *bo;
 
 	DBG(("%s(name=%d)\n", __FUNCTION__, name));
@@ -3765,15 +3766,27 @@ struct kgem_bo *kgem_create_for_name(struct kgem *kgem, uint32_t name)
 		return NULL;
 
 	DBG(("%s: new handle=%d\n", __FUNCTION__, open_arg.handle));
+
+	VG_CLEAR(tiling);
+	tiling.handle = open_arg.handle;
+	if (do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_GET_TILING, &tiling)) {
+		DBG(("%s(name=%d) get-tiling failed, ret=%d\n", __FUNCTION__, name, errno));
+		gem_close(kgem->fd, open_arg.handle);
+		return NULL;
+	}
+
+	DBG(("%s: handle=%d, tiling=%d\n", __FUNCTION__, tiling.handle, tiling.tiling_mode));
+
 	bo = __kgem_bo_alloc(open_arg.handle, open_arg.size / PAGE_SIZE);
 	if (bo == NULL) {
 		gem_close(kgem->fd, open_arg.handle);
 		return NULL;
 	}
 
+	bo->tiling = tiling.tiling_mode;
 	bo->reusable = false;
 	bo->flush = true;
-	bo->purged = true; /* no coherency guarrantees */
+	bo->purged = true; /* no coherency guarantees */
 
 	debug_alloc__bo(kgem, bo);
 	return bo;
