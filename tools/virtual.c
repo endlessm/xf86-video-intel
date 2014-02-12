@@ -85,7 +85,6 @@ struct display {
 	Window root;
 	Visual *visual;
 	Damage damage;
-	long timestamp;
 
 	int width;
 	int height;
@@ -168,6 +167,9 @@ struct context {
 	int nfd;
 
 	int timer_active;
+
+	long timestamp;
+	long configTimestamp;
 
 	Atom singleton;
 	char command[1024];
@@ -938,14 +940,20 @@ static int context_update(struct context *ctx)
 	if (res == NULL)
 		return 0;
 
-	DBG(("%s timestamp %ld (last %ld)\n", DisplayString(dpy), res->timestamp, ctx->display->timestamp));
-	if (res->timestamp == ctx->display->timestamp &&
+	DBG(("%s timestamp %ld (last %ld), config %ld (last %ld)\n",
+	     DisplayString(dpy),
+	     res->timestamp, ctx->timestamp,
+	     res->configTimestamp, ctx->configTimestamp));
+	if (res->timestamp == ctx->timestamp &&
+	    res->configTimestamp == ctx->configTimestamp &&
 	    res->timestamp != res->configTimestamp) { /* mutter be damned */
 		XRRFreeScreenResources(res);
 		return 0;
 	}
 
-	ctx->display->timestamp = res->timestamp;
+	ctx->timestamp = res->timestamp;
+	ctx->configTimestamp = res->configTimestamp;
+
 	for (n = 0; n < ctx->nclone; n++) {
 		struct output *output = &ctx->clones[n].src;
 		XRROutputInfo *o;
@@ -966,7 +974,7 @@ static int context_update(struct context *ctx)
 			     output->x, output->y, output->rotation, output->mode.id,
 			     c->x, c->y, c->rotation, c->mode));
 
-			changed |= output->rotation |= c->rotation;
+			changed |= output->rotation != c->rotation;
 			output->rotation = c->rotation;
 
 			changed |= output->x != c->x;
