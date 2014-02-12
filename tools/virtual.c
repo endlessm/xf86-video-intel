@@ -454,7 +454,7 @@ static int clone_update_modes__randr(struct clone *clone)
 	assert(clone->dst.rr_output);
 	assert(clone->dst.display->rr_event);
 
-	from_res = XRRGetScreenResources(clone->dst.dpy, clone->dst.window);
+	from_res = _XRRGetScreenResourcesCurrent(clone->dst.dpy, clone->dst.window);
 	if (from_res == NULL)
 		goto err;
 
@@ -462,11 +462,10 @@ static int clone_update_modes__randr(struct clone *clone)
 	if (from_info == NULL)
 		goto err;
 
-	DBG(("%s(%s-%s): timestamp %ld (last %ld)\n", __func__,
+	DBG(("%s(%s-%s <- %s-%s): timestamp %ld (last %ld)\n", __func__,
 	     DisplayString(clone->src.dpy), clone->src.name,
-	    from_info->timestamp, clone->timestamp));
-	if (from_info->timestamp == clone->timestamp)
-		goto err;
+	     DisplayString(clone->dst.dpy), clone->dst.name,
+	     from_info->timestamp, clone->timestamp));
 
 	to_res = _XRRGetScreenResourcesCurrent(clone->src.dpy, clone->src.window);
 	if (to_res == NULL)
