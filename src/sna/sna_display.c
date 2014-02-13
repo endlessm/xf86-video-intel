@@ -710,6 +710,32 @@ done:
 }
 #endif
 
+static char *canonical_kmode_name(const struct drm_mode_modeinfo *kmode)
+{
+	char tmp[32], *buf;
+	int len;
+
+	len = sprintf(tmp, "%dx%d%s",
+		      kmode->hdisplay, kmode->vdisplay,
+		      kmode->flags & V_INTERLACE ? "i" : "");
+	if ((unsigned)len >= sizeof(tmp))
+		return NULL;
+
+	buf = malloc(len + 1);
+	if (buf == NULL)
+		return NULL;
+
+	return memcpy(buf, tmp, len + 1);
+}
+
+static char *get_kmode_name(const struct drm_mode_modeinfo *kmode)
+{
+	if (*kmode->name == '\0')
+		return canonical_kmode_name(kmode);
+
+	return strdup(kmode->name);
+}
+
 static DisplayModePtr
 mode_from_kmode(ScrnInfoPtr scrn,
 		const struct drm_mode_modeinfo *kmode,
@@ -738,7 +764,7 @@ mode_from_kmode(ScrnInfoPtr scrn,
 	mode->VScan = kmode->vscan;
 
 	mode->Flags = kmode->flags;
-	mode->name = strdup(kmode->name);
+	mode->name = get_kmode_name(kmode);
 
 	if (kmode->type & DRM_MODE_TYPE_DRIVER)
 		mode->type = M_T_DRIVER;
@@ -2360,24 +2386,6 @@ sna_output_panel_edid(xf86OutputPtr output, DisplayModePtr modes)
 	return xf86ModesAdd(modes, m);
 }
 
-static char *canonical_mode_name(DisplayModePtr mode)
-{
-	char tmp[32], *buf;
-	int len;
-
-	len = sprintf(tmp, "%dx%d%s",
-		      mode->HDisplay, mode->VDisplay,
-		      mode->Flags & V_INTERLACE ? "i" : "");
-	if ((unsigned)len >= sizeof(tmp))
-		return NULL;
-
-	buf = malloc(len + 1);
-	if (buf == NULL)
-		return NULL;
-
-	return memcpy(buf, tmp, len + 1);
-}
-
 static DisplayModePtr
 sna_output_get_modes(xf86OutputPtr output)
 {
@@ -2426,20 +2434,13 @@ sna_output_get_modes(xf86OutputPtr output)
 				Modes = xf86ModesAdd(Modes, Mode);
 				Mode = NULL;
 			} else {
+				free((void *)current->name);
 				current->name = strdup(Mode->name);
 				current->type = Mode->type;
 			}
 		}
 	}
 	free(Mode);
-
-	if (current && (current->name == NULL || *current->name == '\0')) {
-		char *str = canonical_mode_name(current);
-		if (str) {
-			free((char *)current->name);
-			current->name = str;
-		}
-	}
 
 	/*
 	 * If the connector type is a panel, we will traverse the kernel mode to
