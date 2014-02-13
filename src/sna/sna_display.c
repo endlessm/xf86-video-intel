@@ -93,22 +93,29 @@ union compat_mode_get_connector{
 
 extern XF86ConfigPtr xf86configptr;
 
+struct rotation {
+	uint32_t obj_id, obj_type;
+	uint32_t prop_id;
+	uint32_t supported;
+	uint32_t current;
+};
+
 struct sna_crtc {
 	struct drm_mode_modeinfo kmode;
 	int dpms_mode;
 	PixmapPtr scanout_pixmap;
 	struct kgem_bo *bo, *shadow_bo;
 	uint32_t cursor;
+	uint32_t sprite;
 	bool shadow;
 	bool fallback_shadow;
 	bool transform;
 	uint8_t id;
 	uint8_t pipe;
-	uint8_t plane;
 
-	uint32_t rotation_id;
-	uint32_t supported_rotations;
-	uint32_t rotation, last_rotation;
+	uint32_t rotation;
+	struct rotation primary_rotation;
+	struct rotation sprite_rotation;
 };
 
 struct sna_property {
@@ -199,9 +206,9 @@ int sna_crtc_to_pipe(xf86CrtcPtr crtc)
 	return to_sna_crtc(crtc)->pipe;
 }
 
-uint32_t sna_crtc_to_plane(xf86CrtcPtr crtc)
+uint32_t sna_crtc_to_sprite(xf86CrtcPtr crtc)
 {
-	return to_sna_crtc(crtc)->plane;
+	return to_sna_crtc(crtc)->sprite;
 }
 
 #ifndef NDEBUG
@@ -862,6 +869,43 @@ sna_crtc_force_outputs_off(xf86CrtcPtr crtc)
 }
 
 static bool
+rotation_set(struct sna *sna, struct rotation *r, uint32_t desired)
+{
+	if (desired == r->current)
+		return true;
+
+	if ((desired & r->supported) == 0)
+		return false;
+
+	DBG(("%s: obj=%d, type=%u set-rotation=%x\n",
+	     __FUNCTION__, r->obj_id, r->obj_type, desired));
+
+	assert(r->obj_id);
+	assert(r->obj_type);
+	assert(r->prop_id);
+
+	if (drmModeObjectSetProperty(sna->kgem.fd,
+				     r->obj_id, r->obj_type,
+				     r->prop_id, desired))
+		return false;
+
+	r->current = desired;
+	return true;
+}
+
+bool sna_crtc_set_sprite_rotation(xf86CrtcPtr crtc, uint32_t rotation)
+{
+	DBG(("%s: CRTC:%d [pipe=%d], sprite=%u set-rotation=%x\n",
+	     __FUNCTION__,
+	     to_sna_crtc(crtc)->id, to_sna_crtc(crtc)->pipe, to_sna_crtc(crtc)->sprite,
+	     rotation));
+
+	return rotation_set(to_sna(crtc->scrn),
+			    &to_sna_crtc(crtc)->sprite_rotation,
+			    rotation);
+}
+
+static bool
 sna_crtc_apply(xf86CrtcPtr crtc)
 {
 	struct sna *sna = to_sna(crtc->scrn);
@@ -876,30 +920,13 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 
 	assert(config->num_output < ARRAY_SIZE(output_ids));
 
-	if (sna_crtc->rotation != sna_crtc->last_rotation) {
-		assert(sna_crtc->rotation_id);
-
-		DBG(("%s: disabling CRTC:%d [pipe=%d] before changing rotation from %x to %x\n",
-		     __FUNCTION__, sna_crtc->id, sna_crtc->pipe,
-		     sna_crtc->last_rotation, sna_crtc->rotation));
-
-		memset(&arg, 0, sizeof(arg));
-		arg.crtc_id = sna_crtc->id;
-		(void)drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_SETCRTC, &arg);
-
-		if (drmModeObjectSetProperty(sna->kgem.fd, sna_crtc->id,
-					     DRM_MODE_OBJECT_CRTC,
-					     sna_crtc->rotation_id,
-					     sna_crtc->rotation)) {
-			ERR(("%s: set-rotation failed (rotation-id=%d, rotation=%d) on CRTC:%d [pipe=%d], errno=%d\n",
-			     __FUNCTION__, sna_crtc->rotation_id, sna_crtc->rotation, sna_crtc->id, sna_crtc->pipe, errno));
-			return false;
-		}
-
-		sna_crtc->last_rotation = sna_crtc->rotation;
-		DBG(("%s: CRTC:%d [pipe=%d] rotation set to %x\n",
-		     __FUNCTION__, sna_crtc->id, sna_crtc->pipe, sna_crtc->rotation));
+	if (!rotation_set(sna, &sna_crtc->primary_rotation, sna_crtc->rotation)) {
+		ERR(("%s: set-primary-rotation failed (rotation-id=%d, rotation=%d) on CRTC:%d [pipe=%d], errno=%d\n",
+		     __FUNCTION__, sna_crtc->primary_rotation.prop_id, sna_crtc->rotation, sna_crtc->id, sna_crtc->pipe, errno));
+		return false;
 	}
+	DBG(("%s: CRTC:%d [pipe=%d] primary rotation set to %x\n",
+	     __FUNCTION__, sna_crtc->id, sna_crtc->pipe, sna_crtc->rotation));
 
 	for (i = 0; i < config->num_output; i++) {
 		xf86OutputPtr output = config->output[i];
@@ -1156,14 +1183,7 @@ sna_crtc_disable(xf86CrtcPtr crtc)
 	arg.crtc_id = sna_crtc->id;
 	(void)drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_SETCRTC, &arg);
 
-	if (sna_crtc->last_rotation != RR_Rotate_0) {
-		assert(sna_crtc->rotation_id);
-		(void)drmModeObjectSetProperty(sna->kgem.fd, sna_crtc->id,
-					       DRM_MODE_OBJECT_CRTC,
-					       sna_crtc->rotation_id,
-					       RR_Rotate_0);
-		sna_crtc->last_rotation = RR_Rotate_0;
-	}
+	rotation_set(sna, &sna_crtc->primary_rotation, RR_Rotate_0);
 
 	sna_crtc_disable_shadow(sna, sna_crtc);
 
@@ -1399,9 +1419,9 @@ static bool use_shadow(struct sna *sna, xf86CrtcPtr crtc)
 			       &f_fb_to_crtc)) {
 		bool needs_transform = true;
 		DBG(("%s: natively supported rotation? rotation=%x & supported=%x == %d\n",
-		     __FUNCTION__, crtc->rotation, to_sna_crtc(crtc)->supported_rotations,
-		     !!(crtc->rotation & to_sna_crtc(crtc)->supported_rotations)));
-		if (to_sna_crtc(crtc)->supported_rotations & crtc->rotation)
+		     __FUNCTION__, crtc->rotation, to_sna_crtc(crtc)->primary_rotation.supported,
+		     !!(crtc->rotation & to_sna_crtc(crtc)->primary_rotation.supported)));
+		if (to_sna_crtc(crtc)->primary_rotation.supported & crtc->rotation)
 			needs_transform = RRTransformCompute(crtc->x, crtc->y,
 							     crtc->mode.HDisplay, crtc->mode.VDisplay,
 							     RR_Rotate_0, transform,
@@ -1545,6 +1565,7 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 			return NULL;
 
 		assert(!sna_crtc->shadow);
+		assert(sna_crtc->primary_rotation.supported & crtc->rotation);
 		sna_crtc->rotation = crtc->rotation;
 		return kgem_bo_reference(bo);
 	}
@@ -1944,7 +1965,7 @@ static const xf86CrtcFuncsRec sna_crtc_funcs = {
 };
 
 static int
-sna_crtc_find_plane(struct sna *sna, int pipe)
+sna_crtc_find_sprite(struct sna *sna, int pipe)
 {
 #ifdef DRM_IOCTL_MODE_GETPLANERESOURCES
 	struct drm_mode_get_plane_res r;
@@ -1992,74 +2013,93 @@ sna_crtc_find_plane(struct sna *sna, int pipe)
 }
 
 static void
-sna_crtc_init__rotation(struct sna *sna, struct sna_crtc *sna_crtc)
+rotation_init(struct sna *sna, struct rotation *r, uint32_t obj_id, uint32_t obj_type)
 {
-	drmModeObjectPropertiesPtr props;
-
-	sna_crtc->supported_rotations = RR_Rotate_0;
-	sna_crtc->rotation = sna_crtc->last_rotation = RR_Rotate_0;
-
 #if USE_ROTATION
-	props = drmModeObjectGetProperties(sna->kgem.fd,
-					   sna_crtc->id,
-					   DRM_MODE_OBJECT_CRTC);
-	if (props) {
-		int i, j;
+	drmModeObjectPropertiesPtr props;
+	int i, j;
 
-		DBG(("%s: CRTC:%d has %d props\n", __FUNCTION__, sna_crtc->id, props->count_props));
+	props = drmModeObjectGetProperties(sna->kgem.fd, obj_id, obj_type);
+	if (props == NULL)
+		return;
 
-		for (i = 0; i < props->count_props; i++) {
-			struct drm_mode_get_property prop;
-			struct drm_mode_property_enum *enums;
+	DBG(("%s: object %d (type %u) has %d props\n", __FUNCTION__,
+	     obj_id, obj_type, props->count_props));
 
-			memset(&prop, 0, sizeof(prop));
-			prop.prop_id = props->props[i];
-			if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPERTY, &prop))
-				continue;
+	for (i = 0; i < props->count_props; i++) {
+		struct drm_mode_get_property prop;
+		struct drm_mode_property_enum *enums;
 
-			DBG(("%s: prop[%d] .id=%d, .name=%s, .flags=%x, .value=%ld\n", __FUNCTION__, i,
-			     props->props[i], prop.name, prop.flags, props->prop_values[i]));
-			if ((prop.flags & DRM_MODE_PROP_BITMASK) == 0)
-				continue;
+		memset(&prop, 0, sizeof(prop));
+		prop.prop_id = props->props[i];
+		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPERTY, &prop))
+			continue;
 
-			if (strcmp(prop.name, "rotation"))
-				continue;
+		DBG(("%s: prop[%d] .id=%d, .name=%s, .flags=%x, .value=%ld\n", __FUNCTION__, i,
+		     props->props[i], prop.name, prop.flags, props->prop_values[i]));
+		if ((prop.flags & DRM_MODE_PROP_BITMASK) == 0)
+			continue;
 
-			/* Note that this property only controls the primary
-			 * plane, not the cursor or sprite planes.
-			 */
-			sna_crtc->rotation_id = props->props[i];
-			sna_crtc->rotation = sna_crtc->last_rotation = props->prop_values[i];
+		if (strcmp(prop.name, "rotation"))
+			continue;
 
-			DBG(("%s: found rotation property .id=%d, num_enums=%d\n",
-			     __FUNCTION__, prop.prop_id, prop.count_enum_blobs));
-			enums = malloc(prop.count_enum_blobs * sizeof(struct drm_mode_property_enum));
-			if (enums != NULL) {
-				prop.count_values = 0;
-				prop.enum_blob_ptr = (uintptr_t)enums;
+		r->obj_id = obj_id;
+		r->obj_type = obj_type;
+		r->prop_id = props->props[i];
+		r->current = props->prop_values[i];
 
-				if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPERTY, &prop) == 0) {
-					/* XXX we assume that the mapping between kernel enum and
-					 * RandR remains fixed for our lifetimes.
-					 */
-					for (j = 0; j < prop.count_enum_blobs; j++) {
-						DBG(("%s: CRTC:%d rotation[%d] = %s [%x]\n", __FUNCTION__, sna_crtc->id, j,
-						     enums[j].name, enums[j].value));
-						sna_crtc->supported_rotations |= 1 << enums[j].value;
-					}
+		DBG(("%s: found rotation property .id=%d, value=%ld, num_enums=%d\n",
+		     __FUNCTION__, prop.prop_id, (long)props->prop_values[i], prop.count_enum_blobs));
+		enums = malloc(prop.count_enum_blobs * sizeof(struct drm_mode_property_enum));
+		if (enums != NULL) {
+			prop.count_values = 0;
+			prop.enum_blob_ptr = (uintptr_t)enums;
+
+			if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPERTY, &prop) == 0) {
+				/* XXX we assume that the mapping between kernel enum and
+				 * RandR remains fixed for our lifetimes.
+				 */
+				for (j = 0; j < prop.count_enum_blobs; j++) {
+					DBG(("%s: rotation[%d] = %s [%x]\n", __FUNCTION__,
+					     j, enums[j].name, enums[j].value));
+					r->supported |= 1 << enums[j].value;
 				}
-
-				free(enums);
 			}
 
-			break;
+			free(enums);
 		}
 
-		drmModeFreeObjectProperties(props);
+		break;
 	}
+
+	drmModeFreeObjectProperties(props);
 #endif
-	DBG(("%s: CRTC:%d [pipe=%d], supported-rotations=%x, current-rotation=%x\n",
-	     __FUNCTION__, sna_crtc->id, sna_crtc->pipe, sna_crtc->supported_rotations, sna_crtc->last_rotation));
+}
+
+static void
+rotation_reset(struct rotation *r)
+{
+	if (r->prop_id == 0)
+		return;
+
+	r->current = 0;
+}
+
+static void
+sna_crtc_init__rotation(struct sna *sna, struct sna_crtc *sna_crtc)
+{
+	sna_crtc->rotation = RR_Rotate_0;
+	sna_crtc->primary_rotation.supported = RR_Rotate_0;
+	sna_crtc->primary_rotation.current = RR_Rotate_0;
+	sna_crtc->sprite_rotation = sna_crtc->primary_rotation;
+
+	rotation_init(sna, &sna_crtc->primary_rotation, sna_crtc->id, DRM_MODE_OBJECT_CRTC);
+	rotation_init(sna, &sna_crtc->sprite_rotation, sna_crtc->sprite, DRM_MODE_OBJECT_PLANE);
+
+	DBG(("%s: CRTC:%d [pipe=%d], primary: supported-rotations=%x, current-rotation=%x, sprite: supported-rotations=%x, current-rotation=%x\n",
+	     __FUNCTION__, sna_crtc->id, sna_crtc->pipe,
+	     sna_crtc->primary_rotation.supported, sna_crtc->primary_rotation.current,
+	     sna_crtc->sprite_rotation.supported, sna_crtc->sprite_rotation.current));
 }
 
 static bool
@@ -2089,7 +2129,7 @@ sna_crtc_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 		return false;
 	}
 	sna_crtc->pipe = get_pipe.pipe;
-	sna_crtc->plane = sna_crtc_find_plane(sna, sna_crtc->pipe);
+	sna_crtc->sprite = sna_crtc_find_sprite(sna, sna_crtc->pipe);
 
 	if (xf86IsEntityShared(scrn->entityList[0]) &&
 	    scrn->confScreen->device->screen != sna_crtc->pipe) {
@@ -4316,6 +4356,10 @@ void sna_mode_reset(struct sna *sna)
 			continue;
 
 		sna_crtc->dpms_mode = DPMSModeOff;
+
+		/* Force the rotation property to be reset on next use */
+		rotation_reset(&sna_crtc->primary_rotation);
+		rotation_reset(&sna_crtc->sprite_rotation);
 	}
 
 	for (i = 0; i < config->num_output; i++) {

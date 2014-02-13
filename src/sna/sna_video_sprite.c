@@ -205,10 +205,10 @@ sna_video_sprite_show(struct sna *sna,
 	/* XXX handle video spanning multiple CRTC */
 
 	VG_CLEAR(s);
-	s.plane_id = sna_crtc_to_plane(crtc);
+	s.plane_id = sna_crtc_to_sprite(crtc);
 
 	update_dst_box_to_crtc_coords(sna, crtc, dstBox);
-	if (crtc->rotation & (RR_Rotate_90 | RR_Rotate_270)) {
+	if (video->rotation & (RR_Rotate_90 | RR_Rotate_270)) {
 		int tmp = frame->width;
 		frame->width = frame->height;
 		frame->height = tmp;
@@ -383,11 +383,15 @@ static int sna_video_sprite_put_image(ClientPtr client,
 				   &clip))
 		goto invisible;
 
-	if (!crtc || sna_crtc_to_plane(crtc) == 0)
+	if (!crtc || sna_crtc_to_sprite(crtc) == 0)
 		goto invisible;
 
-	/* sprites can't handle rotation natively, store it for the copy func */
-	video->rotation = crtc->rotation;
+	/* if sprite can't handle rotation natively, store it for the copy func */
+	video->rotation = RR_Rotate_0;
+	if (!sna_crtc_set_sprite_rotation(crtc, crtc->rotation)) {
+		sna_crtc_set_sprite_rotation(crtc, RR_Rotate_0);
+		video->rotation = crtc->rotation;
+	}
 
 	if (xvmc_passthrough(format->id)) {
 		DBG(("%s: using passthough, name=%d\n",

@@ -439,8 +439,9 @@ static inline void sna_dri_close(struct sna *sna, ScreenPtr pScreen) { }
 #endif
 void sna_dri_pixmap_update_bo(struct sna *sna, PixmapPtr pixmap);
 
+extern bool sna_crtc_set_sprite_rotation(xf86CrtcPtr crtc, uint32_t rotation);
 extern int sna_crtc_to_pipe(xf86CrtcPtr crtc);
-extern uint32_t sna_crtc_to_plane(xf86CrtcPtr crtc);
+extern uint32_t sna_crtc_to_sprite(xf86CrtcPtr crtc);
 extern uint32_t sna_crtc_id(xf86CrtcPtr crtc);
 
 CARD32 sna_format_for_depth(int depth);
