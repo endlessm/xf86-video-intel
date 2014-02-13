@@ -1191,6 +1191,8 @@ sna_crtc_disable(xf86CrtcPtr crtc)
 		kgem_bo_destroy(&sna->kgem, sna_crtc->bo);
 		sna_crtc->bo = NULL;
 	}
+
+	assert(sna_crtc->dpms_mode == DPMSModeOff);
 }
 
 static void update_flush_interval(struct sna *sna)
@@ -2117,7 +2119,7 @@ sna_crtc_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 		return false;
 
 	sna_crtc->id = mode->kmode->crtcs[num];
-	sna_crtc->dpms_mode = DPMSModeOff;
+	sna_crtc->dpms_mode = -1;
 
 	VG_CLEAR(get_pipe);
 	get_pipe.pipe = 0;
@@ -4355,7 +4357,7 @@ void sna_mode_reset(struct sna *sna)
 		if (sna_crtc == NULL)
 			continue;
 
-		sna_crtc->dpms_mode = DPMSModeOff;
+		sna_crtc->dpms_mode = -1;
 
 		/* Force the rotation property to be reset on next use */
 		rotation_reset(&sna_crtc->primary_rotation);
@@ -4367,7 +4369,7 @@ void sna_mode_reset(struct sna *sna)
 		if (sna_output == NULL)
 			continue;
 
-		sna_output->dpms_mode = DPMSModeOff;
+		sna_output->dpms_mode = -1;
 	}
 }
 
