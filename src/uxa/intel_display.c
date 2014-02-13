@@ -1123,11 +1123,10 @@ intel_output_dpms(xf86OutputPtr output, int dpms)
 							    intel_output->dpms_mode,
 							    dpms);
 
-			if (output->crtc)
-				drmModeConnectorSetProperty(mode->fd,
-							    intel_output->output_id,
-							    props->prop_id,
-							    dpms);
+			drmModeConnectorSetProperty(mode->fd,
+						    intel_output->output_id,
+						    props->prop_id,
+						    dpms);
 
 			if (dpms == DPMSModeOn)
 				intel_output_dpms_backlight(output,
