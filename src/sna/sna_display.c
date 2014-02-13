@@ -3448,7 +3448,7 @@ static void set_size_range(struct sna *sna)
 	 * crtc limits, so if the mode exceeds the scanout restrictions,
 	 * we will quietly convert that to per-crtc pixmaps.
 	 */
-	xf86CrtcSetSizeRange(sna->scrn, 320, 200, INT16_MAX, INT16_MAX);
+	xf86CrtcSetSizeRange(sna->scrn, 8, 8, INT16_MAX, INT16_MAX);
 }
 
 enum { /* XXX copied from hw/xfree86/modes/xf86Crtc.c */
