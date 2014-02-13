@@ -1591,7 +1591,7 @@ static void sna_crtc_randr(xf86CrtcPtr crtc)
 #endif
 		crtc->transform_in_use = TRUE;
 	} else
-		crtc->transform_in_use = FALSE;
+		crtc->transform_in_use = sna_crtc->rotation != RR_Rotate_0;
 
 	crtc->crtc_to_framebuffer = crtc_to_fb;
 	crtc->f_crtc_to_framebuffer = f_crtc_to_fb;
