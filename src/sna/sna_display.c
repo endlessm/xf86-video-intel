@@ -3273,6 +3273,10 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 	if (scrn->virtualX == width && scrn->virtualY == height)
 		return TRUE;
 
+	/* Paranoid defense against rogue internal calls by Xorg */
+	if (width == 0 || height == 0)
+		return FALSE;
+
 	assert(sna->front);
 	assert(screen->GetScreenPixmap(screen) == sna->front);
 
