@@ -298,6 +298,14 @@ intel_output_backlight_get_max(xf86OutputPtr output)
 	char path[BACKLIGHT_PATH_LEN], val[BACKLIGHT_VALUE_LEN];
 	int fd, max = 0;
 
+	/* We are used as an initial check to see if we can
+	 * control the backlight, so first test if we can set values.
+	 */
+	sprintf(path, "%s/%s/brightness",
+		BACKLIGHT_CLASS, intel_output->backlight_iface);
+	if (access(path, R_OK | W_OK))
+		return -1;
+
 	sprintf(path, "%s/%s/max_brightness",
 		BACKLIGHT_CLASS, intel_output->backlight_iface);
 	fd = open(path, O_RDONLY);
