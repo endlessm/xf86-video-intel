@@ -53,6 +53,7 @@
 #endif
 
 #include "intel_driver.h"
+#include "fd.h"
 
 struct intel_device {
 	char *master_node;
@@ -140,40 +141,6 @@ static int __intel_check_device(int fd)
 	}
 
 	return ret;
-}
-
-static int fd_set_cloexec(int fd)
-{
-	int flags;
-
-	if (fd == -1)
-		return fd;
-
-#ifdef FD_CLOEXEC
-	flags = fcntl(fd, F_GETFD);
-	if (flags != -1) {
-		flags |= FD_CLOEXEC;
-		fcntl(fd, F_SETFD, flags);
-	}
-#endif
-
-	return fd;
-}
-
-static int fd_set_nonblock(int fd)
-{
-	int flags;
-
-	if (fd == -1)
-		return fd;
-
-	flags = fcntl(fd, F_GETFL);
-	if (flags != -1) {
-		flags |= O_NONBLOCK;
-		fcntl(fd, F_SETFL, flags);
-	}
-
-	return fd;
 }
 
 static int __intel_open_device(const struct pci_device *pci, char **path)
