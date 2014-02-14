@@ -52,6 +52,8 @@ endif
 NULL:=#
 
 intel_drv_la_SOURCES = \
+	fd.h \
+	fd.c \
 	i915_pciids.h \
 	intel_list.h \
 	intel_options.h \
