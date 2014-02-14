@@ -445,6 +445,7 @@ sna_output_backlight_get_max(xf86OutputPtr output)
 {
 	struct sna_output *sna_output = output->driver_private;
 	char path[1024], val[BACKLIGHT_VALUE_LEN];
+	struct stat st;
 	int fd, max = 0;
 
 	/* We are used as an initial check to see if we can
@@ -453,6 +454,12 @@ sna_output_backlight_get_max(xf86OutputPtr output)
 	sprintf(path, "%s/%s/brightness",
 		BACKLIGHT_CLASS, sna_output->backlight_iface);
 	if (access(path, R_OK | W_OK))
+		return -1;
+
+	if (stat(path, &st))
+		return -1;
+
+	if (major(st.st_dev)) /* is this a kernel psuedo filesystem? */
 		return -1;
 
 	sprintf(path, "%s/%s/max_brightness",
