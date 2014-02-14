@@ -167,10 +167,10 @@ static int fd_set_nonblock(int fd)
 	if (fd == -1)
 		return fd;
 
-	flags = fcntl(fd, F_GETFD);
+	flags = fcntl(fd, F_GETFL);
 	if (flags != -1) {
 		flags |= O_NONBLOCK;
-		fcntl(fd, F_SETFD, flags);
+		fcntl(fd, F_SETFL, flags);
 	}
 
 	return fd;
