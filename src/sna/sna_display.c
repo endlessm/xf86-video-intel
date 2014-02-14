@@ -3692,7 +3692,7 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 			continue;
 
 		mode_from_kmode(scrn, &mode.mode, &crtc->desiredMode);
-		crtc->desiredRotation = RR_Rotate_0;
+		crtc->desiredRotation = sna_crtc->primary_rotation.current;
 		crtc->desiredX = mode.x;
 		crtc->desiredY = mode.y;
 		crtc->desiredTransformPresent = FALSE;
