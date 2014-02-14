@@ -2110,8 +2110,12 @@ sna_crtc_init__rotation(struct sna *sna, struct sna_crtc *sna_crtc)
 	sna_crtc->primary_rotation.current = RR_Rotate_0;
 	sna_crtc->sprite_rotation = sna_crtc->primary_rotation;
 
+#ifdef DRM_MODE_OBJECT_CRTC
 	rotation_init(sna, &sna_crtc->primary_rotation, sna_crtc->id, DRM_MODE_OBJECT_CRTC);
+#endif
+#ifdef DRM_MODE_OBJECT_PLANE
 	rotation_init(sna, &sna_crtc->sprite_rotation, sna_crtc->sprite, DRM_MODE_OBJECT_PLANE);
+#endif
 
 	DBG(("%s: CRTC:%d [pipe=%d], primary: supported-rotations=%x, current-rotation=%x, sprite: supported-rotations=%x, current-rotation=%x\n",
 	     __FUNCTION__, sna_crtc->id, sna_crtc->pipe,
