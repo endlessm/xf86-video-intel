@@ -883,9 +883,109 @@ sna_crtc_force_outputs_off(xf86CrtcPtr crtc)
 	to_sna_crtc(crtc)->dpms_mode = DPMSModeOff;
 }
 
+#define LOCAL_MODE_OBJECT_CRTC 0xcccccccc
+#define LOCAL_MODE_OBJECT_PLANE 0xeeeeeeee
+static void
+rotation_init(struct sna *sna, struct rotation *r, uint32_t obj_id, uint32_t obj_type)
+{
+#if USE_ROTATION
+#define LOCAL_IOCTL_MODE_OBJ_GETPROPERTIES DRM_IOWR(0xB9, struct local_mode_obj_get_properties)
+	struct local_mode_obj_get_properties {
+		uint64_t props_ptr;
+		uint64_t prop_values_ptr;
+		uint32_t count_props;
+		uint32_t obj_id;
+		uint32_t obj_type;
+		uint32_t pad;
+	} props;
+	uint64_t *prop_values;
+	int i, j;
+
+	memset(&props, 0, sizeof(struct local_mode_obj_get_properties));
+	props.obj_id = obj_id;
+	props.obj_type = obj_type;
+
+	if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_MODE_OBJ_GETPROPERTIES, &props))
+		return;
+
+	DBG(("%s: object %d (type %u) has %d props\n", __FUNCTION__,
+	     obj_id, obj_type, props.count_props));
+
+	if (props.count_props == 0)
+		return;
+
+	prop_values = malloc(2*sizeof(uint64_t)*props.count_props);
+	if (prop_values == NULL)
+		return;
+
+	props.props_ptr = (uintptr_t)prop_values;
+	props.prop_values_ptr = (uintptr_t)(prop_values + props.count_props);
+
+	if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_MODE_OBJ_GETPROPERTIES, &props))
+		props.count_props = 0;
+
+	for (i = 0; i < props.count_props; i++) {
+		struct drm_mode_get_property prop;
+		struct drm_mode_property_enum *enums;
+
+		memset(&prop, 0, sizeof(prop));
+		prop.prop_id = prop_values[i];
+		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPERTY, &prop))
+			continue;
+
+		DBG(("%s: prop[%d] .id=%d, .name=%s, .flags=%x, .value=%ld\n", __FUNCTION__, i,
+		     prop_values[i], prop.name, prop.flags, prop_values[i+props.count_props]));
+		if ((prop.flags & (1 << 5)) == 0)
+			continue;
+
+		if (strcmp(prop.name, "rotation"))
+			continue;
+
+		r->obj_id = obj_id;
+		r->obj_type = obj_type;
+		r->prop_id = prop_values[i];
+		r->current = prop_values[i + props.count_props];
+
+		DBG(("%s: found rotation property .id=%d, value=%ld, num_enums=%d\n",
+		     __FUNCTION__, prop.prop_id, (long)prop_values[i+props.count_props], prop.count_enum_blobs));
+		enums = malloc(prop.count_enum_blobs * sizeof(struct drm_mode_property_enum));
+		if (enums != NULL) {
+			prop.count_values = 0;
+			prop.enum_blob_ptr = (uintptr_t)enums;
+
+			if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPERTY, &prop) == 0) {
+				/* XXX we assume that the mapping between kernel enum and
+				 * RandR remains fixed for our lifetimes.
+				 */
+				for (j = 0; j < prop.count_enum_blobs; j++) {
+					DBG(("%s: rotation[%d] = %s [%x]\n", __FUNCTION__,
+					     j, enums[j].name, enums[j].value));
+					r->supported |= 1 << enums[j].value;
+				}
+			}
+
+			free(enums);
+		}
+
+		break;
+	}
+
+	free(prop_values);
+#endif
+}
+
 static bool
 rotation_set(struct sna *sna, struct rotation *r, uint32_t desired)
 {
+#define LOCAL_IOCTL_MODE_OBJ_SETPROPERTY DRM_IOWR(0xBA, struct local_mode_obj_set_property)
+	struct local_mode_obj_set_property {
+		uint64_t value;
+		uint32_t prop_id;
+		uint32_t obj_id;
+		uint32_t obj_type;
+		uint32_t pad;
+	} prop;
+
 	if (desired == r->current)
 		return true;
 
@@ -899,13 +999,25 @@ rotation_set(struct sna *sna, struct rotation *r, uint32_t desired)
 	assert(r->obj_type);
 	assert(r->prop_id);
 
-	if (drmModeObjectSetProperty(sna->kgem.fd,
-				     r->obj_id, r->obj_type,
-				     r->prop_id, desired))
+	prop.obj_id = r->obj_id;
+	prop.obj_type = r->obj_type;
+	prop.prop_id = r->prop_id;
+	prop.value = desired;
+
+	if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_MODE_OBJ_SETPROPERTY, &prop))
 		return false;
 
 	r->current = desired;
 	return true;
+}
+
+static void
+rotation_reset(struct rotation *r)
+{
+	if (r->prop_id == 0)
+		return;
+
+	r->current = 0;
 }
 
 bool sna_crtc_set_sprite_rotation(xf86CrtcPtr crtc, uint32_t rotation)
@@ -2030,79 +2142,6 @@ sna_crtc_find_sprite(struct sna *sna, int pipe)
 }
 
 static void
-rotation_init(struct sna *sna, struct rotation *r, uint32_t obj_id, uint32_t obj_type)
-{
-#if USE_ROTATION
-	drmModeObjectPropertiesPtr props;
-	int i, j;
-
-	props = drmModeObjectGetProperties(sna->kgem.fd, obj_id, obj_type);
-	if (props == NULL)
-		return;
-
-	DBG(("%s: object %d (type %u) has %d props\n", __FUNCTION__,
-	     obj_id, obj_type, props->count_props));
-
-	for (i = 0; i < props->count_props; i++) {
-		struct drm_mode_get_property prop;
-		struct drm_mode_property_enum *enums;
-
-		memset(&prop, 0, sizeof(prop));
-		prop.prop_id = props->props[i];
-		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPERTY, &prop))
-			continue;
-
-		DBG(("%s: prop[%d] .id=%d, .name=%s, .flags=%x, .value=%ld\n", __FUNCTION__, i,
-		     props->props[i], prop.name, prop.flags, props->prop_values[i]));
-		if ((prop.flags & DRM_MODE_PROP_BITMASK) == 0)
-			continue;
-
-		if (strcmp(prop.name, "rotation"))
-			continue;
-
-		r->obj_id = obj_id;
-		r->obj_type = obj_type;
-		r->prop_id = props->props[i];
-		r->current = props->prop_values[i];
-
-		DBG(("%s: found rotation property .id=%d, value=%ld, num_enums=%d\n",
-		     __FUNCTION__, prop.prop_id, (long)props->prop_values[i], prop.count_enum_blobs));
-		enums = malloc(prop.count_enum_blobs * sizeof(struct drm_mode_property_enum));
-		if (enums != NULL) {
-			prop.count_values = 0;
-			prop.enum_blob_ptr = (uintptr_t)enums;
-
-			if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPERTY, &prop) == 0) {
-				/* XXX we assume that the mapping between kernel enum and
-				 * RandR remains fixed for our lifetimes.
-				 */
-				for (j = 0; j < prop.count_enum_blobs; j++) {
-					DBG(("%s: rotation[%d] = %s [%x]\n", __FUNCTION__,
-					     j, enums[j].name, enums[j].value));
-					r->supported |= 1 << enums[j].value;
-				}
-			}
-
-			free(enums);
-		}
-
-		break;
-	}
-
-	drmModeFreeObjectProperties(props);
-#endif
-}
-
-static void
-rotation_reset(struct rotation *r)
-{
-	if (r->prop_id == 0)
-		return;
-
-	r->current = 0;
-}
-
-static void
 sna_crtc_init__rotation(struct sna *sna, struct sna_crtc *sna_crtc)
 {
 	sna_crtc->rotation = RR_Rotate_0;
@@ -2110,12 +2149,8 @@ sna_crtc_init__rotation(struct sna *sna, struct sna_crtc *sna_crtc)
 	sna_crtc->primary_rotation.current = RR_Rotate_0;
 	sna_crtc->sprite_rotation = sna_crtc->primary_rotation;
 
-#ifdef DRM_MODE_OBJECT_CRTC
-	rotation_init(sna, &sna_crtc->primary_rotation, sna_crtc->id, DRM_MODE_OBJECT_CRTC);
-#endif
-#ifdef DRM_MODE_OBJECT_PLANE
-	rotation_init(sna, &sna_crtc->sprite_rotation, sna_crtc->sprite, DRM_MODE_OBJECT_PLANE);
-#endif
+	rotation_init(sna, &sna_crtc->primary_rotation, sna_crtc->id, LOCAL_MODE_OBJECT_CRTC);
+	rotation_init(sna, &sna_crtc->sprite_rotation, sna_crtc->sprite, LOCAL_MODE_OBJECT_PLANE);
 
 	DBG(("%s: CRTC:%d [pipe=%d], primary: supported-rotations=%x, current-rotation=%x, sprite: supported-rotations=%x, current-rotation=%x\n",
 	     __FUNCTION__, sna_crtc->id, sna_crtc->pipe,
