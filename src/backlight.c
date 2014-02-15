@@ -29,20 +29,30 @@
 #include "config.h"
 #endif
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <string.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+#include <limits.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <dirent.h>
+
 #include "backlight.h"
 #include "fd.h"
 
+#define BACKLIGHT_CLASS "/sys/class/backlight"
+
 /* Enough for 10 digits of backlight + '\n' + '\0' */
 #define BACKLIGHT_VALUE_LEN 12
+
+#ifndef ARRAY_SIZE
+#define ARRAY_SIZE(A) (sizeof(A)/sizeof(A[0]))
+#endif
 
 /*
  * Unfortunately this is not as simple as I would like it to be. If selinux is
@@ -110,6 +120,7 @@ int backlight_open(struct backlight *b, char *iface)
 
 	b->max = param.max;
 	b->fd = -1;
+	b->type = BL_PLATFORM;
 
 	return param.curval;
 }
@@ -124,23 +135,38 @@ is_sysfs_fd(int fd)
 }
 
 static int
-__backlight_read(const char *iface, const char *file)
+__backlight_open(const char *iface, const char *file, int mode)
 {
 	char buf[1024];
-	int fd, val;
+	int fd;
 
 	snprintf(buf, sizeof(buf), "%s/%s/%s", BACKLIGHT_CLASS, iface, file);
-	fd = open(buf, O_RDONLY);
+	fd = open(buf, mode);
 	if (fd == -1)
 		return -1;
 
-	if (is_sysfs_fd(fd)) {
-		val = read(fd, buf, BACKLIGHT_VALUE_LEN - 1);
-		if (val > 0) {
-			buf[val] = '\0';
-			val = atoi(buf);
-		} else
-			val = -1;
+	if (!is_sysfs_fd(fd)) {
+		close(fd);
+		return -1;
+	}
+
+	return fd;
+}
+
+static int
+__backlight_read(const char *iface, const char *file)
+{
+	char buf[BACKLIGHT_VALUE_LEN];
+	int fd, val;
+
+	fd = __backlight_open(iface, file, O_RDONLY);
+	if (fd < 0)
+		return -1;
+
+	val = read(fd, buf, BACKLIGHT_VALUE_LEN - 1);
+	if (val > 0) {
+		buf[val] = '\0';
+		val = atoi(buf);
 	} else
 		val = -1;
 	close(fd);
@@ -148,15 +174,71 @@ __backlight_read(const char *iface, const char *file)
 	return val;
 }
 
-int backlight_exists(const char *iface)
+/* List of available kernel interfaces in priority order */
+static const char *known_interfaces[] = {
+	"dell_backlight",
+	"gmux_backlight",
+	"asus-laptop",
+	"asus-nb-wmi",
+	"eeepc",
+	"thinkpad_screen",
+	"mbp_backlight",
+	"fujitsu-laptop",
+	"sony",
+	"samsung",
+	"acpi_video1",
+	"acpi_video0",
+	"intel_backlight",
+};
+
+static enum backlight_type __backlight_type(const char *iface)
+{
+	char buf[1024];
+	int fd, v;
+
+	v = -1;
+	fd = __backlight_open(iface, "type", O_RDONLY);
+	if (fd >= 0) {
+		v = read(fd, buf, sizeof(buf)-1);
+		close(fd);
+	}
+	if (v > 0) {
+		while (v > 0 && isspace(buf[v-1]))
+			v--;
+		buf[v] = '\0';
+
+		if (strcmp(buf, "raw") == 0)
+			v = BL_RAW;
+		else if (strcmp(buf, "platform") == 0)
+			v = BL_PLATFORM;
+		else if (strcmp(buf, "firmware") == 0)
+			v = BL_FIRMWARE;
+		else
+			v = BL_NAMED;
+	} else
+		v = BL_NAMED;
+
+	if (v == BL_NAMED) {
+		int i;
+		for (i = 0; i < ARRAY_SIZE(known_interfaces); i++) {
+			if (strcmp(iface, known_interfaces[i]) == 0)
+				break;
+		}
+		v += i;
+	}
+
+	return v;
+}
+
+enum backlight_type backlight_exists(const char *iface)
 {
 	if (__backlight_read(iface, "brightness") < 0)
-		return 0;
+		return BL_NONE;
 
 	if (__backlight_read(iface, "max_brightness") <= 0)
-		return 0;
+		return BL_NONE;
 
-	return 1;
+	return __backlight_type(iface);
 }
 
 static int __backlight_init(struct backlight *b, char *iface, int fd)
@@ -168,18 +250,11 @@ static int __backlight_init(struct backlight *b, char *iface, int fd)
 
 static int __backlight_direct_init(struct backlight *b, char *iface)
 {
-	char path[1024];
 	int fd;
 
-	snprintf(path, sizeof(path), "%s/%s/brightness", BACKLIGHT_CLASS, iface);
-	fd = open(path, O_RDWR);
+	fd = __backlight_open(iface, "brightness", O_RDWR);
 	if (fd < 0)
 		return 0;
-
-	if (!is_sysfs_fd(fd)) {
-		close(fd);
-		return 0;
-	}
 
 	return __backlight_init(b, iface, fd);
 }
@@ -242,12 +317,50 @@ static int __backlight_helper_init(struct backlight *b, char *iface)
 #endif
 }
 
+static char *
+__backlight_find(void)
+{
+	char *best_iface = NULL;
+	unsigned best_type = INT_MAX;
+	DIR *dir;
+	struct dirent *de;
+
+	dir = opendir(BACKLIGHT_CLASS);
+	if (dir == NULL)
+		return NULL;
+
+	while ((de = readdir(dir))) {
+		int v;
+
+		if (*de->d_name == '.')
+			continue;
+
+		/* Fallback to priority list of known iface for old kernels */
+		v = backlight_exists(de->d_name);
+		if (v < best_type) {
+			char *copy = strdup(de->d_name);
+			if (copy) {
+				free(best_iface);
+				best_iface = copy;
+				best_type = v;
+			}
+		}
+	}
+	closedir(dir);
+
+	return best_iface;
+}
+
 int backlight_open(struct backlight *b, char *iface)
 {
 	int level;
 
 	if (iface == NULL)
+		iface = __backlight_find();
+	if (iface == NULL)
 		return -1;
+
+	b->type = __backlight_type(iface);
 
 	b->max = __backlight_read(iface, "max_brightness");
 	if (b->max <= 0)

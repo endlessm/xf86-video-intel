@@ -327,13 +327,6 @@ sna_output_backlight_get(xf86OutputPtr output)
 	return level;
 }
 
-enum {
-	PLATFORM,
-	FIRMWARE,
-	RAW,
-	NAMED,
-};
-
 static char *
 has_user_backlight_override(xf86OutputPtr output)
 {
@@ -344,7 +337,9 @@ has_user_backlight_override(xf86OutputPtr output)
 	if (str == NULL)
 		return NULL;
 
-	if (!backlight_exists(str)) {
+	DBG(("%s(s) requested %s\n", __FUNCTION__, output->name, str));
+
+	if (backlight_exists(str) == BL_NONE) {
 		xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
 			   "Unrecognised backlight control interface '%s'\n",
 			   str);
@@ -355,11 +350,12 @@ has_user_backlight_override(xf86OutputPtr output)
 }
 
 static char *
-has_device_backlight(xf86OutputPtr output, int *best_type)
+has_device_backlight(xf86OutputPtr output)
 {
 	struct sna *sna = to_sna(output->scrn);
 	struct pci_device *pci;
 	char path[1024];
+	unsigned best_type = INT_MAX;
 	char *best_iface = NULL;
 	DIR *dir;
 	struct dirent *de;
@@ -378,139 +374,20 @@ has_device_backlight(xf86OutputPtr output, int *best_type)
 		return NULL;
 
 	while ((de = readdir(dir))) {
-		char buf[100];
-		int fd, v;
+		int v;
 
 		if (*de->d_name == '.')
 			continue;
 
-		DBG(("%s: %s\n", __FUNCTION__, de->d_name));
-		snprintf(path, sizeof(path), "%s/%s/type",
-			 BACKLIGHT_CLASS, de->d_name);
+		v = backlight_exists(de->d_name);
+		DBG(("%s: %s: exists=%d\n", __FUNCTION__, de->d_name, v));
 
-		v = -1;
-		fd = open(path, O_RDONLY);
-		if (fd >= 0) {
-			v = read(fd, buf, sizeof(buf)-1);
-			close(fd);
-		}
-		if (v > 0) {
-			while (v > 0 && isspace(buf[v-1]))
-				v--;
-			buf[v] = '\0';
-
-			if (strcmp(buf, "raw") == 0)
-				v = RAW;
-			else if (strcmp(buf, "platform") == 0)
-				v = PLATFORM;
-			else if (strcmp(buf, "firmware") == 0)
-				v = FIRMWARE;
-			else
-				v = INT_MAX;
-		} else
-			v = INT_MAX;
-
-		if (v < *best_type) {
-			char *copy;
-
-			if (!backlight_exists(de->d_name))
-				continue;
-
-			copy = strdup(de->d_name);
+		if (v < best_type) {
+			char *copy = strdup(de->d_name);
 			if (copy) {
 				free(best_iface);
 				best_iface = copy;
-				*best_type = v;
-			}
-		}
-	}
-	closedir(dir);
-
-	return best_iface;
-}
-
-static char *
-has_backlight(xf86OutputPtr output, int *best_type)
-{
-	static const char *known_interfaces[] = {
-		"dell_backlight",
-		"gmux_backlight",
-		"asus-laptop",
-		"asus-nb-wmi",
-		"eeepc",
-		"thinkpad_screen",
-		"mbp_backlight",
-		"fujitsu-laptop",
-		"sony",
-		"samsung",
-		"acpi_video1",
-		"acpi_video0",
-		"intel_backlight",
-	};
-	char *best_iface = NULL;
-	DIR *dir;
-	struct dirent *de;
-
-	dir = opendir(BACKLIGHT_CLASS);
-	if (dir == NULL)
-		return NULL;
-
-	while ((de = readdir(dir))) {
-		char path[1024];
-		char buf[100];
-		int fd, v;
-
-		if (*de->d_name == '.')
-			continue;
-
-		snprintf(path, sizeof(path), "%s/%s/type",
-			 BACKLIGHT_CLASS, de->d_name);
-
-		v = -1;
-		fd = open(path, O_RDONLY);
-		if (fd >= 0) {
-			v = read(fd, buf, sizeof(buf)-1);
-			close(fd);
-		}
-		if (v > 0) {
-			while (v > 0 && isspace(buf[v-1]))
-				v--;
-			buf[v] = '\0';
-
-			if (strcmp(buf, "raw") == 0)
-				v = RAW;
-			else if (strcmp(buf, "platform") == 0)
-				v = PLATFORM;
-			else if (strcmp(buf, "firmware") == 0)
-				v = FIRMWARE;
-			else
-				v = NAMED;
-		} else
-			v = NAMED;
-
-		/* Fallback to priority list of known iface for old kernels */
-		if (v == NAMED) {
-			int i;
-			for (i = 0; i < ARRAY_SIZE(known_interfaces); i++) {
-				if (strcmp(de->d_name, known_interfaces[i]) == 0)
-					break;
-			}
-			v += i;
-		}
-
-		if (v < *best_type) {
-			char *copy;
-
-			/* XXX detect right backlight for multi-GPU/panels */
-
-			if (!backlight_exists(de->d_name))
-				continue;
-
-			copy = strdup(de->d_name);
-			if (copy) {
-				free(best_iface);
-				best_iface = copy;
-				*best_type = v;
+				best_type = v;
 			}
 		}
 	}
@@ -523,37 +400,34 @@ static void
 sna_output_backlight_init(xf86OutputPtr output)
 {
 	struct sna_output *sna_output = output->driver_private;
-	MessageType from = X_PROBED;
+	MessageType from;
 	char *best_iface;
-	int best_type;
 
-	best_type = INT_MAX;
+	from = X_CONFIG;
 	best_iface = has_user_backlight_override(output);
 	if (best_iface)
 		goto done;
 
-	best_iface = has_device_backlight(output, &best_type);
+	/* XXX detect right backlight for multi-GPU/panels */
+	from = X_PROBED;
+	best_iface = has_device_backlight(output);
 	if (best_iface)
 		goto done;
 
-	best_iface = has_backlight(output, &best_type);
-	if (best_iface)
-		goto done;
-
-	best_type = PLATFORM;
 	best_iface = NULL;
 
 done:
+	DBG(("%s(%s) opening backlight %s\n", __FUNCTION__,
+	     output->name, best_iface ?: "none"));
 	sna_output->backlight_active_level =
 		backlight_open(&sna_output->backlight, best_iface);
 	if (sna_output->backlight_active_level < 0)
 		return;
 
-	switch (best_type) {
-	case INT_MAX: best_iface = (char *)"user"; from = X_CONFIG; break;
-	case FIRMWARE: best_iface = (char *)"firmware"; break;
-	case PLATFORM: best_iface = (char *)"platform"; break;
-	case RAW: best_iface = (char *)"raw"; break;
+	switch (sna_output->backlight.type) {
+	case BL_FIRMWARE: best_iface = (char *)"firmware"; break;
+	case BL_PLATFORM: best_iface = (char *)"platform"; break;
+	case BL_RAW: best_iface = (char *)"raw"; break;
 	default: best_iface = (char *)"unknown"; break;
 	}
 	xf86DrvMsg(output->scrn->scrnIndex, from,

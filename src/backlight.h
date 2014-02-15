@@ -27,15 +27,22 @@
 #ifndef BACKLIGHT_H
 #define BACKLIGHT_H
 
+enum backlight_type {
+	BL_NONE = -1,
+	BL_PLATFORM,
+	BL_FIRMWARE,
+	BL_RAW,
+	BL_NAMED,
+};
+
 struct backlight {
 	char *iface;
+	enum backlight_type type;
 	int max;
 	int pid, fd;
 };
 
-#define BACKLIGHT_CLASS "/sys/class/backlight"
-
-int backlight_exists(const char *iface);
+enum backlight_type backlight_exists(const char *iface);
 
 int backlight_open(struct backlight *backlight, char *iface);
 int backlight_set(struct backlight *backlight, int level);

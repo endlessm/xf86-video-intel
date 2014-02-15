@@ -139,26 +139,6 @@ crtc_id(struct intel_crtc *crtc)
 	return crtc->mode_crtc->crtc_id;
 }
 
-/*
- * List of available kernel interfaces in priority order
- */
-static const char *backlight_interfaces[] = {
-	"dell_backlight",
-	"gmux_backlight",
-	"asus-laptop",
-	"asus-nb-wmi",
-	"eeepc",
-	"thinkpad_screen",
-	"mbp_backlight",
-	"fujitsu-laptop",
-	"sony",
-	"samsung",
-	"acpi_video1", /* finally fallback to the generic acpi drivers */
-	"acpi_video0",
-	"intel_backlight",
-	NULL,
-};
-
 static void
 intel_output_backlight_set(xf86OutputPtr output, int level)
 {
@@ -181,46 +161,35 @@ intel_output_backlight_get(xf86OutputPtr output)
 static void
 intel_output_backlight_init(xf86OutputPtr output)
 {
-#ifdef __OpenBSD__
-	intel_output->backlight_active_level =
-		backlight_init(&intel_output->backlight, NULL);
-	if (intel_output->backlight_active_level != -1) {
-		xf86DrvMsg(output->scrn->scrnIndex, X_PROBED,
-			   "found backlight control interface\n");
-	}
-#else
 	struct intel_output *intel_output = output->driver_private;
 	intel_screen_private *intel = intel_get_screen_private(output->scrn);
 	char *str;
-	int i;
 
 	str = xf86GetOptValString(intel->Options, OPTION_BACKLIGHT);
 	if (str != NULL) {
-		if (backlight_exists(str)) {
+		if (backlight_exists(str) != BL_NONE) {
 			intel_output->backlight_active_level =
-				backlight_open(&intel_output->backlight, strdup(str));
+				backlight_open(&intel_output->backlight,
+					       strdup(str));
 			if (intel_output->backlight_active_level != -1) {
 				xf86DrvMsg(output->scrn->scrnIndex, X_CONFIG,
 					   "found backlight control interface %s\n", str);
 				return;
 			}
 		}
+
 		xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
 			   "unrecognised backlight control interface %s\n", str);
 	}
 
-	for (i = 0; backlight_interfaces[i] != NULL; i++) {
-		if (backlight_exists(backlight_interfaces[i])) {
-			intel_output->backlight_active_level =
-				backlight_open(&intel_output->backlight, strdup(backlight_interfaces[i]));
-			if (intel_output->backlight_active_level != -1) {
-				xf86DrvMsg(output->scrn->scrnIndex, X_PROBED,
-					   "found backlight control interface %s\n", backlight_interfaces[i]);
-				return;
-			}
-		}
+	intel_output->backlight_active_level =
+		backlight_open(&intel_output->backlight, NULL);
+	if (intel_output->backlight_active_level != -1) {
+		xf86DrvMsg(output->scrn->scrnIndex, X_PROBED,
+			   "found backlight control interface %s\n",
+			   intel_output->backlight.iface);
+		return;
 	}
-#endif
 }
 
 static void
