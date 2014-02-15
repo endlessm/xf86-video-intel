@@ -44,6 +44,7 @@
 #include "intel.h"
 #include "intel_bufmgr.h"
 #include "intel_options.h"
+#include "backlight.h"
 #include "xf86drm.h"
 #include "xf86drmMode.h"
 #include "X11/Xatom.h"
@@ -121,9 +122,8 @@ struct intel_output {
 	int panel_vdisplay;
 
 	int dpms_mode;
-	const char *backlight_iface;
+	struct backlight backlight;
 	int backlight_active_level;
-	int backlight_max;
 	xf86OutputPtr output;
 	struct list link;
 };
@@ -139,68 +139,6 @@ crtc_id(struct intel_crtc *crtc)
 {
 	return crtc->mode_crtc->crtc_id;
 }
-
-#ifdef __OpenBSD__
-
-#include <dev/wscons/wsconsio.h>
-#include "xf86Priv.h"
-
-static void
-intel_output_backlight_set(xf86OutputPtr output, int level)
-{
-	struct intel_output *intel_output = output->driver_private;
-	struct wsdisplay_param param;
-
-	if (level > intel_output->backlight_max)
-		level = intel_output->backlight_max;
-	if (! intel_output->backlight_iface || level < 0)
-		return;
-
-	param.param = WSDISPLAYIO_PARAM_BRIGHTNESS;
-	param.curval = level;
-	if (ioctl(xf86Info.consoleFd, WSDISPLAYIO_SETPARAM, &param) == -1) {
-		xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
-			   "Failed to set backlight level: %s\n",
-			   strerror(errno));
-	}
-}
-
-static int
-intel_output_backlight_get(xf86OutputPtr output)
-{
-	struct wsdisplay_param param;
-
-	param.param = WSDISPLAYIO_PARAM_BRIGHTNESS;
-	if (ioctl(xf86Info.consoleFd, WSDISPLAYIO_GETPARAM, &param) == -1) {
-		xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
-			   "Failed to get backlight level: %s\n",
-			   strerror(errno));
-		return -1;
-	}
-
-	return param.curval;
-}
-
-static void
-intel_output_backlight_init(xf86OutputPtr output)
-{
-	struct intel_output *intel_output = output->driver_private;
-	struct wsdisplay_param param;
-
-	param.param = WSDISPLAYIO_PARAM_BRIGHTNESS;
-	if (ioctl(xf86Info.consoleFd, WSDISPLAYIO_GETPARAM, &param) == -1) {
-		intel_output->backlight_iface = NULL;
-		return;
-	}
-
-	intel_output->backlight_iface = "wscons";
-	intel_output->backlight_max = param.max;
-	intel_output->backlight_active_level = param.curval;
-}
-
-#else
-
-#define BACKLIGHT_CLASS "/sys/class/backlight"
 
 /*
  * List of available kernel interfaces in priority order
@@ -221,127 +159,50 @@ static const char *backlight_interfaces[] = {
 	"intel_backlight",
 	NULL,
 };
-/*
- * Must be long enough for BACKLIGHT_CLASS + '/' + longest in above table +
- * '/' + "max_backlight"
- */
-#define BACKLIGHT_PATH_LEN 80
-/* Enough for 10 digits of backlight + '\n' + '\0' */
-#define BACKLIGHT_VALUE_LEN 12
 
 static void
 intel_output_backlight_set(xf86OutputPtr output, int level)
 {
 	struct intel_output *intel_output = output->driver_private;
-	char path[BACKLIGHT_PATH_LEN], val[BACKLIGHT_VALUE_LEN];
-	int fd, len, ret;
-
-	if (level > intel_output->backlight_max)
-		level = intel_output->backlight_max;
-	if (! intel_output->backlight_iface || level < 0)
-		return;
-
-	len = snprintf(val, BACKLIGHT_VALUE_LEN, "%d\n", level);
-	sprintf(path, "%s/%s/brightness",
-		BACKLIGHT_CLASS, intel_output->backlight_iface);
-	fd = open(path, O_RDWR);
-	if (fd == -1) {
-		xf86DrvMsg(output->scrn->scrnIndex, X_ERROR, "failed to open %s for backlight "
-			   "control: %s\n", path, strerror(errno));
-		return;
+	if (backlight_set(&intel_output->backlight, level) < 0) {
+		xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
+			   "failed to set backlight %s to brightness level %d, disabling\n",
+			   intel_output->backlight.iface, level);
+		backlight_disable(&intel_output->backlight);
 	}
-
-	ret = write(fd, val, len);
-	if (ret == -1) {
-		xf86DrvMsg(output->scrn->scrnIndex, X_ERROR, "write to %s for backlight "
-			   "control failed: %s\n", path, strerror(errno));
-	}
-
-	close(fd);
 }
 
 static int
 intel_output_backlight_get(xf86OutputPtr output)
 {
 	struct intel_output *intel_output = output->driver_private;
-	char path[BACKLIGHT_PATH_LEN], val[BACKLIGHT_VALUE_LEN];
-	int fd, level;
-
-	sprintf(path, "%s/%s/actual_brightness",
-		BACKLIGHT_CLASS, intel_output->backlight_iface);
-	fd = open(path, O_RDONLY);
-	if (fd == -1) {
-		xf86DrvMsg(output->scrn->scrnIndex, X_ERROR, "failed to open %s "
-			   "for backlight control: %s\n", path, strerror(errno));
-		return -1;
-	}
-
-	memset(val, 0, sizeof(val));
-	if (read(fd, val, BACKLIGHT_VALUE_LEN) == -1) {
-		close(fd);
-		return -1;
-	}
-
-	close(fd);
-
-	level = atoi(val);
-	if (level > intel_output->backlight_max)
-		level = intel_output->backlight_max;
-	if (level < 0)
-		level = -1;
-	return level;
-}
-
-static int
-intel_output_backlight_get_max(xf86OutputPtr output)
-{
-	struct intel_output *intel_output = output->driver_private;
-	char path[BACKLIGHT_PATH_LEN], val[BACKLIGHT_VALUE_LEN];
-	int fd, max = 0;
-
-	sprintf(path, "%s/%s/max_brightness",
-		BACKLIGHT_CLASS, intel_output->backlight_iface);
-	fd = open(path, O_RDONLY);
-	if (fd == -1) {
-		xf86DrvMsg(output->scrn->scrnIndex, X_ERROR, "failed to open %s "
-			   "for backlight control: %s\n", path, strerror(errno));
-		return -1;
-	}
-
-	memset(val, 0, sizeof(val));
-	if (read(fd, val, BACKLIGHT_VALUE_LEN) == -1) {
-		close(fd);
-		return -1;
-	}
-
-	close(fd);
-
-	max = atoi(val);
-	if (max <= 0)
-		max = -1;
-	return max;
+	return backlight_get(&intel_output->backlight);
 }
 
 static void
 intel_output_backlight_init(xf86OutputPtr output)
 {
+#ifdef __OpenBSD__
+	intel_output->backlight_active_level =
+		backlight_init(&intel_output->backlight, NULL);
+	if (intel_output->backlight_active_level != -1) {
+		xf86DrvMsg(output->scrn->scrnIndex, X_PROBED,
+			   "found backlight control interface\n");
+	}
+#else
 	struct intel_output *intel_output = output->driver_private;
 	intel_screen_private *intel = intel_get_screen_private(output->scrn);
-	char path[BACKLIGHT_PATH_LEN];
-	struct stat buf;
 	char *str;
 	int i;
 
 	str = xf86GetOptValString(intel->Options, OPTION_BACKLIGHT);
 	if (str != NULL) {
-		sprintf(path, "%s/%s", BACKLIGHT_CLASS, str);
-		if (!stat(path, &buf)) {
-			intel_output->backlight_iface = str;
-			intel_output->backlight_max = intel_output_backlight_get_max(output);
-			if (intel_output->backlight_max > 0) {
-				intel_output->backlight_active_level = intel_output_backlight_get(output);
+		if (backlight_exists(str)) {
+			intel_output->backlight_active_level =
+				backlight_open(&intel_output->backlight, strdup(str));
+			if (intel_output->backlight_active_level != -1) {
 				xf86DrvMsg(output->scrn->scrnIndex, X_CONFIG,
-					   "found backlight control interface %s\n", path);
+					   "found backlight control interface %s\n", str);
 				return;
 			}
 		}
@@ -350,22 +211,18 @@ intel_output_backlight_init(xf86OutputPtr output)
 	}
 
 	for (i = 0; backlight_interfaces[i] != NULL; i++) {
-		sprintf(path, "%s/%s", BACKLIGHT_CLASS, backlight_interfaces[i]);
-		if (!stat(path, &buf)) {
-			intel_output->backlight_iface = backlight_interfaces[i];
-			intel_output->backlight_max = intel_output_backlight_get_max(output);
-			if (intel_output->backlight_max > 0) {
-				intel_output->backlight_active_level = intel_output_backlight_get(output);
+		if (backlight_exists(backlight_interfaces[i])) {
+			intel_output->backlight_active_level =
+				backlight_open(&intel_output->backlight, strdup(backlight_interfaces[i]));
+			if (intel_output->backlight_active_level != -1) {
 				xf86DrvMsg(output->scrn->scrnIndex, X_PROBED,
-					   "found backlight control interface %s\n", path);
+					   "found backlight control interface %s\n", backlight_interfaces[i]);
 				return;
 			}
 		}
 	}
-	intel_output->backlight_iface = NULL;
-}
-
 #endif
+}
 
 static void
 mode_from_kmode(ScrnInfoPtr scrn,
@@ -1076,6 +933,7 @@ intel_output_destroy(xf86OutputPtr output)
 	intel_output->mode_output = NULL;
 
 	list_del(&intel_output->link);
+	backlight_close(&intel_output->backlight);
 	free(intel_output);
 
 	output->driver_private = NULL;
@@ -1086,7 +944,7 @@ intel_output_dpms_backlight(xf86OutputPtr output, int oldmode, int mode)
 {
 	struct intel_output *intel_output = output->driver_private;
 
-	if (!intel_output->backlight_iface)
+	if (!intel_output->backlight.iface)
 		return;
 
 	if (mode == DPMSModeOn) {
@@ -1280,20 +1138,20 @@ intel_output_create_resources(xf86OutputPtr output)
 		}
 	}
 
-	if (intel_output->backlight_iface) {
+	if (intel_output->backlight.iface) {
 		/* Set up the backlight property, which takes effect
 		 * immediately and accepts values only within the
 		 * backlight_range.
 		 */
 		intel_output_create_ranged_atom(output, &backlight_atom,
 					BACKLIGHT_NAME, 0,
-					intel_output->backlight_max,
+					intel_output->backlight.max,
 					intel_output->backlight_active_level,
 					FALSE);
 		intel_output_create_ranged_atom(output,
 					&backlight_deprecated_atom,
 					BACKLIGHT_DEPRECATED_NAME, 0,
-					intel_output->backlight_max,
+					intel_output->backlight.max,
 					intel_output->backlight_active_level,
 					FALSE);
 	}
@@ -1317,7 +1175,7 @@ intel_output_set_property(xf86OutputPtr output, Atom property,
 		}
 
 		val = *(INT32 *)value->data;
-		if (val < 0 || val > intel_output->backlight_max)
+		if (val < 0 || val > intel_output->backlight.max)
 			return FALSE;
 
 		if (intel_output->dpms_mode == DPMSModeOn)
@@ -1383,7 +1241,7 @@ intel_output_get_property(xf86OutputPtr output, Atom property)
 	if (property == backlight_atom || property == backlight_deprecated_atom) {
 		INT32 val;
 
-		if (! intel_output->backlight_iface)
+		if (!intel_output->backlight.iface)
 			return FALSE;
 
 		val = intel_output_backlight_get(output);
