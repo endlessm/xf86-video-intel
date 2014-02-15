@@ -143,7 +143,7 @@ __backlight_open(const char *iface, const char *file, int mode)
 	char buf[1024];
 	int fd;
 
-	snprintf(buf, sizeof(buf), "%s/%s/%s", BACKLIGHT_CLASS, iface, file);
+	snprintf(buf, sizeof(buf), BACKLIGHT_CLASS "/%s/%s", iface, file);
 	fd = open(buf, mode);
 	if (fd == -1)
 		return -1;
