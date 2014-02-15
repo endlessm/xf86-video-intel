@@ -108,6 +108,9 @@ int backlight_open(struct backlight *b, char *iface)
 {
 	struct wsdisplay_param param;
 
+	if (iface != NULL)
+		return -1;
+
 	memset(&param, 0, sizeof(param));
 	param.param = WSDISPLAYIO_PARAM_BRIGHTNESS;
 
