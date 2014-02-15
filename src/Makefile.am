@@ -52,6 +52,8 @@ endif
 NULL:=#
 
 intel_drv_la_SOURCES = \
+	backlight.c \
+	backlight.h \
 	fd.h \
 	fd.c \
 	i915_pciids.h \

@@ -62,6 +62,23 @@ AC_DISABLE_STATIC
 AC_PROG_LIBTOOL
 AC_SYS_LARGEFILE
 
+# Platform specific settings
+case $host_os in
+  *linux*)
+    backlight_helper=yes
+    ;;
+esac
+
+AC_ARG_ENABLE(backlight-helper,
+              AS_HELP_STRING([--disable-backlight-helper],
+			     [Enable building the backlight helper executable for running X under a normal user [default=auto]]),
+              [backlight_helper="$enableval"],)
+AM_CONDITIONAL(BUILD_BACKLIGHT_HELPER, [test "x$backlight_helper" = "xyes"])
+if test "x$backlight_helper" = "xyes"; then
+	tools_msg="$tools_msg xf86-video-intel-backlight-helper"
+	AC_DEFINE(USE_BACKLIGHT_HELPER, 1, [Enable use of the backlight helper interfaces])
+fi
+
 # Are we in a git checkout?
 dot_git=no
 if test -e .git; then
@@ -218,6 +235,8 @@ if test "x$tools" = "xyes"; then
       AC_CHECK_HEADERS([X11/extensions/XShm.h X11/extensions/shmproto.h X11/extensions/shmstr.h], [], [tools=no],
 		       [#include <X11/Xlibint.h>
 			#include <X11/Xproto.h>])
+
+      tools_msg="$tools_msg intel-virtual-output"
 fi
 
 AM_CONDITIONAL(BUILD_TOOLS, test "x$tools" = "xyes")
@@ -681,6 +700,7 @@ fi
 DRIVER_NAME="intel"
 AC_SUBST([DRIVER_NAME])
 AC_SUBST([moduledir])
+AC_DEFINE_DIR([PREFIX_PATH], prefix, [installation prefix])
 
 AC_CONFIG_FILES([
                 Makefile
@@ -700,6 +720,7 @@ AC_CONFIG_FILES([
                 xvmc/shader/vld/Makefile
 		test/Makefile
 		tools/Makefile
+		tools/org.x.xf86-video-intel.backlight-helper.policy
 ])
 AC_OUTPUT
 
@@ -730,9 +751,7 @@ if test "x$dri_msg" = "x"; then
 	dri_msg=" none"
 fi
 
-if test "x$tools" = "xyes"; then
-	tools_msg=" intel-virtual-output"
-else
+if test "x$tools_msg" = "x"; then
 	tools_msg=" none"
 fi
 
