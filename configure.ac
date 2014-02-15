@@ -701,6 +701,7 @@ DRIVER_NAME="intel"
 AC_SUBST([DRIVER_NAME])
 AC_SUBST([moduledir])
 AC_DEFINE_DIR([PREFIX_PATH], prefix, [installation prefix])
+AC_DEFINE_DIR([LIBEXEC_PATH], libexecdir, [libexec directory])
 
 AC_CONFIG_FILES([
                 Makefile

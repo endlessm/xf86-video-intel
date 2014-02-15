@@ -24,7 +24,6 @@ AM_CFLAGS = \
 	$(NULL)
 
 drivermandir = $(DRIVER_MAN_DIR)
-backlight_helperdir = $(prefix)/libexec
 policydir = $(datarootdir)/polkit-1/actions
 
 if BUILD_TOOLS
@@ -33,12 +32,12 @@ driverman_DATA = intel-virtual-output.$(DRIVER_MAN_SUFFIX)
 endif
 
 if BUILD_BACKLIGHT_HELPER
-backlight_helper_PROGRAMS = xf86-video-intel-backlight-helper
+libexec_PROGRAMS = xf86-video-intel-backlight-helper
 nodist_policy_DATA = org.x.xf86-video-intel.backlight-helper.policy
 
-backlight_helper = $(backlight_helperdir)/xf86-video-intel-backlight-helper
-install-data-hook:
-	-chown root $(backlight_helper) && chmod u+s $(backlight_helper)
+backlight_helper = $(libexecdir)/xf86-video-intel-backlight-helper
+install-exec-hook:
+	-chown root $(DESTDIR)$(backlight_helper) && chmod u+s $(DESTDIR)$(backlight_helper)
 endif
 
 intel_virtual_output_CFLAGS = \
