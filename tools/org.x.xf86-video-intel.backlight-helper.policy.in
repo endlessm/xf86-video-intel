@@ -14,6 +14,6 @@
       <allow_inactive>no</allow_inactive>
       <allow_active>yes</allow_active>
     </defaults>
-    <annotate key="org.freedesktop.policykit.exec.path">@prefix@/libexec/xf86-video-intel-backlight-helper</annotate>
+    <annotate key="org.freedesktop.policykit.exec.path">@LIBEXEC_PATH@/xf86-video-intel-backlight-helper</annotate>
   </action>
 </policyconfig>

@@ -199,7 +199,7 @@ static int __backlight_helper_init(struct backlight *b, char *iface)
 	 * Either way, we have to trust that it is our backlight-helper
 	 * that is run and that we have scrutinised it carefully.
 	 */
-	if (stat(PREFIX_PATH "/libexec/xf86-video-intel-backlight-helper", &st))
+	if (stat(LIBEXEC_PATH "/xf86-video-intel-backlight-helper", &st))
 		return 0;
 
 	if ((st.st_mode & (S_IFREG | S_ISUID | S_IXUSR)) != (S_IFREG | S_ISUID | S_IXUSR)) {
@@ -219,10 +219,10 @@ static int __backlight_helper_init(struct backlight *b, char *iface)
 		close(fds[0]);
 		if (use_pkexec) {
 			execlp("pkexec", "pkexec",
-			       PREFIX_PATH "/libexec/xf86-video-intel-backlight-helper",
+			       LIBEXEC_PATH "/xf86-video-intel-backlight-helper",
 			       iface, (char *)0);
 		} else {
-			execle(PREFIX_PATH "/libexec/xf86-video-intel-backlight-helper",
+			execle(LIBEXEC_PATH "/xf86-video-intel-backlight-helper",
 			       "xf86-video-intel-backlight-helper",
 			       iface, (char *)0, env);
 		}
