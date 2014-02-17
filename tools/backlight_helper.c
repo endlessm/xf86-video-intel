@@ -9,7 +9,7 @@
 int main(int argc, char *argv[])
 {
 	struct stat st;
-	char buf[1024], *b = buf;
+	char buf[1024];
 	int len, fd;
 
 	if (argc != 2) {
@@ -24,27 +24,12 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	while ((len = read(0, b, sizeof(buf) - (b - buf) - 1)) > 0) {
-		len += b - buf;
-		buf[len] = '\0';
-
-		b = buf;
-		do {
-			char *end = strchr(b, '\n');
-			if (end == NULL)
-				break;
-
-			++end;
-			if (write(fd, b, end - b) != end - b) {
-				fprintf(stderr, "Failed to update backlight interface '%s'\n", argv[1]);
-				return 2;
-			}
-
-			b = end;
-		} while (1);
-
-		memmove(buf, b, len = buf + len - b);
-		b = buf + len;
+	while (fgets(buf, sizeof(buf), stdin)) {
+		len = strlen(buf);
+		if (write(fd, buf, len) != len) {
+			fprintf(stderr, "Failed to update backlight interface '%s'\n", argv[1]);
+			return 2;
+		}
 	}
 
 	return 0;
