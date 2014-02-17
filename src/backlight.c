@@ -41,6 +41,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <dirent.h>
+#include <xf86.h>
 
 #include "backlight.h"
 #include "fd.h"
@@ -283,7 +284,7 @@ static int __backlight_helper_init(struct backlight *b, char *iface)
 		return 0;
 
 	if ((st.st_mode & (S_IFREG | S_ISUID | S_IXUSR)) != (S_IFREG | S_ISUID | S_IXUSR)) {
-		if (system("pkexec --version"))
+		if (System("pkexec --version"))
 			return 0;
 
 		use_pkexec = 1;
