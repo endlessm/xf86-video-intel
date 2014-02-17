@@ -270,8 +270,10 @@ static int __backlight_helper_init(struct backlight *b, char *iface)
 	int use_pkexec = 0;
 	int fds[2];
 
-	/* If system policy is to disallow setuid helpers,
-	 * we fallback to invoking PolicyKit. However, as pkexec
+	/*
+	 * Some systems may prefer using PolicyKit's pkexec over
+	 * making the helper suid root, since the suid option will allow
+	 * anyone to control the backlight.  However, as pkexec
 	 * is quite troublesome and not universally available, we
 	 * still try the old fashioned and simple method first.
 	 * Either way, we have to trust that it is our backlight-helper
