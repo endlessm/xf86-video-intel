@@ -295,9 +295,14 @@ static int __backlight_helper_init(struct backlight *b, char *iface)
 
 	switch ((b->pid = fork())) {
 	case 0:
+		if (setgid(getgid()) || setuid(getuid()))
+			_exit(127);
+
 		close(fds[1]);
-		dup2(fds[0], 0);
+		if (dup2(fds[0], 0))
+			_exit(127);
 		close(fds[0]);
+
 		if (use_pkexec) {
 			execlp("pkexec", "pkexec",
 			       LIBEXEC_PATH "/xf86-video-intel-backlight-helper",
