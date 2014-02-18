@@ -32,6 +32,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -66,18 +67,21 @@
  * So we're left with spawning a helper child which gets levels to set written
  * to it through a pipe. This turns the blocking forever problem from a hung
  * machine problem into a simple backlight control not working problem.
+ *
+ * If only things were as simple as on OpenBSD! :)
  */
 
 #ifdef __OpenBSD__
 
 #include <dev/wscons/wsconsio.h>
+#include <xf86Priv.h>
 
 int backlight_set(struct backlight *b, int level)
 {
 	struct wsdisplay_param param;
 
 	if (b->iface == NULL)
-		return;
+		return -1;
 
 	if ((unsigned)level > b->max)
 		level = b->max;
@@ -127,6 +131,14 @@ int backlight_open(struct backlight *b, char *iface)
 	b->type = BL_PLATFORM;
 
 	return param.curval;
+}
+
+enum backlight_type backlight_exists(const char *iface)
+{
+	if (iface != NULL)
+		return BL_NONE;
+
+	return BL_PLATFORM;
 }
 
 #else
