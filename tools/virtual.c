@@ -2987,7 +2987,8 @@ int main(int argc, char **argv)
 		if (reconfigure && context_update(&ctx))
 			display_reset_damage(ctx.display);
 
-		XPending(ctx.record);
+		while (XPending(ctx.record)) /* discard all implicit events */
+			XNextEvent(ctx.record, &e);
 
 		if (ctx.timer_active && read(ctx.timer, &count, sizeof(count)) > 0) {
 			struct clone *clone;
