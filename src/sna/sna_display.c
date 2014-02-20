@@ -35,7 +35,6 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <dirent.h>
 #include <errno.h>
 #include <poll.h>
 #include <ctype.h>
@@ -349,57 +348,11 @@ has_user_backlight_override(xf86OutputPtr output)
 	return strdup(str);
 }
 
-static char *
-has_device_backlight(xf86OutputPtr output)
-{
-	struct sna *sna = to_sna(output->scrn);
-	struct pci_device *pci;
-	char path[1024];
-	unsigned best_type = INT_MAX;
-	char *best_iface = NULL;
-	DIR *dir;
-	struct dirent *de;
-
-	pci = xf86GetPciInfoForEntity(sna->pEnt->index);
-	if (pci == NULL)
-		return NULL;
-
-	snprintf(path, sizeof(path),
-		 "/sys/bus/pci/devices/%04x:%02x:%02x.%d/backlight",
-		 pci->domain, pci->bus, pci->dev, pci->func);
-
-	DBG(("%s: scanning %s\n", __FUNCTION__, path));
-	dir = opendir(path);
-	if (dir == NULL)
-		return NULL;
-
-	while ((de = readdir(dir))) {
-		int v;
-
-		if (*de->d_name == '.')
-			continue;
-
-		v = backlight_exists(de->d_name);
-		DBG(("%s: %s: exists=%d\n", __FUNCTION__, de->d_name, v));
-
-		if (v < best_type) {
-			char *copy = strdup(de->d_name);
-			if (copy) {
-				free(best_iface);
-				best_iface = copy;
-				best_type = v;
-			}
-		}
-	}
-	closedir(dir);
-
-	return best_iface;
-}
-
 static void
 sna_output_backlight_init(xf86OutputPtr output)
 {
 	struct sna_output *sna_output = output->driver_private;
+	struct pci_device *pci;
 	MessageType from;
 	char *best_iface;
 
@@ -410,11 +363,9 @@ sna_output_backlight_init(xf86OutputPtr output)
 
 	/* XXX detect right backlight for multi-GPU/panels */
 	from = X_PROBED;
-	best_iface = has_device_backlight(output);
-	if (best_iface)
-		goto done;
-
-	best_iface = NULL;
+	pci = xf86GetPciInfoForEntity(to_sna(output->scrn)->pEnt->index);
+	if (pci != NULL)
+		best_iface = backlight_find_for_device(pci);
 
 done:
 	DBG(("%s(%s) opening backlight %s\n", __FUNCTION__,

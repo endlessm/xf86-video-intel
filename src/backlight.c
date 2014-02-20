@@ -43,6 +43,7 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <xf86.h>
+#include <pciaccess.h>
 
 #include "backlight.h"
 #include "fd.h"
@@ -451,4 +452,41 @@ void backlight_close(struct backlight *b)
 	backlight_disable(b);
 	if (b->pid)
 		waitpid(b->pid, NULL, 0);
+}
+
+char *backlight_find_for_device(struct pci_device *pci)
+{
+	char path[200];
+	unsigned best_type = INT_MAX;
+	char *best_iface = NULL;
+	DIR *dir;
+	struct dirent *de;
+
+	snprintf(path, sizeof(path),
+		 "/sys/bus/pci/devices/%04x:%02x:%02x.%d/backlight",
+		 pci->domain, pci->bus, pci->dev, pci->func);
+
+	dir = opendir(path);
+	if (dir == NULL)
+		return NULL;
+
+	while ((de = readdir(dir))) {
+		int v;
+
+		if (*de->d_name == '.')
+			continue;
+
+		v = backlight_exists(de->d_name);
+		if (v < best_type) {
+			char *copy = strdup(de->d_name);
+			if (copy) {
+				free(best_iface);
+				best_iface = copy;
+				best_type = v;
+			}
+		}
+	}
+	closedir(dir);
+
+	return best_iface;
 }

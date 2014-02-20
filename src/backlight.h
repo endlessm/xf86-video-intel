@@ -50,4 +50,7 @@ int backlight_get(struct backlight *backlight);
 void backlight_disable(struct backlight *backlight);
 void backlight_close(struct backlight *backlight);
 
+struct pci_device;
+char *backlight_find_for_device(struct pci_device *pci);
+
 #endif /* BACKLIGHT_H */
