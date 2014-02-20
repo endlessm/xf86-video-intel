@@ -1680,7 +1680,7 @@ sna_crtc_hide_cursor(xf86CrtcPtr crtc)
 	VG_CLEAR(arg);
 	arg.flags = DRM_MODE_CURSOR_BO;
 	arg.crtc_id = sna_crtc->id;
-	arg.width = arg.height = 64;
+	arg.width = arg.height = 0;
 	arg.handle = 0;
 
 	(void)drmIoctl(to_sna(crtc->scrn)->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg);
@@ -1690,6 +1690,7 @@ static void
 sna_crtc_show_cursor(xf86CrtcPtr crtc)
 {
 	struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
+	struct sna *sna = to_sna(crtc->scrn);
 	struct drm_mode_cursor arg;
 
 	__DBG(("%s: CRTC:%d\n", __FUNCTION__, sna_crtc->id));
@@ -1697,10 +1698,11 @@ sna_crtc_show_cursor(xf86CrtcPtr crtc)
 	VG_CLEAR(arg);
 	arg.flags = DRM_MODE_CURSOR_BO;
 	arg.crtc_id = sna_crtc->id;
-	arg.width = arg.height = 64;
+	arg.width = sna->mode.cursor_width;
+	arg.height = sna->mode.cursor_height;
 	arg.handle = sna_crtc->cursor;
 
-	(void)drmIoctl(to_sna(crtc->scrn)->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg);
+	(void)drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg);
 }
 
 static void
@@ -1731,6 +1733,7 @@ sna_crtc_set_cursor_position(xf86CrtcPtr crtc, int x, int y)
 static void
 sna_crtc_load_cursor_argb(xf86CrtcPtr crtc, CARD32 *image)
 {
+	struct sna *sna = to_sna(crtc->scrn);
 	struct drm_i915_gem_pwrite pwrite;
 
 	__DBG(("%s: CRTC:%d\n", __FUNCTION__, to_sna_crtc(crtc)->id));
@@ -1738,9 +1741,9 @@ sna_crtc_load_cursor_argb(xf86CrtcPtr crtc, CARD32 *image)
 	VG_CLEAR(pwrite);
 	pwrite.handle = to_sna_crtc(crtc)->cursor;
 	pwrite.offset = 0;
-	pwrite.size = 64*64*4;
+	pwrite.size = sna->mode.cursor_width*sna->mode.cursor_height*4;
 	pwrite.data_ptr = (uintptr_t)image;
-	(void)drmIoctl(to_sna(crtc->scrn)->kgem.fd, DRM_IOCTL_I915_GEM_PWRITE, &pwrite);
+	(void)drmIoctl(sna->kgem.fd, DRM_IOCTL_I915_GEM_PWRITE, &pwrite);
 }
 
 static void
@@ -1902,7 +1905,8 @@ sna_crtc_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 		return false;
 	}
 
-	sna_crtc->cursor = gem_create(sna->kgem.fd, 64*64*4);
+	sna_crtc->cursor = gem_create(sna->kgem.fd,
+				      sna->mode.cursor_width*sna->mode.cursor_height*4);
 	if (!sna_crtc->cursor) {
 		xf86CrtcDestroy(crtc);
 		free(sna_crtc);
@@ -3517,6 +3521,24 @@ sna_crtc_config_notify(ScreenPtr screen)
 	sna_mode_update(to_sna_from_screen(screen));
 }
 
+static void
+sna_cursor_pre_init(struct sna *sna)
+{
+	uint64_t value;
+
+#define DRM_CAP_CURSOR_WIDTH 8
+#define DRM_CAP_CURSOR_HEIGHT 9
+
+	sna->mode.cursor_width = SNA_CURSOR_X;
+	sna->mode.cursor_height = SNA_CURSOR_Y;
+
+	if (drmGetCap(sna->kgem.fd, DRM_CAP_CURSOR_WIDTH, &value) == 0)
+		sna->mode.cursor_width = value;
+
+	if (drmGetCap(sna->kgem.fd, DRM_CAP_CURSOR_HEIGHT, &value) == 0)
+		sna->mode.cursor_height = value;
+}
+
 #if HAS_PIXMAP_SHARING
 #define sna_setup_provider(scrn) xf86ProviderSetup(scrn, NULL, "Intel")
 #else
@@ -3528,6 +3550,8 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 	struct sna_mode *mode = &sna->mode;
 	int num_fake = 0;
 	int i;
+
+	sna_cursor_pre_init(sna);
 
 	if (sna->flags & SNA_IS_HOSTED) {
 		sna_setup_provider(scrn);

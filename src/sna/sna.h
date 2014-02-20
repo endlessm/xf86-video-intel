@@ -279,6 +279,9 @@ struct sna {
 		int shadow_flip;
 		int front_active;
 
+		unsigned short cursor_width;
+		unsigned short cursor_height;
+
 		unsigned num_real_crtc;
 		unsigned num_real_output;
 		unsigned num_fake;
