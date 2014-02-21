@@ -3539,7 +3539,8 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 
 	if (!sna_probe_initial_configuration(sna)) {
 		sanitize_outputs(sna);
-		xf86InitialConfiguration(scrn, TRUE);
+		if (XF86_CRTC_CONFIG_PTR(scrn)->num_crtc)
+			xf86InitialConfiguration(scrn, TRUE);
 	}
 
 	sna_setup_provider(scrn);
