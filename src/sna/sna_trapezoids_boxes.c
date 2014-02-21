@@ -253,13 +253,16 @@ composite_aligned_boxes(struct sna *sna,
 				RegionIntersect(&region, &region, &clip);
 				b = REGION_RECTS(&region);
 				count = REGION_NUM_RECTS(&region);
-				for (i = 0; i < count; i++) {
-					fbComposite(op, src, NULL, dst,
-						    src_x + b[i].x1 - boxes[0].x1,
-						    src_y + b[i].y1 - boxes[0].y1,
-						    0, 0,
-						    b[i].x1, b[i].y1,
-						    b[i].x2 - b[i].x1, b[i].y2 - b[i].y1);
+				if (sigtrap_get() == 0) {
+					for (i = 0; i < count; i++) {
+						fbComposite(op, src, NULL, dst,
+							    src_x + b[i].x1 - boxes[0].x1,
+							    src_y + b[i].y1 - boxes[0].y1,
+							    0, 0,
+							    b[i].x1, b[i].y1,
+							    b[i].x2 - b[i].x1, b[i].y2 - b[i].y1);
+					}
+					sigtrap_put();
 				}
 				pixman_region_fini(&region);
 				pixman_region_fini(&region);
@@ -789,52 +792,55 @@ composite_unaligned_boxes_inplace__solid(struct sna *sna,
 			continue;
 		}
 
-		RegionTranslate(&clip, dx, dy);
-		count = REGION_NUM_RECTS(&clip);
-		extents = REGION_RECTS(&clip);
-		while (count--) {
-			int16_t y1 = dy + pixman_fixed_to_int(t->top);
-			uint16_t fy1 = pixman_fixed_frac(t->top);
-			int16_t y2 = dy + pixman_fixed_to_int(t->bottom);
-			uint16_t fy2 = pixman_fixed_frac(t->bottom);
+		if (sigtrap_get() == 0) {
+			RegionTranslate(&clip, dx, dy);
+			count = REGION_NUM_RECTS(&clip);
+			extents = REGION_RECTS(&clip);
+			while (count--) {
+				int16_t y1 = dy + pixman_fixed_to_int(t->top);
+				uint16_t fy1 = pixman_fixed_frac(t->top);
+				int16_t y2 = dy + pixman_fixed_to_int(t->bottom);
+				uint16_t fy2 = pixman_fixed_frac(t->bottom);
 
-			DBG(("%s: t=(%d, %d), (%d, %d), extents (%d, %d), (%d, %d)\n",
-			     __FUNCTION__,
-			     pixman_fixed_to_int(t->left.p1.x),
-			     pixman_fixed_to_int(t->top),
-			     pixman_fixed_to_int(t->right.p2.x),
-			     pixman_fixed_to_int(t->bottom),
-			     extents->x1, extents->y1,
-			     extents->x2, extents->y2));
+				DBG(("%s: t=(%d, %d), (%d, %d), extents (%d, %d), (%d, %d)\n",
+				     __FUNCTION__,
+				     pixman_fixed_to_int(t->left.p1.x),
+				     pixman_fixed_to_int(t->top),
+				     pixman_fixed_to_int(t->right.p2.x),
+				     pixman_fixed_to_int(t->bottom),
+				     extents->x1, extents->y1,
+				     extents->x2, extents->y2));
 
-			if (y1 < extents->y1)
-				y1 = extents->y1, fy1 = 0;
-			if (y2 >= extents->y2)
-				y2 = extents->y2, fy2 = 0;
+				if (y1 < extents->y1)
+					y1 = extents->y1, fy1 = 0;
+				if (y2 >= extents->y2)
+					y2 = extents->y2, fy2 = 0;
 
-			if (y1 < y2) {
-				if (fy1) {
+				if (y1 < y2) {
+					if (fy1) {
+						lerp32_unaligned_box_row(pixmap, color, extents,
+									 t, dx, y1, 1,
+									 SAMPLES_Y - grid_coverage(SAMPLES_Y, fy1));
+						y1++;
+					}
+
+					if (y2 > y1)
+						lerp32_unaligned_box_row(pixmap, color, extents,
+									 t, dx, y1, y2 - y1,
+									 SAMPLES_Y);
+
+					if (fy2)
+						lerp32_unaligned_box_row(pixmap, color,  extents,
+									 t, dx, y2, 1,
+									 grid_coverage(SAMPLES_Y, fy2));
+				} else if (y1 == y2 && fy2 > fy1) {
 					lerp32_unaligned_box_row(pixmap, color, extents,
 								 t, dx, y1, 1,
-								 SAMPLES_Y - grid_coverage(SAMPLES_Y, fy1));
-					y1++;
+								 grid_coverage(SAMPLES_Y, fy2) - grid_coverage(SAMPLES_Y, fy1));
 				}
-
-				if (y2 > y1)
-					lerp32_unaligned_box_row(pixmap, color, extents,
-								 t, dx, y1, y2 - y1,
-								 SAMPLES_Y);
-
-				if (fy2)
-					lerp32_unaligned_box_row(pixmap, color,  extents,
-								 t, dx, y2, 1,
-								 grid_coverage(SAMPLES_Y, fy2));
-			} else if (y1 == y2 && fy2 > fy1) {
-				lerp32_unaligned_box_row(pixmap, color, extents,
-							 t, dx, y1, 1,
-							 grid_coverage(SAMPLES_Y, fy2) - grid_coverage(SAMPLES_Y, fy1));
+				extents++;
 			}
-			extents++;
+			sigtrap_put();
 		}
 
 		RegionUninit(&clip);
@@ -877,37 +883,40 @@ pixman:
 		pi.color = color;
 		pi.op = op;
 
-		count = REGION_NUM_RECTS(&clip);
-		extents = REGION_RECTS(&clip);
-		while (count--) {
-			int16_t y1 = pixman_fixed_to_int(t->top);
-			uint16_t fy1 = pixman_fixed_frac(t->top);
-			int16_t y2 = pixman_fixed_to_int(t->bottom);
-			uint16_t fy2 = pixman_fixed_frac(t->bottom);
+		if (sigtrap_get() == 0) {
+			count = REGION_NUM_RECTS(&clip);
+			extents = REGION_RECTS(&clip);
+			while (count--) {
+				int16_t y1 = pixman_fixed_to_int(t->top);
+				uint16_t fy1 = pixman_fixed_frac(t->top);
+				int16_t y2 = pixman_fixed_to_int(t->bottom);
+				uint16_t fy2 = pixman_fixed_frac(t->bottom);
 
-			if (y1 < extents->y1)
-				y1 = extents->y1, fy1 = 0;
-			if (y2 >= extents->y2)
-				y2 = extents->y2, fy2 = 0;
-			if (y1 < y2) {
-				if (fy1) {
+				if (y1 < extents->y1)
+					y1 = extents->y1, fy1 = 0;
+				if (y2 >= extents->y2)
+					y2 = extents->y2, fy2 = 0;
+				if (y1 < y2) {
+					if (fy1) {
+						pixsolid_unaligned_box_row(&pi, extents, t, y1, 1,
+									   SAMPLES_Y - grid_coverage(SAMPLES_Y, fy1));
+						y1++;
+					}
+
+					if (y2 > y1)
+						pixsolid_unaligned_box_row(&pi, extents, t, y1, y2 - y1,
+									   SAMPLES_Y);
+
+					if (fy2)
+						pixsolid_unaligned_box_row(&pi, extents, t, y2, 1,
+									   grid_coverage(SAMPLES_Y, fy2));
+				} else if (y1 == y2 && fy2 > fy1) {
 					pixsolid_unaligned_box_row(&pi, extents, t, y1, 1,
-								   SAMPLES_Y - grid_coverage(SAMPLES_Y, fy1));
-					y1++;
+								   grid_coverage(SAMPLES_Y, fy2) - grid_coverage(SAMPLES_Y, fy1));
 				}
-
-				if (y2 > y1)
-					pixsolid_unaligned_box_row(&pi, extents, t, y1, y2 - y1,
-								   SAMPLES_Y);
-
-				if (fy2)
-					pixsolid_unaligned_box_row(&pi, extents, t, y2, 1,
-								   grid_coverage(SAMPLES_Y, fy2));
-			} else if (y1 == y2 && fy2 > fy1) {
-				pixsolid_unaligned_box_row(&pi, extents, t, y1, 1,
-							   grid_coverage(SAMPLES_Y, fy2) - grid_coverage(SAMPLES_Y, fy1));
+				extents++;
 			}
-			extents++;
+			sigtrap_put();
 		}
 
 		RegionUninit(&clip);
@@ -1115,37 +1124,40 @@ composite_unaligned_boxes_inplace(struct sna *sna,
 			pi.bits = pixman_image_get_data(pi.mask);
 			pi.op = op;
 
-			count = REGION_NUM_RECTS(&clip);
-			extents = REGION_RECTS(&clip);
-			while (count--) {
-				int16_t y1 = pixman_fixed_to_int(t->top);
-				uint16_t fy1 = pixman_fixed_frac(t->top);
-				int16_t y2 = pixman_fixed_to_int(t->bottom);
-				uint16_t fy2 = pixman_fixed_frac(t->bottom);
+			if (sigtrap_get() == 0) {
+				count = REGION_NUM_RECTS(&clip);
+				extents = REGION_RECTS(&clip);
+				while (count--) {
+					int16_t y1 = pixman_fixed_to_int(t->top);
+					uint16_t fy1 = pixman_fixed_frac(t->top);
+					int16_t y2 = pixman_fixed_to_int(t->bottom);
+					uint16_t fy2 = pixman_fixed_frac(t->bottom);
 
-				if (y1 < extents->y1)
-					y1 = extents->y1, fy1 = 0;
-				if (y2 > extents->y2)
-					y2 = extents->y2, fy2 = 0;
-				if (y1 < y2) {
-					if (fy1) {
+					if (y1 < extents->y1)
+						y1 = extents->y1, fy1 = 0;
+					if (y2 > extents->y2)
+						y2 = extents->y2, fy2 = 0;
+					if (y1 < y2) {
+						if (fy1) {
+							pixmask_unaligned_box_row(&pi, extents, t, y1, 1,
+										  SAMPLES_Y - grid_coverage(SAMPLES_Y, fy1));
+							y1++;
+						}
+
+						if (y2 > y1)
+							pixmask_unaligned_box_row(&pi, extents, t, y1, y2 - y1,
+										  SAMPLES_Y);
+
+						if (fy2)
+							pixmask_unaligned_box_row(&pi, extents, t, y2, 1,
+										  grid_coverage(SAMPLES_Y, fy2));
+					} else if (y1 == y2 && fy2 > fy1) {
 						pixmask_unaligned_box_row(&pi, extents, t, y1, 1,
-									  SAMPLES_Y - grid_coverage(SAMPLES_Y, fy1));
-						y1++;
+									  grid_coverage(SAMPLES_Y, fy2) - grid_coverage(SAMPLES_Y, fy1));
 					}
-
-					if (y2 > y1)
-						pixmask_unaligned_box_row(&pi, extents, t, y1, y2 - y1,
-									  SAMPLES_Y);
-
-					if (fy2)
-						pixmask_unaligned_box_row(&pi, extents, t, y2, 1,
-									  grid_coverage(SAMPLES_Y, fy2));
-				} else if (y1 == y2 && fy2 > fy1) {
-					pixmask_unaligned_box_row(&pi, extents, t, y1, 1,
-								  grid_coverage(SAMPLES_Y, fy2) - grid_coverage(SAMPLES_Y, fy1));
+					extents++;
 				}
-				extents++;
+				sigtrap_put();
 			}
 
 			pixman_image_unref(pi.image);

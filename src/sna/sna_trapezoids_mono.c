@@ -1168,7 +1168,10 @@ unbounded_pass:
 		mono.span = mono_span__fast;
 	else
 		mono.span = mono_span;
-	mono_render(&mono);
+	if (sigtrap_get() == 0) {
+		mono_render(&mono);
+		sigtrap_put();
+	}
 	mono_fini(&mono);
 
 	if (op) {

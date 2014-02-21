@@ -2759,8 +2759,11 @@ trapezoid_span_inplace__x8r8g8b8(CARD8 op,
 			DBG(("%s: render inplace op=%d, color=%08x\n",
 			     __FUNCTION__, op, color));
 
-			tor_render(NULL, &tor, (void*)&inplace,
-				   dst->pCompositeClip, span, false);
+			if (sigtrap_get() == 0) {
+				tor_render(NULL, &tor, (void*)&inplace,
+					   dst->pCompositeClip, span, false);
+				sigtrap_put();
+			}
 		} else if (is_solid) {
 			struct pixman_inplace pi;
 
@@ -2778,9 +2781,12 @@ trapezoid_span_inplace__x8r8g8b8(CARD8 op,
 			else
 				span = pixmask_span_solid;
 
-			tor_render(NULL, &tor, (void*)&pi,
-				   dst->pCompositeClip, span,
-				   false);
+			if (sigtrap_get() == 0) {
+				tor_render(NULL, &tor, (void*)&pi,
+					   dst->pCompositeClip, span,
+					   false);
+				sigtrap_put();
+			}
 
 			pixman_image_unref(pi.source);
 			pixman_image_unref(pi.image);
@@ -2804,9 +2810,12 @@ trapezoid_span_inplace__x8r8g8b8(CARD8 op,
 			else
 				span = pixmask_span;
 
-			tor_render(NULL, &tor, (void*)&pi,
-				   dst->pCompositeClip, span,
-				   false);
+			if (sigtrap_get() == 0) {
+				tor_render(NULL, &tor, (void*)&pi,
+					   dst->pCompositeClip, span,
+					   false);
+				sigtrap_put();
+			}
 
 			pixman_image_unref(pi.mask);
 			pixman_image_unref(pi.source);
@@ -3083,8 +3092,11 @@ imprecise_trapezoid_span_inplace(struct sna *sna,
 			tor_add_edge(&tor, &t, &t.right, -1);
 		}
 
-		tor_render(NULL, &tor, (void*)&inplace,
-			   dst->pCompositeClip, span, unbounded);
+		if (sigtrap_get() == 0) {
+			tor_render(NULL, &tor, (void*)&inplace,
+				   dst->pCompositeClip, span, unbounded);
+			sigtrap_put();
+		}
 
 		tor_fini(&tor);
 	} else {
