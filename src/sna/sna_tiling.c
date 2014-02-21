@@ -854,8 +854,7 @@ sna_tiling_blt_copy_boxes__with_alpha(struct sna *sna, uint8_t alu,
 				int16_t dx = this.extents.x1;
 				int16_t dy = this.extents.y1;
 
-				assert(bo->pitch <= 8192);
-				assert(bo->tiling != I915_TILING_Y);
+				assert(kgem_bo_can_blt(&sna->kgem, bo));
 
 				if (!sna_blt_copy_boxes(sna, GXcopy,
 							src_bo, src_dx, src_dy,
