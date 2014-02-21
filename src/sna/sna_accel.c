@@ -516,7 +516,6 @@ sna_pixmap_alloc_cpu(struct sna *sna,
 		priv->ptr = malloc(priv->stride * pixmap->drawable.height);
 	}
 
-	assert(priv->ptr);
 done:
 	assert(priv->stride);
 	assert(!priv->mapped);
