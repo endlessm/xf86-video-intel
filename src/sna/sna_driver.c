@@ -1038,11 +1038,11 @@ sna_screen_init(SCREEN_INIT_ARGS_DECL)
 	if (!miCreateDefColormap(screen))
 		return FALSE;
 
-	if (!xf86HandleColormaps(screen, 256, 8, sna_load_palette, NULL,
+	if (sna->mode.kmode->count_crtcs &&
+	    !xf86HandleColormaps(screen, 256, 8, sna_load_palette, NULL,
 				 CMAP_RELOAD_ON_MODE_SWITCH |
-				 CMAP_PALETTED_TRUECOLOR)) {
+				 CMAP_PALETTED_TRUECOLOR))
 		return FALSE;
-	}
 
 	xf86DPMSInit(screen, xf86DPMSSet, 0);
 
