@@ -4540,6 +4540,7 @@ sna_put_zpixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 		    int x, int y, int w, int  h, char *bits, int stride)
 {
 	PixmapPtr pixmap = get_drawable_pixmap(drawable);
+	unsigned int hint;
 	BoxRec *box;
 	int16_t dx, dy;
 	int n;
@@ -4562,8 +4563,11 @@ sna_put_zpixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 	if (try_upload_tiled_x(pixmap, region, x, y, w, h, bits, stride))
 		return true;
 
-	if (!sna_drawable_move_region_to_cpu(&pixmap->drawable,
-					     region, MOVE_WRITE))
+	hint = MOVE_WRITE;
+	if (w == pixmap->drawable.width)
+		hint |= MOVE_WHOLE_HINT;
+
+	if (!sna_drawable_move_region_to_cpu(&pixmap->drawable, region, hint))
 		return false;
 
 	if (sigtrap_get())
