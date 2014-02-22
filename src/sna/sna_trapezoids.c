@@ -629,8 +629,9 @@ force_fallback:
 		}
 	}
 
-	DBG(("%s: rectilinear? %d, pixel-aligned? %d\n",
-	     __FUNCTION__, rectilinear, pixel_aligned));
+	DBG(("%s: rectilinear? %d, pixel-aligned? %d, mono? %d precise? %d\n",
+	     __FUNCTION__, rectilinear, pixel_aligned,
+	     is_mono(dst, maskFormat), is_precise(dst, maskFromat)));
 
 	flags = 0;
 	if (rectilinear) {
