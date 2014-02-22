@@ -187,9 +187,11 @@ void sna_threads_trap(int sig)
 	for (n = 1; threads[n].thread != t; n++)
 		;
 
+	ERR(("%s: thread[%d] caught signal %d\n", __func__, n, sig));
+
 	pthread_mutex_lock(&threads[n].mutex);
 	threads[n].func = NULL;
-	threads[n].arg = &threads[n];
+	threads[n].arg = (void *)(intptr_t)sig;
 	pthread_cond_signal(&threads[n].cond);
 	pthread_mutex_unlock(&threads[n].mutex);
 
@@ -212,7 +214,7 @@ void sna_threads_wait(void)
 		}
 
 		if (threads[n].arg != NULL) {
-			ERR(("%s: thread %d died\n", __func__, n));
+			DBG(("%s: thread[%d] died from signal %d\n", __func__, n, (int)threads[n].arg));
 			sna_threads_kill();
 			return;
 		}
