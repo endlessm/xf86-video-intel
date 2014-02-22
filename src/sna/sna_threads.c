@@ -276,11 +276,14 @@ void sna_image_composite(pixman_op_t        op,
 
 	num_threads = sna_use_threads(width, height, 32);
 	if (num_threads <= 1) {
-		pixman_image_composite(op, src, mask, dst,
-				       src_x, src_y,
-				       mask_x, mask_y,
-				       dst_x, dst_y,
-				       width, height);
+		if (sigtrap_get() == 0) {
+			pixman_image_composite(op, src, mask, dst,
+					       src_x, src_y,
+					       mask_x, mask_y,
+					       dst_x, dst_y,
+					       width, height);
+			sigtrap_put();
+		}
 	} else {
 		struct thread_composite data[num_threads];
 		int y, dy, n;
@@ -305,27 +308,31 @@ void sna_image_composite(pixman_op_t        op,
 		data[0].width = width;
 		data[0].height = dy;
 
-		for (n = 1; n < num_threads; n++) {
-			data[n] = data[0];
-			data[n].src_y += y - dst_y;
-			data[n].mask_y += y - dst_y;
-			data[n].dst_y = y;
-			y += dy;
+		if (sigtrap_get() == 0) {
+			for (n = 1; n < num_threads; n++) {
+				data[n] = data[0];
+				data[n].src_y += y - dst_y;
+				data[n].mask_y += y - dst_y;
+				data[n].dst_y = y;
+				y += dy;
 
-			sna_threads_run(thread_composite, &data[n]);
-		}
+				sna_threads_run(thread_composite, &data[n]);
+			}
 
-		assert(y < dst_y + height);
-		if (y + dy > dst_y + height)
-			dy = dst_y + height - y;
+			assert(y < dst_y + height);
+			if (y + dy > dst_y + height)
+				dy = dst_y + height - y;
 
-		data[0].src_y += y - dst_y;
-		data[0].mask_y += y - dst_y;
-		data[0].dst_y = y;
-		data[0].height = dy;
+			data[0].src_y += y - dst_y;
+			data[0].mask_y += y - dst_y;
+			data[0].dst_y = y;
+			data[0].height = dy;
 
-		thread_composite(&data[0]);
+			thread_composite(&data[0]);
 
-		sna_threads_wait();
+			sna_threads_wait();
+			sigtrap_put();
+		} else
+			sna_threads_kill();
 	}
 }

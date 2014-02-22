@@ -592,17 +592,12 @@ sna_composite_fb(CARD8 op,
 	mask_image = image_from_pict(mask, FALSE, &msk_xoff, &msk_yoff);
 	dest_image = image_from_pict(dst, TRUE, &dst_xoff, &dst_yoff);
 
-	if (src_image && dest_image && !(mask && !mask_image)) {
-		if (sigtrap_get() == 0) {
-			sigtrap_assert_active();
-			sna_image_composite(op, src_image, mask_image, dest_image,
-					    src_x + src_xoff, src_y + src_yoff,
-					    msk_x + msk_xoff, msk_y + msk_yoff,
-					    dst_x + dst_xoff, dst_y + dst_yoff,
-					    width, height);
-			sigtrap_put();
-		}
-	}
+	if (src_image && dest_image && !(mask && !mask_image))
+		sna_image_composite(op, src_image, mask_image, dest_image,
+				    src_x + src_xoff, src_y + src_yoff,
+				    msk_x + msk_xoff, msk_y + msk_yoff,
+				    dst_x + dst_xoff, dst_y + dst_yoff,
+				    width, height);
 
 	free_pixman_pict(src, src_image);
 	free_pixman_pict(mask, mask_image);

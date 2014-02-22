@@ -1674,14 +1674,11 @@ do_fixup:
 
 	DBG(("%s: compositing tmp=(%d+%d, %d+%d)x(%d, %d)\n",
 	     __FUNCTION__, x, dx, y, dy, w, h));
-	if (sigtrap_get() == 0) {
-		sna_image_composite(PictOpSrc, src, NULL, dst,
-				    x + dx, y + dy,
-				    0, 0,
-				    0, 0,
-				    w, h);
-		sigtrap_put();
-	}
+	sna_image_composite(PictOpSrc, src, NULL, dst,
+			    x + dx, y + dy,
+			    0, 0,
+			    0, 0,
+			    w, h);
 	free_pixman_pict(picture, src);
 
 	/* Then convert to card format */
