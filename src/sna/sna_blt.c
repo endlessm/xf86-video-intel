@@ -940,9 +940,9 @@ static void blt_composite_fill__cpu(struct sna *sna,
 }
 
 fastcall static void
-blt_composite_fill_box__cpu(struct sna *sna,
-			    const struct sna_composite_op *op,
-			    const BoxRec *box)
+blt_composite_fill_box_no_offset__cpu(struct sna *sna,
+				      const struct sna_composite_op *op,
+				      const BoxRec *box)
 {
 	assert(box->x1 >= 0);
 	assert(box->y1 >= 0);
@@ -957,9 +957,9 @@ blt_composite_fill_box__cpu(struct sna *sna,
 }
 
 static void
-blt_composite_fill_boxes__cpu(struct sna *sna,
-			      const struct sna_composite_op *op,
-			      const BoxRec *box, int n)
+blt_composite_fill_boxes_no_offset__cpu(struct sna *sna,
+					const struct sna_composite_op *op,
+					const BoxRec *box, int n)
 {
 	do {
 		assert(box->x1 >= 0);
@@ -971,6 +971,45 @@ blt_composite_fill_boxes__cpu(struct sna *sna,
 			    op->dst.pixmap->devKind / sizeof(uint32_t),
 			    op->dst.pixmap->drawable.bitsPerPixel,
 			    box->x1, box->y1, box->x2-box->x1, box->y2-box->y1,
+			    op->u.blt.pixel);
+		box++;
+	} while (--n);
+}
+
+fastcall static void
+blt_composite_fill_box__cpu(struct sna *sna,
+			    const struct sna_composite_op *op,
+			    const BoxRec *box)
+{
+	assert(box->x1 + op->dst.x >= 0);
+	assert(box->y1 + op->dst.y >= 0);
+	assert(box->x2 + op->dst.x <= op->dst.pixmap->drawable.width);
+	assert(box->y2 + op->dst.y <= op->dst.pixmap->drawable.height);
+
+	pixman_fill(op->dst.pixmap->devPrivate.ptr,
+		    op->dst.pixmap->devKind / sizeof(uint32_t),
+		    op->dst.pixmap->drawable.bitsPerPixel,
+		    box->x1 + op->dst.x, box->y1 + op->dst.y,
+		    box->x2 - box->x1, box->y2 - box->y1,
+		    op->u.blt.pixel);
+}
+
+static void
+blt_composite_fill_boxes__cpu(struct sna *sna,
+			      const struct sna_composite_op *op,
+			      const BoxRec *box, int n)
+{
+	do {
+		assert(box->x1 + op->dst.x >= 0);
+		assert(box->y1 + op->dst.y >= 0);
+		assert(box->x2 + op->dst.x <= op->dst.pixmap->drawable.width);
+		assert(box->y2 + op->dst.y <= op->dst.pixmap->drawable.height);
+
+		pixman_fill(op->dst.pixmap->devPrivate.ptr,
+			    op->dst.pixmap->devKind / sizeof(uint32_t),
+			    op->dst.pixmap->drawable.bitsPerPixel,
+			    box->x1 + op->dst.x, box->y1 + op->dst.y,
+			    box->x2 - box->x1, box->y2 - box->y1,
 			    op->u.blt.pixel);
 		box++;
 	} while (--n);
@@ -1316,9 +1355,15 @@ prepare_blt_clear(struct sna *sna,
 
 	if (op->dst.bo == NULL) {
 		op->blt   = blt_composite_fill__cpu;
-		op->box   = blt_composite_fill_box__cpu;
-		op->boxes = blt_composite_fill_boxes__cpu;
-		op->thread_boxes = blt_composite_fill_boxes__cpu;
+		if (op->dst.x|op->dst.y) {
+			op->box   = blt_composite_fill_box__cpu;
+			op->boxes = blt_composite_fill_boxes__cpu;
+			op->thread_boxes = blt_composite_fill_boxes__cpu;
+		} else {
+			op->box   = blt_composite_fill_box_no_offset__cpu;
+			op->boxes = blt_composite_fill_boxes_no_offset__cpu;
+			op->thread_boxes = blt_composite_fill_boxes_no_offset__cpu;
+		}
 		op->done  = nop_done;
 		op->u.blt.pixel = 0;
 		return true;
@@ -1355,9 +1400,15 @@ prepare_blt_fill(struct sna *sna,
 	if (op->dst.bo == NULL) {
 		op->u.blt.pixel = pixel;
 		op->blt = blt_composite_fill__cpu;
-		op->box   = blt_composite_fill_box__cpu;
-		op->boxes = blt_composite_fill_boxes__cpu;
-		op->thread_boxes = blt_composite_fill_boxes__cpu;
+		if (op->dst.x|op->dst.y) {
+			op->box   = blt_composite_fill_box__cpu;
+			op->boxes = blt_composite_fill_boxes__cpu;
+			op->thread_boxes = blt_composite_fill_boxes__cpu;
+		} else {
+			op->box   = blt_composite_fill_box_no_offset__cpu;
+			op->boxes = blt_composite_fill_boxes_no_offset__cpu;
+			op->thread_boxes = blt_composite_fill_boxes_no_offset__cpu;
+		}
 		op->done = nop_done;
 		return true;
 	}
