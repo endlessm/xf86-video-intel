@@ -205,6 +205,22 @@ void sna_threads_wait(void)
 	}
 }
 
+void sna_threads_kill(void)
+{
+	int n;
+
+	ERR(("kill %d threads\n", max_threads));
+	assert(max_threads > 0);
+
+	for (n = 0; n < max_threads; n++)
+		pthread_cancel(threads[n].thread);
+
+	for (n = 0; n < max_threads; n++)
+		pthread_join(threads[n].thread, NULL);
+
+	max_threads = 0;
+}
+
 int sna_use_threads(int width, int height, int threshold)
 {
 	int num_threads;

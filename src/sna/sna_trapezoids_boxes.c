@@ -1181,19 +1181,23 @@ composite_unaligned_boxes_inplace(struct sna *sna,
 			dy = (clip.extents.y2 - clip.extents.y1 + num_threads - 1) / num_threads;
 			num_threads = (clip.extents.y2 - clip.extents.y1 + dy - 1) / dy;
 
-			for (i = 1; i < num_threads; i++) {
-				thread[i] = thread[0];
-				thread[i].y1 = y;
-				thread[i].y2 = y += dy;
-				sna_threads_run(rectilinear_inplace_thread, &thread[i]);
-			}
+			if (sigtrap_get() == 0) {
+				for (i = 1; i < num_threads; i++) {
+					thread[i] = thread[0];
+					thread[i].y1 = y;
+					thread[i].y2 = y += dy;
+					sna_threads_run(rectilinear_inplace_thread, &thread[i]);
+				}
 
-			assert(y < clip.extents.y2);
-			thread[0].y1 = y;
-			thread[0].y2 = clip.extents.y2;
-			rectilinear_inplace_thread(&thread[0]);
+				assert(y < clip.extents.y2);
+				thread[0].y1 = y;
+				thread[0].y2 = clip.extents.y2;
+				rectilinear_inplace_thread(&thread[0]);
 
-			sna_threads_wait();
+				sna_threads_wait();
+				sigtrap_put();
+			} else
+				sna_threads_kill();
 
 			pixman_image_unref(thread[0].dst);
 			pixman_image_unref(thread[0].src);
