@@ -570,6 +570,7 @@ sna_composite_fb(CARD8 op,
 
 					assert(box->x2 > box->x1 && box->y2 > box->y1);
 
+					sigtrap_assert_active();
 					memcpy_blt(src_pixmap->devPrivate.ptr,
 						   dst_pixmap->devPrivate.ptr,
 						   dst_pixmap->drawable.bitsPerPixel,
@@ -593,6 +594,7 @@ sna_composite_fb(CARD8 op,
 
 	if (src_image && dest_image && !(mask && !mask_image)) {
 		if (sigtrap_get() == 0) {
+			sigtrap_assert_active();
 			sna_image_composite(op, src_image, mask_image, dest_image,
 					    src_x + src_xoff, src_y + src_yoff,
 					    msk_x + msk_xoff, msk_y + msk_yoff,
@@ -1094,6 +1096,7 @@ fallback:
 							  dst->format))
 				goto fallback_composite;
 
+			sigtrap_assert_active();
 			if (pixel == 0 &&
 			    box->x2 - box->x1 == pixmap->drawable.width &&
 			    box->y2 - box->y1 == pixmap->drawable.height) {

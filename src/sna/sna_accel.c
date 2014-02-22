@@ -17071,7 +17071,7 @@ void sna_accel_close(struct sna *sna)
 
 void sna_accel_block_handler(struct sna *sna, struct timeval **tv)
 {
-	sigtrap_assert();
+	sigtrap_assert_inactive();
 
 	if (sna->kgem.need_retire)
 		kgem_retire(&sna->kgem);
@@ -17158,11 +17158,11 @@ void sna_accel_wakeup_handler(struct sna *sna)
 		_kgem_submit(&sna->kgem);
 	}
 
-	sigtrap_assert();
+	sigtrap_assert_inactive();
 }
 
 void sna_accel_free(struct sna *sna)
 {
 	DBG(("%s\n", __FUNCTION__));
-	sigtrap_assert();
+	sigtrap_assert_inactive();
 }

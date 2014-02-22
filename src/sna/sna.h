@@ -1035,12 +1035,13 @@ void sna_image_composite(pixman_op_t        op,
 extern jmp_buf sigjmp[4];
 extern volatile sig_atomic_t sigtrap;
 
-#define sigtrap_assert() assert(sigtrap == 0)
+#define sigtrap_assert_inactive() assert(sigtrap == 0)
+#define sigtrap_assert_active() assert(sigtrap > 0 && sigtrap <= ARRAY_SIZE(sigjmp))
 #define sigtrap_get() sigsetjmp(sigjmp[sigtrap++], 1)
 
 static inline void sigtrap_put(void)
 {
-	assert(sigtrap > 0);
+	sigtrap_assert_active();
 	--sigtrap;
 }
 
