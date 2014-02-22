@@ -3008,6 +3008,25 @@ static void dump_fence_regs(struct kgem *kgem)
 }
 #endif
 
+static int do_execbuf(struct kgem *kgem, struct drm_i915_gem_execbuffer2 *execbuf)
+{
+	int ret;
+
+retry:
+	ret = do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_EXECBUFFER2, execbuf);
+	if (ret == 0)
+		return 0;
+
+	(void)__kgem_throttle_retire(kgem, 0);
+	if (kgem_expire_cache(kgem))
+		goto retry;
+
+	if (kgem_cleanup_cache(kgem))
+		goto retry;
+
+	return ret;
+}
+
 void _kgem_submit(struct kgem *kgem)
 {
 	struct kgem_request *rq;
@@ -3073,7 +3092,7 @@ void _kgem_submit(struct kgem *kgem)
 
 		if (kgem_batch_write(kgem, handle, size) == 0) {
 			struct drm_i915_gem_execbuffer2 execbuf;
-			int ret, retry = 3;
+			int ret;
 
 			memset(&execbuf, 0, sizeof(execbuf));
 			execbuf.buffers_ptr = (uintptr_t)kgem->exec;
@@ -3091,15 +3110,7 @@ void _kgem_submit(struct kgem *kgem)
 				}
 			}
 
-			ret = do_ioctl(kgem->fd,
-				       DRM_IOCTL_I915_GEM_EXECBUFFER2,
-				       &execbuf);
-			while (ret == -EBUSY && retry--) {
-				__kgem_throttle(kgem);
-				ret = do_ioctl(kgem->fd,
-					       DRM_IOCTL_I915_GEM_EXECBUFFER2,
-					       &execbuf);
-			}
+			ret = do_execbuf(kgem, &execbuf);
 			if (DEBUG_SYNC && ret == 0) {
 				struct drm_i915_gem_set_domain set_domain;
 
