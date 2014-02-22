@@ -512,24 +512,39 @@ trapezoid_spans_maybe_inplace(struct sna *sna,
 
 out:
 	priv = sna_pixmap_from_drawable(dst->pDrawable);
-	if (priv == NULL)
+	if (priv == NULL) {
+		DBG(("%s? yes -- unattached\n", __FUNCTION__));
 		return true;
+	}
 
-	if (priv->cpu_bo && kgem_bo_is_busy(priv->cpu_bo))
+	if (priv->cpu_bo && kgem_bo_is_busy(priv->cpu_bo)) {
+		DBG(("%s? no -- CPU bo is busy\n", __FUNCTION__));
 		return false;
+	}
 
-	if (DAMAGE_IS_ALL(priv->cpu_damage) || priv->gpu_damage == NULL)
+	if (DAMAGE_IS_ALL(priv->cpu_damage) || priv->gpu_damage == NULL) {
+		DBG(("%s? yes -- damaged on CPU only (all? %d)\n", __FUNCTION__, DAMAGE_IS_ALL(priv->cpu_damage)));
 		return true;
+	}
 
-	if (priv->clear)
+	if (priv->clear) {
+		DBG(("%s? clear, %s\n", __FUNCTION__,
+		     dst->pDrawable->width <= TOR_INPLACE_SIZE ? "yes" : "no"));
 		return dst->pDrawable->width <= TOR_INPLACE_SIZE;
+	}
 
-	if (kgem_bo_is_busy(priv->gpu_bo))
+	if (kgem_bo_is_busy(priv->gpu_bo)) {
+		DBG(("%s? no, GPU bo is busy\n", __FUNCTION__));
 		return false;
+	}
 
-	if (priv->cpu_damage)
+	if (priv->cpu_damage) {
+		DBG(("%s? yes, idle GPU bo and damage on idle CPU\n", __FUNCTION__));
 		return true;
+	}
 
+	DBG(("%s? small enough? %s\n", __FUNCTION__,
+	     dst->pDrawable->width <= TOR_INPLACE_SIZE ? "yes" : "no"));
 	return dst->pDrawable->width <= TOR_INPLACE_SIZE;
 }
 
@@ -582,13 +597,10 @@ sna_composite_trapezoids(CARD8 op,
 	if (FORCE_FALLBACK == 0 &&
 	    (too_small(priv) || DAMAGE_IS_ALL(priv->cpu_damage)) &&
 	    !picture_is_gpu(sna, src) && untransformed(src)) {
-		DBG(("%s: force fallbacks --too small, %dx%d? %d, all-cpu? %d, src-is-cpu? %d\n",
-		     __FUNCTION__,
-		     dst->pDrawable->width,
-		     dst->pDrawable->height,
-		     too_small(priv),
-		     (int)DAMAGE_IS_ALL(priv->cpu_damage),
-		     !picture_is_gpu(sna, src)));
+		DBG(("%s: force fallbacks -- (too small, %dx%d? %d || all-cpu? %d) && (src-is-cpu? %d && untransformed? %d)\n",
+		     __FUNCTION__, dst->pDrawable->width, dst->pDrawable->height,
+		     too_small(priv), (int)DAMAGE_IS_ALL(priv->cpu_damage),
+		     !picture_is_gpu(sna, src), untransformed(src)));
 
 force_fallback:
 		force_fallback = true;
@@ -631,7 +643,7 @@ force_fallback:
 
 	DBG(("%s: rectilinear? %d, pixel-aligned? %d, mono? %d precise? %d\n",
 	     __FUNCTION__, rectilinear, pixel_aligned,
-	     is_mono(dst, maskFormat), is_precise(dst, maskFromat)));
+	     is_mono(dst, maskFormat), is_precise(dst, maskFormat)));
 
 	flags = 0;
 	if (rectilinear) {
