@@ -852,7 +852,7 @@ mono_trapezoids_span_converter(struct sna *sna,
 			threads[n].extents.y1 = y;
 			threads[n].extents.y2 = y += h;
 
-			sna_threads_run(mono_span_thread, &threads[n]);
+			sna_threads_run(n, mono_span_thread, &threads[n]);
 		}
 
 		threads[0].extents.y1 = y;

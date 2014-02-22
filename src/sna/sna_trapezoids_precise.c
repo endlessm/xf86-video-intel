@@ -1913,7 +1913,7 @@ precise_trapezoid_span_converter(struct sna *sna,
 			threads[n].extents.y1 = y;
 			threads[n].extents.y2 = y += h;
 
-			sna_threads_run(span_thread, &threads[n]);
+			sna_threads_run(n, span_thread, &threads[n]);
 		}
 
 		assert(y < threads[0].extents.y2);
@@ -2139,7 +2139,7 @@ precise_trapezoid_mask_converter(CARD8 op, PicturePtr src, PicturePtr dst,
 			threads[n].extents.y1 = y;
 			threads[n].extents.y2 = y += h;
 
-			sna_threads_run(mask_thread, &threads[n]);
+			sna_threads_run(n, mask_thread, &threads[n]);
 		}
 
 		assert(y < threads[0].extents.y2);
@@ -2855,7 +2855,7 @@ trapezoid_span_inplace__x8r8g8b8(CARD8 op,
 				threads[n].extents.y1 = y;
 				threads[n].extents.y2 = y += h;
 
-				sna_threads_run(inplace_x8r8g8b8_thread, &threads[n]);
+				sna_threads_run(n, inplace_x8r8g8b8_thread, &threads[n]);
 			}
 
 			assert(y < threads[0].extents.y2);
@@ -3134,7 +3134,7 @@ precise_trapezoid_span_inplace(struct sna *sna,
 				threads[n].extents.y1 = y;
 				threads[n].extents.y2 = y += h;
 
-				sna_threads_run(inplace_thread, &threads[n]);
+				sna_threads_run(n, inplace_thread, &threads[n]);
 			}
 
 			assert(y < threads[0].extents.y2);
@@ -3281,7 +3281,7 @@ precise_trapezoid_span_fallback(CARD8 op, PicturePtr src, PicturePtr dst,
 			threads[n].extents.y1 = y;
 			threads[n].extents.y2 = y += h;
 
-			sna_threads_run(mask_thread, &threads[n]);
+			sna_threads_run(n, mask_thread, &threads[n]);
 		}
 
 		assert(y < threads[0].extents.y2);

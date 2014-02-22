@@ -53,7 +53,9 @@ static void *__run__(void *arg)
 
 	/* Disable all signals in the slave threads as X uses them for IO */
 	sigfillset(&signals);
-	pthread_sigmask(SIG_BLOCK, &signals, NULL);
+	sigdelset(&signals, SIGBUS);
+	sigdelset(&signals, SIGSEGV);
+	pthread_sigmask(SIG_SETMASK, &signals, NULL);
 
 	pthread_mutex_lock(&t->mutex);
 	while (1) {
@@ -66,6 +68,7 @@ static void *__run__(void *arg)
 
 		pthread_mutex_lock(&t->mutex);
 		t->func = NULL;
+		t->arg = NULL;
 		pthread_cond_signal(&t->cond);
 	}
 	pthread_mutex_unlock(&t->mutex);
@@ -141,7 +144,7 @@ void sna_threads_init(void)
 	if (threads == NULL)
 		goto bail;
 
-	for (n = 0; n < max_threads; n++) {
+	for (n = 1; n < max_threads; n++) {
 		pthread_mutex_init(&threads[n].mutex, NULL);
 		pthread_cond_init(&threads[n].cond, NULL);
 
@@ -151,41 +154,46 @@ void sna_threads_init(void)
 			goto bail;
 	}
 
+	threads[0].thread = pthread_self();
 	return;
 
 bail:
 	max_threads = 0;
 }
 
-void sna_threads_run(void (*func)(void *arg), void *arg)
+void sna_threads_run(int id, void (*func)(void *arg), void *arg)
 {
+	assert(max_threads > 0);
+	assert(pthread_self() == threads[0].thread);
+	assert(id > 0 && id < max_threads);
+
+	assert(threads[id].func == NULL);
+
+	pthread_mutex_lock(&threads[id].mutex);
+	threads[id].func = func;
+	threads[id].arg = arg;
+	pthread_cond_signal(&threads[id].cond);
+	pthread_mutex_unlock(&threads[id].mutex);
+}
+
+void sna_threads_trap(int sig)
+{
+	pthread_t t = pthread_self();
 	int n;
 
-	assert(max_threads > 0);
+	if (t == threads[0].thread)
+		return;
 
-	for (n = 0; n < max_threads; n++) {
-		if (threads[n].func)
-			continue;
+	for (n = 1; threads[n].thread != t; n++)
+		;
 
-		pthread_mutex_lock(&threads[n].mutex);
-		if (threads[n].func) {
-			pthread_mutex_unlock(&threads[n].mutex);
-			continue;
-		}
-
-		goto execute;
-	}
-
-	n = rand() % max_threads;
 	pthread_mutex_lock(&threads[n].mutex);
-	while (threads[n].func)
-		pthread_cond_wait(&threads[n].cond, &threads[n].mutex);
-
-execute:
-	threads[n].func = func;
-	threads[n].arg = arg;
+	threads[n].func = NULL;
+	threads[n].arg = &threads[n];
 	pthread_cond_signal(&threads[n].cond);
 	pthread_mutex_unlock(&threads[n].mutex);
+
+	pthread_exit(&sig);
 }
 
 void sna_threads_wait(void)
@@ -193,15 +201,21 @@ void sna_threads_wait(void)
 	int n;
 
 	assert(max_threads > 0);
+	assert(pthread_self() == threads[0].thread);
 
-	for (n = 0; n < max_threads; n++) {
-		if (threads[n].func == NULL)
-			continue;
+	for (n = 1; n < max_threads; n++) {
+		if (threads[n].func != NULL) {
+			pthread_mutex_lock(&threads[n].mutex);
+			while (threads[n].func)
+				pthread_cond_wait(&threads[n].cond, &threads[n].mutex);
+			pthread_mutex_unlock(&threads[n].mutex);
+		}
 
-		pthread_mutex_lock(&threads[n].mutex);
-		while (threads[n].func)
-			pthread_cond_wait(&threads[n].cond, &threads[n].mutex);
-		pthread_mutex_unlock(&threads[n].mutex);
+		if (threads[n].arg != NULL) {
+			ERR(("%s: thread %d died\n", __func__, n));
+			sna_threads_kill();
+			return;
+		}
 	}
 }
 
@@ -209,13 +223,14 @@ void sna_threads_kill(void)
 {
 	int n;
 
-	ERR(("kill %d threads\n", max_threads));
+	ERR(("%s: kill %d threads\n", __func__, max_threads));
 	assert(max_threads > 0);
+	assert(pthread_self() == threads[0].thread);
 
-	for (n = 0; n < max_threads; n++)
+	for (n = 1; n < max_threads; n++)
 		pthread_cancel(threads[n].thread);
 
-	for (n = 0; n < max_threads; n++)
+	for (n = 1; n < max_threads; n++)
 		pthread_join(threads[n].thread, NULL);
 
 	max_threads = 0;
@@ -316,7 +331,7 @@ void sna_image_composite(pixman_op_t        op,
 				data[n].dst_y = y;
 				y += dy;
 
-				sna_threads_run(thread_composite, &data[n]);
+				sna_threads_run(n, thread_composite, &data[n]);
 			}
 
 			assert(y < dst_y + height);

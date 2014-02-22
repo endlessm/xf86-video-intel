@@ -408,10 +408,12 @@ volatile sig_atomic_t sigtrap;
 
 static int sigtrap_handler(int sig)
 {
-	if (sigtrap) {
-		/* XXX rate-limited squawk? */
+	/* XXX rate-limited squawk? */
+	DBG(("%s(sig=%d) sigtrap=%d\n", __FUNCTION__, sig, sigtrap));
+	sna_threads_trap(sig);
+
+	if (sigtrap)
 		siglongjmp(sigjmp[--sigtrap], sig);
-	}
 
 	return -1;
 }

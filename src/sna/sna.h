@@ -1015,7 +1015,8 @@ void sna_acpi_fini(struct sna *sna);
 
 void sna_threads_init(void);
 int sna_use_threads (int width, int height, int threshold);
-void sna_threads_run(void (*func)(void *arg), void *arg);
+void sna_threads_run(int id, void (*func)(void *arg), void *arg);
+void sna_threads_trap(int sig);
 void sna_threads_wait(void);
 void sna_threads_kill(void);
 

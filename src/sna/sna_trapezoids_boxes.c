@@ -1186,7 +1186,7 @@ composite_unaligned_boxes_inplace(struct sna *sna,
 					thread[i] = thread[0];
 					thread[i].y1 = y;
 					thread[i].y2 = y += dy;
-					sna_threads_run(rectilinear_inplace_thread, &thread[i]);
+					sna_threads_run(i, rectilinear_inplace_thread, &thread[i]);
 				}
 
 				assert(y < clip.extents.y2);

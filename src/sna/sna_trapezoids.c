@@ -385,21 +385,25 @@ trapezoids_fallback(struct sna *sna,
 				dy = (height + num_threads - 1) / num_threads;
 				num_threads -= (num_threads-1) * dy >= bounds.y2 - bounds.y1;
 
-				for (n = 1; n < num_threads; n++) {
-					threads[n] = threads[0];
-					threads[n].ptr += (y - bounds.y1) * threads[n].stride;
-					threads[n].bounds.y1 = y;
-					threads[n].bounds.y2 = y += dy;
+				if (sigtrap_get() == 0) {
+					for (n = 1; n < num_threads; n++) {
+						threads[n] = threads[0];
+						threads[n].ptr += (y - bounds.y1) * threads[n].stride;
+						threads[n].bounds.y1 = y;
+						threads[n].bounds.y2 = y += dy;
 
-					sna_threads_run(rasterize_traps_thread, &threads[n]);
-				}
+						sna_threads_run(n, rasterize_traps_thread, &threads[n]);
+					}
 
-				assert(y < threads[0].bounds.y2);
-				threads[0].ptr += (y - bounds.y1) * threads[0].stride;
-				threads[0].bounds.y1 = y;
-				rasterize_traps_thread(&threads[0]);
+					assert(y < threads[0].bounds.y2);
+					threads[0].ptr += (y - bounds.y1) * threads[0].stride;
+					threads[0].bounds.y1 = y;
+					rasterize_traps_thread(&threads[0]);
 
-				sna_threads_wait();
+					sna_threads_wait();
+					sigtrap_put();
+				} else
+					sna_threads_kill();
 
 				format = PIXMAN_a8;
 				depth = 8;
