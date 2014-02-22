@@ -16669,13 +16669,13 @@ static bool sna_accel_do_debug_memory(struct sna *sna)
 
 static void sna_accel_debug_memory(struct sna *sna)
 {
-	ErrorF("Allocated pixmaps: %d (cached: %d), bo: %d, %ld bytes (CPU bo: %d, %ld bytes)\n",
+	ErrorF("Allocated pixmaps: %d (cached: %d), bo: %d, %lu bytes (CPU bo: %d, %lu bytes)\n",
 	       sna->debug_memory.pixmap_allocs,
 	       sna->debug_memory.pixmap_cached,
 	       sna->kgem.debug_memory.bo_allocs,
-	       (long)sna->kgem.debug_memory.bo_bytes,
+	       (unsigned long)sna->kgem.debug_memory.bo_bytes,
 	       sna->debug_memory.cpu_bo_allocs,
-	       (long)sna->debug_memory.cpu_bo_bytes);
+	       (unsigned long)sna->debug_memory.cpu_bo_bytes);
 
 #ifdef VALGRIND_DO_ADDED_LEAK_CHECK
 	VG(VALGRIND_DO_ADDED_LEAK_CHECK);
