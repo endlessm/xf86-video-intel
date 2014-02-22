@@ -683,6 +683,8 @@ constant inline static int cache_bucket(int num_pages)
 static struct kgem_bo *__kgem_bo_init(struct kgem_bo *bo,
 				      int handle, int num_pages)
 {
+	DBG(("%s(handle=%d, num_pages=%d)\n", __FUNCTION__, handle, num_pages));
+
 	assert(num_pages);
 	memset(bo, 0, sizeof(*bo));
 
@@ -1754,7 +1756,7 @@ static void kgem_bo_binding_free(struct kgem *kgem, struct kgem_bo *bo)
 
 static void kgem_bo_free(struct kgem *kgem, struct kgem_bo *bo)
 {
-	DBG(("%s: handle=%d\n", __FUNCTION__, bo->handle));
+	DBG(("%s: handle=%d, size=%d\n", __FUNCTION__, bo->handle, bytes(bo)));
 	assert(bo->refcnt == 0);
 	assert(bo->proxy == NULL);
 	assert(bo->exec == NULL);
@@ -2081,7 +2083,7 @@ void kgem_bo_undo(struct kgem *kgem, struct kgem_bo *bo)
 
 static void __kgem_bo_destroy(struct kgem *kgem, struct kgem_bo *bo)
 {
-	DBG(("%s: handle=%d\n", __FUNCTION__, bo->handle));
+	DBG(("%s: handle=%d, size=%d\n", __FUNCTION__, bo->handle, bytes(bo)));
 
 	assert(list_is_empty(&bo->list));
 	assert(bo->refcnt == 0);
