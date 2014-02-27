@@ -4584,7 +4584,7 @@ sna_put_zpixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 		return true;
 
 	hint = MOVE_WRITE;
-	if (w == pixmap->drawable.width)
+	if (w == pixmap->drawable.width && h*stride > 4096)
 		hint |= MOVE_WHOLE_HINT;
 
 	if (!sna_drawable_move_region_to_cpu(&pixmap->drawable, region, hint))
