@@ -2495,10 +2495,10 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 		flags |= MOVE_INPLACE_HINT;
 	}
 
-	if (flags & MOVE_WHOLE_HINT)
+	if (flags & MOVE_WHOLE_HINT && priv->gpu_damage == NULL)
 		return _sna_pixmap_move_to_cpu(pixmap, flags);
 
-	if (priv->gpu_bo == NULL &&
+	if (priv->gpu_damage == NULL &&
 	    (priv->create & KGEM_CAN_CREATE_GPU) == 0 &&
 	    flags & MOVE_WRITE)
 		return _sna_pixmap_move_to_cpu(pixmap, flags);
@@ -2517,6 +2517,24 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 		       region->extents.y2,
 		       pixmap->drawable.width,
 		       pixmap->drawable.height));
+		if (dx | dy)
+			RegionTranslate(region, -dx, -dy);
+		return _sna_pixmap_move_to_cpu(pixmap, flags);
+	}
+
+	if ((flags & MOVE_READ) == 0 &&
+	    priv->gpu_damage &&
+	    region_subsumes_damage(region, priv->gpu_damage)) {
+		DBG(("%s: region [(%d, %d), (%d, %d)] subsumes damage [(%d,%d), (%d, %d)]\n",
+		       __FUNCTION__,
+		       region->extents.x1,
+		       region->extents.y1,
+		       region->extents.x2,
+		       region->extents.y2,
+		       priv->gpu_damage->extents.x1,
+		       priv->gpu_damage->extents.y1,
+		       priv->gpu_damage->extents.x2,
+		       priv->gpu_damage->extents.y2));
 		if (dx | dy)
 			RegionTranslate(region, -dx, -dy);
 		return _sna_pixmap_move_to_cpu(pixmap, flags);
