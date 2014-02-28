@@ -67,8 +67,8 @@ static void *__run__(void *arg)
 		t->func(t->arg);
 
 		pthread_mutex_lock(&t->mutex);
-		t->func = NULL;
 		t->arg = NULL;
+		t->func = NULL;
 		pthread_cond_signal(&t->cond);
 	}
 	pthread_mutex_unlock(&t->mutex);
@@ -190,8 +190,8 @@ void sna_threads_trap(int sig)
 	ERR(("%s: thread[%d] caught signal %d\n", __func__, n, sig));
 
 	pthread_mutex_lock(&threads[n].mutex);
-	threads[n].func = NULL;
 	threads[n].arg = (void *)(intptr_t)sig;
+	threads[n].func = NULL;
 	pthread_cond_signal(&threads[n].cond);
 	pthread_mutex_unlock(&threads[n].mutex);
 
