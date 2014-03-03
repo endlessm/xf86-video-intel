@@ -1,4 +1,4 @@
-Snapshot 2.99.910 (2013-02-10)
+Snapshot 2.99.910 (2014-02-10)
 ==============================
 Another latent bug exposed by recent changes merit another snapshot for
 final testing.
@@ -23,7 +23,7 @@ final testing.
     https://bugs.freedesktop.org/show_bug.cgi?id=7237
 
 
-Snapshot 2.99.909 (2013-02-01)
+Snapshot 2.99.909 (2014-02-01)
 ==============================
 Pass the brown paper bag. Ridiculously stupid bug in last minute coding.
 
@@ -35,7 +35,7 @@ Pass the brown paper bag. Ridiculously stupid bug in last minute coding.
     https://bugs.freedesktop.org/show_bug.cgi?id=74327
 
 
-Snapshot 2.99.908 (2013-01-31)
+Snapshot 2.99.908 (2014-01-31)
 ==============================
 A couple of regressions dashed the hopes that .907 was to be the final
 release candidate, so time to start the cycle again after applying a few
