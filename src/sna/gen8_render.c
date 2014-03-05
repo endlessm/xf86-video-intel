@@ -1281,6 +1281,13 @@ gen8_tiling_bits(uint32_t tiling)
 	}
 }
 
+#define MOCS_WT (2 << 5)
+#define MOCS_WB (3 << 5)
+#define MOCS_eLLC_ONLY (0 << 3)
+#define MOCS_LLC_ONLY (1 << 3)
+#define MOCS_eLLC_LLC (2 << 3)
+#define MOCS_ALL_CACHES (3 << 3)
+
 /**
  * Sets up the common fields for a surface state buffer for the given
  * picture in the given surface state buffer.
@@ -1318,7 +1325,7 @@ gen8_bind_bo(struct sna *sna,
 		domains = I915_GEM_DOMAIN_RENDER << 16 |I915_GEM_DOMAIN_RENDER;
 	} else
 		domains = I915_GEM_DOMAIN_SAMPLER << 16;
-	ss[1] = (is_scanout || bo->io) ? 0 : 3 << 24;
+	ss[1] = bo->io ? 0 : is_scanout ? (MOCS_WT | MOCS_ALL_CACHES) << 24 : (MOCS_WB | MOCS_ALL_CACHES) << 24;
 	ss[2] = ((width - 1)  << SURFACE_WIDTH_SHIFT |
 		 (height - 1) << SURFACE_HEIGHT_SHIFT);
 	ss[3] = (bo->pitch - 1) << SURFACE_PITCH_SHIFT;
