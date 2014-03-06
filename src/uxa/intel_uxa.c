@@ -326,7 +326,7 @@ static void intel_uxa_solid(PixmapPtr pixmap, int x1, int y1, int x2, int y2)
 	{
 		BEGIN_BATCH_BLT(6);
 
-		cmd = XY_COLOR_BLT_CMD;
+		cmd = XY_COLOR_BLT_CMD | (6 - 2);
 
 		if (pixmap->drawable.bitsPerPixel == 32)
 			cmd |=
@@ -464,7 +464,7 @@ intel_uxa_copy(PixmapPtr dest, int src_x1, int src_y1, int dst_x1,
 	{
 		BEGIN_BATCH_BLT(8);
 
-		cmd = XY_SRC_COPY_BLT_CMD;
+		cmd = XY_SRC_COPY_BLT_CMD | (8 - 2);
 
 		if (dest->drawable.bitsPerPixel == 32)
 			cmd |=
@@ -512,7 +512,7 @@ static void intel_uxa_done(PixmapPtr pixmap)
 	if (IS_GEN6(intel) || IS_GEN7(intel)) {
 		/* workaround a random BLT hang */
 		BEGIN_BATCH_BLT(3);
-		OUT_BATCH(XY_SETUP_CLIP_BLT_CMD);
+		OUT_BATCH(XY_SETUP_CLIP_BLT_CMD | (3 - 2));
 		OUT_BATCH(0);
 		OUT_BATCH(0);
 		ADVANCE_BATCH();
