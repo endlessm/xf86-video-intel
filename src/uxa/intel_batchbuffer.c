@@ -183,6 +183,7 @@ void intel_batch_emit_flush(ScrnInfoPtr scrn)
 	int flags;
 
 	assert (!intel->in_batch_atomic);
+	assert (INTEL_INFO(intel)->gen < 0100);
 
 	/* Big hammer, look to the pipelined flushes in future. */
 	if ((INTEL_INFO(intel)->gen >= 060)) {

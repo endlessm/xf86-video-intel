@@ -405,9 +405,6 @@ static Bool can_accelerate_blt(struct intel_screen_private *intel)
 	if (INTEL_INFO(intel)->gen == -1)
 		return FALSE;
 
-	if (INTEL_INFO(intel)->gen >= 0100)
-		return FALSE;
-
 	if (xf86ReturnOptValBool(intel->Options, OPTION_ACCEL_DISABLE, FALSE) ||
 	    !intel_option_cast_string_to_bool(intel, OPTION_ACCEL_METHOD, TRUE)) {
 		xf86DrvMsg(intel->scrn->scrnIndex, X_CONFIG,
@@ -938,7 +935,7 @@ I830ScreenInit(SCREEN_INIT_ARGS_DECL)
 
 	intel_batch_init(scrn);
 
-	if (INTEL_INFO(intel)->gen >= 040)
+	if (INTEL_INFO(intel)->gen >= 040 && INTEL_INFO(intel)->gen < 0100)
 		gen4_render_state_init(scrn);
 
 	miClearVisualTypes();
@@ -1193,7 +1190,7 @@ static Bool I830CloseScreen(CLOSE_SCREEN_ARGS_DECL)
 
 	intel_batch_teardown(scrn);
 
-	if (INTEL_INFO(intel)->gen >= 040)
+	if (INTEL_INFO(intel)->gen >= 040 && INTEL_INFO(intel)->gen < 0100)
 		gen4_render_state_cleanup(scrn);
 
 	xf86_cursors_fini(screen);

@@ -312,13 +312,14 @@ if test "x$SNA" != "xno"; then
 	AC_CHECK_HEADERS([sys/sysinfo.h], AC_CHECK_MEMBERS([struct sysinfo.totalram], [], [], [[#include <sys/sysinfo.h>]]))
 fi
 
+uxa_requires_libdrm=2.4.52
 AC_ARG_ENABLE(uxa,
 	      AS_HELP_STRING([--enable-uxa],
-			     [Enable Unified Acceleration Architecture (UXA) [default=yes]]),
+			     [Enable Unified Acceleration Architecture (UXA) [default=auto]]),
 	      [UXA="$enableval"],
 	      [UXA=auto])
 if test "x$UXA" = "xauto"; then
-	if ! pkg-config --exists 'libdrm_intel >= 2.4.29'; then
+	if ! pkg-config --exists "libdrm_intel >= $uxa_requires_libdrm"; then
 		UXA=no
 	fi
 	if ! pkg-config --exists 'pixman-1 >= 0.24.0'; then
@@ -327,7 +328,7 @@ if test "x$UXA" = "xauto"; then
 fi
 if test "x$UXA" != "xno"; then
 	AC_DEFINE(USE_UXA, 1, [Enable UXA support])
-	PKG_CHECK_MODULES(DRMINTEL, [libdrm_intel >= 2.4.29])
+	PKG_CHECK_MODULES(DRMINTEL, [libdrm_intel >= $uxa_requires_libdrm])
 	required_pixman_version=0.24
 	UXA=yes
 fi

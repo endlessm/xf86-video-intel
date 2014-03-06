@@ -324,9 +324,10 @@ static void intel_uxa_solid(PixmapPtr pixmap, int x1, int y1, int x2, int y2)
 	pitch = intel_pixmap_pitch(pixmap);
 
 	{
-		BEGIN_BATCH_BLT(6);
+		int len = INTEL_INFO(intel)->gen >= 0100 ? 7 : 6;
+		BEGIN_BATCH_BLT(len);
 
-		cmd = XY_COLOR_BLT_CMD | (6 - 2);
+		cmd = XY_COLOR_BLT_CMD | (len - 2);
 
 		if (pixmap->drawable.bitsPerPixel == 32)
 			cmd |=
@@ -462,9 +463,10 @@ intel_uxa_copy(PixmapPtr dest, int src_x1, int src_y1, int dst_x1,
 	src_pitch = intel_pixmap_pitch(intel->render_source);
 
 	{
-		BEGIN_BATCH_BLT(8);
+		int len = INTEL_INFO(intel)->gen >= 0100 ? 10 : 8;
+		BEGIN_BATCH_BLT(len);
 
-		cmd = XY_SRC_COPY_BLT_CMD | (8 - 2);
+		cmd = XY_SRC_COPY_BLT_CMD | (len - 2);
 
 		if (dest->drawable.bitsPerPixel == 32)
 			cmd |=
@@ -509,7 +511,7 @@ static void intel_uxa_done(PixmapPtr pixmap)
 	ScrnInfoPtr scrn = xf86ScreenToScrn(pixmap->drawable.pScreen);
 	intel_screen_private *intel = intel_get_screen_private(scrn);
 
-	if (IS_GEN6(intel) || IS_GEN7(intel)) {
+	if (INTEL_INFO(intel)->gen >= 060) {
 		/* workaround a random BLT hang */
 		BEGIN_BATCH_BLT(3);
 		OUT_BATCH(XY_SETUP_CLIP_BLT_CMD | (3 - 2));
@@ -1354,7 +1356,7 @@ Bool intel_uxa_init(ScreenPtr screen)
 
 	/* Composite */
 	if (intel_option_accel_blt(intel)) {
-	} else if (IS_GEN2(intel)) {
+	} else if (INTEL_INFO(intel)->gen < 030) {
 		intel->uxa_driver->check_composite = i830_check_composite;
 		intel->uxa_driver->check_composite_target = i830_check_composite_target;
 		intel->uxa_driver->check_composite_texture = i830_check_composite_texture;
@@ -1364,7 +1366,7 @@ Bool intel_uxa_init(ScreenPtr screen)
 
 		intel->vertex_flush = i830_vertex_flush;
 		intel->batch_commit_notify = i830_batch_commit_notify;
-	} else if (IS_GEN3(intel)) {
+	} else if (INTEL_INFO(intel)->gen < 040) {
 		intel->uxa_driver->check_composite = i915_check_composite;
 		intel->uxa_driver->check_composite_target = i915_check_composite_target;
 		intel->uxa_driver->check_composite_texture = i915_check_composite_texture;
@@ -1374,7 +1376,7 @@ Bool intel_uxa_init(ScreenPtr screen)
 
 		intel->vertex_flush = i915_vertex_flush;
 		intel->batch_commit_notify = i915_batch_commit_notify;
-	} else {
+	} else if (INTEL_INFO(intel)->gen < 0100) {
 		intel->uxa_driver->check_composite = i965_check_composite;
 		intel->uxa_driver->check_composite_texture = i965_check_composite_texture;
 		intel->uxa_driver->prepare_composite = i965_prepare_composite;
@@ -1385,9 +1387,9 @@ Bool intel_uxa_init(ScreenPtr screen)
 		intel->batch_flush = i965_batch_flush;
 		intel->batch_commit_notify = i965_batch_commit_notify;
 
-		if (IS_GEN4(intel)) {
+		if (INTEL_INFO(intel)->gen < 050) {
 			intel->context_switch = gen4_context_switch;
-		} else if (IS_GEN5(intel)) {
+		} else if (INTEL_INFO(intel)->gen < 060) {
 			intel->context_switch = gen5_context_switch;
 		} else {
 			intel->context_switch = gen6_context_switch;
