@@ -190,6 +190,26 @@ static int __intel_open_device(const struct pci_device *pci, char **path)
 	return fd;
 }
 
+static char *find_master_node(int fd)
+{
+	struct stat st, master;
+	char buf[128];
+
+	if (fstat(fd, &st))
+		return NULL;
+
+	if (!S_ISCHR(st.st_mode))
+		return NULL;
+
+	sprintf(buf, "/dev/dri/card%d", (int)(st.st_rdev & 0x7f));
+	if (stat(buf, &master) == 0 &&
+	    st.st_mode == master.st_mode &&
+	    (st.st_rdev & 0x7f) == master.st_rdev)
+		return strdup(buf);
+
+	return NULL;
+}
+
 static char *find_render_node(int fd)
 {
 #if defined(USE_RENDERNODE)
@@ -281,6 +301,12 @@ int intel_open_device(int entity_num,
 			goto err_path;
 
 		master_count = 0;
+	}
+
+	if (local_path == NULL) {
+		local_path = find_master_node(fd);
+		if (local_path == NULL)
+			goto err_close;
 	}
 
 	if (!__intel_check_device(fd))
