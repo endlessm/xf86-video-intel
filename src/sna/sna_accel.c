@@ -8271,10 +8271,33 @@ sna_poly_point_extents(DrawablePtr drawable, GCPtr gc,
 			box_add_pt(&box, last.x, last.y);
 		}
 	} else {
-		while (--n) {
-			++pt;
-			box_add_pt(&box, pt->x, pt->y);
+		--n; ++pt;
+		while (n >= 8) {
+			box_add_pt(&box, pt[0].x, pt[0].y);
+			box_add_pt(&box, pt[1].x, pt[1].y);
+			box_add_pt(&box, pt[2].x, pt[2].y);
+			box_add_pt(&box, pt[3].x, pt[3].y);
+			box_add_pt(&box, pt[4].x, pt[4].y);
+			box_add_pt(&box, pt[5].x, pt[5].y);
+			box_add_pt(&box, pt[6].x, pt[6].y);
+			box_add_pt(&box, pt[7].x, pt[7].y);
+			pt += 8;
+			n -= 8;
 		}
+		if (n & 4) {
+			box_add_pt(&box, pt[0].x, pt[0].y);
+			box_add_pt(&box, pt[1].x, pt[1].y);
+			box_add_pt(&box, pt[2].x, pt[2].y);
+			box_add_pt(&box, pt[3].x, pt[3].y);
+			pt += 4;
+		}
+		if (n & 2) {
+			box_add_pt(&box, pt[0].x, pt[0].y);
+			box_add_pt(&box, pt[1].x, pt[1].y);
+			pt += 2;
+		}
+		if (n & 1)
+			box_add_pt(&box, pt[0].x, pt[0].y);
 	}
 	box.x2++;
 	box.y2++;
