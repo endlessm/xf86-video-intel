@@ -6586,10 +6586,14 @@ sna_poly_point__fill(DrawablePtr drawable, GCPtr gc,
 	DDXPointRec last;
 
 	DBG(("%s: count=%d\n", __FUNCTION__, n));
+	if (n == 0)
+		return;
 
 	last.x = drawable->x + data->dx;
 	last.y = drawable->y + data->dy;
-	while (n) {
+	if (op->points && mode != CoordModePrevious) {
+		op->points(data->sna, op, last.x, last.y, pt, n);
+	} else do {
 		BoxRec *b = box;
 		unsigned nbox = n;
 		if (nbox > ARRAY_SIZE(box))
@@ -6608,7 +6612,7 @@ sna_poly_point__fill(DrawablePtr drawable, GCPtr gc,
 			b++;
 		} while (--nbox);
 		op->boxes(data->sna, op, box, b - box);
-	}
+	} while (n);
 }
 
 static void
@@ -8177,26 +8181,30 @@ sna_poly_point_blt(DrawablePtr drawable,
 
 		assert_pixmap_contains_points(pixmap, pt, n, last.x, last.y);
 		sna_damage_add_points(damage, pt, n, last.x, last.y);
-		do {
-			unsigned nbox = n;
-			if (nbox > ARRAY_SIZE(box))
-				nbox = ARRAY_SIZE(box);
-			n -= nbox;
+		if (fill.points && mode != CoordModePrevious) {
+			fill.points(sna, &fill, last.x, last.y, pt, n);
+		} else {
 			do {
-				*(DDXPointRec *)b = *pt++;
+				unsigned nbox = n;
+				if (nbox > ARRAY_SIZE(box))
+					nbox = ARRAY_SIZE(box);
+				n -= nbox;
+				do {
+					*(DDXPointRec *)b = *pt++;
 
-				b->x1 += last.x;
-				b->y1 += last.y;
-				if (mode == CoordModePrevious)
-					last = *(DDXPointRec *)b;
+					b->x1 += last.x;
+					b->y1 += last.y;
+					if (mode == CoordModePrevious)
+						last = *(DDXPointRec *)b;
 
-				b->x2 = b->x1 + 1;
-				b->y2 = b->y1 + 1;
-				b++;
-			} while (--nbox);
-			fill.boxes(sna, &fill, box, b - box);
-			b = box;
-		} while (n);
+					b->x2 = b->x1 + 1;
+					b->y2 = b->y1 + 1;
+					b++;
+				} while (--nbox);
+				fill.boxes(sna, &fill, box, b - box);
+				b = box;
+			} while (n);
+		}
 	} else {
 		RegionPtr clip = gc->pCompositeClip;
 

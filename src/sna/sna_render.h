@@ -199,6 +199,11 @@ struct sna_fill_op {
 			       const struct sna_fill_op *op,
 			       const BoxRec *box,
 			       int count);
+	fastcall void (*points)(struct sna *sna,
+			       const struct sna_fill_op *op,
+			       int16_t dx, int16_t dy,
+			       const DDXPointRec *points,
+			       int count);
 	void (*done)(struct sna *sna, const struct sna_fill_op *op);
 };
 

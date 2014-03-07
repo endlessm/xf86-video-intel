@@ -2862,6 +2862,123 @@ fastcall static void sna_blt_fill_op_boxes(struct sna *sna,
 	_sna_blt_fill_boxes(sna, &op->base.u.blt, box, nbox);
 }
 
+static inline uint64_t pt_add(const DDXPointRec *pt, int16_t dx, int16_t dy)
+{
+	union {
+		DDXPointRec pt;
+		uint32_t i;
+	} u;
+
+	u.pt.x = pt->x + dx;
+	u.pt.y = pt->y + dy;
+
+	return XY_PIXEL_BLT | (uint64_t)u.i<<32;
+}
+
+fastcall static void sna_blt_fill_op_points(struct sna *sna,
+					    const struct sna_fill_op *op,
+					    int16_t dx, int16_t dy,
+					    const DDXPointRec *p, int n)
+{
+	const struct sna_blt_state *blt = &op->base.u.blt;
+	struct kgem *kgem = &sna->kgem;
+
+	DBG(("%s: %08x x %d\n", __FUNCTION__, blt->pixel, npoints));
+
+	if (sna->blt_state.fill_bo != op->base.u.blt.bo[0]->unique_id) {
+		sna_blt_fill_begin(sna, blt);
+
+		sna->blt_state.fill_bo = blt->bo[0]->unique_id;
+		sna->blt_state.fill_pixel = blt->pixel;
+		sna->blt_state.fill_alu = blt->alu;
+	}
+
+	if (!kgem_check_batch(kgem, 2))
+		sna_blt_fill_begin(sna, blt);
+
+	do {
+		uint32_t *b = kgem->batch + kgem->nbatch;
+		int n_this_time;
+
+		assert(sna->kgem.mode == KGEM_BLT);
+		n_this_time = n;
+		if (2*n_this_time > kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED)
+			n_this_time = (kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED) / 2;
+		assert(n_this_time);
+		n -= n_this_time;
+
+		kgem->nbatch += 2 * n_this_time;
+		assert(kgem->nbatch < kgem->surface);
+
+		if ((dx|dy) == 0) {
+			while (n_this_time >= 8) {
+				*((uint64_t *)b + 0) = pt_add(p+0, 0, 0);
+				*((uint64_t *)b + 1) = pt_add(p+1, 0, 0);
+				*((uint64_t *)b + 2) = pt_add(p+2, 0, 0);
+				*((uint64_t *)b + 3) = pt_add(p+3, 0, 0);
+				*((uint64_t *)b + 4) = pt_add(p+4, 0, 0);
+				*((uint64_t *)b + 5) = pt_add(p+5, 0, 0);
+				*((uint64_t *)b + 6) = pt_add(p+6, 0, 0);
+				*((uint64_t *)b + 7) = pt_add(p+7, 0, 0);
+				b += 16;
+				n_this_time -= 8;
+				p += 8;
+			}
+			if (n_this_time & 4) {
+				*((uint64_t *)b + 0) = pt_add(p+0, 0, 0);
+				*((uint64_t *)b + 1) = pt_add(p+1, 0, 0);
+				*((uint64_t *)b + 2) = pt_add(p+2, 0, 0);
+				*((uint64_t *)b + 3) = pt_add(p+3, 0, 0);
+				b += 8;
+				p += 4;
+			}
+			if (n_this_time & 2) {
+				*((uint64_t *)b + 0) = pt_add(p+0, 0, 0);
+				*((uint64_t *)b + 1) = pt_add(p+1, 0, 0);
+				b += 4;
+				p += 2;
+			}
+			if (n_this_time & 1)
+				*((uint64_t *)b + 0) = pt_add(p++, 0, 0);
+		} else {
+			while (n_this_time >= 8) {
+				*((uint64_t *)b + 0) = pt_add(p+0, dx, dy);
+				*((uint64_t *)b + 1) = pt_add(p+1, dx, dy);
+				*((uint64_t *)b + 2) = pt_add(p+2, dx, dy);
+				*((uint64_t *)b + 3) = pt_add(p+3, dx, dy);
+				*((uint64_t *)b + 4) = pt_add(p+4, dx, dy);
+				*((uint64_t *)b + 5) = pt_add(p+5, dx, dy);
+				*((uint64_t *)b + 6) = pt_add(p+6, dx, dy);
+				*((uint64_t *)b + 7) = pt_add(p+7, dx, dy);
+				b += 16;
+				n_this_time -= 8;
+				p += 8;
+			}
+			if (n_this_time & 4) {
+				*((uint64_t *)b + 0) = pt_add(p+0, dx, dy);
+				*((uint64_t *)b + 1) = pt_add(p+1, dx, dy);
+				*((uint64_t *)b + 2) = pt_add(p+2, dx, dy);
+				*((uint64_t *)b + 3) = pt_add(p+3, dx, dy);
+				b += 8;
+				p += 8;
+			}
+			if (n_this_time & 2) {
+				*((uint64_t *)b + 0) = pt_add(p+0, dx, dy);
+				*((uint64_t *)b + 1) = pt_add(p+1, dx, dy);
+				b += 4;
+				p += 2;
+			}
+			if (n_this_time & 1)
+				*((uint64_t *)b + 0) = pt_add(p++, dx, dy);
+		}
+
+		if (!n)
+			return;
+
+		sna_blt_fill_begin(sna, blt);
+	} while (1);
+}
+
 bool sna_blt_fill(struct sna *sna, uint8_t alu,
 		  struct kgem_bo *bo, int bpp,
 		  uint32_t pixel,
@@ -2886,6 +3003,7 @@ bool sna_blt_fill(struct sna *sna, uint8_t alu,
 	fill->blt   = sna_blt_fill_op_blt;
 	fill->box   = sna_blt_fill_op_box;
 	fill->boxes = sna_blt_fill_op_boxes;
+	fill->points = sna_blt_fill_op_points;
 	fill->done  =
 		(void (*)(struct sna *, const struct sna_fill_op *))nop_done;
 	return true;
