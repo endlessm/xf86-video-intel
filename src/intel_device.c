@@ -240,19 +240,10 @@ static char *get_path(struct xf86_platform_device *dev)
 #endif
 
 
-#if defined(ODEV_ATTRIB_FD) && 0
+#if defined(ODEV_ATTRIB_FD)
 static int get_fd(struct xf86_platform_device *dev)
 {
-	const char *str;
-
-	if (dev == NULL)
-		return -1;
-
-	str = xf86_get_platform_device_attrib(dev, ODEV_ATTRIB_FD);
-	if (str == NULL)
-		return -1;
-
-	return atoi(str);
+	return xf86_get_platform_device_int_attrib(dev, ODEV_ATTRIB_FD, -1);
 }
 
 #else
@@ -261,7 +252,6 @@ static int get_fd(struct xf86_platform_device *dev)
 {
 	return -1;
 }
-
 #endif
 
 int intel_open_device(int entity_num,
@@ -270,7 +260,7 @@ int intel_open_device(int entity_num,
 {
 	struct intel_device *dev;
 	char *local_path;
-	int fd;
+	int fd, master_count;
 
 	if (intel_device_key == -1)
 		intel_device_key = xf86AllocateEntityPrivateIndex();
@@ -283,11 +273,15 @@ int intel_open_device(int entity_num,
 
 	local_path = get_path(platform);
 
+	master_count = 1; /* DRM_MASTER is managed by Xserver */
 	fd = get_fd(platform);
-	if (fd == -1)
+	if (fd == -1) {
 		fd = __intel_open_device(pci, &local_path);
-	if (fd == -1)
-		goto err_path;
+		if (fd == -1)
+			goto err_path;
+
+		master_count = 0;
+	}
 
 	if (!__intel_check_device(fd))
 		goto err_close;
@@ -298,7 +292,7 @@ int intel_open_device(int entity_num,
 
 	dev->fd = fd;
 	dev->open_count = 0;
-	dev->master_count = 0;
+	dev->master_count = master_count;
 	dev->master_node = local_path;
 	dev->render_node = find_render_node(fd);
 	if (dev->render_node == NULL)
