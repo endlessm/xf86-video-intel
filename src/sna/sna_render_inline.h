@@ -117,11 +117,33 @@ unattached(DrawablePtr drawable)
 }
 
 static inline bool
-picture_is_gpu(struct sna *sna, PicturePtr picture)
+picture_is_gpu(struct sna *sna, PicturePtr picture, unsigned flags)
 {
-	if (!picture || !picture->pDrawable)
+	if (!picture)
 		return false;
-	return is_gpu(sna, picture->pDrawable, PREFER_GPU_RENDER);
+
+	if (!picture->pDrawable) {
+		switch (flags) {
+		case PREFER_GPU_RENDER:
+			switch (picture->pSourcePict->type) {
+			case SourcePictTypeSolidFill:
+			case SourcePictTypeLinear:
+				return false;
+			default:
+				return true;
+			}
+		case PREFER_GPU_SPANS:
+			return true;
+		default:
+			return false;
+		}
+	} else {
+		if (picture->repeat &&
+		    (picture->pDrawable->width | picture->pDrawable->height) == 1)
+			return flags == PREFER_GPU_SPANS;
+	}
+
+	return is_gpu(sna, picture->pDrawable, flags);
 }
 
 static inline bool

@@ -1057,7 +1057,7 @@ composite_unaligned_boxes_inplace(struct sna *sna,
 {
 	if (!force_fallback &&
 	    (is_gpu(sna, dst->pDrawable, PREFER_GPU_SPANS) ||
-	     picture_is_gpu(sna, src))) {
+	     picture_is_gpu(sna, src, PREFER_GPU_SPANS))) {
 		DBG(("%s: fallback -- not forcing\n", __FUNCTION__));
 		return false;
 	}

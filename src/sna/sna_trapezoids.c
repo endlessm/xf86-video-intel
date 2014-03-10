@@ -318,7 +318,7 @@ trapezoids_fallback(struct sna *sna,
 		DBG(("%s: mask (%dx%d) depth=%d, format=%08x\n",
 		     __FUNCTION__, width, height, depth, format));
 		if (is_gpu(sna, dst->pDrawable, PREFER_GPU_RENDER) ||
-		    picture_is_gpu(sna, src)) {
+		    picture_is_gpu(sna, src, PREFER_GPU_RENDER)) {
 			int num_threads;
 
 			scratch = sna_pixmap_create_upload(screen,
@@ -487,7 +487,7 @@ trapezoid_spans_maybe_inplace(struct sna *sna,
 
 	case PICT_x8r8g8b8:
 	case PICT_a8r8g8b8:
-		if (picture_is_gpu(sna, src))
+		if (picture_is_gpu(sna, src, 0))
 			return false;
 
 		switch (op) {
@@ -596,11 +596,11 @@ sna_composite_trapezoids(CARD8 op,
 
 	if (FORCE_FALLBACK == 0 &&
 	    (too_small(priv) || DAMAGE_IS_ALL(priv->cpu_damage)) &&
-	    !picture_is_gpu(sna, src) && untransformed(src)) {
+	    !picture_is_gpu(sna, src, 0) && untransformed(src)) {
 		DBG(("%s: force fallbacks -- (too small, %dx%d? %d || all-cpu? %d) && (src-is-cpu? %d && untransformed? %d)\n",
 		     __FUNCTION__, dst->pDrawable->width, dst->pDrawable->height,
 		     too_small(priv), (int)DAMAGE_IS_ALL(priv->cpu_damage),
-		     !picture_is_gpu(sna, src), untransformed(src)));
+		     !picture_is_gpu(sna, src, 0), untransformed(src)));
 
 force_fallback:
 		force_fallback = true;
