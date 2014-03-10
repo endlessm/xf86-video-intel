@@ -214,7 +214,7 @@ void sna_threads_wait(void)
 		}
 
 		if (threads[n].arg != NULL) {
-			DBG(("%s: thread[%d] died from signal %d\n", __func__, n, (int)threads[n].arg));
+			DBG(("%s: thread[%d] died from signal %d\n", __func__, n, (int)(intptr_t)threads[n].arg));
 			sna_threads_kill();
 			return;
 		}

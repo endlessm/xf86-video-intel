@@ -2883,7 +2883,7 @@ fastcall static void sna_blt_fill_op_points(struct sna *sna,
 	const struct sna_blt_state *blt = &op->base.u.blt;
 	struct kgem *kgem = &sna->kgem;
 
-	DBG(("%s: %08x x %d\n", __FUNCTION__, blt->pixel, npoints));
+	DBG(("%s: %08x x %d\n", __FUNCTION__, blt->pixel, n));
 
 	if (sna->blt_state.fill_bo != op->base.u.blt.bo[0]->unique_id) {
 		sna_blt_fill_begin(sna, blt);
