@@ -425,14 +425,28 @@ static uint32_t gen2_get_blend_cntl(int op,
 	sblend = gen2_blend_op[op].src_blend;
 	dblend = gen2_blend_op[op].dst_blend;
 
-	/* If there's no dst alpha channel, adjust the blend op so that
-	 * we'll treat it as always 1.
-	 */
-	if (PICT_FORMAT_A(dst_format) == 0 && gen2_blend_op[op].dst_alpha) {
-		if (sblend == BLENDFACTOR_DST_ALPHA)
-			sblend = BLENDFACTOR_ONE;
-		else if (sblend == BLENDFACTOR_INV_DST_ALPHA)
-			sblend = BLENDFACTOR_ZERO;
+	if (gen2_blend_op[op].dst_alpha) {
+		/* If there's no dst alpha channel, adjust the blend op so that
+		 * we'll treat it as always 1.
+		 */
+		if (PICT_FORMAT_A(dst_format) == 0) {
+			if (sblend == BLENDFACTOR_DST_ALPHA)
+				sblend = BLENDFACTOR_ONE;
+			else if (sblend == BLENDFACTOR_INV_DST_ALPHA)
+				sblend = BLENDFACTOR_ZERO;
+		}
+
+		/* gen2 engine reads 8bit color buffer into green channel
+		 * in cases like color buffer blending etc., and also writes
+		 * back green channel.  So with dst_alpha blend we should use
+		 * color factor.
+		 */
+		if (dst_format == PICT_a8) {
+			if (sblend == BLENDFACTOR_DST_ALPHA)
+				sblend = BLENDFACTOR_DST_COLR;
+			else if (sblend == BLENDFACTOR_INV_DST_ALPHA)
+				sblend = BLENDFACTOR_INV_DST_COLR;
+		}
 	}
 
 	/* If the source alpha is being used, then we should only be in a case
