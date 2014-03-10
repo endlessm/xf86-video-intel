@@ -365,7 +365,7 @@ gen2_get_blend_factors(const struct sna_composite_op *op,
 	else
 		ablend |= TB0A_ARG1_SEL_TEXEL0;
 	if ((op->has_component_alpha && gen2_blend_op[blend].src_alpha) ||
-	    op->dst.format == PICT_a8) {
+	    op->dst.format == PICT_a8)
 		/* Producing source alpha value, so the first set of channels
 		 * is src.A instead of src.X.  We also do this if the destination
 		 * is a8, in which case src.G is what's written, and the other
