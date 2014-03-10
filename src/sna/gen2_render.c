@@ -352,6 +352,18 @@ gen2_get_blend_factors(const struct sna_composite_op *op,
 
 
 	/* Get the source picture's channels into TBx_ARG1 */
+	if (op->src.is_solid)
+		cblend |= TB0C_ARG1_SEL_DIFFUSE;
+	else if (PICT_FORMAT_RGB(op->src.pict_format) != 0)
+		cblend |= TB0C_ARG1_SEL_TEXEL0;
+	else
+		cblend |= TB0C_ARG1_SEL_ONE | TB0C_ARG1_INVERT;	/* 0.0 */
+	if (op->src.is_solid)
+		ablend |= TB0A_ARG1_SEL_DIFFUSE;
+	else if (op->src.is_opaque)
+		ablend |= TB0A_ARG1_SEL_ONE;
+	else
+		ablend |= TB0A_ARG1_SEL_TEXEL0;
 	if ((op->has_component_alpha && gen2_blend_op[blend].src_alpha) ||
 	    op->dst.format == PICT_a8) {
 		/* Producing source alpha value, so the first set of channels
@@ -359,27 +371,7 @@ gen2_get_blend_factors(const struct sna_composite_op *op,
 		 * is a8, in which case src.G is what's written, and the other
 		 * channels are ignored.
 		 */
-		if (op->src.is_solid) {
-			ablend |= TB0A_ARG1_SEL_DIFFUSE;
-			cblend |= TB0C_ARG1_SEL_DIFFUSE | TB0C_ARG1_REPLICATE_ALPHA;
-		} else {
-			ablend |= TB0A_ARG1_SEL_TEXEL0;
-			cblend |= TB0C_ARG1_SEL_TEXEL0 | TB0C_ARG1_REPLICATE_ALPHA;
-		}
-	} else {
-		if (op->src.is_solid)
-			cblend |= TB0C_ARG1_SEL_DIFFUSE;
-		else if (PICT_FORMAT_RGB(op->src.pict_format) != 0)
-			cblend |= TB0C_ARG1_SEL_TEXEL0;
-		else
-			cblend |= TB0C_ARG1_SEL_ONE | TB0C_ARG1_INVERT;	/* 0.0 */
-		if (op->src.is_solid)
-			ablend |= TB0A_ARG1_SEL_DIFFUSE;
-		else if (op->src.is_opaque)
-			ablend |= TB0A_ARG1_SEL_ONE;
-		else
-			ablend |= TB0A_ARG1_SEL_TEXEL0;
-	}
+		cblend |= TB0C_ARG1_REPLICATE_ALPHA;
 
 	if (op->mask.bo) {
 		if (op->src.is_solid) {
@@ -599,6 +591,7 @@ static void gen2_emit_target(struct sna *sna, const struct sna_composite_op *op)
 	assert(op->dst.bo->pitch >= 8 && op->dst.bo->pitch <= MAX_3D_PITCH);
 	assert(sna->render.vertex_offset == 0);
 
+	assert(op->dst.bo->unique_id);
 	if (sna->render_state.gen2.target == op->dst.bo->unique_id) {
 		kgem_bo_mark_dirty(op->dst.bo);
 		return;
