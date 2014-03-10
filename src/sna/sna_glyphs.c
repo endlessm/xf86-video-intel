@@ -1147,13 +1147,10 @@ glyphs_via_mask(struct sna *sna,
 		memset(pixmap->devPrivate.ptr, 0, pixmap->devKind*height);
 #if HAS_PIXMAN_GLYPHS
 		if (sna->render.glyph_cache) {
+			pixman_glyph_cache_t *cache = sna->render.glyph_cache;
 			pixman_glyph_t stack_glyphs[N_STACK_GLYPHS];
 			pixman_glyph_t *pglyphs = stack_glyphs;
-			pixman_glyph_cache_t *cache;
 			int count, n;
-
-			cache = sna->render.glyph_cache;
-			pixman_glyph_cache_freeze(cache);
 
 			count = 0;
 			for (n = 0; n < nlist; ++n)
@@ -1164,6 +1161,7 @@ glyphs_via_mask(struct sna *sna,
 					goto err_pixmap;
 			}
 
+			pixman_glyph_cache_freeze(cache);
 			count = 0;
 			do {
 				n = list->len;
@@ -2053,23 +2051,21 @@ glyphs_via_image(struct sna *sna,
 	memset(pixmap->devPrivate.ptr, 0, pixmap->devKind*height);
 #if HAS_PIXMAN_GLYPHS
 	if (sna->render.glyph_cache) {
+		pixman_glyph_cache_t *cache = sna->render.glyph_cache;
 		pixman_glyph_t stack_glyphs[N_STACK_GLYPHS];
 		pixman_glyph_t *pglyphs = stack_glyphs;
-		pixman_glyph_cache_t *cache;
 		int count, n;
-
-		cache = sna->render.glyph_cache;
-		pixman_glyph_cache_freeze(cache);
 
 		count = 0;
 		for (n = 0; n < nlist; ++n)
 			count += list[n].len;
 		if (count > N_STACK_GLYPHS) {
-			pglyphs = malloc (count * sizeof(pixman_glyph_t));
+			pglyphs = malloc(count * sizeof(pixman_glyph_t));
 			if (pglyphs == NULL)
 				goto err_pixmap;
 		}
 
+		pixman_glyph_cache_freeze(cache);
 		count = 0;
 		do {
 			n = list->len;
