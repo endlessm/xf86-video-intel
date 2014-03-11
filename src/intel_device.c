@@ -263,6 +263,9 @@ static char *get_path(struct xf86_platform_device *dev)
 #if defined(ODEV_ATTRIB_FD)
 static int get_fd(struct xf86_platform_device *dev)
 {
+	if (dev == NULL)
+		return -1;
+
 	return xf86_get_platform_device_int_attrib(dev, ODEV_ATTRIB_FD, -1);
 }
 
