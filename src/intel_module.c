@@ -420,7 +420,7 @@ static Bool intel_driver_func(ScrnInfoPtr pScrn,
 
 		return TRUE;
 
-#if XORG_VERSION_CURRENT > XORG_VERSION_NUMERIC(1,15,99,902,0)
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,15,99,902,0)
 	case SUPPORTS_SERVER_FDS:
 		return TRUE;
 #endif
