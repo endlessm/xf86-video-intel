@@ -4196,7 +4196,9 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 
 	size = kgem_surface_size(kgem, kgem->has_relaxed_fencing, flags,
 				 width, height, bpp, tiling, &pitch);
-	assert(size && size <= kgem->max_object_size);
+	if (size == 0)
+		return NULL;
+
 	size /= PAGE_SIZE;
 	bucket = cache_bucket(size);
 
