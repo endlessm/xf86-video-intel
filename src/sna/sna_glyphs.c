@@ -1419,9 +1419,8 @@ glyphs_format(int nlist, GlyphListPtr list, GlyphPtr * glyphs)
 			return NULL;
 	}
 
-	x = 0;
-	y = 0;
-	for (i = 0; i < nlist; i++) {
+	x = y = 0; i = 0;
+	while (nlist--) {
 		BoxRec extents;
 		bool first = true;
 		int n = list->len;
@@ -1432,12 +1431,11 @@ glyphs_format(int nlist, GlyphListPtr list, GlyphPtr * glyphs)
 		 * If we overlap then we cannot substitute a mask as the
 		 * rendering will be altered.
 		 */
-		extents.x1 = 0;
-		extents.y1 = 0;
-		extents.x2 = 0;
-		extents.y2 = 0;
-
 		if (format->format != list->format->format) {
+			DBG(("%s: switching formats from %x to %x\n",
+			     __FUNCTION__,
+			     (unsigned)format->format,
+			     (unsigned)list->format->format));
 			format = NULL;
 			goto out;
 		}
@@ -1472,6 +1470,10 @@ glyphs_format(int nlist, GlyphListPtr list, GlyphPtr * glyphs)
 				 */
 				if (x1 < extents.x2-1 && x2 > extents.x1+1 &&
 				    y1 < extents.y2-1 && y2 > extents.y1+1) {
+					DBG(("%s: overlapping glyph inside line, current bbox (%d, %d), (%d, %d), glyph (%d, %d), (%d, %d)\n",
+					     __FUNCTION__,
+					     extents.x1, extents.y1, extents.x2, extents.y2,
+					     x1, y1, x2, y2));
 					format = NULL;
 					goto out;
 				}
@@ -1494,16 +1496,23 @@ skip_glyph:
 		 * the number of lists to be small, so just keep a list
 		 * of the previous boxes and walk those.
 		 */
-		for (j = 0; j < i; j++) {
-			if (extents.x1 < list_extents[j].x2-1 &&
-			    extents.x2 > list_extents[j].x1+1 &&
-			    extents.y1 < list_extents[j].y2-1 &&
-			    extents.y2 > list_extents[j].y1+1) {
-				format = NULL;
-				goto out;
+		if (!first) {
+			for (j = 0; j < i; j++) {
+				if (extents.x1 < list_extents[j].x2-1 &&
+				    extents.x2 > list_extents[j].x1+1 &&
+				    extents.y1 < list_extents[j].y2-1 &&
+				    extents.y2 > list_extents[j].y1+1) {
+					DBG(("%s: overlapping lines, current bbox (%d, %d), (%d, %d), previous line (%d, %d), (%d, %d)\n",
+					     __FUNCTION__,
+					     extents.x1, extents.y1, extents.x2, extents.y2,
+					     list_extents[j].x1, list_extents[j].y1,
+					     list_extents[j].x2, list_extents[j].y2));
+					format = NULL;
+					goto out;
+				}
 			}
+			list_extents[i++] = extents;
 		}
-		list_extents[i] = extents;
 	}
 
 out:
@@ -1521,6 +1530,11 @@ static bool can_discard_mask(uint8_t op, PicturePtr src, PictFormatPtr mask,
 	if (NO_DISCARD_MASK)
 		return false;
 
+	DBG(("%s: nlist=%d, mask=%08x, depth %d, op=%d (bounded? %d)\n",
+	     __FUNCTION__, nlist,
+	     mask ? (unsigned)mask->format : 0, mask ? mask->depth : 0,
+	     op, op_is_bounded(op)));
+
 	if (nlist == 1 && list->len == 1)
 		return true;
 
@@ -1531,6 +1545,9 @@ static bool can_discard_mask(uint8_t op, PicturePtr src, PictFormatPtr mask,
 	g = glyphs_format(nlist, list, glyphs);
 	if (mask == g)
 		return true;
+
+	DBG(("%s: preferred mask format %08x, depth %d\n",
+	     __FUNCTION__, g ? (unsigned)g->format : 0,  g ? g->depth : 0));
 
 	/* Otherwise if the glyphs are all bitmaps and we have an
 	 * opaque source we can also render directly to the dst.
