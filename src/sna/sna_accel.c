@@ -2147,6 +2147,7 @@ skip_inplace_map:
 				assert(pixmap->devPrivate.ptr == MAP(priv->cpu_bo->map__cpu));
 			}
 
+			assert(pixmap->devKind);
 			if (priv->clear_color == 0 ||
 			    pixmap->drawable.bitsPerPixel == 8 ||
 			    priv->clear_color == (1 << pixmap->drawable.depth) - 1) {
@@ -2712,6 +2713,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 			assert(pixmap->devPrivate.ptr == MAP(priv->cpu_bo->map__cpu));
 		}
 
+		assert(pixmap->devKind);
 		do {
 			pixman_fill(pixmap->devPrivate.ptr,
 				    pixmap->devKind/sizeof(uint32_t),
@@ -3251,6 +3253,7 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 				if (pixmap->devPrivate.ptr == NULL)
 					return NULL;
 
+				assert(pixmap->devKind);
 				if (n == 1 && !priv->pinned &&
 				    box->x1 <= 0 && box->y1 <= 0 &&
 				    box->x2 >= pixmap->drawable.width &&
@@ -3288,13 +3291,15 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 		}
 		if (!ok) {
 			sna_pixmap_unmap(pixmap, priv);
-			if (pixmap->devPrivate.ptr != NULL)
+			if (pixmap->devPrivate.ptr != NULL) {
+				assert(pixmap->devKind);
 				ok = sna_write_boxes(sna, pixmap,
 						priv->gpu_bo, 0, 0,
 						pixmap->devPrivate.ptr,
 						pixmap->devKind,
 						0, 0,
 						box, 1);
+			}
 		}
 		if (!ok)
 			return NULL;
@@ -3315,13 +3320,15 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 		}
 		if (!ok) {
 			sna_pixmap_unmap(pixmap, priv);
-			if (pixmap->devPrivate.ptr != NULL)
+			if (pixmap->devPrivate.ptr != NULL) {
+				assert(pixmap->devKind);
 				ok = sna_write_boxes(sna, pixmap,
 						priv->gpu_bo, 0, 0,
 						pixmap->devPrivate.ptr,
 						pixmap->devKind,
 						0, 0,
 						box, n);
+			}
 		}
 		if (!ok)
 			return NULL;
@@ -4020,6 +4027,7 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 			if (pixmap->devPrivate.ptr == NULL)
 				return NULL;
 
+			assert(pixmap->devKind);
 			if (n == 1 && !priv->pinned &&
 			    (box->x2 - box->x1) >= pixmap->drawable.width &&
 			    (box->y2 - box->y1) >= pixmap->drawable.height) {
@@ -4618,6 +4626,7 @@ sna_put_zpixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 		assert(box->y2 - y <= h);
 
 		assert(has_coherent_ptr(to_sna_from_pixmap(pixmap), sna_pixmap(pixmap), MOVE_WRITE));
+		assert(pixmap->devKind);
 		memcpy_blt(bits, pixmap->devPrivate.ptr,
 			   pixmap->drawable.bitsPerPixel,
 			   stride, pixmap->devKind,
@@ -5320,6 +5329,7 @@ fallback:
 			goto free_boxes;
 
 		if (alu == GXcopy && pixmap->drawable.bitsPerPixel >= 8) {
+			assert(pixmap->devKind);
 			if (sigtrap_get() == 0) {
 				FbBits *dst_bits, *src_bits;
 				int stride = pixmap->devKind;
@@ -5561,6 +5571,7 @@ sna_copy_boxes__inplace(struct sna *sna, RegionPtr region, int alu,
 	n = RegionNumRects(region);
 	if (src_priv->gpu_bo->tiling) {
 		DBG(("%s: copy from a tiled CPU map\n", __FUNCTION__));
+		assert(dst_pixmap->devKind);
 		do {
 			memcpy_from_tiled_x(&sna->kgem, ptr, dst_pixmap->devPrivate.ptr,
 					    src_pixmap->drawable.bitsPerPixel,
@@ -5573,6 +5584,7 @@ sna_copy_boxes__inplace(struct sna *sna, RegionPtr region, int alu,
 		} while (--n);
 	} else {
 		DBG(("%s: copy from a linear CPU map\n", __FUNCTION__));
+		assert(dst_pixmap->devKind);
 		do {
 			memcpy_blt(ptr, dst_pixmap->devPrivate.ptr,
 				   src_pixmap->drawable.bitsPerPixel,
@@ -5683,6 +5695,7 @@ upload_inplace:
 	if (dst_priv->gpu_bo->tiling) {
 		DBG(("%s: copy to a tiled CPU map\n", __FUNCTION__));
 		assert(dst_priv->gpu_bo->tiling == I915_TILING_X);
+		assert(src_pixmap->devKind);
 		do {
 			memcpy_to_tiled_x(&sna->kgem, src_pixmap->devPrivate.ptr, ptr,
 					  src_pixmap->drawable.bitsPerPixel,
@@ -5695,6 +5708,7 @@ upload_inplace:
 		} while (--n);
 	} else {
 		DBG(("%s: copy to a linear CPU map\n", __FUNCTION__));
+		assert(src_pixmap->devKind);
 		do {
 			memcpy_blt(src_pixmap->devPrivate.ptr, ptr,
 				   src_pixmap->drawable.bitsPerPixel,
@@ -6041,6 +6055,7 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 			DBG(("%s: upload through a temporary map\n",
 			     __FUNCTION__));
 
+			assert(src_pixmap->devKind);
 			src_bo = kgem_create_map(&sna->kgem,
 						 src_pixmap->devPrivate.ptr,
 						 src_pixmap->devKind * src_pixmap->drawable.height,
@@ -6102,6 +6117,8 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 
 				assert(has_coherent_ptr(sna, sna_pixmap(src_pixmap), MOVE_READ));
 				assert(has_coherent_ptr(sna, sna_pixmap(tmp), MOVE_WRITE));
+				assert(src_pixmap->devKind);
+				assert(tmp->devKind);
 				memcpy_blt(src_pixmap->devPrivate.ptr,
 					   tmp->devPrivate.ptr,
 					   src_pixmap->drawable.bitsPerPixel,
@@ -6143,6 +6160,7 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 			DBG(("%s: dst is on the GPU, src is on the CPU, uploading into dst\n",
 			     __FUNCTION__));
 
+			assert(src_pixmap->devKind);
 			if (!dst_priv->pinned && replaces) {
 				stride = src_pixmap->devKind;
 				bits = src_pixmap->devPrivate.ptr;
@@ -6201,6 +6219,7 @@ fallback:
 		}
 
 		assert(dst_pixmap->devPrivate.ptr);
+		assert(dst_pixmap->devKind);
 		do {
 			pixman_fill(dst_pixmap->devPrivate.ptr,
 				    dst_pixmap->devKind/sizeof(uint32_t),
@@ -6255,6 +6274,8 @@ fallback:
 		}
 		assert(dst_priv == sna_pixmap(dst_pixmap));
 
+		assert(dst_pixmap->devKind);
+		assert(src_pixmap->devKind);
 		dst_stride = dst_pixmap->devKind;
 		src_stride = src_pixmap->devKind;
 
@@ -6284,6 +6305,8 @@ fallback:
 				assert(box->y2 + src_dy <= src_pixmap->drawable.height);
 				assert(has_coherent_ptr(sna, src_priv, MOVE_READ));
 				assert(has_coherent_ptr(sna, dst_priv, MOVE_WRITE));
+				assert(src_stride);
+				assert(dst_stride);
 				memcpy_blt(src_bits, dst_bits, bpp,
 					   src_stride, dst_stride,
 					   box->x1, box->y1,
@@ -7675,6 +7698,7 @@ sna_copy_bitmap_blt(DrawablePtr _bitmap, DrawablePtr drawable, GCPtr gc,
 				sna->kgem.nbatch += 7 + src_stride;
 			}
 
+			assert(bitmap->devKind);
 			src_stride = bitmap->devKind;
 			src = bitmap->devPrivate.ptr;
 			src += (box->y1 + sy) * src_stride + bx1/8;
@@ -7756,6 +7780,7 @@ sna_copy_bitmap_blt(DrawablePtr _bitmap, DrawablePtr drawable, GCPtr gc,
 				}
 
 				dst = ptr;
+				assert(bitmap->devKind);
 				src_stride = bitmap->devKind;
 				src = bitmap->devPrivate.ptr;
 				src += (box->y1 + sy) * src_stride + bx1/8;
@@ -7861,6 +7886,7 @@ sna_copy_plane_blt(DrawablePtr source, DrawablePtr drawable, GCPtr gc,
 		if (sigtrap_get() == 0) {
 			uint32_t *b;
 
+			assert(src_pixmap->devKind);
 			switch (source->bitsPerPixel) {
 			case 32:
 				{
@@ -11477,6 +11503,7 @@ sna_pixmap_get_source_bo(PixmapPtr pixmap)
 		}
 
 		assert(has_coherent_ptr(sna, sna_pixmap(pixmap), MOVE_READ));
+		assert(pixmap->devKind);
 		memcpy_blt(pixmap->devPrivate.ptr, ptr,
 			   pixmap->drawable.bitsPerPixel,
 			   pixmap->devKind, upload->pitch,
@@ -11954,6 +11981,7 @@ sna_poly_fill_rect_tiled_nxm_blt(DrawablePtr drawable,
 	assert(has_coherent_ptr(sna, sna_pixmap(tile), MOVE_READ));
 	upload->pitch = 8*tile->drawable.bitsPerPixel >> 3; /* for sanity checks */
 
+	assert(tile->devKind);
 	cpp = tile->drawable.bitsPerPixel/8;
 	for (h = 0; h < tile->drawable.height; h++) {
 		uint8_t *src = (uint8_t *)tile->devPrivate.ptr + tile->devKind*h;
@@ -12319,6 +12347,7 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 		br13 |= fill_ROP[gc->alu] << 16;
 	}
 
+	assert(gc->stipple->devKind);
 	{
 		uint8_t *dst = (uint8_t *)pat;
 		const uint8_t *src = gc->stipple->devPrivate.ptr;
@@ -12659,6 +12688,7 @@ sna_poly_fill_rect_stippled_nxm_blt(DrawablePtr drawable,
 	stipple = gc->stipple;
 	gc->stipple = scratch;
 
+	assert(stipple->devKind);
 	stride = stipple->devKind;
 	src = stipple->devPrivate.ptr;
 	end = src + stride * stipple->drawable.height;
@@ -12787,6 +12817,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 					dst = (uint8_t *)&b[7];
 					sna->kgem.nbatch += 7 + src_stride;
 				}
+				assert(stipple->devKind);
 				src_stride = stipple->devKind;
 				src = stipple->devPrivate.ptr;
 				src += (r->y - origin->y) * src_stride + bx1/8;
@@ -12822,6 +12853,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 
 				if (sigtrap_get() == 0) {
 					dst = ptr;
+					assert(stipple->devKind);
 					src_stride = stipple->devKind;
 					src = stipple->devPrivate.ptr;
 					src += (r->y - origin->y) * src_stride + bx1/8;
@@ -12978,6 +13010,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 						sna->kgem.nbatch += 7 + src_stride;
 					}
 
+					assert(stipple->devKind);
 					src_stride = stipple->devKind;
 					src = stipple->devPrivate.ptr;
 					src += (box.y1 - pat.y) * src_stride + bx1/8;
@@ -13010,6 +13043,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 
 					if (sigtrap_get() == 0) {
 						dst = ptr;
+						assert(stipple->devKind);
 						src_stride = stipple->devKind;
 						src = stipple->devPrivate.ptr;
 						src += (box.y1 - pat.y) * src_stride + bx1/8;
@@ -13165,6 +13199,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 							dst = (uint8_t *)&b[7];
 							sna->kgem.nbatch += 7 + src_stride;
 						}
+						assert(stipple->devKind);
 						src_stride = stipple->devKind;
 						src = stipple->devPrivate.ptr;
 						src += (box.y1 - pat.y) * src_stride + bx1/8;
@@ -13197,6 +13232,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 
 						if (sigtrap_get() == 0) {
 							dst = ptr;
+							assert(stipple->devKind);
 							src_stride = stipple->devKind;
 							src = stipple->devPrivate.ptr;
 							src += (box.y1 - pat.y) * src_stride + bx1/8;
@@ -13358,6 +13394,7 @@ sna_poly_fill_rect_stippled_n_box__imm(struct sna *sna,
 				sna->kgem.nbatch += 7 + len;
 			}
 
+			assert(gc->stipple->devKind);
 			len = gc->stipple->devKind;
 			src = gc->stipple->devPrivate.ptr;
 			src += oy*len + ox/8;
@@ -13390,6 +13427,7 @@ sna_poly_fill_rect_stippled_n_box(struct sna *sna,
 	int stride = gc->stipple->devKind;
 	uint32_t *b;
 
+	assert(stride);
 	if ((((box->y2-box->y1) | (box->x2-box->x1)) & ~31) == 0) {
 		br00 = XY_MONO_SRC_COPY_IMM |(br00 & (BLT_DST_TILED | 3 << 20));
 		sna_poly_fill_rect_stippled_n_box__imm(sna, bo,
@@ -13492,6 +13530,7 @@ sna_poly_fill_rect_stippled_n_box(struct sna *sna,
 					sna->kgem.nbatch += 7 + len;
 				}
 
+				assert(gc->stipple->devKind);
 				len = gc->stipple->devKind;
 				src = gc->stipple->devPrivate.ptr;
 				src += oy*len + ox/8;
@@ -15656,6 +15695,7 @@ sna_push_pixels_solid_blt(GCPtr gc,
 			uint8_t *src;
 			uint32_t *b;
 
+			assert(src_stride);
 			src = (uint8_t*)bitmap->devPrivate.ptr;
 			src += (box->y1 - region->extents.y1) * src_stride + bx1/8;
 			src_stride -= bstride;
@@ -16193,6 +16233,7 @@ sna_get_image(DrawablePtr drawable,
 		     region.extents.x2, region.extents.y2));
 		assert(has_coherent_ptr(to_sna_from_pixmap(pixmap), sna_pixmap(pixmap), MOVE_READ));
 		if (sigtrap_get() == 0) {
+			assert(pixmap->devKind);
 			memcpy_blt(pixmap->devPrivate.ptr, dst, drawable->bitsPerPixel,
 				   pixmap->devKind, PixmapBytePad(w, drawable->depth),
 				   region.extents.x1, region.extents.y1, 0, 0, w, h);
@@ -16606,6 +16647,8 @@ fallback:
 
 					assert(has_coherent_ptr(sna, sna_pixmap(src), MOVE_READ));
 					assert(has_coherent_ptr(sna, sna_pixmap(dst), MOVE_WRITE));
+					assert(src->devKind);
+					assert(dst->devKind);
 					memcpy_blt(src->devPrivate.ptr,
 						   dst->devPrivate.ptr,
 						   src->drawable.bitsPerPixel,

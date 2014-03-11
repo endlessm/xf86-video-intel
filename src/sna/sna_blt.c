@@ -932,6 +932,8 @@ static void blt_composite_fill__cpu(struct sna *sna,
 	if (x2 <= x1 || y2 <= y1)
 		return;
 
+	assert(op->dst.pixmap->devPrivate.ptr);
+	assert(op->dst.pixmap->devKind);
 	pixman_fill(op->dst.pixmap->devPrivate.ptr,
 		    op->dst.pixmap->devKind / sizeof(uint32_t),
 		    op->dst.pixmap->drawable.bitsPerPixel,
@@ -949,6 +951,8 @@ blt_composite_fill_box_no_offset__cpu(struct sna *sna,
 	assert(box->x2 <= op->dst.pixmap->drawable.width);
 	assert(box->y2 <= op->dst.pixmap->drawable.height);
 
+	assert(op->dst.pixmap->devPrivate.ptr);
+	assert(op->dst.pixmap->devKind);
 	pixman_fill(op->dst.pixmap->devPrivate.ptr,
 		    op->dst.pixmap->devKind / sizeof(uint32_t),
 		    op->dst.pixmap->drawable.bitsPerPixel,
@@ -967,6 +971,8 @@ blt_composite_fill_boxes_no_offset__cpu(struct sna *sna,
 		assert(box->x2 <= op->dst.pixmap->drawable.width);
 		assert(box->y2 <= op->dst.pixmap->drawable.height);
 
+		assert(op->dst.pixmap->devPrivate.ptr);
+		assert(op->dst.pixmap->devKind);
 		pixman_fill(op->dst.pixmap->devPrivate.ptr,
 			    op->dst.pixmap->devKind / sizeof(uint32_t),
 			    op->dst.pixmap->drawable.bitsPerPixel,
@@ -986,6 +992,8 @@ blt_composite_fill_box__cpu(struct sna *sna,
 	assert(box->x2 + op->dst.x <= op->dst.pixmap->drawable.width);
 	assert(box->y2 + op->dst.y <= op->dst.pixmap->drawable.height);
 
+	assert(op->dst.pixmap->devPrivate.ptr);
+	assert(op->dst.pixmap->devKind);
 	pixman_fill(op->dst.pixmap->devPrivate.ptr,
 		    op->dst.pixmap->devKind / sizeof(uint32_t),
 		    op->dst.pixmap->drawable.bitsPerPixel,
@@ -1005,6 +1013,8 @@ blt_composite_fill_boxes__cpu(struct sna *sna,
 		assert(box->x2 + op->dst.x <= op->dst.pixmap->drawable.width);
 		assert(box->y2 + op->dst.y <= op->dst.pixmap->drawable.height);
 
+		assert(op->dst.pixmap->devPrivate.ptr);
+		assert(op->dst.pixmap->devKind);
 		pixman_fill(op->dst.pixmap->devPrivate.ptr,
 			    op->dst.pixmap->devKind / sizeof(uint32_t),
 			    op->dst.pixmap->drawable.bitsPerPixel,
@@ -1928,6 +1938,10 @@ blt_put_composite__cpu(struct sna *sna,
 {
 	PixmapPtr dst = op->dst.pixmap;
 	PixmapPtr src = op->u.blt.src_pixmap;
+	assert(src->devPrivate.ptr);
+	assert(src->devKind);
+	assert(dst->devPrivate.ptr);
+	assert(dst->devKind);
 	memcpy_blt(src->devPrivate.ptr, dst->devPrivate.ptr,
 		   src->drawable.bitsPerPixel, src->devKind, dst->devKind,
 		   r->src.x + op->u.blt.sx, r->src.y + op->u.blt.sy,
@@ -1942,6 +1956,10 @@ blt_put_composite_box__cpu(struct sna *sna,
 {
 	PixmapPtr dst = op->dst.pixmap;
 	PixmapPtr src = op->u.blt.src_pixmap;
+	assert(src->devPrivate.ptr);
+	assert(src->devKind);
+	assert(dst->devPrivate.ptr);
+	assert(dst->devKind);
 	memcpy_blt(src->devPrivate.ptr, dst->devPrivate.ptr,
 		   src->drawable.bitsPerPixel, src->devKind, dst->devKind,
 		   box->x1 + op->u.blt.sx, box->y1 + op->u.blt.sy,
@@ -1956,6 +1974,10 @@ blt_put_composite_boxes__cpu(struct sna *sna,
 {
 	PixmapPtr dst = op->dst.pixmap;
 	PixmapPtr src = op->u.blt.src_pixmap;
+	assert(src->devPrivate.ptr);
+	assert(src->devKind);
+	assert(dst->devPrivate.ptr);
+	assert(dst->devKind);
 	do {
 		memcpy_blt(src->devPrivate.ptr, dst->devPrivate.ptr,
 			   src->drawable.bitsPerPixel, src->devKind, dst->devKind,
@@ -1973,6 +1995,10 @@ blt_put_composite_with_alpha__cpu(struct sna *sna,
 {
 	PixmapPtr dst = op->dst.pixmap;
 	PixmapPtr src = op->u.blt.src_pixmap;
+	assert(src->devPrivate.ptr);
+	assert(src->devKind);
+	assert(dst->devPrivate.ptr);
+	assert(dst->devKind);
 	memcpy_xor(src->devPrivate.ptr, dst->devPrivate.ptr,
 		   src->drawable.bitsPerPixel, src->devKind, dst->devKind,
 		   r->src.x + op->u.blt.sx, r->src.y + op->u.blt.sy,
@@ -1989,6 +2015,10 @@ blt_put_composite_box_with_alpha__cpu(struct sna *sna,
 {
 	PixmapPtr dst = op->dst.pixmap;
 	PixmapPtr src = op->u.blt.src_pixmap;
+	assert(src->devPrivate.ptr);
+	assert(src->devKind);
+	assert(dst->devPrivate.ptr);
+	assert(dst->devKind);
 	memcpy_xor(src->devPrivate.ptr, dst->devPrivate.ptr,
 		   src->drawable.bitsPerPixel, src->devKind, dst->devKind,
 		   box->x1 + op->u.blt.sx, box->y1 + op->u.blt.sy,
@@ -2004,6 +2034,10 @@ blt_put_composite_boxes_with_alpha__cpu(struct sna *sna,
 {
 	PixmapPtr dst = op->dst.pixmap;
 	PixmapPtr src = op->u.blt.src_pixmap;
+	assert(src->devPrivate.ptr);
+	assert(src->devKind);
+	assert(dst->devPrivate.ptr);
+	assert(dst->devKind);
 	do {
 		memcpy_xor(src->devPrivate.ptr, dst->devPrivate.ptr,
 			   src->drawable.bitsPerPixel, src->devKind, dst->devKind,
@@ -2070,6 +2104,8 @@ fastcall static void blt_put_composite_box(struct sna *sna,
 	     op->u.blt.sx, op->u.blt.sy,
 	     op->dst.x, op->dst.y));
 
+	assert(src->devPrivate.ptr);
+	assert(src->devKind);
 	if (!dst_priv->pinned &&
 	    box->x2 - box->x1 == op->dst.width &&
 	    box->y2 - box->y1 == op->dst.height) {
@@ -2108,6 +2144,8 @@ static void blt_put_composite_boxes(struct sna *sna,
 	     op->dst.x, op->dst.y,
 	     box->x1, box->y1, box->x2, box->y2, n));
 
+	assert(src->devPrivate.ptr);
+	assert(src->devKind);
 	if (n == 1 && !dst_priv->pinned &&
 	    box->x2 - box->x1 == op->dst.width &&
 	    box->y2 - box->y1 == op->dst.height) {
@@ -2150,6 +2188,9 @@ blt_put_composite_with_alpha(struct sna *sna,
 	int16_t src_x = r->src.x + op->u.blt.sx;
 	int16_t src_y = r->src.y + op->u.blt.sy;
 
+	assert(src->devPrivate.ptr);
+	assert(src->devKind);
+
 	if (!dst_priv->pinned &&
 	    dst_x <= 0 && dst_y <= 0 &&
 	    dst_x + r->width >= op->dst.width &&
@@ -2190,6 +2231,9 @@ blt_put_composite_box_with_alpha(struct sna *sna,
 	     op->u.blt.sx, op->u.blt.sy,
 	     op->dst.x, op->dst.y));
 
+	assert(src->devPrivate.ptr);
+	assert(src->devKind);
+
 	if (!dst_priv->pinned &&
 	    box->x2 - box->x1 == op->dst.width &&
 	    box->y2 - box->y1 == op->dst.height) {
@@ -2226,6 +2270,9 @@ blt_put_composite_boxes_with_alpha(struct sna *sna,
 	     op->u.blt.sx, op->u.blt.sy,
 	     op->dst.x, op->dst.y,
 	     box->x1, box->y1, box->x2, box->y2, n));
+
+	assert(src->devPrivate.ptr);
+	assert(src->devKind);
 
 	if (n == 1 && !dst_priv->pinned &&
 	    box->x2 - box->x1 == op->dst.width &&
