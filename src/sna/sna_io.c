@@ -1730,10 +1730,10 @@ indirect_replace(struct sna *sna,
 
 	DBG(("%s: size=%d vs %d\n",
 	     __FUNCTION__,
-	     (int)pixmap->devKind * pixmap->drawable.height >> 12,
+	     stride * pixmap->drawable.height >> 12,
 	     kgem->half_cpu_cache_pages));
 
-	if ((int)pixmap->devKind * pixmap->drawable.height >> 12 > kgem->half_cpu_cache_pages)
+	if (stride * pixmap->drawable.height >> 12 > kgem->half_cpu_cache_pages)
 		return false;
 
 	if (!kgem_bo_can_blt(kgem, bo) &&

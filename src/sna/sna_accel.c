@@ -1555,7 +1555,7 @@ static inline bool pixmap_inplace(struct sna *sna,
 		return false;
 	}
 
-	return (pixmap->devKind * pixmap->drawable.height >> 12) >
+	return (priv->stride * pixmap->drawable.height >> 12) >
 		sna->kgem.half_cpu_cache_pages;
 }
 
