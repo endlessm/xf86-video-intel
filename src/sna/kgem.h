@@ -630,6 +630,8 @@ static inline void __kgem_bo_mark_dirty(struct kgem_bo *bo)
 	     bo->handle, bo->proxy != NULL));
 
 	assert(bo->refcnt);
+	assert(bo->exec);
+	assert(bo->rq);
 
 	bo->exec->flags |= LOCAL_EXEC_OBJECT_WRITE;
 	bo->needs_flush = bo->gpu_dirty = true;

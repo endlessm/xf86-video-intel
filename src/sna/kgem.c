@@ -5841,11 +5841,13 @@ struct kgem_bo *kgem_create_proxy(struct kgem *kgem,
 	bo->proxy = kgem_bo_reference(target);
 	bo->delta = offset;
 
+	/* Proxies are only tracked for busyness on the current rq */
 	if (target->exec && !bo->io) {
+		assert(RQ(target->rq) == kgem->next_request);
 		list_move_tail(&bo->request, &kgem->next_request->buffers);
 		bo->exec = &_kgem_dummy_exec;
+		bo->rq = target->rq;
 	}
-	bo->rq = target->rq;
 
 	return bo;
 }
