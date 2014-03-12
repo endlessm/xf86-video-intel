@@ -1030,6 +1030,8 @@ __sna_glyph_get_image(GlyphPtr g, ScreenPtr s)
 	PicturePtr p;
 	int dx, dy;
 
+	DBG(("%s: creating image cache for glyph %p (on screen %d)\n", __FUNCTION__, g, s->myNum));
+
 	p = GetGlyphPicture(g, s);
 	if (unlikely(p == NULL))
 		return NULL;
@@ -1182,6 +1184,7 @@ glyphs_via_mask(struct sna *sna,
 						if (glyph_image == NULL)
 							goto next_pglyph;
 
+						DBG(("%s: inserting glyph %p into pixman cache\n", __FUNCTION__, g));
 						ptr = pixman_glyph_cache_insert(cache, g, NULL,
 										g->info.x,
 										g->info.y,
@@ -1674,6 +1677,7 @@ glyphs_fallback(CARD8 op,
 					if (glyph_image == NULL)
 						goto next;
 
+					DBG(("%s: inserting glyph %p into pixman cache\n", __FUNCTION__, g));
 					ptr = pixman_glyph_cache_insert(cache, g, NULL,
 									g->info.x,
 									g->info.y,
@@ -2103,6 +2107,7 @@ glyphs_via_image(struct sna *sna,
 					if (glyph_image == NULL)
 						goto next_pglyph;
 
+					DBG(("%s: inserting glyph %p into pixman cache\n", __FUNCTION__, g));
 					ptr = pixman_glyph_cache_insert(cache, g, NULL,
 									g->info.x,
 									g->info.y,
@@ -2157,8 +2162,7 @@ next_pglyph:
 				    yi + g->info.height <= 0)
 					goto next_image;
 
-				glyph_image =
-					sna_glyph_get_image(g, dst->pDrawable->pScreen);
+				glyph_image = sna_glyph_get_image(g, screen);
 				if (glyph_image == NULL)
 					goto next_image;
 
@@ -2288,15 +2292,19 @@ sna_glyph_unrealize(ScreenPtr screen, GlyphPtr glyph)
 {
 	struct sna_glyph *p = sna_glyph(glyph);
 
-	DBG(("%s: screen=%d, glyph(image?=%d, atlas?=%d)\n",
-	     __FUNCTION__, screen->myNum, !!p->image, !!p->atlas));
+	DBG(("%s: screen=%d, glyph=%p (image?=%d, atlas?=%d)\n",
+	     __FUNCTION__, screen->myNum, glyph, !!p->image,
+	     p->atlas && p->atlas != GetGlyphPicture(glyph, screen)));
 
 	if (p->image) {
 #if HAS_PIXMAN_GLYPHS
 		struct sna *sna = to_sna_from_screen(screen);
-		if (sna->render.glyph_cache)
+		if (sna->render.glyph_cache) {
+			DBG(("%s: removing glyph %p from pixman cache\n",
+			     __FUNCTION__, glyph));
 			pixman_glyph_cache_remove(sna->render.glyph_cache,
 						  glyph, NULL);
+		}
 #endif
 		pixman_image_unref(p->image);
 		p->image = NULL;
@@ -2311,4 +2319,9 @@ sna_glyph_unrealize(ScreenPtr screen, GlyphPtr glyph)
 		cache->glyphs[p->pos >> 1] = NULL;
 		p->atlas = NULL;
 	}
+
+#if HAS_PIXMAN_GLYPHS
+	assert(to_sna_from_screen(screen)->render.glyph_cache == NULL ||
+	       pixman_glyph_cache_lookup(to_sna_from_screen(screen)->render.glyph_cache, glyph, NULL) == NULL);
+#endif
 }
