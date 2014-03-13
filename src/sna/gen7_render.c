@@ -3565,6 +3565,7 @@ gen7_render_fill(struct sna *sna, uint8_t alu,
 	op->blt   = gen7_render_fill_op_blt;
 	op->box   = gen7_render_fill_op_box;
 	op->boxes = gen7_render_fill_op_boxes;
+	op->points = NULL;
 	op->done  = gen7_render_fill_op_done;
 	return true;
 }

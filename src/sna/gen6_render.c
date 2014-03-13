@@ -3300,6 +3300,7 @@ gen6_render_fill(struct sna *sna, uint8_t alu,
 	op->blt  = gen6_render_op_fill_blt;
 	op->box  = gen6_render_op_fill_box;
 	op->boxes = gen6_render_op_fill_boxes;
+	op->points = NULL;
 	op->done = gen6_render_op_fill_done;
 	return true;
 }

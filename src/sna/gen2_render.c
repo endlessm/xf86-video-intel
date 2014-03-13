@@ -2985,6 +2985,7 @@ gen2_render_fill(struct sna *sna, uint8_t alu,
 	tmp->blt   = gen2_render_fill_op_blt;
 	tmp->box   = gen2_render_fill_op_box;
 	tmp->boxes = gen2_render_fill_op_boxes;
+	tmp->points = NULL;
 	tmp->done  = gen2_render_fill_op_done;
 
 	gen2_emit_fill_state(sna, &tmp->base);

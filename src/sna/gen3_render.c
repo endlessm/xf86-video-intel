@@ -6084,6 +6084,7 @@ gen3_render_fill(struct sna *sna, uint8_t alu,
 	tmp->blt   = gen3_render_fill_op_blt;
 	tmp->box   = gen3_render_fill_op_box;
 	tmp->boxes = gen3_render_fill_op_boxes;
+	tmp->points = NULL;
 	tmp->done  = gen3_render_fill_op_done;
 
 	gen3_align_vertex(sna, &tmp->base);

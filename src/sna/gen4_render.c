@@ -2852,6 +2852,7 @@ gen4_render_fill(struct sna *sna, uint8_t alu,
 	op->blt   = gen4_render_fill_op_blt;
 	op->box   = gen4_render_fill_op_box;
 	op->boxes = gen4_render_fill_op_boxes;
+	op->points = NULL;
 	op->done  = gen4_render_fill_op_done;
 	return true;
 }
