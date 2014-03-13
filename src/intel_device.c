@@ -207,7 +207,8 @@ static char *find_master_node(int fd)
 	    (st.st_rdev & 0x7f) == master.st_rdev)
 		return strdup(buf);
 
-	return NULL;
+	/* Fallback to iterating over the usual suspects */
+	return drmGetDeviceNameFromFd(fd);
 }
 
 static char *find_render_node(int fd)
