@@ -173,24 +173,25 @@ static inline bool prefer_blt_fill(struct sna *sna,
 	if (PREFER_RENDER)
 		return PREFER_RENDER < 0;
 
-	if (flags & (FILL_POINTS | FILL_SPANS) &&
-	    can_switch_to_blt(sna, bo, 0))
-		return true;
-
 	if (untiled_tlb_miss(bo))
 		return true;
 
 	if (force_blt_ring(sna))
 		return true;
 
-	if (kgem_bo_is_render(bo))
-		return false;
+	if ((flags & (FILL_POINTS | FILL_SPANS)) == 0) {
+		if (kgem_bo_is_render(bo))
+			return false;
 
-	if (prefer_render_ring(sna, bo))
-		return false;
+		if (prefer_render_ring(sna, bo))
+			return false;
 
-	if (!prefer_blt_ring(sna, bo, 0))
-		return false;
+		if (!prefer_blt_ring(sna, bo, 0))
+			return false;
+	} else {
+	    if (can_switch_to_blt(sna, bo, 0))
+		    return true;
+	}
 
 	return prefer_blt_bo(sna, bo);
 }
