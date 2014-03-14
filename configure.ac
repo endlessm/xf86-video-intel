@@ -235,7 +235,9 @@ if test "x$tools" = "xyes"; then
       AC_CHECK_HEADERS([X11/extensions/XShm.h X11/extensions/shmproto.h X11/extensions/shmstr.h], [], [tools=no],
 		       [#include <X11/Xlibint.h>
 			#include <X11/Xproto.h>])
+fi
 
+if test "x$tools" = "xyes"; then
       tools_msg="$tools_msg intel-virtual-output"
 fi
 

@@ -1201,7 +1201,7 @@ err:
 					     (long)src->mode.id,
 					     src->mode.width,
 					     src->mode.height,
-					     dst->name (long)id,));
+					     dst->name, (long)id));
 					XRRAddOutputMode(dst->dpy, dst->rr_output, id);
 					dst->mode.id = id;
 				} else {
