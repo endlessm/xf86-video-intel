@@ -3438,7 +3438,7 @@ sna_drawable_use_bo(DrawablePtr drawable, unsigned flags, const BoxRec *box,
 		flags &= ~PREFER_GPU;
 
 	if ((flags & (PREFER_GPU | IGNORE_CPU)) == IGNORE_CPU) {
-		if (box_inplace(pixmap, box))
+		if (priv->gpu_bo && box_inplace(pixmap, box))
 			flags |= PREFER_GPU;
 	}
 
@@ -3618,6 +3618,7 @@ move_to_gpu:
 	}
 
 done:
+	assert(priv->move_to_gpu == NULL);
 	assert(priv->gpu_bo != NULL);
 	assert(priv->gpu_bo->refcnt);
 	if (sna_damage_is_all(&priv->gpu_damage,
@@ -3635,6 +3636,7 @@ done:
 	assert(priv->gpu_bo->proxy == NULL);
 	assert(priv->clear == false);
 	assert(priv->cpu == false);
+	assert(!priv->shm);
 	return priv->gpu_bo;
 
 use_gpu_bo:
@@ -3652,6 +3654,11 @@ use_gpu_bo:
 			DBG(("%s: move-to-gpu override failed\n", __FUNCTION__));
 			goto use_cpu_bo;
 		}
+	}
+
+	if (priv->shm) {
+		assert(!priv->flush);
+		list_move(&priv->flush_list, &sna->flush_pixmaps);
 	}
 
 	DBG(("%s: using whole GPU bo\n", __FUNCTION__));
