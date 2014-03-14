@@ -1151,9 +1151,9 @@ static int context_update(struct context *ctx)
 			RRCrtc rr_crtc;
 			Status ret;
 
-			DBG(("%s: copying configuration from %s (mode=%ld: %s) to %s\n",
+			DBG(("%s: copying configuration from %s (mode=%ld: %dx%d) to %s\n",
 			     DisplayString(dst->dpy),
-			     src->name, (long)src->mode.id, src->mode.name,
+			     src->name, (long)src->mode.id, src->mode.width, src->mode.height,
 			     dst->name));
 
 			if (src->mode.id == 0) {
@@ -1188,15 +1188,20 @@ err:
 				/* XXX User names must be unique! */
 				m = src->mode;
 				m.nameLength = snprintf(buf, sizeof(buf),
-							"%s.%ld-%s", src->name, (long)src->mode.id, src->mode.name);
+							"%s.%ld-%dx%d", src->name,
+							(long)src->mode.id,
+							src->mode.width,
+							src->mode.height);
 				m.name = buf;
 
 				id = XRRCreateMode(dst->dpy, dst->window, &m);
 				if (id) {
-					DBG(("%s: adding mode %ld: %s to %s\n",
+					DBG(("%s: adding mode %ld: %dx%d to %s, new mode %ld\n",
 					     DisplayString(dst->dpy),
-					     (long)id, src->mode.name,
-					     dst->name));
+					     (long)src->mode.id,
+					     src->mode.width,
+					     src->mode.height,
+					     dst->name (long)id,));
 					XRRAddOutputMode(dst->dpy, dst->rr_output, id);
 					dst->mode.id = id;
 				} else {
