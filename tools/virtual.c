@@ -2163,6 +2163,20 @@ static struct display *last_display(struct context *ctx)
 	return &ctx->display[ctx->ndisplay-1];
 }
 
+static void reverse_clone_list(struct display *display)
+{
+	struct clone *list = NULL;
+
+	while (display->clone) {
+		struct clone *clone = display->clone;
+		display->clone = clone->next;
+		clone->next = list;
+		list = clone;
+	}
+
+	display->clone = list;
+}
+
 static int last_display_add_clones__randr(struct context *ctx)
 {
 	struct display *display = last_display(ctx);
@@ -2236,6 +2250,8 @@ static int last_display_add_clones__randr(struct context *ctx)
 		XRRFreeOutputInfo(o);
 	}
 	XRRFreeScreenResources(res);
+
+	reverse_clone_list(display);
 	return 0;
 }
 
@@ -2309,6 +2325,8 @@ static int last_display_add_clones__xinerama(struct context *ctx)
 		ctx->active = clone;
 	}
 	XFree(xi);
+
+	reverse_clone_list(display);
 	return 0;
 }
 
