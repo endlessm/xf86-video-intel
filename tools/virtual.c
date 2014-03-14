@@ -444,6 +444,17 @@ static void clone_update_edid(struct clone *clone)
 	}
 }
 
+static void disable_crtc(Display *dpy, XRRScreenResources *res, RRCrtc crtc)
+{
+	XRRPanning panning;
+
+	if (crtc == 0)
+		return;
+
+	XRRSetPanning(dpy, res, crtc, memset(&panning, 0, sizeof(panning)));
+	XRRSetCrtcConfig(dpy, res, crtc, CurrentTime, 0, 0, None, RR_Rotate_0, NULL, 0);
+}
+
 static int clone_update_modes__randr(struct clone *clone)
 {
 	XRRScreenResources *from_res = NULL, *to_res = NULL;
@@ -510,14 +521,20 @@ static int clone_update_modes__randr(struct clone *clone)
 		}
 	}
 
-	clone->dst.rr_crtc = from_info->crtc;
+	/* Disable the remote output */
+	if (from_info->crtc != clone->dst.rr_crtc) {
+		DBG(("%s(%s-%s): disabling active CRTC\n", __func__,
+		     DisplayString(clone->dst.dpy), clone->dst.name));
+		disable_crtc(clone->dst.dpy, from_res, from_info->crtc);
+		clone->dst.rr_crtc = 0;
+		clone->dst.mode.id = 0;
+	}
 
 	/* Clear all current UserModes on the output, including any active ones */
 	if (to_info->crtc) {
 		DBG(("%s(%s-%s): disabling active CRTC\n", __func__,
 		     DisplayString(clone->src.dpy), clone->src.name));
-		XRRSetCrtcConfig(clone->src.dpy, to_res, to_info->crtc, CurrentTime,
-				0, 0, None, RR_Rotate_0, NULL, 0);
+		disable_crtc(clone->src.dpy, to_res, to_info->crtc);
 	}
 	for (i = 0; i < to_info->nmode; i++) {
 		DBG(("%s(%s-%s): deleting mode %ld\n", __func__,
@@ -617,8 +634,7 @@ static int clone_update_modes__fixed(struct clone *clone)
 	if (info->crtc) {
 		DBG(("%s(%s-%s): disabling active CRTC\n", __func__,
 		     DisplayString(clone->src.dpy), clone->src.name));
-		XRRSetCrtcConfig(clone->src.dpy, res, info->crtc, CurrentTime,
-				 0, 0, None, RR_Rotate_0, NULL, 0);
+		disable_crtc(clone->src.dpy, res, info->crtc);
 	}
 	for (i = 0; i < info->nmode; i++) {
 		DBG(("%s(%s-%s): deleting mode %ld\n", __func__,
@@ -717,9 +733,7 @@ static RROutput claim_virtual(struct display *display, char *output_name, int nc
 	/* Some else may have interrupted us and installed that new mode! */
 	output = XRRGetOutputInfo(dpy, res, rr_output);
 	if (output) {
-		if (output->crtc)
-			XRRSetCrtcConfig(dpy, res, output->crtc, CurrentTime,
-					 0, 0, None, RR_Rotate_0, NULL, 0);
+		disable_crtc(dpy, res, output->crtc);
 		XRRFreeOutputInfo(output);
 	}
 	XRRFreeScreenResources(res);
@@ -1091,8 +1105,7 @@ static int context_update(struct context *ctx)
 
 				DBG(("%s: disabling output '%s'\n",
 				     DisplayString(dst->dpy), dst->name));
-				XRRSetCrtcConfig(dst->dpy, res, dst->rr_crtc, CurrentTime,
-						0, 0, None, RR_Rotate_0, NULL, 0);
+				disable_crtc(dpy, res, dst->rr_crtc);
 				dst->rr_crtc = 0;
 				dst->mode.id = 0;
 			}
@@ -1116,8 +1129,7 @@ static int context_update(struct context *ctx)
 
 				DBG(("%s: disabling output '%s'\n",
 				     DisplayString(dst->dpy), dst->name));
-				XRRSetCrtcConfig(dst->dpy, res, dst->rr_crtc, CurrentTime,
-						 0, 0, None, RR_Rotate_0, NULL, 0);
+				disable_crtc(dpy, res, dst->rr_crtc);
 				dst->rr_crtc = 0;
 				dst->mode.id = 0;
 			}
@@ -1147,8 +1159,7 @@ err:
 				if (dst->rr_crtc) {
 					DBG(("%s: disabling unused output '%s'\n",
 					     DisplayString(dst->dpy), dst->name));
-					XRRSetCrtcConfig(dst->dpy, res, dst->rr_crtc, CurrentTime,
-							 0, 0, None, RR_Rotate_0, NULL, 0);
+					disable_crtc(dpy, res, dst->rr_crtc);
 					dst->rr_crtc = 0;
 					dst->mode.id = 0;
 				}
@@ -2189,8 +2200,7 @@ static int last_display_add_clones__randr(struct context *ctx)
 
 		if (o->crtc) {
 			DBG(("%s - disabling active output\n", DisplayString(display->dpy)));
-			XRRSetCrtcConfig(display->dpy, res, o->crtc, CurrentTime,
-					0, 0, None, RR_Rotate_0, NULL, 0);
+			disable_crtc(display->dpy, res, o->crtc);
 		}
 
 		XRRFreeOutputInfo(o);
@@ -2692,10 +2702,7 @@ static void context_cleanup(struct context *ctx)
 		if (output == NULL)
 			continue;
 
-		if (output->crtc)
-			XRRSetCrtcConfig(dpy, res, output->crtc, CurrentTime,
-					 0, 0, None, RR_Rotate_0, NULL, 0);
-
+		disable_crtc(dpy, res, output->crtc);
 		for (j = 0; j < output->nmode; j++)
 			XRRDeleteOutputMode(dpy, clone->src.rr_output, output->modes[j]);
 
