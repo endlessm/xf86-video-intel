@@ -1713,8 +1713,8 @@ gen6_composite_picture(struct sna *sna,
 	uint32_t color;
 	int16_t dx, dy;
 
-	DBG(("%s: (%d, %d)x(%d, %d), dst=(%d, %d)\n",
-	     __FUNCTION__, x, y, w, h, dst_x, dst_y));
+	DBG(("%s: (%d, %d)x(%d, %d), dst=(%d, %d), precise=%d\n",
+	     __FUNCTION__, x, y, w, h, dst_x, dst_y, precise));
 
 	channel->is_solid = false;
 	channel->card_format = -1;
@@ -1766,7 +1766,7 @@ gen6_composite_picture(struct sna *sna,
 	y += dy + picture->pDrawable->y;
 
 	channel->is_affine = sna_transform_is_affine(picture->transform);
-	if (sna_transform_is_integer_translation(picture->transform, &dx, &dy)) {
+	if (sna_transform_is_imprecise_integer_translation(picture->transform, picture->filter, precise, &dx, &dy)) {
 		DBG(("%s: integer translation (%d, %d), removing\n",
 		     __FUNCTION__, dx, dy));
 		x += dx;
@@ -1788,6 +1788,36 @@ gen6_composite_picture(struct sna *sna,
 		     pixmap->drawable.width, pixmap->drawable.height));
 		return sna_render_picture_extract(sna, picture, channel,
 						  x, y, w, h, dst_x, dst_y);
+	}
+
+	DBG(("%s: pixmap, repeat=%d, filter=%d, transform?=%d [affine? %d], format=%08x\n",
+	     __FUNCTION__,
+	     channel->repeat, channel->filter,
+	     channel->transform != NULL, channel->is_affine,
+	     channel->pict_format));
+	if (channel->transform) {
+#define f2d(x) (((double)(x))/65536.)
+		DBG(("%s: transform=[%f %f %f, %f %f %f, %f %f %f] (raw [%x %x %x, %x %x %x, %x %x %x])\n",
+		     __FUNCTION__,
+		     f2d(channel->transform->matrix[0][0]),
+		     f2d(channel->transform->matrix[0][1]),
+		     f2d(channel->transform->matrix[0][2]),
+		     f2d(channel->transform->matrix[1][0]),
+		     f2d(channel->transform->matrix[1][1]),
+		     f2d(channel->transform->matrix[1][2]),
+		     f2d(channel->transform->matrix[2][0]),
+		     f2d(channel->transform->matrix[2][1]),
+		     f2d(channel->transform->matrix[2][2]),
+		     channel->transform->matrix[0][0],
+		     channel->transform->matrix[0][1],
+		     channel->transform->matrix[0][2],
+		     channel->transform->matrix[1][0],
+		     channel->transform->matrix[1][1],
+		     channel->transform->matrix[1][2],
+		     channel->transform->matrix[2][0],
+		     channel->transform->matrix[2][1],
+		     channel->transform->matrix[2][2]));
+#undef f2d
 	}
 
 	return sna_render_pixmap_bo(sna, channel, pixmap,

@@ -527,7 +527,9 @@ sna_composite_fb(CARD8 op,
 	    src->filter != PictFilterConvolution &&
 	    (op == PictOpSrc || (op == PictOpOver && !PICT_FORMAT_A(src->format))) &&
 	    (dst->format == src->format || dst->format == alphaless(src->format)) &&
-	    sna_transform_is_integer_translation(src->transform, &tx, &ty)) {
+	    sna_transform_is_imprecise_integer_translation(src->transform, src->filter,
+							   dst->polyMode == PolyModePrecise,
+							   &tx, &ty)) {
 		PixmapPtr dst_pixmap = get_drawable_pixmap(dst->pDrawable);
 		PixmapPtr src_pixmap = get_drawable_pixmap(src->pDrawable);
 		int16_t sx = src_x + tx - (dst->pDrawable->x + dst_x);

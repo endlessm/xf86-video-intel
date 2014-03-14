@@ -2859,7 +2859,7 @@ static bool gen3_gradient_setup(struct sna *sna,
 	channel->card_format = MAPSURF_32BIT | MT_32BIT_ARGB8888;
 	channel->filter = PictFilterNearest;
 	channel->is_affine = sna_transform_is_affine(picture->transform);
-	if (sna_transform_is_integer_translation(picture->transform, &dx, &dy)) {
+	if (sna_transform_is_imprecise_integer_translation(picture->transform, PictFilterNearest, false, &dx, &dy)) {
 		DBG(("%s: integer translation (%d, %d), removing\n",
 		     __FUNCTION__, dx, dy));
 		ox += dx;
@@ -3086,7 +3086,7 @@ gen3_composite_picture(struct sna *sna,
 	x += dx + picture->pDrawable->x;
 	y += dy + picture->pDrawable->y;
 
-	if (sna_transform_is_integer_translation(picture->transform, &dx, &dy)) {
+	if (sna_transform_is_imprecise_integer_translation(picture->transform, picture->filter, precise, &dx, &dy)) {
 		DBG(("%s: integer translation (%d, %d), removing\n",
 		     __FUNCTION__, dx, dy));
 		x += dx;

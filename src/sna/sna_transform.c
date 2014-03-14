@@ -96,6 +96,50 @@ sna_transform_is_integer_translation(const PictTransform *t, int16_t *tx, int16_
 	return true;
 }
 
+bool
+sna_transform_is_imprecise_integer_translation(const PictTransform *t,
+					       int filter, bool precise,
+					       int16_t *tx, int16_t *ty)
+{
+	if (t == NULL) {
+		*tx = *ty = 0;
+		return true;
+	}
+
+	if (t->matrix[0][0] != IntToxFixed(1) ||
+	    t->matrix[0][1] != 0 ||
+	    t->matrix[1][0] != 0 ||
+	    t->matrix[1][1] != IntToxFixed(1) ||
+	    t->matrix[2][0] != 0 ||
+	    t->matrix[2][1] != 0 ||
+	    t->matrix[2][2] != IntToxFixed(1))
+		return false;
+
+	DBG(("%s: filter=%d, translation (%x, %x), precise? %d\n",
+	     __FUNCTION__, filter, t->matrix[0][2], t->matrix[1][2], precise));
+	if (filter != PictFilterNearest) {
+		if (precise) {
+			if (pixman_fixed_fraction(t->matrix[0][2]) ||
+			    pixman_fixed_fraction(t->matrix[1][2]))
+				return false;
+		} else {
+			int f;
+
+			f = pixman_fixed_fraction(t->matrix[0][2]);
+			if (f < IntToxFixed(1)/4 || f > IntToxFixed(3)/4)
+				return false;
+
+			f = pixman_fixed_fraction(t->matrix[1][2]);
+			if (f < IntToxFixed(1)/4 || f > IntToxFixed(3)/4)
+				return false;
+		}
+	}
+
+	*tx = pixman_fixed_to_int(t->matrix[0][2] + IntToxFixed(1)/2);
+	*ty = pixman_fixed_to_int(t->matrix[1][2] + IntToxFixed(1)/2);
+	return true;
+}
+
 /**
  * Returns the floating-point coordinates transformed by the given transform.
  */

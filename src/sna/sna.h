@@ -764,10 +764,13 @@ sna_get_transformed_coordinates_3d(int x, int y,
 				   float *x_out, float *y_out, float *z_out);
 
 bool sna_transform_is_affine(const PictTransform *t);
-bool sna_transform_is_integer_translation(const PictTransform *t,
-					  int16_t *tx, int16_t *ty);
 bool sna_transform_is_translation(const PictTransform *t,
 				  pixman_fixed_t *tx, pixman_fixed_t *ty);
+bool sna_transform_is_integer_translation(const PictTransform *t,
+					  int16_t *tx, int16_t *ty);
+bool sna_transform_is_imprecise_integer_translation(const PictTransform *t,
+					       int filter, bool precise,
+					       int16_t *tx, int16_t *ty);
 static inline bool
 sna_affine_transform_is_rotation(const PictTransform *t)
 {
