@@ -67,8 +67,10 @@
 
 #if 0
 #define DBG(x) printf x
+#define EXTRA_DBG 1
 #else
 #define DBG(x)
+#define EXTRA_DBG 0
 #endif
 
 #define FORCE_FULL_REDRAW 0
@@ -1254,9 +1256,32 @@ err:
 
 			ret = XRRSetPanning(dst->dpy, res, rr_crtc, memset(&panning, 0, sizeof(panning)));
 			DBG(("%s-%s: XRRSetPanning %s\n", DisplayString(dst->dpy), dst->name, ret ? "failed" : "success"));
+			(void)ret;
+
+			if (EXTRA_DBG) {
+				XRRCrtcInfo *c;
+				XRRPanning *p;
+
+				c = XRRGetCrtcInfo(dst->dpy, res, rr_crtc);
+				if (c) {
+					DBG(("%s-%s: x=%d, y=%d, rotation=%d, mode=%ld\n",
+					     DisplayString(dst->dpy), dst->name,
+					     c->x, c->y, c->rotation, c->mode));
+					XRRFreeCrtcInfo(c);
+				}
+
+				p = XRRGetPanning(dst->dpy, res, rr_crtc);
+				if (p) {
+					DBG(("%s-%s: panning (%d, %d)x(%d, %d), tracking (%d, %d)x(%d, %d), border (%d, %d),(%d, %d)\n",
+					     DisplayString(dst->dpy), dst->name,
+					     p->left, p->top, p->width, p->height,
+					     p->track_left, p->track_top, p->track_width, p->track_height,
+					     p->border_left, p->border_top, p->border_right, p->border_bottom));
+					XRRFreePanning(p);
+				}
+			}
 
 			dst->rr_crtc = rr_crtc;
-			(void)ret;
 		}
 free_res:
 		XRRFreeScreenResources(res);
