@@ -1252,16 +1252,16 @@ err:
 			     dst->x, dst->y, dst->mode.width, dst->mode.height,
 			     dst->rotation, (long)rr_crtc, dst->mode.id));
 
+			ret = XRRSetPanning(dst->dpy, res, rr_crtc, memset(&panning, 0, sizeof(panning)));
+			DBG(("%s-%s: XRRSetPanning %s\n", DisplayString(dst->dpy), dst->name, ret ? "failed" : "success"));
+			(void)ret;
+
 			ret = XRRSetCrtcConfig(dst->dpy, res, rr_crtc, CurrentTime,
 					       dst->x, dst->y, dst->mode.id, dst->rotation,
 					       &dst->rr_output, 1);
 			DBG(("%s-%s: XRRSetCrtcConfig %s\n", DisplayString(dst->dpy), dst->name, ret ? "failed" : "success"));
 			if (ret)
 				goto err;
-
-			ret = XRRSetPanning(dst->dpy, res, rr_crtc, memset(&panning, 0, sizeof(panning)));
-			DBG(("%s-%s: XRRSetPanning %s\n", DisplayString(dst->dpy), dst->name, ret ? "failed" : "success"));
-			(void)ret;
 
 			if (EXTRA_DBG) {
 				XRRCrtcInfo *c;
