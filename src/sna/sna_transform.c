@@ -102,9 +102,16 @@ sna_transform_is_imprecise_integer_translation(const PictTransform *t,
 					       int16_t *tx, int16_t *ty)
 {
 	if (t == NULL) {
+		DBG(("%s: no transform\n", __FUNCTION__));
 		*tx = *ty = 0;
 		return true;
 	}
+
+	DBG(("%s: FilterNearest?=%d, precise?=%d, transform=[%f %f %f, %f %f %f, %f %f %f]\n",
+	     __FUNCTION__, filter==PictFilterNearest, precise,
+	     t->matrix[0][0]/65536., t->matrix[0][1]/65536., t->matrix[0][2]/65536.,
+	     t->matrix[1][0]/65536., t->matrix[1][1]/65536., t->matrix[1][2]/65536.,
+	     t->matrix[2][0]/65536., t->matrix[2][1]/65536., t->matrix[2][2]/65536.));
 
 	if (t->matrix[0][0] != IntToxFixed(1) ||
 	    t->matrix[0][1] != 0 ||
@@ -112,26 +119,32 @@ sna_transform_is_imprecise_integer_translation(const PictTransform *t,
 	    t->matrix[1][1] != IntToxFixed(1) ||
 	    t->matrix[2][0] != 0 ||
 	    t->matrix[2][1] != 0 ||
-	    t->matrix[2][2] != IntToxFixed(1))
+	    t->matrix[2][2] != IntToxFixed(1)) {
+		DBG(("%s: not unity scaling\n", __FUNCTION__));
 		return false;
+	}
 
-	DBG(("%s: filter=%d, translation (%x, %x), precise? %d\n",
-	     __FUNCTION__, filter, t->matrix[0][2], t->matrix[1][2], precise));
 	if (filter != PictFilterNearest) {
 		if (precise) {
 			if (pixman_fixed_fraction(t->matrix[0][2]) ||
-			    pixman_fixed_fraction(t->matrix[1][2]))
+			    pixman_fixed_fraction(t->matrix[1][2])) {
+				DBG(("%s: precise, fractional translation\n", __FUNCTION__));
 				return false;
+			}
 		} else {
 			int f;
 
 			f = pixman_fixed_fraction(t->matrix[0][2]);
-			if (f < IntToxFixed(1)/4 || f > IntToxFixed(3)/4)
+			if (f < IntToxFixed(1)/4 || f > IntToxFixed(3)/4) {
+				DBG(("%s: imprecise, fractional translation X\n", __FUNCTION__));
 				return false;
+			}
 
 			f = pixman_fixed_fraction(t->matrix[1][2]);
-			if (f < IntToxFixed(1)/4 || f > IntToxFixed(3)/4)
+			if (f < IntToxFixed(1)/4 || f > IntToxFixed(3)/4) {
+				DBG(("%s: imprecise, fractional translation Y\n", __FUNCTION__));
 				return false;
+			}
 		}
 	}
 

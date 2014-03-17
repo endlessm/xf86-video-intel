@@ -2515,13 +2515,15 @@ fill:
 		return false;
 	}
 
-	if (sna_transform_is_imprecise_integer_translation(src->transform, src->filter,
-							   dst->polyMode == PolyModePrecise,
-							   &tx, &ty)) {
+	if (!sna_transform_is_imprecise_integer_translation(src->transform, src->filter,
+							    dst->polyMode == PolyModePrecise,
+							    &tx, &ty)) {
 		DBG(("%s: source transform is not an integer translation\n",
 		     __FUNCTION__));
 		return false;
 	}
+	DBG(("%s: converting transform to integer translation? (%d, %d)\n",
+	     __FUNCTION__, src->transform != NULL, tx, ty));
 	x += tx;
 	y += ty;
 
