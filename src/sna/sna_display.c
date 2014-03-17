@@ -3513,7 +3513,16 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 		num_fake = 1;
 
 	mode->kmode = drmModeGetResources(sna->kgem.fd);
+	if (mode->kmode &&
+	    (mode->kmode->count_crtcs == 0 ||
+	     mode->kmode->count_connectors == 0)) {
+		drmModeFreeResources(mode->kmode);
+		mode->kmode = NULL;
+	}
 	if (mode->kmode) {
+		assert(mode->kmode->count_crtcs);
+		assert(mode->kmode->count_connectors);
+
 		xf86CrtcConfigInit(scrn, &sna_mode_funcs);
 		XF86_CRTC_CONFIG_PTR(scrn)->xf86_crtc_notify = sna_crtc_config_notify;
 
