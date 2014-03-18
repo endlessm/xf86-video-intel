@@ -441,20 +441,6 @@ int intel_put_master(ScrnInfoPtr scrn)
 	return ret;
 }
 
-void __intel_uxa_release_device(ScrnInfoPtr scrn)
-{
-	struct intel_device *dev = intel_device(scrn);
-	if (dev && dev->open_count == 0) {
-		intel_set_device(scrn, NULL);
-
-		drmClose(dev->fd);
-		if (dev->render_node != dev->master_node)
-			free(dev->render_node);
-		free(dev->master_node);
-		free(dev);
-	}
-}
-
 void intel_put_device(ScrnInfoPtr scrn)
 {
 	struct intel_device *dev = intel_device(scrn);

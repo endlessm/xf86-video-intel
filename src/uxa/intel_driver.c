@@ -247,62 +247,9 @@ static void intel_check_dri_option(ScrnInfoPtr scrn)
 static Bool intel_open_drm_master(ScrnInfoPtr scrn)
 {
 	intel_screen_private *intel = intel_get_screen_private(scrn);
-	struct pci_device *dev = intel->PciInfo;
-	drmSetVersion sv;
-	struct drm_i915_getparam gp;
-	int err, has_gem;
-	char busid[20];
 
-	snprintf(busid, sizeof(busid), "pci:%04x:%02x:%02x.%d",
-		 dev->domain, dev->bus, dev->dev, dev->func);
-
-	intel->drmSubFD = drmOpen(NULL, busid);
-	if (intel->drmSubFD == -1) {
-		xf86DrvMsg(scrn->scrnIndex, X_ERROR,
-			   "[drm] Failed to open DRM device for %s: %s\n",
-			   busid, strerror(errno));
-		return FALSE;
-	}
-
-	/* Check that what we opened was a master or a master-capable FD,
-	 * by setting the version of the interface we'll use to talk to it.
-	 * (see DRIOpenDRMMaster() in DRI1)
-	 */
-	sv.drm_di_major = 1;
-	sv.drm_di_minor = 1;
-	sv.drm_dd_major = -1;
-	sv.drm_dd_minor = -1;
-	err = drmSetInterfaceVersion(intel->drmSubFD, &sv);
-	if (err != 0) {
-		xf86DrvMsg(scrn->scrnIndex, X_ERROR,
-			   "[drm] failed to set drm interface version.\n");
-		drmClose(intel->drmSubFD);
-		intel->drmSubFD = -1;
-		return FALSE;
-	}
-
-	has_gem = FALSE;
-	gp.param = I915_PARAM_HAS_GEM;
-	gp.value = &has_gem;
-	(void)drmCommandWriteRead(intel->drmSubFD, DRM_I915_GETPARAM,
-				  &gp, sizeof(gp));
-	if (!has_gem) {
-		xf86DrvMsg(scrn->scrnIndex, X_ERROR,
-			   "[drm] Failed to detect GEM.  Kernel 2.6.28 required.\n");
-		drmClose(intel->drmSubFD);
-		intel->drmSubFD = -1;
-		return FALSE;
-	}
-
-	return TRUE;
-}
-
-static void intel_close_drm_master(intel_screen_private *intel)
-{
-	if (intel && intel->drmSubFD > 0) {
-		drmClose(intel->drmSubFD);
-		intel->drmSubFD = -1;
-	}
+	intel->drmSubFD = intel_get_device(scrn);
+	return intel->drmSubFD != -1;
 }
 
 static int intel_init_bufmgr(intel_screen_private *intel)
@@ -1090,8 +1037,8 @@ static void I830FreeScreen(FREE_SCREEN_ARGS_DECL)
 
 	if (intel && !((uintptr_t)intel & 1)) {
 		intel_mode_fini(intel);
-		intel_close_drm_master(intel);
 		intel_bufmgr_fini(intel);
+		intel_put_device(scrn);
 
 		free(intel);
 		scrn->driverPrivate = NULL;
@@ -1102,14 +1049,12 @@ static void I830LeaveVT(VT_FUNC_ARGS_DECL)
 {
 	SCRN_INFO_PTR(arg);
 	intel_screen_private *intel = intel_get_screen_private(scrn);
-	int ret;
 
 	xf86RotateFreeShadow(scrn);
 
 	xf86_hide_cursors(scrn);
 
-	ret = drmDropMaster(intel->drmSubFD);
-	if (ret)
+	if (intel_put_master(scrn))
 		xf86DrvMsg(scrn->scrnIndex, X_WARNING,
 			   "drmDropMaster failed: %s\n", strerror(errno));
 }
@@ -1121,13 +1066,12 @@ static Bool I830EnterVT(VT_FUNC_ARGS_DECL)
 {
 	SCRN_INFO_PTR(arg);
 	intel_screen_private *intel = intel_get_screen_private(scrn);
-	int ret;
 
-	ret = drmSetMaster(intel->drmSubFD);
-	if (ret) {
+	if (intel_get_master(scrn)) {
 		xf86DrvMsg(scrn->scrnIndex, X_WARNING,
 			   "drmSetMaster failed: %s\n",
 			   strerror(errno));
+		return FALSE;
 	}
 
 	if (!xf86SetDesiredModes(scrn))
@@ -1293,8 +1237,6 @@ static Bool I830PMEvent(SCRN_ARG_TYPE arg, pmEvent event, Bool undo)
 
 Bool intel_init_scrn(ScrnInfoPtr scrn)
 {
-	__intel_uxa_release_device(scrn);
-
 	scrn->PreInit = I830PreInit;
 	scrn->ScreenInit = I830ScreenInit;
 	scrn->SwitchMode = I830SwitchMode;
