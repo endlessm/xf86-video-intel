@@ -339,7 +339,8 @@ int intel_open_device(int entity_num,
 	return fd;
 
 err_close:
-	close(fd);
+	if (master_count == 0) /* Don't close server-fds */
+		close(fd);
 err_path:
 	free(local_path);
 	return -1;
