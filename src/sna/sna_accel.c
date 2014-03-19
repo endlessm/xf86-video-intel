@@ -12149,7 +12149,7 @@ sna_poly_fill_rect_tiled_blt(DrawablePtr drawable,
 
 		if (clip.data == NULL) {
 			const BoxRec *box = &clip.extents;
-			DBG(("%s: single clip box [(%d, %d), (%d, %d)]",
+			DBG(("%s: single clip box [(%d, %d), (%d, %d)]\n",
 			     __FUNCTION__, box->x1, box->y1, box->x2, box->y2));
 			while (n--) {
 				BoxRec r;
@@ -12162,10 +12162,6 @@ sna_poly_fill_rect_tiled_blt(DrawablePtr drawable,
 
 				DBG(("%s: rectangle [(%d, %d), (%d, %d)]\n",
 				     __FUNCTION__, r.x1, r.y1, r.x2, r.y2));
-				assert(r.x1 + dx >= 0);
-				assert(r.y1 + dy >= 0);
-				assert(r.x2 + dx <= pixmap->drawable.width);
-				assert(r.y2 + dy <= pixmap->drawable.height);
 
 				if (box_intersect(&r, box)) {
 					int height = r.y2 - r.y1;
@@ -12173,6 +12169,11 @@ sna_poly_fill_rect_tiled_blt(DrawablePtr drawable,
 					int tile_y = (r.y1 - drawable->y - origin->y) % tile_height;
 					if (tile_y < 0)
 						tile_y += tile_height;
+
+					assert(r.x1 + dx >= 0);
+					assert(r.y1 + dy >= 0);
+					assert(r.x2 + dx <= pixmap->drawable.width);
+					assert(r.y2 + dy <= pixmap->drawable.height);
 
 					while (height) {
 						int width = r.x2 - r.x1;
@@ -12234,13 +12235,14 @@ sna_poly_fill_rect_tiled_blt(DrawablePtr drawable,
 				     region.extents.y1,
 				     region.extents.x2,
 				     region.extents.y2));
+
+				region.data = NULL;
+				RegionIntersect(&region, &region, &clip);
+
 				assert(region.extents.x1 + dx >= 0);
 				assert(region.extents.y1 + dy >= 0);
 				assert(region.extents.x2 + dx <= pixmap->drawable.width);
 				assert(region.extents.y2 + dy <= pixmap->drawable.height);
-
-				region.data = NULL;
-				RegionIntersect(&region, &region, &clip);
 
 				nbox = RegionNumRects(&region);
 				box = RegionRects(&region);
