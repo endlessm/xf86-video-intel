@@ -1,3 +1,48 @@
+Snapshot 2.99.911 (2014-03-19)
+==============================
+Hans de Geode has been working on making the Xserver work without
+privileges under the supervision of systemd/logind. This necessitated a
+few new features for us: server fds (where we are passed which fd to use
+to talk to our device by the Xserver who may in turn receive it from
+logind or other host) and a small backlight helper so that we can continue
+to provide a RandR backlight property when running without root privileges.
+
+ * Flush when changing blend modes on Ironlake, or else single glyphs
+   are sometimes rendered incorrectly
+   Regression from 2.20.15
+   https://bugs.freedesktop.org/show_bug.cgi?id=74882
+
+ * Fix pixmap offsets for pixman fallbacks onto Composite redirected
+   windows
+   https://bugs.freedesktop.org/show_bug.cgi?id=73811
+
+ * Fix blending onto 8-bit destinations, typically used for generating
+   masks in complex Render operations, on gen2
+   https://bugs.freedesktop.org/show_bug.cgi?id=75818
+
+ * Handle failure to create DRI bo more carefully. For example on gen3,
+   the DDX supports pixmaps that are much, much larger than OpenGL can
+   use and do not support the tiling modes that we request for OpenGL.
+   https://bugs.launchpad.net/ubuntu/+source/xserver-xorg-video-intel/+bug/1289049
+
+ * Fix a bookkeeping bug with proxy buffers that are marked active but
+   not actually inserted into a request (so they end up permanently
+   active and confuse everybody).
+   https://bugs.launchpad.net/ubuntu/+source/xserver-xorg-video-intel/+bug/1289923
+
+ * Actually turn off displays with DPMS off for UXA.
+   Regression from 2.99.903, but requires
+
+   kernel commit c9976dcf55c8aaa7037427b239f15e5acfc01a3a
+   Author: Chris Wilson <chris@chris-wilson.co.uk>
+   Date:   Sun Sep 29 19:15:07 2013 +0100
+
+       drm/i915: Only apply DPMS to the encoder if enabled
+
+   instead for correct behaviour on Haswell.
+   https://code.google.com/p/chromium/issues/detail?id=341135
+
+
 Snapshot 2.99.910 (2014-02-10)
 ==============================
 Another latent bug exposed by recent changes merit another snapshot for
