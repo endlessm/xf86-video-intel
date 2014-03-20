@@ -312,19 +312,17 @@ int intel_open_device(int entity_num,
 	if (dev == NULL)
 		goto err_close;
 
+	/* If hosted under a system compositor, just pretend to be master */
+	if (hosted())
+		master_count++;
+
 	dev->fd = fd;
-	dev->open_count = 0;
+	dev->open_count = master_count;
 	dev->master_count = master_count;
 	dev->master_node = path;
 	dev->render_node = find_render_node(fd);
 	if (dev->render_node == NULL)
 		dev->render_node = dev->master_node;
-
-	/* If hosted under a system compositor, just pretend to be master */
-	if (hosted()) {
-		dev->open_count++;
-		dev->master_count++;
-	}
 
 	xf86GetEntityPrivate(entity_num, intel_device_key)->ptr = dev;
 
