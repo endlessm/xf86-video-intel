@@ -999,7 +999,8 @@ sna_screen_init(SCREEN_INIT_ARGS_DECL)
 	if (!miDCInitialize(screen, xf86GetPointerScreenFuncs()))
 		return FALSE;
 
-	if ((sna->flags & SNA_IS_HOSTED) == 0 &&
+	if (sna->mode.cursor_width &&
+	    sna->mode.cursor_height &&
 	    xf86_cursors_init(screen,
 			      sna->mode.cursor_width,
 			      sna->mode.cursor_height,
