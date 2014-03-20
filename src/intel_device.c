@@ -143,11 +143,11 @@ static int __intel_check_device(int fd)
 	return ret;
 }
 
-static int __intel_open_device(const struct pci_device *pci, char **path)
+static int __intel_open_device(const struct pci_device *pci, const char *path)
 {
 	int fd;
 
-	if (*path == NULL) {
+	if (path == NULL) {
 		char id[20];
 		int ret;
 
@@ -168,23 +168,15 @@ static int __intel_open_device(const struct pci_device *pci, char **path)
 			(void)xf86LoadKernelModule("fbcon");
 		}
 
-		fd = drmOpen(NULL, id);
-		if (fd != -1) {
-			*path = drmGetDeviceNameFromFd(fd);
-			if (*path == NULL) {
-				close(fd);
-				fd = -1;
-			}
-		}
-		fd = fd_set_nonblock(fd);
+		fd = fd_set_nonblock(drmOpen(NULL, id));
 	} else {
 #ifdef O_CLOEXEC
-		fd = open(*path, O_RDWR | O_NONBLOCK | O_CLOEXEC);
+		fd = open(path, O_RDWR | O_NONBLOCK | O_CLOEXEC);
 #else
 		fd = -1;
 #endif
 		if (fd == -1)
-			fd = fd_set_cloexec(open(*path, O_RDWR | O_NONBLOCK));
+			fd = fd_set_cloexec(open(path, O_RDWR | O_NONBLOCK));
 	}
 
 	return fd;
@@ -283,7 +275,7 @@ int intel_open_device(int entity_num,
 		      struct xf86_platform_device *platform)
 {
 	struct intel_device *dev;
-	char *local_path;
+	char *path;
 	int fd, master_count;
 
 	if (intel_device_key == -1)
@@ -295,21 +287,21 @@ int intel_open_device(int entity_num,
 	if (dev)
 		return dev->fd;
 
-	local_path = get_path(platform);
+	path = get_path(platform);
 
 	master_count = 1; /* DRM_MASTER is managed by Xserver */
 	fd = get_fd(platform);
 	if (fd == -1) {
-		fd = __intel_open_device(pci, &local_path);
+		fd = __intel_open_device(pci, path);
 		if (fd == -1)
 			goto err_path;
 
 		master_count = 0;
 	}
 
-	if (local_path == NULL) {
-		local_path = find_master_node(fd);
-		if (local_path == NULL)
+	if (path == NULL) {
+		path = find_master_node(fd);
+		if (path == NULL)
 			goto err_close;
 	}
 
@@ -323,7 +315,7 @@ int intel_open_device(int entity_num,
 	dev->fd = fd;
 	dev->open_count = 0;
 	dev->master_count = master_count;
-	dev->master_node = local_path;
+	dev->master_node = path;
 	dev->render_node = find_render_node(fd);
 	if (dev->render_node == NULL)
 		dev->render_node = dev->master_node;
@@ -342,7 +334,7 @@ err_close:
 	if (master_count == 0) /* Don't close server-fds */
 		close(fd);
 err_path:
-	free(local_path);
+	free(path);
 	return -1;
 }
 
