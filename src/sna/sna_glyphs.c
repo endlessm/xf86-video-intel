@@ -379,8 +379,7 @@ glyph_cache(ScreenPtr screen,
 	struct sna_glyph *p;
 	int size, mask, pos, s;
 
-	if (NO_GLYPH_CACHE)
-		return false;
+	assert(glyph_valid(glyph));
 
 	glyph_picture = GetGlyphPicture(glyph, screen);
 	if (unlikely(glyph_picture == NULL)) {
@@ -388,7 +387,8 @@ glyph_cache(ScreenPtr screen,
 		return false;
 	}
 
-	if (glyph->info.width > GLYPH_MAX_SIZE ||
+	if (NO_GLYPH_CACHE ||
+	    glyph->info.width > GLYPH_MAX_SIZE ||
 	    glyph->info.height > GLYPH_MAX_SIZE) {
 		PixmapPtr pixmap = (PixmapPtr)glyph_picture->pDrawable;
 		assert(glyph_picture->pDrawable->type == DRAWABLE_PIXMAP);
@@ -396,7 +396,12 @@ glyph_cache(ScreenPtr screen,
 			pixmap->usage_hint = 0;
 			sna_pixmap_force_to_gpu(pixmap, MOVE_READ);
 		}
-		return false;
+
+		/* no cache for this glyph */
+		p = sna_glyph(glyph);
+		p->atlas = glyph_picture;
+		p->coordinate.x = p->coordinate.y = 0;
+		return true;
 	}
 
 	for (size = GLYPH_MIN_SIZE; size <= GLYPH_MAX_SIZE; size *= 2)
@@ -603,15 +608,9 @@ glyphs_to_dst(struct sna *sna,
 					tmp.done(sna, &tmp);
 					glyph_atlas = NULL;
 				}
-				if (!glyph_cache(screen, &sna->render, glyph)) {
-					/* no cache for this glyph */
-					p->atlas = GetGlyphPicture(glyph, screen);
-					if (unlikely(p->atlas == NULL)) {
-						glyph->info.width = glyph->info.height = 0;
-						goto next_glyph;
-					}
-					p->coordinate.x = p->coordinate.y = 0;
-				}
+
+				if (!glyph_cache(screen, &sna->render, glyph))
+					goto next_glyph;
 			}
 
 			if (p->atlas != glyph_atlas) {
@@ -767,15 +766,8 @@ glyphs0_to_dst(struct sna *sna,
 					}
 
 					if (unlikely(p->atlas == NULL)) {
-						if (!glyph_cache(screen, &sna->render, glyph)) {
-							/* no cache for this glyph */
-							p->atlas = GetGlyphPicture(glyph, screen);
-							if (unlikely(p->atlas == NULL)) {
-								glyph->info.width = glyph->info.height = 0;
-								goto next_glyph_N;
-							}
-							p->coordinate.x = p->coordinate.y = 0;
-						}
+						if (!glyph_cache(screen, &sna->render, glyph))
+							goto next_glyph_N;
 					}
 
 					if (!sna->render.composite(sna,
@@ -866,15 +858,8 @@ next_glyph_N:
 				}
 
 				if (unlikely(p->atlas == NULL)) {
-					if (!glyph_cache(screen, &sna->render, glyph)) {
-						/* no cache for this glyph */
-						p->atlas = GetGlyphPicture(glyph, screen);
-						if (unlikely(p->atlas == NULL)) {
-							glyph->info.width = glyph->info.height = 0;
-							goto next_glyph_0;
-						}
-						p->coordinate.x = p->coordinate.y = 0;
-					}
+					if (!glyph_cache(screen, &sna->render, glyph))
+						goto next_glyph_0;
 				}
 
 				if (!sna->render.composite(sna,
@@ -963,15 +948,8 @@ glyphs_slow(struct sna *sna,
 				if (unlikely(!glyph_valid(glyph)))
 					goto next_glyph;
 
-				if (!glyph_cache(screen, &sna->render, glyph)) {
-					/* no cache for this glyph */
-					p->atlas = GetGlyphPicture(glyph, screen);
-					if (unlikely(p->atlas == NULL)) {
-						glyph->info.width = glyph->info.height = 0;
-						goto next_glyph;
-					}
-					p->coordinate.x = p->coordinate.y = 0;
-				}
+				if (!glyph_cache(screen, &sna->render, glyph))
+					goto next_glyph;
 			}
 
 			DBG(("%s: glyph=(%d, %d)x(%d, %d), src=(%d, %d), mask=(%d, %d)\n",
@@ -1365,15 +1343,9 @@ next_image:
 						tmp.done(sna, &tmp);
 						glyph_atlas = NULL;
 					}
-					if (!glyph_cache(screen, &sna->render, glyph)) {
-						/* no cache for this glyph */
-						p->atlas = GetGlyphPicture(glyph, screen);
-						if (unlikely(p->atlas == NULL)) {
-							glyph->info.width = glyph->info.height = 0;
-							goto next_glyph;
-						}
-						p->coordinate.x = p->coordinate.y = 0;
-					}
+
+					if (!glyph_cache(screen, &sna->render, glyph))
+						goto next_glyph;
 				}
 				if (p->atlas != glyph_atlas) {
 					bool ok;
