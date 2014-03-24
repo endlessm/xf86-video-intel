@@ -81,6 +81,7 @@
 #define GLYPH_CACHE_SIZE (CACHE_PICTURE_SIZE * CACHE_PICTURE_SIZE / (GLYPH_MIN_SIZE * GLYPH_MIN_SIZE))
 
 #define N_STACK_GLYPHS 512
+#define NO_ATLAS ((PicturePtr)-1)
 
 #define glyph_valid(g) *((uint32_t *)&(g)->info.width)
 #define glyph_copy_size(r, g) *(uint32_t *)&(r)->width = *(uint32_t *)&g->info.width
@@ -719,7 +720,6 @@ glyphs0_to_dst(struct sna *sna,
 	       INT16 src_x, INT16 src_y,
 	       int nlist, GlyphListPtr list, GlyphPtr *glyphs)
 {
-#define NO_ATLAS ((PicturePtr)-1)
 	struct sna_composite_op tmp;
 	ScreenPtr screen = dst->pDrawable->pScreen;
 	PicturePtr glyph_atlas = NO_ATLAS;
@@ -1083,10 +1083,9 @@ glyphs_via_mask(struct sna *sna,
 		int nlist, GlyphListPtr list, GlyphPtr *glyphs)
 {
 	ScreenPtr screen = dst->pDrawable->pScreen;
-	struct sna_composite_op tmp;
 	CARD32 component_alpha;
 	PixmapPtr pixmap;
-	PicturePtr glyph_atlas, mask;
+	PicturePtr mask;
 	int16_t x, y, width, height;
 	int error;
 	bool ret = false;
@@ -1308,6 +1307,9 @@ next_image:
 
 		ValidatePicture(mask);
 	} else {
+		struct sna_composite_op tmp;
+		PicturePtr glyph_atlas = NO_ATLAS;
+
 		pixmap = screen->CreatePixmap(screen,
 					      width, height, format->depth,
 					      SNA_CREATE_SCRATCH);
@@ -1324,34 +1326,30 @@ next_image:
 		if (!clear_pixmap(sna, pixmap))
 			goto err_mask;
 
-		glyph_atlas = NULL;
 		do {
 			int n = list->len;
 			x += list->xOff;
 			y += list->yOff;
 			while (n--) {
 				GlyphPtr glyph = *glyphs++;
-				struct sna_glyph *p;
+				struct sna_glyph *p = sna_glyph(glyph);
 				struct sna_composite_rectangles r;
 
-				p = sna_glyph(glyph);
-				if (unlikely(p->atlas == NULL)) {
+				if (unlikely(p->atlas != glyph_atlas)) {
+					bool ok;
+
 					if (unlikely(!glyph_valid(glyph)))
 						goto next_glyph;
 
-					if (glyph_atlas) {
+					if (glyph_atlas != NO_ATLAS) {
 						tmp.done(sna, &tmp);
-						glyph_atlas = NULL;
+						glyph_atlas = NO_ATLAS;
 					}
 
-					if (!glyph_cache(screen, &sna->render, glyph))
-						goto next_glyph;
-				}
-				if (p->atlas != glyph_atlas) {
-					bool ok;
-
-					if (glyph_atlas)
-						tmp.done(sna, &tmp);
+					if (unlikely(p->atlas == NULL)) {
+						if (!glyph_cache(screen, &sna->render, glyph))
+							goto next_glyph;
+					}
 
 					DBG(("%s: atlas format=%08x, mask format=%08x\n",
 					     __FUNCTION__,
@@ -1400,7 +1398,7 @@ next_glyph:
 			}
 			list++;
 		} while (--nlist);
-		if (glyph_atlas)
+		if (glyph_atlas != NO_ATLAS)
 			tmp.done(sna, &tmp);
 	}
 
