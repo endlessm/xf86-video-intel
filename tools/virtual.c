@@ -2967,7 +2967,7 @@ int main(int argc, char **argv)
 					     DisplayString(ctx.display->dpy),
 					     de->area.x, de->area.y, de->area.width, de->area.height));
 
-					for (clone = ctx.active; clone; clone = clone->next)
+					for (clone = ctx.active; clone; clone = clone->active)
 						clone_damage(clone, &de->area);
 
 					if (ctx.active)
