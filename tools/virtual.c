@@ -1301,6 +1301,9 @@ ungrab:
 		if (clone->dst.rr_crtc == 0)
 			continue;
 
+		DBG(("%s-%s: added to active list\n",
+		     DisplayString(dst->dpy), dst->name));
+
 		clone->active = ctx->active;
 		ctx->active = clone;
 	}
@@ -1659,12 +1662,17 @@ static void clone_damage(struct clone *c, const XRectangle *rec)
 {
 	if (rec->x < c->damaged.x1)
 		c->damaged.x1 = rec->x;
-	if (rec->x + rec->width > c->damaged.x2)
-		c->damaged.x2 = rec->x + rec->width;
+	if (rec->width > c->damaged.x2 - rec->x)
+		c->damaged.x2 = (int)rec->x + rec->width;
 	if (rec->y < c->damaged.y1)
 		c->damaged.y1 = rec->y;
-	if (rec->y + rec->height > c->damaged.y2)
-		c->damaged.y2 = rec->y + rec->height;
+	if (rec->height > c->damaged.y2 - rec->y)
+		c->damaged.y2 = (int)rec->y + rec->height;
+
+	DBG(("%s-%s damaged: (%d, %d), (%d, %d)\n",
+	     DisplayString(c->dst->dpy), c->dst->name,
+	     c->damaged.x1, c->damaged.y1,
+	     c->damaged.x2, c->damaged.y2));
 }
 
 static void usage(const char *arg0)
