@@ -74,6 +74,7 @@
 #endif
 
 #define FORCE_FULL_REDRAW 0
+#define FORCE_16BIT_XFER 0
 
 struct display {
 	Display *dpy;
@@ -1462,7 +1463,7 @@ static int clone_output_init(struct clone *clone, struct output *output,
 	DBG(("%s-%s use shm? %d (use shm pixmap? %d)\n",
 	     DisplayString(dpy), name, display->has_shm, display->has_shm_pixmap));
 
-	depth = output->use_shm ? display->depth : 16;
+	depth = output->use_shm && !FORCE_16BIT_XFER ? display->depth : 16;
 	if (depth < clone->depth)
 		clone->depth = depth;
 
