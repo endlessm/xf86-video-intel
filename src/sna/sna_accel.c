@@ -5861,16 +5861,24 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 					 &region->extents, &damage);
 	}
 	if (bo) {
-		if (src_priv && src_priv->clear) {
+		if (alu == GXset || alu == GXclear || (src_priv && src_priv->clear)) {
+			uint32_t color;
+
+			if (alu == GXset)
+				color = (1 << dst_pixmap->drawable.depth) - 1;
+			else if (alu == GXclear)
+				color = 0;
+			else
+				color = src_priv->clear_color;
 			DBG(("%s: applying src clear [%08x] to dst\n",
 			     __FUNCTION__, src_priv->clear_color));
+
 			if (n == 1) {
 				if (replaces && UNDO)
 					kgem_bo_undo(&sna->kgem, bo);
 
 				if (!sna->render.fill_one(sna,
-							  dst_pixmap, bo,
-							  src_priv->clear_color,
+							  dst_pixmap, bo, color,
 							  box->x1, box->y1,
 							  box->x2, box->y2,
 							  alu)) {
@@ -5885,7 +5893,7 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 					     dst_priv->gpu_bo->handle,
 					     src_priv->clear_color));
 					dst_priv->clear = true;
-					dst_priv->clear_color = src_priv->clear_color;
+					dst_priv->clear_color = color;
 					sna_damage_all(&dst_priv->gpu_damage,
 						       dst_pixmap->drawable.width,
 						       dst_pixmap->drawable.height);
@@ -5898,7 +5906,7 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 
 				if (!sna_fill_init_blt(&fill, sna,
 						       dst_pixmap, bo,
-						       alu, src_priv->clear_color,
+						       alu, color,
 						       FILL_BOXES)) {
 					DBG(("%s: unsupported fill\n",
 					     __FUNCTION__));
@@ -7340,6 +7348,17 @@ sna_poly_fill_rect_stippled_blt(DrawablePtr drawable,
 static inline bool
 gc_is_solid(GCPtr gc, uint32_t *color)
 {
+	assert(FbFullMask(gc->depth) == (FbFullMask(gc->depth) & gc->planemask));
+
+	if (gc->alu == GXclear) {
+		*color = 0;
+		return true;
+	}
+	if (gc->alu == GXset) {
+		*color = (1 << gc->depth) - 1;
+		return true;
+	}
+
 	if (gc->fillStyle == FillSolid ||
 	    (gc->fillStyle == FillTiled && gc->tileIsPixel) ||
 	    (gc->fillStyle == FillOpaqueStippled && gc->bgPixel == gc->fgPixel)) {
@@ -11179,7 +11198,7 @@ sna_poly_fill_rect_blt(DrawablePtr drawable,
 				}
 				assert_pixmap_damage(pixmap);
 
-				if ((gc->alu == GXcopy || gc->alu == GXclear) &&
+				if (alu_overwrites(gc->alu) &&
 				    r.x2 - r.x1 == pixmap->drawable.width &&
 				    r.y2 - r.y1 == pixmap->drawable.height) {
 					struct sna_pixmap *priv = sna_pixmap(pixmap);
@@ -11191,7 +11210,7 @@ sna_poly_fill_rect_blt(DrawablePtr drawable,
 						sna_damage_destroy(&priv->cpu_damage);
 						list_del(&priv->flush_list);
 						priv->clear = true;
-						priv->clear_color = gc->alu == GXcopy ? pixel : 0;
+						priv->clear_color = gc->alu == GXcopyInverted ? ~pixel & ((1 << gc->depth) - 1) : pixel;
 
 						DBG(("%s: pixmap=%ld, marking clear [%08x]\n",
 						     __FUNCTION__, pixmap->drawable.serialNumber, priv->clear_color));
