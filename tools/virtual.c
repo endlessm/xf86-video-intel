@@ -2789,7 +2789,7 @@ int main(int argc, char **argv)
 	struct context ctx;
 	const char *src_name = NULL;
 	uint64_t count;
-	int daemonize = 1, bumblebee = 0, all = 0, singleton = 1;
+	int daemonize = !EXTRA_DBG, bumblebee = 0, all = 0, singleton = 1;
 	int i, ret, open, fail;
 
 	signal(SIGPIPE, SIG_IGN);
