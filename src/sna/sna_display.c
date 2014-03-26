@@ -1566,9 +1566,6 @@ retry: /* Attach per-crtc pixmap or direct */
 	if (sna_crtc->shadow)
 		sna_crtc_damage(crtc);
 
-	if (scrn->pScreen)
-		xf86_reload_cursors(scrn->pScreen);
-
 	return TRUE;
 }
 
@@ -3470,6 +3467,7 @@ sna_crtc_config_notify(ScreenPtr screen)
 {
 	DBG(("%s\n", __FUNCTION__));
 	sna_mode_update(to_sna_from_screen(screen));
+	xf86_reload_cursors(screen);
 }
 
 static void
