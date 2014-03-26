@@ -3488,6 +3488,11 @@ sna_cursor_pre_init(struct sna *sna)
 
 	if (drmGetCap(sna->kgem.fd, DRM_CAP_CURSOR_HEIGHT, &value) == 0)
 		sna->mode.cursor_height = value;
+
+	xf86DrvMsg(sna->scrn->scrnIndex, X_PROBED,
+		   "Using a maximum size of %dx%d for hardware cursors\n",
+		   sna->mode.cursor_width,
+		   sna->mode.cursor_height);
 }
 
 #if HAS_PIXMAP_SHARING
