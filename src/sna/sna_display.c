@@ -1,6 +1,6 @@
 /*
  * Copyright © 2007 Red Hat, Inc.
- * Copyright © 2013 Intel Corporation
+ * Copyright © 2013-2014 Intel Corporation
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -33,6 +33,7 @@
 #include <stdint.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
@@ -46,6 +47,7 @@
 #include "backlight.h"
 
 #include <xf86Crtc.h>
+#include <cursorstr.h>
 
 #if XF86_CRTC_VERSION >= 3
 #define HAS_GAMMA 1
@@ -275,12 +277,31 @@ static uint32_t gem_create(int fd, int size)
 {
 	struct drm_i915_gem_create create;
 
+	assert((size & 4095) == 0);
+
 	VG_CLEAR(create);
 	create.handle = 0;
-	create.size = ALIGN(size, 4096);
+	create.size = size;
 	(void)drmIoctl(fd, DRM_IOCTL_I915_GEM_CREATE, &create);
 
 	return create.handle;
+}
+
+static void *gem_mmap(int fd, int handle, int size)
+{
+	struct drm_i915_gem_mmap_gtt mmap_arg;
+	void *ptr;
+
+	VG_CLEAR(mmap_arg);
+	mmap_arg.handle = handle;
+	if (drmIoctl(fd, DRM_IOCTL_I915_GEM_MMAP_GTT, &mmap_arg))
+		return NULL;
+
+	ptr = mmap(0, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, mmap_arg.offset);
+	if (ptr == MAP_FAILED)
+		return NULL;
+
+	return ptr;
 }
 
 static void gem_close(int fd, uint32_t handle)
@@ -1618,83 +1639,6 @@ void sna_mode_adjust_frame(struct sna *sna, int x, int y)
 }
 
 static void
-sna_crtc_hide_cursor(xf86CrtcPtr crtc)
-{
-	struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
-	struct drm_mode_cursor arg;
-
-	__DBG(("%s: CRTC:%d\n", __FUNCTION__, sna_crtc->id));
-
-	VG_CLEAR(arg);
-	arg.flags = DRM_MODE_CURSOR_BO;
-	arg.crtc_id = sna_crtc->id;
-	arg.width = arg.height = 0;
-	arg.handle = 0;
-
-	(void)drmIoctl(to_sna(crtc->scrn)->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg);
-}
-
-static void
-sna_crtc_show_cursor(xf86CrtcPtr crtc)
-{
-	struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
-	struct sna *sna = to_sna(crtc->scrn);
-	struct drm_mode_cursor arg;
-
-	__DBG(("%s: CRTC:%d\n", __FUNCTION__, sna_crtc->id));
-
-	VG_CLEAR(arg);
-	arg.flags = DRM_MODE_CURSOR_BO;
-	arg.crtc_id = sna_crtc->id;
-	arg.width = sna->mode.cursor_width;
-	arg.height = sna->mode.cursor_height;
-	arg.handle = sna_crtc->cursor;
-
-	(void)drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg);
-}
-
-static void
-sna_crtc_set_cursor_colors(xf86CrtcPtr crtc, int bg, int fg)
-{
-	__DBG(("%s: CRTC:%d (bg=%x, fg=%x)\n", __FUNCTION__,
-	       to_sna_crtc(crtc)->id, bg, fg));
-}
-
-static void
-sna_crtc_set_cursor_position(xf86CrtcPtr crtc, int x, int y)
-{
-	struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
-	struct drm_mode_cursor arg;
-
-	__DBG(("%s: CRTC:%d (%d, %d)\n", __FUNCTION__, sna_crtc->id, x, y));
-
-	VG_CLEAR(arg);
-	arg.flags = DRM_MODE_CURSOR_MOVE;
-	arg.crtc_id = sna_crtc->id;
-	arg.x = x;
-	arg.y = y;
-	arg.handle = sna_crtc->cursor;
-
-	(void)drmIoctl(to_sna(crtc->scrn)->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg);
-}
-
-static void
-sna_crtc_load_cursor_argb(xf86CrtcPtr crtc, CARD32 *image)
-{
-	struct sna *sna = to_sna(crtc->scrn);
-	struct drm_i915_gem_pwrite pwrite;
-
-	__DBG(("%s: CRTC:%d\n", __FUNCTION__, to_sna_crtc(crtc)->id));
-
-	VG_CLEAR(pwrite);
-	pwrite.handle = to_sna_crtc(crtc)->cursor;
-	pwrite.offset = 0;
-	pwrite.size = sna->mode.cursor_width*sna->mode.cursor_height*4;
-	pwrite.data_ptr = (uintptr_t)image;
-	(void)drmIoctl(sna->kgem.fd, DRM_IOCTL_I915_GEM_PWRITE, &pwrite);
-}
-
-static void
 sna_crtc_gamma_set(xf86CrtcPtr crtc,
 		       CARD16 *red, CARD16 *green, CARD16 *blue, int size)
 {
@@ -1710,9 +1654,6 @@ sna_crtc_destroy(xf86CrtcPtr crtc)
 
 	if (sna_crtc == NULL)
 		return;
-
-	sna_crtc_hide_cursor(crtc);
-	gem_close(to_sna(crtc->scrn)->kgem.fd, sna_crtc->cursor);
 
 	free(sna_crtc);
 	crtc->driver_private = NULL;
@@ -1735,11 +1676,6 @@ static const xf86CrtcFuncsRec sna_crtc_funcs = {
 	.dpms = sna_crtc_dpms,
 #endif
 	.set_mode_major = sna_crtc_set_mode_major,
-	.set_cursor_colors = sna_crtc_set_cursor_colors,
-	.set_cursor_position = sna_crtc_set_cursor_position,
-	.show_cursor = sna_crtc_show_cursor,
-	.hide_cursor = sna_crtc_hide_cursor,
-	.load_cursor_argb = sna_crtc_load_cursor_argb,
 	.gamma_set = sna_crtc_gamma_set,
 	.destroy = sna_crtc_destroy,
 #if HAS_PIXMAP_SHARING
@@ -1812,6 +1748,20 @@ sna_crtc_init__rotation(struct sna *sna, struct sna_crtc *sna_crtc)
 	     sna_crtc->sprite_rotation.supported, sna_crtc->sprite_rotation.current));
 }
 
+static void
+sna_crtc_init__cursor(struct sna *sna, struct sna_crtc *crtc)
+{
+	struct drm_mode_cursor arg;
+
+	VG_CLEAR(arg);
+	arg.flags = DRM_MODE_CURSOR_BO;
+	arg.crtc_id = crtc->id;
+	arg.width = arg.height = 0;
+	arg.handle = 0;
+
+	(void)drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg);
+}
+
 static bool
 sna_crtc_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 {
@@ -1853,17 +1803,8 @@ sna_crtc_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 		return false;
 	}
 
-	sna_crtc->cursor = gem_create(sna->kgem.fd,
-				      sna->mode.cursor_width*sna->mode.cursor_height*4);
-	if (!sna_crtc->cursor) {
-		xf86CrtcDestroy(crtc);
-		free(sna_crtc);
-		return false;
-	}
-	DBG(("%s: created handle=%d for cursor on CRTC:%d\n",
-	     __FUNCTION__, sna_crtc->cursor, sna_crtc->id));
-
 	sna_crtc_init__rotation(sna, sna_crtc);
+	sna_crtc_init__cursor(sna, sna_crtc);
 
 	crtc->driver_private = sna_crtc;
 	DBG(("%s: attached crtc[%d] id=%d, pipe=%d\n",
@@ -3037,6 +2978,543 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 	return TRUE;
 }
 
+/* cursor handling */
+struct sna_cursor {
+	struct sna_cursor *next;
+	uint32_t *image;
+	Rotation rotation;
+	int size;
+	unsigned handle;
+	unsigned serial;
+	unsigned alloc;
+};
+
+static void
+rotate_coord(Rotation rotation, int width, int height,
+	     int x_dst, int y_dst,
+	     int *x_src, int *y_src)
+{
+	int t;
+
+	switch (rotation & 0xf) {
+	case RR_Rotate_0:
+		break;
+	case RR_Rotate_90:
+		t = x_dst;
+		x_dst = height - y_dst - 1;
+		y_dst = t;
+		break;
+	case RR_Rotate_180:
+		x_dst = width - x_dst - 1;
+		y_dst = height - y_dst - 1;
+		break;
+	case RR_Rotate_270:
+		t = x_dst;
+		x_dst = y_dst;
+		y_dst = width - t - 1;
+		break;
+	}
+
+	if (rotation & RR_Reflect_X)
+		x_dst = width - x_dst - 1;
+	if (rotation & RR_Reflect_Y)
+		y_dst = height - y_dst - 1;
+
+	*x_src = x_dst;
+	*y_src = y_dst;
+}
+
+static void
+rotate_coord_back(Rotation rotation, int width, int height,
+		  int x_dst, int y_dst,
+		  int *x_src, int *y_src)
+{
+	int t;
+
+	if (rotation & RR_Reflect_X)
+		x_dst = width - x_dst - 1;
+	if (rotation & RR_Reflect_Y)
+		y_dst = height - y_dst - 1;
+
+	switch (rotation & 0xf) {
+	case RR_Rotate_0:
+		break;
+	case RR_Rotate_90:
+		t = x_dst;
+		x_dst = y_dst;
+		y_dst = width - t - 1;
+		break;
+	case RR_Rotate_180:
+		x_dst = width - x_dst - 1;
+		y_dst = height - y_dst - 1;
+		break;
+	case RR_Rotate_270:
+		t = x_dst;
+		x_dst = height - y_dst - 1;
+		y_dst = t;
+		break;
+	}
+	*x_src = x_dst;
+	*y_src = y_dst;
+}
+
+static struct sna_cursor *__sna_create_cursor(struct sna *sna, unsigned size)
+{
+	struct sna_cursor *c;
+
+	__DBG(("%s(size=%d)\n", __FUNCTION__, size));
+
+	c = malloc(sizeof(*c));
+	if (c == NULL)
+		return NULL;
+
+	size = size * size * 4;
+	c->alloc = ALIGN(size, 4096);
+	c->handle = gem_create(sna->kgem.fd, c->alloc);
+	if (c->handle == 0) {
+		free(c);
+		return NULL;
+	}
+
+	c->image = gem_mmap(sna->kgem.fd, c->handle, c->alloc);
+	if (c->image == NULL) {
+		gem_close(sna->kgem.fd, c->handle);
+		free(c);
+		return NULL;
+	}
+
+	__DBG(("%s: handle=%d, allocated %d\n", __FUNCTION__, c->handle, size));
+
+	c->serial = 0;
+	c->next = sna->cursor.cursors;
+	sna->cursor.cursors = c;
+
+	return c;
+}
+
+static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
+{
+	struct sna_cursor *cursor;
+	Rotation rotation;
+	int width, height, size;
+	int i, x, y;
+	uint32_t *src;
+
+	if (sna->cursor.ref == NULL || sna->cursor.ref->bits == NULL)
+		return NULL;
+
+	__DBG(("%s: cursor=%dx%d\n", __FUNCTION__,
+	       sna->cursor.ref->bits->width,
+	       sna->cursor.ref->bits->height));
+
+	i = MAX(sna->cursor.ref->bits->width, sna->cursor.ref->bits->height);
+	for (size = 64; size < i; size <<= 1)
+		;
+	assert(size <= sna->cursor.max_width && size <= sna->cursor.max_height);
+
+	rotation = crtc->transform_in_use ? crtc->rotation : RR_Rotate_0;
+	for (cursor = sna->cursor.cursors; cursor; cursor = cursor->next)
+		if (cursor->size >= size && cursor->rotation == rotation)
+			break;
+
+	if (cursor == NULL) {
+		cursor = __sna_create_cursor(sna, size);
+		if (cursor == NULL)
+			return NULL;
+	}
+
+	__DBG(("%s: using handle=%d, serial=%d, current=%d\n",
+	       __FUNCTION__, cursor->handle, cursor->serial, sna->cursor.serial));
+	if (cursor->serial == sna->cursor.serial)
+		return cursor;
+
+	width = sna->cursor.ref->bits->width;
+	height = sna->cursor.ref->bits->height;
+	src = sna->cursor.ref->bits->argb;
+	if (src == NULL) {
+		const uint8_t *source = sna->cursor.ref->bits->source;
+		const uint8_t *mask = sna->cursor.ref->bits->mask;
+		uint32_t *p;
+
+		__DBG(("%s: converting from 2-color to ARGB\n", __FUNCTION__));
+
+		src = malloc(4*width*height);
+		if (src == NULL)
+			return NULL;
+
+		p = src;
+		for (y = 0; y < height; y++) {
+			for (x = 0; x < width / 8; x++) {
+				uint32_t pixel;
+				for (i = 0; i < 8; i++) {
+					if (mask[x] & (1 << i)) {
+						if (source[x] & (1 << i))
+							pixel = sna->cursor.fg;
+						else
+							pixel = sna->cursor.bg;
+					} else
+						pixel = 0;
+					*p++ = pixel;
+
+				}
+			}
+		}
+	}
+
+	if (rotation == RR_Rotate_0) {
+		memcpy_blt(src, cursor->image, 32,
+			   width * 4, size * 4,
+			   0, 0,
+			   0, 0,
+			   width, height);
+	} else {
+		for (y = 0; y < size; y++)
+			for (x = 0; x < size; x++) {
+				uint32_t pixel;
+				int xin, yin;
+
+				rotate_coord(rotation, size, size, x, y, &xin, &yin);
+				if (xin < width && yin < height)
+					pixel = src[yin * width + xin];
+				else
+					pixel = 0;
+				cursor->image[y * size + x] = pixel;
+			}
+	}
+
+	if (src != sna->cursor.ref->bits->argb)
+		free(src);
+
+	cursor->size = size;
+	cursor->rotation = rotation;
+	cursor->serial = sna->cursor.serial;
+	return cursor;
+}
+
+static unsigned char *
+sna_realize_cursor(xf86CursorInfoPtr info, CursorPtr cursor)
+{
+	return NULL;
+}
+
+static void
+sna_show_cursors(ScrnInfoPtr scrn)
+{
+	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
+	struct sna *sna = to_sna(scrn);
+	int c;
+
+	__DBG(("%s\n", __FUNCTION__));
+
+	for (c = 0; c < xf86_config->num_crtc; c++) {
+		xf86CrtcPtr crtc = xf86_config->crtc[c];
+		struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
+		struct drm_mode_cursor arg;
+		struct sna_cursor *cursor;
+
+		if (!sna_crtc)
+			continue;
+
+		if (!crtc->enabled)
+			continue;
+
+		if (!crtc->cursor_in_range)
+			continue;
+
+		cursor = __sna_get_cursor(sna, crtc);
+		if (cursor == NULL) {
+			assert(sna_crtc->cursor == 0);
+			continue;
+		}
+
+		if (sna_crtc->cursor == cursor->handle)
+			continue;
+
+		__DBG(("%s: CRTC:%d, handle=%d->%d\n", __FUNCTION__,
+		       sna_crtc->id, sna_crtc->cursor, cursor->handle));
+
+		VG_CLEAR(arg);
+		arg.flags = DRM_MODE_CURSOR_BO;
+		arg.crtc_id = sna_crtc->id;
+		arg.width = arg.height = cursor->size;
+		arg.handle = cursor->handle;
+
+		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg) == 0)
+			sna_crtc->cursor = cursor->handle;
+	}
+}
+
+static void
+sna_set_cursor_colors(ScrnInfoPtr scrn, int bg, int fg)
+{
+	struct sna *sna = to_sna(scrn);
+
+	__DBG(("%s(%08x, %08x)\n", __FUNCTION__, bg, fg));
+
+	/* Save ARGB versions of these colors */
+	sna->cursor.fg = (CARD32) fg | 0xff000000;
+	sna->cursor.bg = (CARD32) bg | 0xff000000;
+
+	if (sna->cursor.ref == NULL)
+		return;
+
+	if (sna->cursor.ref->bits->argb)
+		return;
+
+	sna->cursor.serial++;
+	sna_show_cursors(scrn);
+}
+
+static void
+sna_hide_cursors(ScrnInfoPtr scrn)
+{
+	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
+	struct sna *sna = to_sna(scrn);
+	int c;
+
+	__DBG(("%s\n", __FUNCTION__));
+
+	for (c = 0; c < xf86_config->num_crtc; c++) {
+		xf86CrtcPtr crtc = xf86_config->crtc[c];
+		struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
+		struct drm_mode_cursor arg;
+
+		if (!sna_crtc)
+			continue;
+
+		if (!crtc->enabled)
+			continue;
+
+		if (!sna_crtc->cursor)
+			continue;
+
+		__DBG(("%s: CRTC:%d, handle=%d\n", __FUNCTION__, sna_crtc->id, sna_crtc->cursor));
+
+		VG_CLEAR(arg);
+		arg.flags = DRM_MODE_CURSOR_BO;
+		arg.crtc_id = sna_crtc->id;
+		arg.width = arg.height = 0;
+		arg.handle = 0;
+
+		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg) == 0)
+			sna_crtc->cursor = 0;
+	}
+
+	while (sna->cursor.cursors) {
+		struct sna_cursor *cursor = sna->cursor.cursors;
+		sna->cursor.cursors = cursor->next;
+		munmap(cursor->image, cursor->alloc);
+		gem_close(sna->kgem.fd, cursor->handle);
+		free(cursor);
+	}
+}
+
+static void
+sna_set_cursor_position(ScrnInfoPtr scrn, int x, int y)
+{
+	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
+	struct sna *sna = to_sna(scrn);
+	int c;
+
+	__DBG(("%s(%d, %d)\n", __FUNCTION__, x, y));
+
+	sna->cursor.last_x = x;
+	sna->cursor.last_y = y;
+
+	/* undo what xf86HWCurs did to the coordinates */
+	x += scrn->frameX0;
+	y += scrn->frameY0;
+	for (c = 0; c < xf86_config->num_crtc; c++) {
+		xf86CrtcPtr crtc = xf86_config->crtc[c];
+		struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
+		struct sna_cursor *cursor;
+		struct drm_mode_cursor arg;
+
+		if (!sna_crtc)
+			continue;
+
+		VG_CLEAR(arg);
+		arg.flags = 0;
+		arg.crtc_id = sna_crtc->id;
+		arg.handle = 0;
+
+		if (!crtc->enabled)
+			goto disable;
+
+		cursor = __sna_get_cursor(sna, crtc);
+		if (cursor == NULL)
+			goto disable;
+
+		if (crtc->transform_in_use) {
+			int xhot = sna->cursor.ref->bits->xhot;
+			int yhot = sna->cursor.ref->bits->yhot;
+			struct pict_f_vector v;
+			int dx, dy;
+
+			v.v[0] = (x + xhot) + 0.5;
+			v.v[1] = (y + yhot) + 0.5;
+			v.v[2] = 1;
+			pixman_f_transform_point(&crtc->f_framebuffer_to_crtc, &v);
+
+			/* cursor will have 0.5 added to it already so floor is sufficent */
+			x = floor(v.v[0]);
+			y = floor(v.v[1]);
+
+			rotate_coord_back(crtc->rotation, cursor->size, cursor->size,
+					  xhot, yhot,
+					  &dx, &dy);
+			x -= dx;
+			y -= dy;
+		} else {
+			x -= crtc->x;
+			y -= crtc->y;
+		}
+
+		if (x < crtc->mode.HDisplay && x > -cursor->size &&
+		    y < crtc->mode.VDisplay && y > -cursor->size) {
+			arg.flags = DRM_MODE_CURSOR_MOVE;
+			arg.handle = cursor->handle;
+			arg.x = x;
+			arg.y = y;
+
+			if (sna_crtc->cursor != arg.handle) {
+				arg.flags |= DRM_MODE_CURSOR_BO;
+				arg.width = arg.height = cursor->size;
+			}
+
+			crtc->cursor_in_range = true;
+		} else {
+disable:
+			crtc->cursor_in_range = false;
+			if (sna_crtc->cursor) {
+				arg.flags = DRM_MODE_CURSOR_BO;
+				arg.width = arg.height = arg.handle = 0;
+			}
+		}
+
+		__DBG(("%s: CRTC:%d (%d, %d), handle=%d\n",
+		       __FUNCTION__, sna_crtc->id, x, y, arg.handle));
+
+		if (arg.flags &&
+		    drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg) == 0)
+			sna_crtc->cursor = arg.handle;
+	}
+}
+
+static void
+sna_load_cursor_argb(ScrnInfoPtr scrn, CursorPtr cursor)
+{
+}
+
+static void
+sna_load_cursor_image(ScrnInfoPtr scrn, unsigned char *src)
+{
+}
+
+static Bool
+sna_use_hw_cursor(ScreenPtr screen, CursorPtr cursor)
+{
+	struct sna *sna = to_sna_from_screen(screen);
+
+	cursor = RefCursor(cursor);
+	if (sna->cursor.ref)
+		FreeCursor(sna->cursor.ref, None);
+	sna->cursor.ref = cursor;
+	sna->cursor.serial++;
+
+	__DBG(("%s(%dx%d): ARGB?=%d, serial->%d\n", __FUNCTION__,
+	       cursor->bits->width,
+	       cursor->bits->height,
+	       cursor->bits->argb!=NULL,
+	       sna->cursor.serial));
+
+	return (cursor->bits->width <= sna->cursor.max_width &&
+		cursor->bits->height <= sna->cursor.max_height);
+}
+
+static void
+sna_cursor_pre_init(struct sna *sna)
+{
+	uint64_t value;
+
+#define DRM_CAP_CURSOR_WIDTH 8
+#define DRM_CAP_CURSOR_HEIGHT 9
+
+	sna->cursor.max_width = SNA_CURSOR_X;
+	sna->cursor.max_height = SNA_CURSOR_Y;
+
+	if (drmGetCap(sna->kgem.fd, DRM_CAP_CURSOR_WIDTH, &value) == 0)
+		sna->cursor.max_width = value;
+
+	if (drmGetCap(sna->kgem.fd, DRM_CAP_CURSOR_HEIGHT, &value) == 0)
+		sna->cursor.max_height = value;
+
+	xf86DrvMsg(sna->scrn->scrnIndex, X_PROBED,
+		   "Using a maximum size of %dx%d for hardware cursors\n",
+		   sna->cursor.max_width,
+		   sna->cursor.max_height);
+	assert(sna->cursor.max_width == sna->cursor.max_height);
+}
+
+bool
+sna_cursors_init(ScreenPtr screen, struct sna *sna)
+{
+	xf86CursorInfoPtr cursor_info;
+
+	if ((sna->cursor.max_width | sna->cursor.max_height) == 0)
+		return false;
+
+	cursor_info = xf86CreateCursorInfoRec();
+	if (cursor_info == NULL)
+		return false;
+
+	cursor_info->MaxWidth = sna->cursor.max_width;
+	cursor_info->MaxHeight = sna->cursor.max_height;
+	cursor_info->Flags = (HARDWARE_CURSOR_TRUECOLOR_AT_8BPP |
+			      HARDWARE_CURSOR_UPDATE_UNHIDDEN |
+			      HARDWARE_CURSOR_ARGB);
+
+	cursor_info->RealizeCursor = sna_realize_cursor;
+	cursor_info->SetCursorColors = sna_set_cursor_colors;
+	cursor_info->SetCursorPosition = sna_set_cursor_position;
+	cursor_info->LoadCursorImage = sna_load_cursor_image;
+	cursor_info->HideCursor = sna_hide_cursors;
+	cursor_info->ShowCursor = sna_show_cursors;
+	cursor_info->UseHWCursor = sna_use_hw_cursor;
+#ifdef ARGB_CURSOR
+	cursor_info->UseHWCursorARGB = sna_use_hw_cursor;
+	cursor_info->LoadCursorARGB = sna_load_cursor_argb;
+#endif
+
+	if (!xf86InitCursor(screen, cursor_info)) {
+		xf86DestroyCursorInfoRec(cursor_info);
+		return false;
+	}
+
+	sna->cursor.info = cursor_info;
+	return true;
+}
+
+static void
+sna_cursors_reload(struct sna *sna)
+{
+	sna_set_cursor_position(sna->scrn, sna->cursor.last_x, sna->cursor.last_y);
+}
+
+static void
+sna_cursors_fini(struct sna *sna)
+{
+	if (sna->cursor.info) {
+		xf86DestroyCursorInfoRec(sna->cursor.info);
+		sna->cursor.info = NULL;
+	}
+
+	if (sna->cursor.ref) {
+		FreeCursor(sna->cursor.ref, None);
+		sna->cursor.ref = NULL;
+	}
+}
+
 static int do_page_flip(struct sna *sna, struct kgem_bo *bo,
 			void *data, int ref_crtc_hw_id)
 {
@@ -3465,32 +3943,12 @@ sanitize_outputs(struct sna *sna)
 static void
 sna_crtc_config_notify(ScreenPtr screen)
 {
+	struct sna *sna = to_sna_from_screen(screen);
+
 	DBG(("%s\n", __FUNCTION__));
-	sna_mode_update(to_sna_from_screen(screen));
-	xf86_reload_cursors(screen);
-}
 
-static void
-sna_cursor_pre_init(struct sna *sna)
-{
-	uint64_t value;
-
-#define DRM_CAP_CURSOR_WIDTH 8
-#define DRM_CAP_CURSOR_HEIGHT 9
-
-	sna->mode.cursor_width = SNA_CURSOR_X;
-	sna->mode.cursor_height = SNA_CURSOR_Y;
-
-	if (drmGetCap(sna->kgem.fd, DRM_CAP_CURSOR_WIDTH, &value) == 0)
-		sna->mode.cursor_width = value;
-
-	if (drmGetCap(sna->kgem.fd, DRM_CAP_CURSOR_HEIGHT, &value) == 0)
-		sna->mode.cursor_height = value;
-
-	xf86DrvMsg(sna->scrn->scrnIndex, X_PROBED,
-		   "Using a maximum size of %dx%d for hardware cursors\n",
-		   sna->mode.cursor_width,
-		   sna->mode.cursor_height);
+	sna_mode_update(sna);
+	sna_cursors_reload(sna);
 }
 
 #if HAS_PIXMAP_SHARING
@@ -3575,6 +4033,8 @@ sna_mode_close(struct sna *sna)
 	if (sna->flags & SNA_IS_HOSTED)
 		return;
 
+	sna_hide_cursors(sna->scrn);
+
 	for (i = 0; i < config->num_crtc; i++) {
 		struct sna_crtc *crtc;
 
@@ -3584,6 +4044,8 @@ sna_mode_close(struct sna *sna)
 
 		sna_crtc_disable_shadow(sna, crtc);
 	}
+
+	sna_cursors_fini(sna);
 }
 
 void
@@ -4095,6 +4557,8 @@ void sna_mode_reset(struct sna *sna)
 
 	if (sna->flags & SNA_IS_HOSTED)
 		return;
+
+	sna_hide_cursors(sna->scrn);
 
 	for (i = 0; i < config->num_crtc; i++) {
 		struct sna_crtc *sna_crtc = to_sna_crtc(config->crtc[i]);

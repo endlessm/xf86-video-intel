@@ -806,8 +806,6 @@ static void sna_leave_vt(VT_FUNC_ARGS_DECL)
 
 	DBG(("%s\n", __FUNCTION__));
 
-	xf86_hide_cursors(scrn);
-
 	sna_mode_reset(to_sna(scrn));
 
 	if (intel_put_master(scrn))
@@ -824,9 +822,7 @@ static Bool sna_early_close_screen(CLOSE_SCREEN_ARGS_DECL)
 
 	/* XXX Note that we will leak kernel resources if !vtSema */
 
-	xf86_hide_cursors(scrn);
 	sna_uevent_fini(scrn);
-
 	sna_mode_close(sna);
 
 	if (sna->dri_open) {
@@ -843,8 +839,6 @@ static Bool sna_early_close_screen(CLOSE_SCREEN_ARGS_DECL)
 		intel_put_master(scrn);
 		scrn->vtSema = FALSE;
 	}
-
-	xf86_cursors_fini(screen);
 
 	return sna->CloseScreen(CLOSE_SCREEN_ARGS);
 }
@@ -999,19 +993,7 @@ sna_screen_init(SCREEN_INIT_ARGS_DECL)
 	if (!miDCInitialize(screen, xf86GetPointerScreenFuncs()))
 		return FALSE;
 
-	if (sna->mode.cursor_width &&
-	    sna->mode.cursor_height &&
-	    xf86_cursors_init(screen,
-			      sna->mode.cursor_width,
-			      sna->mode.cursor_height,
-			      HARDWARE_CURSOR_TRUECOLOR_AT_8BPP |
-			      HARDWARE_CURSOR_BIT_ORDER_MSBFIRST |
-			      HARDWARE_CURSOR_INVERT_MASK |
-			      HARDWARE_CURSOR_SWAP_SOURCE_AND_MASK |
-			      HARDWARE_CURSOR_AND_SOURCE_WITH_MASK |
-			      HARDWARE_CURSOR_SOURCE_MASK_INTERLEAVE_64 |
-			      HARDWARE_CURSOR_UPDATE_UNHIDDEN |
-			      HARDWARE_CURSOR_ARGB))
+	if (sna_cursors_init(screen, sna))
 		xf86DrvMsg(scrn->scrnIndex, X_INFO, "HW Cursor enabled\n");
 
 	/* Must force it before EnterVT, so we are in control of VT and

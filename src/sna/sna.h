@@ -108,6 +108,7 @@ void LogF(const char *f, ...);
 
 #define SNA_CURSOR_X			64
 #define SNA_CURSOR_Y			SNA_CURSOR_X
+struct sna_cursor;
 
 struct sna_client {
 	int is_compositor; /* only 4 bits used */
@@ -279,13 +280,25 @@ struct sna {
 		int shadow_flip;
 		int front_active;
 
-		unsigned short cursor_width;
-		unsigned short cursor_height;
-
 		unsigned num_real_crtc;
 		unsigned num_real_output;
 		unsigned num_fake;
 	} mode;
+
+	struct {
+		struct sna_cursor *cursors;
+		xf86CursorInfoPtr info;
+		CursorPtr ref;
+
+		unsigned serial;
+		uint32_t fg, bg;
+
+		int last_x;
+		int last_y;
+
+		unsigned short max_width;
+		unsigned short max_height;
+	} cursor;
 
 	struct sna_dri {
 		void *flip_pending;
@@ -368,6 +381,8 @@ extern void sna_mode_wakeup(struct sna *sna);
 extern void sna_mode_redisplay(struct sna *sna);
 extern void sna_mode_close(struct sna *sna);
 extern void sna_mode_fini(struct sna *sna);
+
+extern bool sna_cursors_init(ScreenPtr screen, struct sna *sna);
 
 extern int sna_page_flip(struct sna *sna,
 			 struct kgem_bo *bo,
