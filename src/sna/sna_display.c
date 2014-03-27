@@ -3147,6 +3147,7 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 	if (src == NULL) {
 		const uint8_t *source = sna->cursor.ref->bits->source;
 		const uint8_t *mask = sna->cursor.ref->bits->mask;
+		int pitch = BitmapBytePad(width);
 		uint32_t *p;
 
 		__DBG(("%s: converting from 2-color to ARGB\n", __FUNCTION__));
@@ -3157,20 +3158,21 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 
 		p = src;
 		for (y = 0; y < height; y++) {
-			for (x = 0; x < width / 8; x++) {
+			for (x = 0; x < width; x++) {
+				int byte = x / 8;
+				int bit = x & 7;
 				uint32_t pixel;
-				for (i = 0; i < 8; i++) {
-					if (mask[x] & (1 << i)) {
-						if (source[x] & (1 << i))
-							pixel = sna->cursor.fg;
-						else
-							pixel = sna->cursor.bg;
-					} else
-						pixel = 0;
-					*p++ = pixel;
-
-				}
+				if (mask[byte] & (1 << bit)) {
+					if (source[byte] & (1 << bit))
+						pixel = sna->cursor.fg;
+					else
+						pixel = sna->cursor.bg;
+				} else
+					pixel = 0;
+				*p++ = pixel;
 			}
+			mask += pitch;
+			source += pitch;
 		}
 	}
 
