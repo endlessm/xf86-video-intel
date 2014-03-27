@@ -3103,9 +3103,10 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 	if (sna->cursor.ref == NULL || sna->cursor.ref->bits == NULL)
 		return NULL;
 
-	__DBG(("%s: cursor=%dx%d\n", __FUNCTION__,
+	__DBG(("%s: cursor=%dx%d, serial=%d\n", __FUNCTION__,
 	       sna->cursor.ref->bits->width,
-	       sna->cursor.ref->bits->height));
+	       sna->cursor.ref->bits->height,
+	       sna->cursor.serial));
 
 	i = MAX(sna->cursor.ref->bits->width, sna->cursor.ref->bits->height);
 	for (size = 64; size < i; size <<= 1)
@@ -3113,20 +3114,28 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 	assert(size <= sna->cursor.max_width && size <= sna->cursor.max_height);
 
 	rotation = crtc->transform_in_use ? crtc->rotation : RR_Rotate_0;
-	for (cursor = sna->cursor.cursors; cursor; cursor = cursor->next)
-		if (cursor->size >= size && cursor->rotation == rotation)
+	for (cursor = sna->cursor.cursors; cursor; cursor = cursor->next) {
+		if (cursor->serial == sna->cursor.serial && cursor->rotation == rotation) {
+			__DBG(("%s: reusing handle=%d, serial=%d, rotation=%d\n",
+			       __FUNCTION__, cursor->handle, cursor->serial, cursor->rotation));
+			assert(cursor->size == size);
+			return cursor;
+		}
+	}
+
+	for (cursor = sna->cursor.cursors; cursor; cursor = cursor->next) {
+		if (cursor->alloc >= 4*size*size && cursor->serial != sna->cursor.serial) {
+			__DBG(("%s: stealing handle=%d, serial=%d, rotation=%d, alloc=%d\n",
+			       __FUNCTION__, cursor->handle, cursor->serial, cursor->rotation, cursor->alloc));
 			break;
+		}
+	}
 
 	if (cursor == NULL) {
 		cursor = __sna_create_cursor(sna, size);
 		if (cursor == NULL)
 			return NULL;
 	}
-
-	__DBG(("%s: using handle=%d, serial=%d, current=%d\n",
-	       __FUNCTION__, cursor->handle, cursor->serial, sna->cursor.serial));
-	if (cursor->serial == sna->cursor.serial)
-		return cursor;
 
 	width = sna->cursor.ref->bits->width;
 	height = sna->cursor.ref->bits->height;
