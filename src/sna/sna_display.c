@@ -2984,6 +2984,8 @@ struct sna_cursor {
 	uint32_t *image;
 	Rotation rotation;
 	int size;
+	int last_width;
+	int last_height;
 	unsigned handle;
 	unsigned serial;
 	unsigned alloc;
@@ -3086,6 +3088,8 @@ static struct sna_cursor *__sna_create_cursor(struct sna *sna, unsigned size)
 	__DBG(("%s: handle=%d, allocated %d\n", __FUNCTION__, c->handle, size));
 
 	c->serial = 0;
+	c->last_width = c->last_height = 0; /* all clear */
+
 	c->next = sna->cursor.cursors;
 	sna->cursor.cursors = c;
 
@@ -3170,7 +3174,7 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 		}
 	}
 
-	if (width != size || height != size)
+	if (width < cursor->last_width || height < cursor->last_height)
 		memset(cursor->image, 0, 4*size*size);
 	if (rotation == RR_Rotate_0) {
 		memcpy_blt(src, cursor->image, 32,
@@ -3199,6 +3203,8 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 	cursor->size = size;
 	cursor->rotation = rotation;
 	cursor->serial = sna->cursor.serial;
+	cursor->last_width = width;
+	cursor->last_height = height;
 	return cursor;
 }
 
