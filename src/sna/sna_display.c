@@ -3161,6 +3161,8 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 		}
 	}
 
+	if (width != size || height != size)
+		memset(cursor->image, 0, 4*size*size);
 	if (rotation == RR_Rotate_0) {
 		memcpy_blt(src, cursor->image, 32,
 			   width * 4, size * 4,
