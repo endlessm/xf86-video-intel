@@ -3038,37 +3038,33 @@ rotate_coord(Rotation rotation, int width, int height,
 }
 
 static void
-rotate_coord_back(Rotation rotation, int width, int height,
-		  int x_dst, int y_dst,
-		  int *x_src, int *y_src)
+rotate_coord_back(Rotation rotation, int w, int h, int *x, int *y)
 {
 	int t;
 
 	if (rotation & RR_Reflect_X)
-		x_dst = width - x_dst - 1;
+		*x = w - *x - 1;
 	if (rotation & RR_Reflect_Y)
-		y_dst = height - y_dst - 1;
+		*y = h - *y - 1;
 
 	switch (rotation & 0xf) {
 	case RR_Rotate_0:
 		break;
 	case RR_Rotate_90:
-		t = x_dst;
-		x_dst = y_dst;
-		y_dst = width - t - 1;
+		t = *x;
+		*x = *y;
+		*y = w - t - 1;
 		break;
 	case RR_Rotate_180:
-		x_dst = width - x_dst - 1;
-		y_dst = height - y_dst - 1;
+		*x = w - *x - 1;
+		*y = h - *y - 1;
 		break;
 	case RR_Rotate_270:
-		t = x_dst;
-		x_dst = height - y_dst - 1;
-		y_dst = t;
+		t = *x;
+		*x = h - *y - 1;
+		*y = t;
 		break;
 	}
-	*x_src = x_dst;
-	*y_src = y_dst;
 }
 
 static struct sna_cursor *__sna_create_cursor(struct sna *sna, unsigned size)
@@ -3379,33 +3375,26 @@ sna_set_cursor_position(ScrnInfoPtr scrn, int x, int y)
 			int xhot = sna->cursor.ref->bits->xhot;
 			int yhot = sna->cursor.ref->bits->yhot;
 			struct pict_f_vector v;
-			int dx, dy;
 
 			v.v[0] = (x + xhot) + 0.5;
 			v.v[1] = (y + yhot) + 0.5;
 			v.v[2] = 1;
 			pixman_f_transform_point(&crtc->f_framebuffer_to_crtc, &v);
 
-			/* cursor will have 0.5 added to it already so floor is sufficent */
-			x = floor(v.v[0]);
-			y = floor(v.v[1]);
+			rotate_coord_back(crtc->rotation, cursor->size, cursor->size, &xhot, &yhot);
 
-			rotate_coord_back(crtc->rotation, cursor->size, cursor->size,
-					  xhot, yhot,
-					  &dx, &dy);
-			x -= dx;
-			y -= dy;
+			/* cursor will have 0.5 added to it already so floor is sufficent */
+			arg.x = floor(v.v[0]) - xhot;
+			arg.y = floor(v.v[1]) - yhot;
 		} else {
-			x -= crtc->x;
-			y -= crtc->y;
+			arg.x = x - crtc->x;
+			arg.y = y - crtc->y;
 		}
 
-		if (x < crtc->mode.HDisplay && x > -cursor->size &&
-		    y < crtc->mode.VDisplay && y > -cursor->size) {
+		if (arg.x < crtc->mode.HDisplay && arg.x > -cursor->size &&
+		    arg.y < crtc->mode.VDisplay && arg.y > -cursor->size) {
 			arg.flags = DRM_MODE_CURSOR_MOVE;
 			arg.handle = cursor->handle;
-			arg.x = x;
-			arg.y = y;
 
 			if (sna_crtc->cursor != arg.handle) {
 				arg.flags |= DRM_MODE_CURSOR_BO;
@@ -3423,7 +3412,7 @@ disable:
 		}
 
 		__DBG(("%s: CRTC:%d (%d, %d), handle=%d\n",
-		       __FUNCTION__, sna_crtc->id, x, y, arg.handle));
+		       __FUNCTION__, sna_crtc->id, arg.x, arg.y, arg.handle));
 
 		if (arg.flags &&
 		    drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg) == 0)
