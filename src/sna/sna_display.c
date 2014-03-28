@@ -1006,7 +1006,7 @@ static void update_flush_interval(struct sna *sna)
 		xf86CrtcPtr crtc = config->crtc[i];
 
 		if (to_sna_crtc(crtc) == NULL)
-			continue;
+			break;
 
 		if (!crtc->enabled) {
 			DBG(("%s: CRTC:%d (pipe %d) disabled\n",
@@ -1093,7 +1093,7 @@ void sna_copy_fbcon(struct sna *sna)
 		struct drm_mode_crtc mode;
 
 		if (!crtc)
-			continue;
+			break;
 
 		VG_CLEAR(mode);
 		mode.crtc_id = crtc->id;
@@ -1533,6 +1533,8 @@ sna_crtc_set_mode_major(xf86CrtcPtr crtc, DisplayModePtr mode,
 	if (mode->HDisplay == 0 || mode->VDisplay == 0)
 		return FALSE;
 
+	assert(sna_crtc);
+
 	xf86DrvMsg(crtc->scrn->scrnIndex, X_INFO,
 		   "switch to mode %dx%d@%.1f on %s using pipe %d, position (%d, %d), rotation %s, reflection %s\n",
 		   mode->HDisplay, mode->VDisplay, xf86ModeVRefresh(mode),
@@ -1600,6 +1602,8 @@ sna_crtc_dpms(xf86CrtcPtr crtc, int mode)
 	if (priv->dpms_mode == mode)
 		return;
 
+	assert(priv);
+
 	if (mode == DPMSModeOn) {
 		if (priv->bo == NULL &&
 		    !sna_crtc_set_mode_major(crtc,
@@ -1630,7 +1634,8 @@ void sna_mode_adjust_frame(struct sna *sna, int x, int y)
 
 		crtc->x = x;
 		crtc->y = y;
-		if (!sna_crtc_set_mode_major(crtc, &crtc->mode,
+		if (to_sna_crtc(crtc) &&
+		    !sna_crtc_set_mode_major(crtc, &crtc->mode,
 					     crtc->rotation, x, y)) {
 			crtc->x = saved_x;
 			crtc->y = saved_y;
@@ -1642,6 +1647,7 @@ static void
 sna_crtc_gamma_set(xf86CrtcPtr crtc,
 		       CARD16 *red, CARD16 *green, CARD16 *blue, int size)
 {
+	assert(to_sna_crtc(crtc));
 	drmModeCrtcSetGamma(to_sna(crtc->scrn)->kgem.fd,
 			    to_sna_crtc(crtc)->id,
 			    size, red, green, blue);
@@ -1663,6 +1669,7 @@ sna_crtc_destroy(xf86CrtcPtr crtc)
 static Bool
 sna_crtc_set_scanout_pixmap(xf86CrtcPtr crtc, PixmapPtr pixmap)
 {
+	assert(to_sna_crtc(crtc));
 	DBG(("%s: CRTC:%d, pipe=%d setting scanout pixmap=%ld\n",
 	     __FUNCTION__,to_sna_crtc(crtc)->id, to_sna_crtc(crtc)->pipe,
 	     pixmap ? pixmap->drawable.serialNumber : 0));
@@ -2093,6 +2100,7 @@ sna_output_get_modes(xf86OutputPtr output)
 		struct drm_mode_crtc mode;
 
 		VG_CLEAR(mode);
+		assert(to_sna_crtc(output->crtc));
 		mode.crtc_id = to_sna_crtc(output->crtc)->id;
 
 		if (drmIoctl(to_sna(output->scrn)->kgem.fd, DRM_IOCTL_MODE_GETCRTC, &mode) == 0) {
@@ -2935,7 +2943,7 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 
 		crtc = to_sna_crtc(config->crtc[i]);
 		if (crtc == NULL)
-			continue;
+			break;
 
 		sna_crtc_disable_shadow(sna, crtc);
 	}
@@ -2961,7 +2969,10 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 	for (i = 0; i < config->num_crtc; i++) {
 		xf86CrtcPtr crtc = config->crtc[i];
 
-		if (!crtc->enabled || to_sna_crtc(crtc) == NULL)
+		if (to_sna_crtc(crtc) == NULL)
+			break;
+
+		if (!crtc->enabled)
 			continue;
 
 		if (!sna_crtc_set_mode_major(crtc,
@@ -3232,7 +3243,7 @@ sna_show_cursors(ScrnInfoPtr scrn)
 		struct sna_cursor *cursor;
 
 		if (!sna_crtc)
-			continue;
+			break;
 
 		if (!crtc->enabled)
 			continue;
@@ -3299,7 +3310,7 @@ sna_hide_cursors(ScrnInfoPtr scrn)
 		struct drm_mode_cursor arg;
 
 		if (!sna_crtc)
-			continue;
+			break;
 
 		if (!crtc->enabled)
 			continue;
@@ -3350,7 +3361,7 @@ sna_set_cursor_position(ScrnInfoPtr scrn, int x, int y)
 		struct drm_mode_cursor arg;
 
 		if (!sna_crtc)
-			continue;
+			break;
 
 		VG_CLEAR(arg);
 		arg.flags = 0;
@@ -3730,6 +3741,8 @@ static void crtc_init_gamma(xf86CrtcPtr crtc)
 		struct drm_mode_crtc_lut lut;
 		bool gamma_set = false;
 
+		assert(sna_crtc);
+
 		lut.crtc_id = sna_crtc->id;
 		lut.gamma_size = 256;
 		lut.red = (uintptr_t)(gamma);
@@ -3828,7 +3841,7 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 		struct drm_mode_crtc mode;
 
 		if (sna_crtc == NULL)
-			continue;
+			break;
 
 		crtc->enabled = FALSE;
 		crtc->desiredMode.status = MODE_NOMODE;
@@ -3877,8 +3890,10 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 		for (j = 0; j < config->num_crtc; j++) {
 			xf86CrtcPtr crtc = config->crtc[j];
 
-			if (to_sna_crtc(crtc) == NULL ||
-			    to_sna_crtc(crtc)->id != crtc_id)
+			if (to_sna_crtc(crtc) == NULL)
+				break;
+
+			if (to_sna_crtc(crtc)->id != crtc_id)
 				continue;
 
 			if (crtc->desiredMode.status == MODE_OK) {
@@ -4069,7 +4084,7 @@ sna_mode_close(struct sna *sna)
 
 		crtc = to_sna_crtc(config->crtc[i]);
 		if (crtc == NULL)
-			continue;
+			break;
 
 		sna_crtc_disable_shadow(sna, crtc);
 	}
@@ -4137,7 +4152,7 @@ sna_covering_crtc(struct sna *sna, const BoxRec *box, xf86CrtcPtr desired)
 		int coverage;
 
 		if (to_sna_crtc(crtc) == NULL)
-			continue;
+			break;
 
 		/* If the CRTC is off, treat it as not covering */
 		if (to_sna_crtc(crtc)->bo == NULL) {
@@ -4538,7 +4553,7 @@ void sna_mode_update(struct sna *sna)
 		uint32_t expected;
 
 		if (sna_crtc == NULL)
-			continue;
+			break;
 
 #if XF86_CRTC_VERSION >= 3
 		assert(sna_crtc->bo == NULL || crtc->active);
@@ -4592,7 +4607,7 @@ void sna_mode_reset(struct sna *sna)
 	for (i = 0; i < config->num_crtc; i++) {
 		struct sna_crtc *sna_crtc = to_sna_crtc(config->crtc[i]);
 		if (sna_crtc == NULL)
-			continue;
+			break;
 
 		sna_crtc->dpms_mode = -1;
 
@@ -4825,6 +4840,7 @@ sna_crtc_redisplay(xf86CrtcPtr crtc, RegionPtr region)
 	struct sna_pixmap *priv = sna_pixmap(sna->front);
 	int16_t tx, ty;
 
+	assert(sna_crtc);
 	DBG(("%s: crtc %d [pipe=%d], damage (%d, %d), (%d, %d) x %ld\n",
 	     __FUNCTION__, sna_crtc->id, sna_crtc->pipe,
 	     region->extents.x1, region->extents.y1,
@@ -4941,7 +4957,10 @@ void sna_mode_redisplay(struct sna *sna)
 			struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
 			RegionRec damage;
 
-			if (sna_crtc == NULL || !sna_crtc->shadow)
+			if (sna_crtc == NULL)
+				break;
+
+			if (!sna_crtc->shadow)
 				continue;
 
 			assert(crtc->enabled);
@@ -4988,7 +5007,7 @@ void sna_mode_redisplay(struct sna *sna)
 		RegionRec damage;
 
 		if (sna_crtc == NULL)
-			continue;
+			break;
 
 		DBG(("%s: crtc[%d] shadow? %d, transformed? %d\n",
 		     __FUNCTION__, i,
