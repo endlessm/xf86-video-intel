@@ -3435,6 +3435,10 @@ sna_use_hw_cursor(ScreenPtr screen, CursorPtr cursor)
 {
 	struct sna *sna = to_sna_from_screen(screen);
 
+	/* cursors are invariant */
+	if (cursor == sna->cursor.ref)
+		return TRUE;
+
 	cursor->refcnt++;
 	if (sna->cursor.ref)
 		FreeCursor(sna->cursor.ref, None);
