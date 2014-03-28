@@ -3126,7 +3126,7 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 	i = MAX(sna->cursor.ref->bits->width, sna->cursor.ref->bits->height);
 	for (size = 64; size < i; size <<= 1)
 		;
-	assert(size <= sna->cursor.max_width && size <= sna->cursor.max_height);
+	assert(size <= sna->cursor.max_size);
 
 	rotation = crtc->transform_in_use ? crtc->rotation : RR_Rotate_0;
 	for (cursor = sna->cursor.cursors; cursor; cursor = cursor->next) {
@@ -3462,8 +3462,8 @@ sna_use_hw_cursor(ScreenPtr screen, CursorPtr cursor)
 	       cursor->bits->argb!=NULL,
 	       sna->cursor.serial));
 
-	return (cursor->bits->width <= sna->cursor.max_width &&
-		cursor->bits->height <= sna->cursor.max_height);
+	return (cursor->bits->width <= sna->cursor.max_size &&
+		cursor->bits->height <= sna->cursor.max_size);
 }
 
 static void
@@ -3478,22 +3478,21 @@ sna_cursor_pre_init(struct sna *sna)
 #define DRM_CAP_CURSOR_WIDTH	8
 #define DRM_CAP_CURSOR_HEIGHT	9
 
-	sna->cursor.max_width = SNA_CURSOR_X;
-	sna->cursor.max_height = SNA_CURSOR_Y;
+	sna->cursor.max_size = 64;
 
 	cap.name = DRM_CAP_CURSOR_WIDTH;
 	if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_GET_CAP, &cap) == 0)
-		sna->cursor.max_width = cap.value;
+		sna->cursor.max_size = cap.value;
 
+#if HAS_DEBUG_FULL
 	cap.name = DRM_CAP_CURSOR_HEIGHT;
 	if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_GET_CAP, &cap) == 0)
-		sna->cursor.max_height = cap.value;
+		assert(sna->cursor.max_size == cap.value);
+#endif
 
 	xf86DrvMsg(sna->scrn->scrnIndex, X_PROBED,
 		   "Using a maximum size of %dx%d for hardware cursors\n",
-		   sna->cursor.max_width,
-		   sna->cursor.max_height);
-	assert(sna->cursor.max_width == sna->cursor.max_height);
+		   sna->cursor.max_size, sna->cursor.max_size);
 }
 
 bool
@@ -3501,15 +3500,15 @@ sna_cursors_init(ScreenPtr screen, struct sna *sna)
 {
 	xf86CursorInfoPtr cursor_info;
 
-	if ((sna->cursor.max_width | sna->cursor.max_height) == 0)
+	if (sna->cursor.max_size == 0)
 		return false;
 
 	cursor_info = xf86CreateCursorInfoRec();
 	if (cursor_info == NULL)
 		return false;
 
-	cursor_info->MaxWidth = sna->cursor.max_width;
-	cursor_info->MaxHeight = sna->cursor.max_height;
+	cursor_info->MaxWidth = sna->cursor.max_size;
+	cursor_info->MaxHeight = sna->cursor.max_size;
 	cursor_info->Flags = (HARDWARE_CURSOR_TRUECOLOR_AT_8BPP |
 			      HARDWARE_CURSOR_UPDATE_UNHIDDEN |
 			      HARDWARE_CURSOR_ARGB);

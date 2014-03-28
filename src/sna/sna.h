@@ -106,8 +106,6 @@ void LogF(const char *f, ...);
 #include "sna_render.h"
 #include "fb/fb.h"
 
-#define SNA_CURSOR_X			64
-#define SNA_CURSOR_Y			SNA_CURSOR_X
 struct sna_cursor;
 
 struct sna_client {
@@ -296,8 +294,7 @@ struct sna {
 		int last_x;
 		int last_y;
 
-		unsigned short max_width;
-		unsigned short max_height;
+		unsigned max_size;
 	} cursor;
 
 	struct sna_dri {
