@@ -3150,7 +3150,7 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 
 	width = sna->cursor.ref->bits->width;
 	height = sna->cursor.ref->bits->height;
-	src = sna->cursor.ref->bits->argb;
+	src = (uint32_t *)sna->cursor.ref->bits->argb;
 	if (src == NULL) {
 		const uint8_t *source = sna->cursor.ref->bits->source;
 		const uint8_t *mask = sna->cursor.ref->bits->mask;
@@ -3206,7 +3206,7 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 			}
 	}
 
-	if (src != sna->cursor.ref->bits->argb)
+	if (src != (uint32_t *)sna->cursor.ref->bits->argb)
 		free(src);
 
 	cursor->size = size;
