@@ -3454,19 +3454,25 @@ sna_use_hw_cursor(ScreenPtr screen, CursorPtr cursor)
 static void
 sna_cursor_pre_init(struct sna *sna)
 {
-	uint64_t value;
+	struct local_get_cap {
+		uint64_t name;
+		uint64_t value;
+	} cap;
 
-#define DRM_CAP_CURSOR_WIDTH 8
-#define DRM_CAP_CURSOR_HEIGHT 9
+#define LOCAL_IOCTL_GET_CAP	DRM_IOWR(0x0c, struct local_get_cap)
+#define DRM_CAP_CURSOR_WIDTH	8
+#define DRM_CAP_CURSOR_HEIGHT	9
 
 	sna->cursor.max_width = SNA_CURSOR_X;
 	sna->cursor.max_height = SNA_CURSOR_Y;
 
-	if (drmGetCap(sna->kgem.fd, DRM_CAP_CURSOR_WIDTH, &value) == 0)
-		sna->cursor.max_width = value;
+	cap.name = DRM_CAP_CURSOR_WIDTH;
+	if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_GET_CAP, &cap) == 0)
+		sna->cursor.max_width = cap.value;
 
-	if (drmGetCap(sna->kgem.fd, DRM_CAP_CURSOR_HEIGHT, &value) == 0)
-		sna->cursor.max_height = value;
+	cap.name = DRM_CAP_CURSOR_HEIGHT;
+	if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_GET_CAP, &cap) == 0)
+		sna->cursor.max_height = cap.value;
 
 	xf86DrvMsg(sna->scrn->scrnIndex, X_PROBED,
 		   "Using a maximum size of %dx%d for hardware cursors\n",
