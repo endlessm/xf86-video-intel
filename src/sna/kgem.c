@@ -4427,6 +4427,8 @@ large_inactive:
 						     bo->tiling, tiling));
 						continue;
 					}
+					bo->tiling = tiling;
+					bo->pitch = pitch;
 				}
 
 				if (bo->purged && !kgem_bo_clear_purgeable(kgem, bo)) {
