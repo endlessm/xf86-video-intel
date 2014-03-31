@@ -3566,6 +3566,18 @@ create_gpu_bo:
 	if (priv->gpu_damage) {
 		assert(priv->gpu_bo);
 		if (!priv->cpu_damage || flags & IGNORE_CPU) {
+			if (box_covers_pixmap(pixmap, &region.extents)) {
+				unsigned int move;
+
+				if (flags & IGNORE_CPU)
+					move = MOVE_WRITE;
+				else
+					move = MOVE_WRITE | MOVE_READ;
+
+				if (sna_pixmap_move_to_gpu(pixmap, move))
+					goto use_gpu_bo;
+			}
+
 			if (sna_damage_contains_box__no_reduce(priv->gpu_damage,
 							       &region.extents)) {
 				DBG(("%s: region wholly contained within GPU damage\n",
