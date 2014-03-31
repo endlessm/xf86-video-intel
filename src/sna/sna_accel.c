@@ -3566,7 +3566,7 @@ create_gpu_bo:
 	if (priv->gpu_damage) {
 		assert(priv->gpu_bo);
 		if (!priv->cpu_damage || flags & IGNORE_CPU) {
-			if (box_covers_pixmap(pixmap, &region.extents)) {
+			if (flags & REPLACES || box_covers_pixmap(pixmap, &region.extents)) {
 				unsigned int move;
 
 				if (flags & IGNORE_CPU)
