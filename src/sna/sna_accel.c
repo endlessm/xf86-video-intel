@@ -241,6 +241,33 @@ typedef struct box32 {
 #define PM_IS_SOLID(_draw, _pm) \
 	(((_pm) & FbFullMask((_draw)->depth)) == FbFullMask((_draw)->depth))
 
+#ifndef NDEBUG
+static bool
+pixmap_contains_damage(PixmapPtr pixmap, struct sna_damage *damage)
+{
+	if (damage == NULL)
+		return true;
+
+	damage = DAMAGE_PTR(damage);
+	return (damage->extents.x2 <= pixmap->drawable.width &&
+		damage->extents.y2 <= pixmap->drawable.height &&
+		damage->extents.x1 >= 0 &&
+		damage->extents.y1 >= 0);
+}
+#endif
+
+#define __assert_pixmap_damage(p) do { \
+	struct sna_pixmap *priv__ = sna_pixmap(p); \
+	if (priv__) { \
+		assert(priv__->gpu_damage == NULL || priv__->gpu_bo); \
+		assert(priv__->gpu_bo == NULL || priv__->gpu_bo->refcnt); \
+		assert(priv__->cpu_bo == NULL || priv__->cpu_bo->refcnt); \
+		assert(!pixmap_contains_damage(p, priv__->gpu_damage)); \
+		assert(!pixmap_contains_damage(p, priv__->cpu_damage)); \
+		assert_pixmap_map(p, priv__); \
+	} \
+} while (0)
+
 #ifdef DEBUG_PIXMAP
 static void _assert_pixmap_contains_box(PixmapPtr pixmap, const BoxRec *box, const char *function)
 {
@@ -340,10 +367,7 @@ static void assert_pixmap_damage(PixmapPtr p)
 	if (priv == NULL)
 		return;
 
-	assert(priv->gpu_damage == NULL || priv->gpu_bo);
-	assert(priv->gpu_bo == NULL || priv->gpu_bo->refcnt);
-	assert(priv->cpu_bo == NULL || priv->cpu_bo->refcnt);
-	assert_pixmap_map(p, priv);
+	__assert_pixmap_damage(p);
 
 	if (priv->clear) {
 		assert(DAMAGE_IS_ALL(priv->gpu_damage));
@@ -392,12 +416,7 @@ static void assert_pixmap_damage(PixmapPtr p)
 #define assert_pixmap_contains_points(p, pt, n, x, y)
 #define assert_drawable_contains_box(d, b)
 #ifndef NDEBUG
-#define assert_pixmap_damage(p) do { \
-	struct sna_pixmap *priv__ = sna_pixmap(p); \
-	assert(priv__ == NULL || priv__->gpu_damage == NULL || priv__->gpu_bo); \
-	assert(priv__ == NULL || priv__->gpu_bo == NULL || priv__->gpu_bo->refcnt); \
-	assert(priv__ == NULL || priv__->cpu_bo == NULL || priv__->cpu_bo->refcnt); \
-} while (0)
+#define assert_pixmap_damage(p) __assert_pixmap_damage(p)
 #else
 #define assert_pixmap_damage(p)
 #endif
@@ -2281,21 +2300,6 @@ region_overlaps_damage(const RegionRec *region,
 	return (re->x1 + dx < de->x2 && re->x2 + dx > de->x1 &&
 		re->y1 + dy < de->y2 && re->y2 + dy > de->y1);
 }
-
-#ifndef NDEBUG
-static bool
-pixmap_contains_damage(PixmapPtr pixmap, struct sna_damage *damage)
-{
-	if (damage == NULL)
-		return true;
-
-	damage = DAMAGE_PTR(damage);
-	return (damage->extents.x2 <= pixmap->drawable.width &&
-		damage->extents.y2 <= pixmap->drawable.height &&
-		damage->extents.x1 >= 0 &&
-		damage->extents.y1 >= 0);
-}
-#endif
 
 static inline bool region_inplace(struct sna *sna,
 				  PixmapPtr pixmap,
