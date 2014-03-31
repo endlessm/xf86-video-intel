@@ -4420,9 +4420,13 @@ large_inactive:
 
 				if (bo->tiling != tiling ||
 				    (tiling != I915_TILING_NONE && bo->pitch != pitch)) {
-					DBG(("inactive vma with wrong tiling: %d < %d\n",
-					     bo->tiling, tiling));
-					continue;
+					if (bo->map__gtt ||
+					    !gem_set_tiling(kgem->fd, bo->handle,
+							    tiling, pitch)) {
+						DBG(("inactive GTT vma with wrong tiling: %d < %d\n",
+						     bo->tiling, tiling));
+						continue;
+					}
 				}
 
 				if (bo->purged && !kgem_bo_clear_purgeable(kgem, bo)) {
