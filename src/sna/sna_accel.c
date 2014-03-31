@@ -262,8 +262,8 @@ pixmap_contains_damage(PixmapPtr pixmap, struct sna_damage *damage)
 		assert(priv__->gpu_damage == NULL || priv__->gpu_bo); \
 		assert(priv__->gpu_bo == NULL || priv__->gpu_bo->refcnt); \
 		assert(priv__->cpu_bo == NULL || priv__->cpu_bo->refcnt); \
-		assert(!pixmap_contains_damage(p, priv__->gpu_damage)); \
-		assert(!pixmap_contains_damage(p, priv__->cpu_damage)); \
+		assert(pixmap_contains_damage(p, priv__->gpu_damage)); \
+		assert(pixmap_contains_damage(p, priv__->cpu_damage)); \
 		assert_pixmap_map(p, priv__); \
 	} \
 } while (0)
