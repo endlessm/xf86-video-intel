@@ -632,6 +632,14 @@ static inline bool box_empty(const BoxRec *box)
 }
 
 static inline bool
+box_covers_pixmap(PixmapPtr pixmap, const BoxRec *box)
+{
+	int w = box->x2 - box->x1;
+	int h = box->y2 - box->y1;
+	return pixmap->drawable.width <= w && pixmap->drawable.height <= h;
+}
+
+static inline bool
 box_inplace(PixmapPtr pixmap, const BoxRec *box)
 {
 	struct sna *sna = to_sna_from_pixmap(pixmap);

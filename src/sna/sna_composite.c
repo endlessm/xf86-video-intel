@@ -955,7 +955,9 @@ sna_composite_rectangles(CARD8		 op,
 		}
 		if (region_subsumes_drawable(&region, &pixmap->drawable))
 			hint |= REPLACES;
-		if (hint & REPLACES || box_inplace(pixmap, &region.extents)) {
+		if (hint & REPLACES ||
+		    box_covers_pixmap(pixmap, &region.extents) ||
+		    box_inplace(pixmap, &region.extents)) {
 			DBG(("%s: promoting to full GPU\n", __FUNCTION__));
 			if (priv->gpu_bo && priv->cpu_damage == NULL) {
 				assert(priv->gpu_bo->proxy == NULL);

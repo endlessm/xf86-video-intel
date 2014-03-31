@@ -3348,7 +3348,8 @@ done:
 		priv->clear = false;
 		if (!DAMAGE_IS_ALL(priv->gpu_damage) &&
 		    priv->cpu_damage == NULL &&
-		    box_inplace(pixmap, &r.extents)) {
+		    (box_covers_pixmap(pixmap, &r.extents) ||
+		     box_inplace(pixmap, &r.extents))) {
 			DBG(("%s: large operation on undamaged, promoting to full GPU\n",
 			     __FUNCTION__));
 			assert(priv->gpu_bo);
@@ -3442,7 +3443,7 @@ sna_drawable_use_bo(DrawablePtr drawable, unsigned flags, const BoxRec *box,
 		flags &= ~PREFER_GPU;
 
 	if ((flags & (PREFER_GPU | IGNORE_CPU)) == IGNORE_CPU) {
-		if (priv->gpu_bo && box_inplace(pixmap, box))
+		if (priv->gpu_bo && (box_covers_pixmap(pixmap, box) || box_inplace(pixmap, box)))
 			flags |= PREFER_GPU;
 	}
 
@@ -14145,7 +14146,9 @@ sna_poly_fill_rect(DrawablePtr draw, GCPtr gc, int n, xRectangle *rect)
 		}
 		if (priv->cpu_damage == NULL) {
 			if (priv->gpu_bo &&
-			    (hint & REPLACES || box_inplace(pixmap, &region.extents))) {
+			    (hint & REPLACES ||
+			     box_covers_pixmap(pixmap, &region.extents) ||
+			     box_inplace(pixmap, &region.extents))) {
 				DBG(("%s: promoting to full GPU\n",
 				     __FUNCTION__));
 				assert(priv->gpu_bo->proxy == NULL);
