@@ -107,7 +107,7 @@ struct sna_crtc {
 	int dpms_mode;
 	PixmapPtr scanout_pixmap;
 	struct kgem_bo *bo, *shadow_bo;
-	uint32_t cursor;
+	struct sna_cursor *cursor;
 	uint32_t sprite;
 	bool shadow;
 	bool fallback_shadow;
@@ -1585,6 +1585,7 @@ retry: /* Attach per-crtc pixmap or direct */
 	if (saved_bo)
 		kgem_bo_destroy(&sna->kgem, saved_bo);
 
+	sna_crtc->cursor = NULL; /* reattach cursor on next update */
 	sna_crtc_randr(crtc);
 	if (sna_crtc->shadow)
 		sna_crtc_damage(crtc);
@@ -3067,9 +3068,10 @@ rotate_coord_back(Rotation rotation, int w, int h, int *x, int *y)
 	}
 }
 
-static struct sna_cursor *__sna_create_cursor(struct sna *sna, unsigned size)
+static struct sna_cursor *__sna_create_cursor(struct sna *sna)
 {
 	struct sna_cursor *c;
+	int size = sna->cursor.size;
 
 	__DBG(("%s(size=%d)\n", __FUNCTION__, size));
 
@@ -3106,13 +3108,24 @@ static struct sna_cursor *__sna_create_cursor(struct sna *sna, unsigned size)
 static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 {
 	struct sna_cursor *cursor;
-	Rotation rotation;
-	int width, height, size;
-	int i, x, y;
 	uint32_t *src;
+	int width, height, size, x, y;
+	Rotation rotation;
 
 	if (sna->cursor.ref == NULL || sna->cursor.ref->bits == NULL)
 		return NULL;
+
+	cursor = to_sna_crtc(crtc)->cursor;
+	__DBG(("%s: current cursor handle=%d, serial=%d [expected %d]\n",
+	       __FUNCTION__,
+	       cursor ? cursor->handle : 0,
+	       cursor ? cursor->serial : 0,
+	       sna->cursor.serial));
+	if (cursor && cursor->serial == sna->cursor.serial) {
+		assert(cursor->size == sna->cursor.size);
+		assert(cursor->rotation == crtc->transform_in_use ? crtc->rotation : RR_Rotate_0);
+		return cursor;
+	}
 
 	__DBG(("%s: cursor=%dx%d, serial=%d\n", __FUNCTION__,
 	       sna->cursor.ref->bits->width,
@@ -3124,21 +3137,12 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 		if (cursor->serial == sna->cursor.serial && cursor->rotation == rotation) {
 			__DBG(("%s: reusing handle=%d, serial=%d, rotation=%d, size=%d\n",
 			       __FUNCTION__, cursor->handle, cursor->serial, cursor->rotation, cursor->size));
-#if HAS_DEBUG_FULL
-			i = MAX(sna->cursor.ref->bits->width, sna->cursor.ref->bits->height);
-			for (size = 64; size < i; size <<= 1)
-				;
-			assert(cursor->size == size);
-#endif
+			assert(cursor->size == sna->cursor.size);
 			return cursor;
 		}
 	}
 
-	i = MAX(sna->cursor.ref->bits->width, sna->cursor.ref->bits->height);
-	for (size = 64; size < i; size <<= 1)
-		;
-	assert(size <= sna->cursor.max_size);
-
+	size = sna->cursor.size;
 	for (cursor = sna->cursor.cursors; cursor; cursor = cursor->next) {
 		if (cursor->alloc >= 4*size*size && cursor->serial != sna->cursor.serial) {
 			__DBG(("%s: stealing handle=%d, serial=%d, rotation=%d, alloc=%d\n",
@@ -3148,7 +3152,7 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 	}
 
 	if (cursor == NULL) {
-		cursor = __sna_create_cursor(sna, size);
+		cursor = __sna_create_cursor(sna);
 		if (cursor == NULL)
 			return NULL;
 	}
@@ -3237,6 +3241,7 @@ sna_show_cursors(ScrnInfoPtr scrn)
 
 	__DBG(("%s\n", __FUNCTION__));
 
+	OsBlockSIGIO();
 	for (c = 0; c < xf86_config->num_crtc; c++) {
 		xf86CrtcPtr crtc = xf86_config->crtc[c];
 		struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
@@ -3252,17 +3257,15 @@ sna_show_cursors(ScrnInfoPtr scrn)
 		if (!crtc->cursor_in_range)
 			continue;
 
+		if (sna_crtc->cursor)
+			continue;
+
 		cursor = __sna_get_cursor(sna, crtc);
-		if (cursor == NULL) {
-			assert(sna_crtc->cursor == 0);
-			continue;
-		}
-
-		if (sna_crtc->cursor == cursor->handle)
+		if (cursor == NULL)
 			continue;
 
-		__DBG(("%s: CRTC:%d, handle=%d->%d\n", __FUNCTION__,
-		       sna_crtc->id, sna_crtc->cursor, cursor->handle));
+		__DBG(("%s: CRTC:%d, handle->%d\n", __FUNCTION__,
+		       sna_crtc->id, cursor->handle));
 
 		VG_CLEAR(arg);
 		arg.flags = DRM_MODE_CURSOR_BO;
@@ -3271,8 +3274,9 @@ sna_show_cursors(ScrnInfoPtr scrn)
 		arg.handle = cursor->handle;
 
 		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg) == 0)
-			sna_crtc->cursor = cursor->handle;
+			sna_crtc->cursor = cursor;
 	}
+	OsReleaseSIGIO();
 }
 
 static void
@@ -3305,6 +3309,7 @@ sna_hide_cursors(ScrnInfoPtr scrn)
 
 	__DBG(("%s\n", __FUNCTION__));
 
+	OsBlockSIGIO();
 	for (c = 0; c < xf86_config->num_crtc; c++) {
 		xf86CrtcPtr crtc = xf86_config->crtc[c];
 		struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
@@ -3313,13 +3318,10 @@ sna_hide_cursors(ScrnInfoPtr scrn)
 		if (!sna_crtc)
 			break;
 
-		if (!crtc->enabled)
-			continue;
-
 		if (!sna_crtc->cursor)
 			continue;
 
-		__DBG(("%s: CRTC:%d, handle=%d\n", __FUNCTION__, sna_crtc->id, sna_crtc->cursor));
+		__DBG(("%s: CRTC:%d, handle=%d\n", __FUNCTION__, sna_crtc->id, sna_crtc->cursor->handle));
 
 		VG_CLEAR(arg);
 		arg.flags = DRM_MODE_CURSOR_BO;
@@ -3327,8 +3329,8 @@ sna_hide_cursors(ScrnInfoPtr scrn)
 		arg.width = arg.height = 0;
 		arg.handle = 0;
 
-		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg) == 0)
-			sna_crtc->cursor = 0;
+		(void)drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg);
+		sna_crtc->cursor = NULL;
 	}
 
 	while (sna->cursor.cursors) {
@@ -3338,6 +3340,7 @@ sna_hide_cursors(ScrnInfoPtr scrn)
 		gem_close(sna->kgem.fd, cursor->handle);
 		free(cursor);
 	}
+	OsReleaseSIGIO();
 }
 
 static void
@@ -3349,6 +3352,7 @@ sna_set_cursor_position(ScrnInfoPtr scrn, int x, int y)
 
 	__DBG(("%s(%d, %d)\n", __FUNCTION__, x, y));
 
+	OsBlockSIGIO();
 	sna->cursor.last_x = x;
 	sna->cursor.last_y = y;
 
@@ -3372,10 +3376,6 @@ sna_set_cursor_position(ScrnInfoPtr scrn, int x, int y)
 		if (!crtc->enabled)
 			goto disable;
 
-		cursor = __sna_get_cursor(sna, crtc);
-		if (cursor == NULL)
-			goto disable;
-
 		if (crtc->transform_in_use) {
 			int xhot = sna->cursor.ref->bits->xhot;
 			int yhot = sna->cursor.ref->bits->yhot;
@@ -3396,33 +3396,40 @@ sna_set_cursor_position(ScrnInfoPtr scrn, int x, int y)
 			arg.y = y - crtc->y;
 		}
 
-		if (arg.x < crtc->mode.HDisplay && arg.x > -cursor->size &&
-		    arg.y < crtc->mode.VDisplay && arg.y > -cursor->size) {
-			arg.flags = DRM_MODE_CURSOR_MOVE;
-			arg.handle = cursor->handle;
+		if (arg.x < crtc->mode.HDisplay && arg.x > -sna->cursor.size &&
+		    arg.y < crtc->mode.VDisplay && arg.y > -sna->cursor.size) {
+			cursor = __sna_get_cursor(sna, crtc);
+			if (cursor == NULL) {
+				__DBG(("%s: failed to grab cursor, disabling\n",
+				       __FUNCTION__));
+				goto disable;
+			}
 
-			if (sna_crtc->cursor != arg.handle) {
+			arg.handle = cursor->handle;
+			if (sna_crtc->cursor != cursor) {
 				arg.flags |= DRM_MODE_CURSOR_BO;
 				arg.width = arg.height = cursor->size;
 			}
 
+			arg.flags |= DRM_MODE_CURSOR_MOVE;
 			crtc->cursor_in_range = true;
 		} else {
 disable:
 			crtc->cursor_in_range = false;
 			if (sna_crtc->cursor) {
 				arg.flags = DRM_MODE_CURSOR_BO;
-				arg.width = arg.height = arg.handle = 0;
+				arg.width = arg.height = 0;
 			}
 		}
 
-		__DBG(("%s: CRTC:%d (%d, %d), handle=%d\n",
-		       __FUNCTION__, sna_crtc->id, arg.x, arg.y, arg.handle));
+		__DBG(("%s: CRTC:%d (%d, %d), handle=%d, flags=%x (old cursor handle=%d)\n",
+		       __FUNCTION__, sna_crtc->id, arg.x, arg.y, arg.handle, arg.flags, sna_crtc->cursor ? sna_crtc->cursor->handle : 0));
 
 		if (arg.flags &&
 		    drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg) == 0)
-			sna_crtc->cursor = arg.handle;
+			sna_crtc->cursor = arg.handle ? cursor : NULL;
 	}
+	OsReleaseSIGIO();
 }
 
 static void
@@ -3433,6 +3440,17 @@ sna_load_cursor_argb(ScrnInfoPtr scrn, CursorPtr cursor)
 static void
 sna_load_cursor_image(ScrnInfoPtr scrn, unsigned char *src)
 {
+}
+
+static int __cursor_size(CursorPtr cursor)
+{
+	int i, size;
+
+	i = MAX(cursor->bits->width, cursor->bits->height);
+	for (size = 64; size < i; size <<= 1)
+		;
+
+	return size;
 }
 
 static Bool
@@ -3448,16 +3466,17 @@ sna_use_hw_cursor(ScreenPtr screen, CursorPtr cursor)
 	if (sna->cursor.ref)
 		FreeCursor(sna->cursor.ref, None);
 	sna->cursor.ref = cursor;
+	sna->cursor.size = __cursor_size(cursor);
 	sna->cursor.serial++;
 
-	__DBG(("%s(%dx%d): ARGB?=%d, serial->%d\n", __FUNCTION__,
+	__DBG(("%s(%dx%d): ARGB?=%d, serial->%d, size->%d\n", __FUNCTION__,
 	       cursor->bits->width,
 	       cursor->bits->height,
 	       cursor->bits->argb!=NULL,
-	       sna->cursor.serial));
+	       sna->cursor.serial,
+	       sna->cursor.size));
 
-	return (cursor->bits->width <= sna->cursor.max_size &&
-		cursor->bits->height <= sna->cursor.max_size);
+	return sna->cursor.size <= sna->cursor.max_size;
 }
 
 static void

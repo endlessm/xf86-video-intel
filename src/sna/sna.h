@@ -290,6 +290,7 @@ struct sna {
 
 		unsigned serial;
 		uint32_t fg, bg;
+		int size;
 
 		int last_x;
 		int last_y;
