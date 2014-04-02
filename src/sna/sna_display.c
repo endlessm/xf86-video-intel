@@ -3362,7 +3362,7 @@ sna_set_cursor_position(ScrnInfoPtr scrn, int x, int y)
 	for (c = 0; c < xf86_config->num_crtc; c++) {
 		xf86CrtcPtr crtc = xf86_config->crtc[c];
 		struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
-		struct sna_cursor *cursor;
+		struct sna_cursor *cursor = NULL;
 		struct drm_mode_cursor arg;
 
 		if (!sna_crtc)
@@ -3405,9 +3405,9 @@ sna_set_cursor_position(ScrnInfoPtr scrn, int x, int y)
 				goto disable;
 			}
 
-			arg.handle = cursor->handle;
 			if (sna_crtc->cursor != cursor) {
 				arg.flags |= DRM_MODE_CURSOR_BO;
+				arg.handle = cursor->handle;
 				arg.width = arg.height = cursor->size;
 			}
 
@@ -3427,7 +3427,7 @@ disable:
 
 		if (arg.flags &&
 		    drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg) == 0)
-			sna_crtc->cursor = arg.handle ? cursor : NULL;
+			sna_crtc->cursor = cursor;
 	}
 	OsReleaseSIGIO();
 }
