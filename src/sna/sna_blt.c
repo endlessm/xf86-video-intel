@@ -1113,11 +1113,28 @@ inline static void _sna_blt_fill_boxes(struct sna *sna,
 	} while (1);
 }
 
+static inline void _sna_blt_maybe_clear(const struct sna_composite_op *op, const BoxRec *box)
+{
+	if (box->x2 - box->x1 >= op->dst.width &&
+	    box->y2 - box->y1 >= op->dst.height) {
+		struct sna_pixmap *priv = sna_pixmap(op->dst.pixmap);
+		if (op->dst.bo == priv->gpu_bo) {
+			priv->clear = true;
+			priv->clear_color = op->u.blt.pixel;
+			DBG(("%s: pixmap=%ld marking clear [%08x]\n",
+			     __FUNCTION__,
+			     op->dst.pixmap->drawable.serialNumber,
+			     op->u.blt.pixel));
+		}
+	}
+}
+
 fastcall static void blt_composite_fill_box_no_offset(struct sna *sna,
 						      const struct sna_composite_op *op,
 						      const BoxRec *box)
 {
 	_sna_blt_fill_box(sna, &op->u.blt, box);
+	_sna_blt_maybe_clear(op, box);
 }
 
 static void blt_composite_fill_boxes_no_offset(struct sna *sna,
@@ -1208,6 +1225,7 @@ fastcall static void blt_composite_fill_box(struct sna *sna,
 			 box->y1 + op->dst.y,
 			 box->x2 - box->x1,
 			 box->y2 - box->y1);
+	_sna_blt_maybe_clear(op, box);
 }
 
 static void blt_composite_fill_boxes(struct sna *sna,
@@ -2381,8 +2399,8 @@ sna_blt_composite(struct sna *sna,
 		return false;
 	}
 
-	was_clear = sna_drawable_is_clear(dst->pDrawable);
 	tmp->dst.pixmap = get_drawable_pixmap(dst->pDrawable);
+	was_clear = is_clear(tmp->dst.pixmap);
 
 	if (width | height) {
 		dst_box.x1 = dst_x;
@@ -2400,8 +2418,10 @@ sna_blt_composite(struct sna *sna,
 
 	if (op == PictOpClear) {
 clear:
-		if (was_clear)
+		if (was_clear && sna_pixmap(tmp->dst.pixmap)->clear_color == 0) {
+			sna_pixmap(tmp->dst.pixmap)->clear = true;
 			return prepare_blt_nop(sna, tmp);
+		}
 
 		hint = 0;
 		if (can_render(sna)) {
@@ -2458,6 +2478,11 @@ clear:
 fill:
 		if (color == 0)
 			goto clear;
+
+		if (was_clear && sna_pixmap(tmp->dst.pixmap)->clear_color == color) {
+			sna_pixmap(tmp->dst.pixmap)->clear = true;
+			return prepare_blt_nop(sna, tmp);
+		}
 
 		hint = 0;
 		if (can_render(sna)) {
