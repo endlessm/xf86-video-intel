@@ -1780,7 +1780,7 @@ gen6_composite_picture(struct sna *sna,
 		     x + w < pixmap->drawable.width &&
 		     y + h < pixmap->drawable.height)) {
 			struct sna_pixmap *priv = sna_pixmap(pixmap);
-			if (priv->clear) {
+			if (priv && priv->clear) {
 				DBG(("%s: converting large pixmap source into solid [%08x]\n", __FUNCTION__, priv->clear_color));
 				return gen4_channel_init_solid(sna, channel, priv->clear_color);
 			}

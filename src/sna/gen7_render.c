@@ -2026,6 +2026,7 @@ gen7_composite_picture(struct sna *sna,
 	channel->repeat = picture->repeat ? picture->repeatType : RepeatNone;
 	channel->filter = picture->filter;
 
+	assert(picture->pDrawable);
 	pixmap = get_drawable_pixmap(picture->pDrawable);
 	get_drawable_deltas(picture->pDrawable, pixmap, &dx, &dy);
 
@@ -2047,7 +2048,7 @@ gen7_composite_picture(struct sna *sna,
 		     x + w < pixmap->drawable.width &&
 		     y + h < pixmap->drawable.height)) {
 			struct sna_pixmap *priv = sna_pixmap(pixmap);
-			if (priv->clear) {
+			if (priv && priv->clear) {
 				DBG(("%s: converting large pixmap source into solid [%08x]\n", __FUNCTION__, priv->clear_color));
 				return gen4_channel_init_solid(sna, channel, priv->clear_color);
 			}
