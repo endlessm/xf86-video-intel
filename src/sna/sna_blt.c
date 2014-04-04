@@ -815,6 +815,26 @@ sna_picture_is_solid(PicturePtr picture, uint32_t *color)
 }
 
 static bool
+pixel_is_transparent(uint32_t pixel, uint32_t format)
+{
+	unsigned int abits;
+
+	abits = PICT_FORMAT_A(format);
+	if (!abits)
+		return false;
+
+	if (PICT_FORMAT_TYPE(format) == PICT_TYPE_A ||
+	    PICT_FORMAT_TYPE(format) == PICT_TYPE_BGRA) {
+		return (pixel & ((1 << abits) - 1)) == 0;
+	} else if (PICT_FORMAT_TYPE(format) == PICT_TYPE_ARGB ||
+		   PICT_FORMAT_TYPE(format) == PICT_TYPE_ABGR) {
+		unsigned int ashift = PICT_FORMAT_BPP(format) - abits;
+		return (pixel >> ashift) == 0;
+	} else
+		return false;
+}
+
+static bool
 pixel_is_opaque(uint32_t pixel, uint32_t format)
 {
 	unsigned int abits;
@@ -866,6 +886,16 @@ is_white(PicturePtr picture)
 		return fill->color == 0xffffffff;
 	} else
 		return pixel_is_white(get_pixel(picture), picture->format);
+}
+
+static bool
+is_transparent(PicturePtr picture)
+{
+	if (picture->pSourcePict) {
+		PictSolidFill *fill = (PictSolidFill *) picture->pSourcePict;
+		return fill->color == 0;
+	} else
+		return pixel_is_transparent(get_pixel(picture), picture->format);
 }
 
 bool
@@ -2361,6 +2391,71 @@ is_clear(PixmapPtr pixmap)
 	return priv && priv->clear;
 }
 
+static inline uint32_t
+over(uint32_t src, uint32_t dst)
+{
+	uint32_t a = ~src >> 24;
+
+#define G_SHIFT 8
+#define RB_MASK 0xff00ff
+#define RB_ONE_HALF 0x800080
+#define RB_MASK_PLUS_ONE 0x10000100
+
+#define UN8_rb_MUL_UN8(x, a, t) do {				\
+	t  = ((x) & RB_MASK) * (a);				\
+	t += RB_ONE_HALF;					\
+	x = (t + ((t >> G_SHIFT) & RB_MASK)) >> G_SHIFT;	\
+	x &= RB_MASK;						\
+} while (0)
+
+#define UN8_rb_ADD_UN8_rb(x, y, t) do {				\
+	t = ((x) + (y));					\
+	t |= RB_MASK_PLUS_ONE - ((t >> G_SHIFT) & RB_MASK);	\
+	x = (t & RB_MASK);					\
+} while (0)
+
+#define UN8x4_MUL_UN8_ADD_UN8x4(x, a, y) do {			\
+	uint32_t r1__, r2__, r3__, t__;				\
+	\
+	r1__ = (x);						\
+	r2__ = (y) & RB_MASK;					\
+	UN8_rb_MUL_UN8(r1__, (a), t__);				\
+	UN8_rb_ADD_UN8_rb(r1__, r2__, t__);			\
+	\
+	r2__ = (x) >> G_SHIFT;					\
+	r3__ = ((y) >> G_SHIFT) & RB_MASK;			\
+	UN8_rb_MUL_UN8(r2__, (a), t__);				\
+	UN8_rb_ADD_UN8_rb(r2__, r3__, t__);			\
+	\
+	(x) = r1__ | (r2__ << G_SHIFT);				\
+} while (0)
+
+	UN8x4_MUL_UN8_ADD_UN8x4(dst, a, src);
+
+	return dst;
+}
+
+static inline uint32_t
+add(uint32_t src, uint32_t dst)
+{
+#define UN8x4_ADD_UN8x4(x, y) do {				\
+	uint32_t r1__, r2__, r3__, t__;				\
+	\
+	r1__ = (x) & RB_MASK;					\
+	r2__ = (y) & RB_MASK;					\
+	UN8_rb_ADD_UN8_rb(r1__, r2__, t__);			\
+	\
+	r2__ = ((x) >> G_SHIFT) & RB_MASK;			\
+	r3__ = ((y) >> G_SHIFT) & RB_MASK;			\
+	UN8_rb_ADD_UN8_rb(r2__, r3__, t__);			\
+	\
+	x = r1__ | (r2__ << G_SHIFT);				\
+} while (0)
+
+	UN8x4_ADD_UN8x4(src, dst);
+	return src;
+}
+
 bool
 sna_blt_composite(struct sna *sna,
 		  uint32_t op,
@@ -2459,12 +2554,40 @@ clear:
 	}
 
 	if (is_solid(src)) {
+		if ((op == PictOpOver || op == PictOpAdd) && is_transparent(src)) {
+			sna_pixmap(tmp->dst.pixmap)->clear = was_clear;
+			return prepare_blt_nop(sna, tmp);
+		}
 		if (op == PictOpOver && is_opaque_solid(src))
 			op = PictOpSrc;
 		if (op == PictOpAdd && is_white(src))
 			op = PictOpSrc;
-		if (was_clear && (op == PictOpAdd || op == PictOpOver))
-			op = PictOpSrc;
+		if (was_clear && (op == PictOpAdd || op == PictOpOver)) {
+			if (sna_pixmap(tmp->dst.pixmap)->clear_color == 0)
+				op = PictOpSrc;
+			if (op == PictOpOver) {
+				color = over(get_solid_color(src, PICT_a8r8g8b8),
+					     color_convert(sna_pixmap(tmp->dst.pixmap)->clear_color,
+							   dst->format, PICT_a8r8g8b8));
+				op = PictOpSrc;
+				DBG(("%s: precomputing solid OVER (%08x, %08x) -> %08x\n",
+				     get_solid_color(src, PICT_a8r8g8b8),
+				     color_convert(sna_pixmap(tmp->dst.pixmap)->clear_color,
+						   dst->format, PICT_a8r8g8b8),
+				     color));
+			}
+			if (op == PictOpAdd) {
+				color = add(get_solid_color(src, PICT_a8r8g8b8),
+					    color_convert(sna_pixmap(tmp->dst.pixmap)->clear_color,
+							  dst->format, PICT_a8r8g8b8));
+				op = PictOpSrc;
+				DBG(("%s: precomputing solid ADD (%08x, %08x) -> %08x\n",
+				     get_solid_color(src, PICT_a8r8g8b8),
+				     color_convert(sna_pixmap(tmp->dst.pixmap)->clear_color,
+						   dst->format, PICT_a8r8g8b8),
+				     color));
+			}
+		}
 		if (op == PictOpOutReverse && is_opaque_solid(src))
 			goto clear;
 
