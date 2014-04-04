@@ -3004,7 +3004,7 @@ struct sna_cursor {
 };
 
 static void
-rotate_coord(Rotation rotation, int width, int height,
+rotate_coord(Rotation rotation, int size,
 	     int x_dst, int y_dst,
 	     int *x_src, int *y_src)
 {
@@ -3015,38 +3015,38 @@ rotate_coord(Rotation rotation, int width, int height,
 		break;
 	case RR_Rotate_90:
 		t = x_dst;
-		x_dst = height - y_dst - 1;
+		x_dst = size - y_dst - 1;
 		y_dst = t;
 		break;
 	case RR_Rotate_180:
-		x_dst = width - x_dst - 1;
-		y_dst = height - y_dst - 1;
+		x_dst = size - x_dst - 1;
+		y_dst = size - y_dst - 1;
 		break;
 	case RR_Rotate_270:
 		t = x_dst;
 		x_dst = y_dst;
-		y_dst = width - t - 1;
+		y_dst = size - t - 1;
 		break;
 	}
 
 	if (rotation & RR_Reflect_X)
-		x_dst = width - x_dst - 1;
+		x_dst = size - x_dst - 1;
 	if (rotation & RR_Reflect_Y)
-		y_dst = height - y_dst - 1;
+		y_dst = size - y_dst - 1;
 
 	*x_src = x_dst;
 	*y_src = y_dst;
 }
 
 static void
-rotate_coord_back(Rotation rotation, int w, int h, int *x, int *y)
+rotate_coord_back(Rotation rotation, int size, int *x, int *y)
 {
 	int t;
 
 	if (rotation & RR_Reflect_X)
-		*x = w - *x - 1;
+		*x = size - *x - 1;
 	if (rotation & RR_Reflect_Y)
-		*y = h - *y - 1;
+		*y = size - *y - 1;
 
 	switch (rotation & 0xf) {
 	case RR_Rotate_0:
@@ -3054,15 +3054,15 @@ rotate_coord_back(Rotation rotation, int w, int h, int *x, int *y)
 	case RR_Rotate_90:
 		t = *x;
 		*x = *y;
-		*y = w - t - 1;
+		*y = size - t - 1;
 		break;
 	case RR_Rotate_180:
-		*x = w - *x - 1;
-		*y = h - *y - 1;
+		*x = size - *x - 1;
+		*y = size - *y - 1;
 		break;
 	case RR_Rotate_270:
 		t = *x;
-		*x = h - *y - 1;
+		*x = size - *y - 1;
 		*y = t;
 		break;
 	}
@@ -3206,7 +3206,7 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 				uint32_t pixel;
 				int xin, yin;
 
-				rotate_coord(rotation, size, size, x, y, &xin, &yin);
+				rotate_coord(rotation, size, x, y, &xin, &yin);
 				if (xin < width && yin < height)
 					pixel = src[yin * width + xin];
 				else
@@ -3386,7 +3386,7 @@ sna_set_cursor_position(ScrnInfoPtr scrn, int x, int y)
 			v.v[2] = 1;
 			pixman_f_transform_point(&crtc->f_framebuffer_to_crtc, &v);
 
-			rotate_coord_back(crtc->rotation, cursor->size, cursor->size, &xhot, &yhot);
+			rotate_coord_back(crtc->rotation, sna->cursor.size, &xhot, &yhot);
 
 			/* cursor will have 0.5 added to it already so floor is sufficent */
 			arg.x = floor(v.v[0]) - xhot;
