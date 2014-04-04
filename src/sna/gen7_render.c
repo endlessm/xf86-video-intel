@@ -92,6 +92,7 @@ struct gt_info {
 		int push_ps_size; /* in 1KBs */
 	} urb;
 	int gt;
+	uint32_t mocs;
 };
 
 static const struct gt_info ivb_gt_info = {
@@ -110,6 +111,7 @@ static const struct gt_info ivb_gt1_info = {
 	.max_wm_threads = (48-1) << IVB_PS_MAX_THREADS_SHIFT,
 	.urb = { 128, 512, 192, 8 },
 	.gt = 1,
+	.mocs = 3,
 };
 
 static const struct gt_info ivb_gt2_info = {
@@ -119,6 +121,7 @@ static const struct gt_info ivb_gt2_info = {
 	.max_wm_threads = (172-1) << IVB_PS_MAX_THREADS_SHIFT,
 	.urb = { 256, 704, 320, 8 },
 	.gt = 2,
+	.mocs = 3,
 };
 
 static const struct gt_info byt_gt_info = {
@@ -151,6 +154,7 @@ static const struct gt_info hsw_gt1_info = {
 		1 << HSW_PS_SAMPLE_MASK_SHIFT,
 	.urb = { 128, 640, 256, 8 },
 	.gt = 1,
+	.mocs = 5,
 };
 
 static const struct gt_info hsw_gt2_info = {
@@ -162,6 +166,7 @@ static const struct gt_info hsw_gt2_info = {
 		1 << HSW_PS_SAMPLE_MASK_SHIFT,
 	.urb = { 256, 1664, 640, 8 },
 	.gt = 2,
+	.mocs = 5,
 };
 
 static const struct gt_info hsw_gt3_info = {
@@ -173,6 +178,7 @@ static const struct gt_info hsw_gt3_info = {
 		1 << HSW_PS_SAMPLE_MASK_SHIFT,
 	.urb = { 512, 3328, 1280, 16 },
 	.gt = 3,
+	.mocs = 5,
 };
 
 inline static bool is_ivb(struct sna *sna)
@@ -519,9 +525,7 @@ gen7_emit_urb(struct sna *sna)
 static void
 gen7_emit_state_base_address(struct sna *sna)
 {
-	uint32_t mocs;
-
-	mocs = is_hsw(sna) ? 5 << 8 : 3 << 8;
+	uint32_t mocs = sna->render_state.gen7.info->mocs << 8;
 
 	OUT_BATCH(GEN7_STATE_BASE_ADDRESS | (10 - 2));
 	OUT_BATCH(0); /* general */
@@ -1310,7 +1314,7 @@ gen7_bind_bo(struct sna *sna,
 		 (height - 1) << GEN7_SURFACE_HEIGHT_SHIFT);
 	ss[3] = (bo->pitch - 1) << GEN7_SURFACE_PITCH_SHIFT;
 	ss[4] = 0;
-	ss[5] = (is_scanout || bo->io) ? 0 : is_hsw(sna) ? 5 << 16 : 3 << 16;
+	ss[5] = (is_scanout || bo->io) ? 0 : sna->render_state.gen7.info->mocs << 16;
 	ss[6] = 0;
 	ss[7] = 0;
 	if (is_hsw(sna))
