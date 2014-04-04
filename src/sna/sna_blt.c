@@ -2564,9 +2564,14 @@ fill:
 
 	src_pixmap = get_drawable_pixmap(src->pDrawable);
 	if (is_clear(src_pixmap)) {
-		color = color_convert(sna_pixmap(src_pixmap)->clear_color,
-				      src->format, tmp->dst.format);
-		goto fill;
+		if (src->repeat ||
+		    (x >= 0 && y >= 0 &&
+		     x + width  < src_pixmap->drawable.width &&
+		     y + height < src_pixmap->drawable.height)) {
+			color = color_convert(sna_pixmap(src_pixmap)->clear_color,
+					      src->format, tmp->dst.format);
+			goto fill;
+		}
 	}
 
 	alpha_fixup = 0;
