@@ -2500,7 +2500,10 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 		flags |= MOVE_INPLACE_HINT;
 	}
 
-	if (flags & MOVE_WHOLE_HINT && priv->gpu_damage == NULL)
+	if ((flags & (MOVE_WHOLE_HINT | MOVE_READ)) == (MOVE_WHOLE_HINT | MOVE_READ))
+		return _sna_pixmap_move_to_cpu(pixmap, flags);
+
+	if (flags & MOVE_WHOLE_HINT && priv->gpu_damage == NULL && priv->cpu_damage == NULL)
 		return _sna_pixmap_move_to_cpu(pixmap, flags);
 
 	if (priv->gpu_damage == NULL &&
@@ -2527,22 +2530,18 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 		return _sna_pixmap_move_to_cpu(pixmap, flags);
 	}
 
-	if ((flags & MOVE_READ) == 0 &&
-	    priv->gpu_damage &&
-	    region_subsumes_damage(region, priv->gpu_damage)) {
-		DBG(("%s: region [(%d, %d), (%d, %d)] subsumes damage [(%d,%d), (%d, %d)]\n",
+	if (flags & MOVE_WHOLE_HINT) {
+		DBG(("%s: region (%d, %d), (%d, %d) marked with WHOLE hint, pixmap %dx%d\n",
 		       __FUNCTION__,
 		       region->extents.x1,
 		       region->extents.y1,
 		       region->extents.x2,
 		       region->extents.y2,
-		       priv->gpu_damage->extents.x1,
-		       priv->gpu_damage->extents.y1,
-		       priv->gpu_damage->extents.x2,
-		       priv->gpu_damage->extents.y2));
+		       pixmap->drawable.width,
+		       pixmap->drawable.height));
 		if (dx | dy)
 			RegionTranslate(region, -dx, -dy);
-		return _sna_pixmap_move_to_cpu(pixmap, flags);
+		return _sna_pixmap_move_to_cpu(pixmap, flags | MOVE_READ);
 	}
 
 	if (priv->move_to_gpu && !priv->move_to_gpu(sna, priv, MOVE_READ)) {
@@ -4471,17 +4470,19 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 	if (wedged(sna))
 		return false;
 
-	DBG(("%s: bo? %d, can map? %d\n", __FUNCTION__,
-	     priv->gpu_bo != NULL,
-	     priv->gpu_bo ? kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, true) : 0));
-
 	replaces = region->data == NULL &&
 		w >= pixmap->drawable.width &&
 		h >= pixmap->drawable.height;
 
+	DBG(("%s: bo? %d, can map? %d, replaces? %d\n", __FUNCTION__,
+	     priv->gpu_bo != NULL,
+	     priv->gpu_bo ? kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, true) : 0,
+	     replaces));
+
 	if (priv->gpu_bo && (replaces || priv->gpu_bo->proxy)) {
 		DBG(("%s: discarding cached upload proxy\n", __FUNCTION__));
 		sna_pixmap_free_gpu(sna, priv);
+		replaces = true; /* Mark it all GPU damaged afterwards */
 	}
 	assert(priv->gpu_bo == NULL || priv->gpu_bo->proxy == NULL);
 
@@ -4616,8 +4617,11 @@ sna_put_zpixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 		return true;
 
 	hint = MOVE_WRITE;
-	if (w == pixmap->drawable.width && h*stride > 4096)
+	if (w == pixmap->drawable.width && (h+1)*stride > 65536) {
+		DBG(("%s: large upload (%d bytes), marking WHOLE_HINT\n",
+		     __FUNCTION__, h*stride));
 		hint |= MOVE_WHOLE_HINT;
+	}
 
 	if (!sna_drawable_move_region_to_cpu(&pixmap->drawable, region, hint))
 		return false;
