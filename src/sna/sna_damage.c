@@ -641,7 +641,7 @@ static struct sna_damage *__sna_damage_add_box(struct sna_damage *damage,
 		break;
 	}
 
-	if (REGION_NUM_RECTS(&damage->region) <= 1 ||
+	if (damage->region.data == NULL ||
 	    box_contains_region(box, &damage->region)) {
 		_pixman_region_union_box(&damage->region, box);
 		assert(damage->region.extents.x2 > damage->region.extents.x1);
@@ -679,7 +679,7 @@ inline static struct sna_damage *__sna_damage_add(struct sna_damage *damage,
 	if (region->data == NULL)
 		return __sna_damage_add_box(damage, &region->extents);
 
-	if (REGION_NUM_RECTS(&damage->region) <= 1) {
+	if (damage->region.data == NULL) {
 		pixman_region_union(&damage->region, &damage->region, region);
 		assert(damage->region.extents.x2 > damage->region.extents.x1);
 		assert(damage->region.extents.y2 > damage->region.extents.y1);
