@@ -8849,7 +8849,7 @@ sna_poly_line_blt(DrawablePtr drawable,
 	DDXPointRec last;
 	int16_t dx, dy;
 
-	DBG(("%s: alu=%d, fg=%08x\n", __FUNCTION__, gc->alu, (unsigned)pixel));
+	DBG(("%s: alu=%d, fg=%08x, clipped=%d\n", __FUNCTION__, gc->alu, (unsigned)pixel, clipped));
 
 	if (!sna_fill_init_blt(&fill, sna, pixmap, bo, gc->alu, pixel, FILL_BOXES))
 		return false;
@@ -8875,6 +8875,8 @@ sna_poly_line_blt(DrawablePtr drawable,
 				p.x += dx;
 				p.y += dy;
 			}
+			DBG(("%s: line (%d, %d) -> (%d, %d)\n", __FUNCTION__, last.x, last.y, p.x, p.y));
+
 			if (last.x == p.x) {
 				b->x1 = last.x;
 				b->x2 = last.x + 1;
@@ -8885,6 +8887,7 @@ sna_poly_line_blt(DrawablePtr drawable,
 				b->x1 = p.x;
 				b->x2 = last.x;
 			}
+
 			if (last.y == p.y) {
 				b->y1 = last.y;
 				b->y2 = last.y + 1;
@@ -8895,11 +8898,12 @@ sna_poly_line_blt(DrawablePtr drawable,
 				b->y1 = p.y;
 				b->y2 = last.y;
 			}
-			b->y2 += last.x == p.x;
-			b->x2 += last.y == p.y;
+			b->y2 += last.x == p.x && last.y != p.y;
+			b->x2 += last.y == p.y && last.x != p.x;
 			DBG(("%s: blt (%d, %d), (%d, %d)\n",
 			     __FUNCTION__,
 			     b->x1, b->y1, b->x2, b->y2));
+
 			if (++b == last_box) {
 				assert_pixmap_contains_boxes(pixmap, boxes, last_box-boxes, 0, 0);
 				fill.boxes(sna, &fill, boxes, last_box - boxes);
@@ -8953,8 +8957,8 @@ sna_poly_line_blt(DrawablePtr drawable,
 					b->y1 = p.y;
 					b->y2 = last.y;
 				}
-				b->y2 += last.x == p.x;
-				b->x2 += last.y == p.y;
+				b->y2 += last.x == p.x && last.y != p.y;
+				b->x2 += last.y == p.y && last.x != p.x;
 				DBG(("%s: blt (%d, %d), (%d, %d)\n",
 				     __FUNCTION__,
 				     b->x1, b->y1, b->x2, b->y2));
@@ -9011,8 +9015,8 @@ sna_poly_line_blt(DrawablePtr drawable,
 					box.y1 = p.y;
 					box.y2 = last.y;
 				}
-				b->y2 += last.x == p.x;
-				b->x2 += last.y == p.y;
+				b->y2 += last.x == p.x && last.y != p.y;
+				b->x2 += last.y == p.y && last.x != p.x;
 				DBG(("%s: blt (%d, %d), (%d, %d)\n",
 				     __FUNCTION__,
 				     box.x1, box.y1, box.x2, box.y2));
@@ -9183,9 +9187,10 @@ sna_poly_line(DrawablePtr drawable, GCPtr gc,
 	if (data.flags == 0)
 		return;
 
-	DBG(("%s: extents (%d, %d), (%d, %d)\n", __FUNCTION__,
+	DBG(("%s: extents (%d, %d), (%d, %d), flags=%x\n", __FUNCTION__,
 	     data.region.extents.x1, data.region.extents.y1,
-	     data.region.extents.x2, data.region.extents.y2));
+	     data.region.extents.x2, data.region.extents.y2,
+	     data.flags));
 
 	data.region.data = NULL;
 
@@ -9202,7 +9207,7 @@ sna_poly_line(DrawablePtr drawable, GCPtr gc,
 		goto fallback;
 	}
 
-	DBG(("%s: fill=%d [%d], line=%d [%d], width=%d, mask=%lu [%d], rectlinear=%d\n",
+	DBG(("%s: fill=%d [%d], line=%d [%d], width=%d, mask=%lx [%d], rectlinear=%d\n",
 	     __FUNCTION__,
 	     gc->fillStyle, gc->fillStyle == FillSolid,
 	     gc->lineStyle, gc->lineStyle == LineSolid,
