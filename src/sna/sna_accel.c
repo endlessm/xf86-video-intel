@@ -2500,16 +2500,11 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 		flags |= MOVE_INPLACE_HINT;
 	}
 
-	if ((flags & (MOVE_WHOLE_HINT | MOVE_READ)) == (MOVE_WHOLE_HINT | MOVE_READ))
-		return _sna_pixmap_move_to_cpu(pixmap, flags);
-
-	if (flags & MOVE_WHOLE_HINT && priv->gpu_damage == NULL && priv->cpu_damage == NULL)
-		return _sna_pixmap_move_to_cpu(pixmap, flags);
-
-	if (priv->gpu_damage == NULL &&
-	    (priv->create & KGEM_CAN_CREATE_GPU) == 0 &&
-	    flags & MOVE_WRITE)
-		return _sna_pixmap_move_to_cpu(pixmap, flags);
+	if (flags & MOVE_READ || (priv->gpu_damage == NULL && priv->cpu_damage == NULL)) {
+		if (flags & MOVE_WHOLE_HINT ||
+		    (flags & MOVE_WRITE && (priv->create & KGEM_CAN_CREATE_GPU) == 0))
+			return _sna_pixmap_move_to_cpu(pixmap, flags);
+	}
 
 	if (get_drawable_deltas(drawable, pixmap, &dx, &dy)) {
 		DBG(("%s: delta=(%d, %d)\n", __FUNCTION__, dx, dy));
