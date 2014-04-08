@@ -194,16 +194,19 @@ static inline uint32_t fb_id(struct kgem_bo *bo)
 
 uint32_t sna_crtc_id(xf86CrtcPtr crtc)
 {
+	assert(to_sna_crtc(crtc));
 	return to_sna_crtc(crtc)->id;
 }
 
 int sna_crtc_to_pipe(xf86CrtcPtr crtc)
 {
+	assert(to_sna_crtc(crtc));
 	return to_sna_crtc(crtc)->pipe;
 }
 
 uint32_t sna_crtc_to_sprite(xf86CrtcPtr crtc)
 {
+	assert(to_sna_crtc(crtc));
 	return to_sna_crtc(crtc)->sprite;
 }
 
@@ -505,6 +508,7 @@ sna_crtc_force_outputs_on(xf86CrtcPtr crtc)
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(crtc->scrn);
 	int i;
 
+	assert(to_sna_crtc(crtc));
 	DBG(("%s(pipe=%d), currently? %d\n", __FUNCTION__,
 	     to_sna_crtc(crtc)->pipe, to_sna_crtc(crtc)->dpms_mode));
 
@@ -536,6 +540,7 @@ sna_crtc_force_outputs_off(xf86CrtcPtr crtc)
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(crtc->scrn);
 	int i;
 
+	assert(to_sna_crtc(crtc));
 	DBG(("%s(pipe=%d), currently? %d\n", __FUNCTION__,
 	     to_sna_crtc(crtc)->pipe, to_sna_crtc(crtc)->dpms_mode));
 
@@ -697,6 +702,7 @@ rotation_reset(struct rotation *r)
 
 bool sna_crtc_set_sprite_rotation(xf86CrtcPtr crtc, uint32_t rotation)
 {
+	assert(to_sna_crtc(crtc));
 	DBG(("%s: CRTC:%d [pipe=%d], sprite=%u set-rotation=%x\n",
 	     __FUNCTION__,
 	     to_sna_crtc(crtc)->id, to_sna_crtc(crtc)->pipe, to_sna_crtc(crtc)->sprite,
