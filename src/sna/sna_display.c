@@ -3238,16 +3238,39 @@ sna_realize_cursor(xf86CursorInfoPtr info, CursorPtr cursor)
 	return NULL;
 }
 
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,12,99,901,0)
+static inline int sigio_block(void)
+{
+	OsBlockSIGIO();
+	return 0;
+}
+static inline void sigio_unblock(int was_blocked)
+{
+	OsReleaseSIGIO();
+	(void)was_blocked;
+}
+#else
+#include <xf86_OSproc.h>
+static inline int sigio_block(void)
+{
+	return xf86BlockSIGIO();
+}
+static inline void sigio_unblock(int was_blocked)
+{
+	xf86UnblockSIGIO(was_blocked);
+}
+#endif
+
 static void
 sna_show_cursors(ScrnInfoPtr scrn)
 {
 	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
 	struct sna *sna = to_sna(scrn);
-	int c;
+	int sigio, c;
 
 	__DBG(("%s\n", __FUNCTION__));
 
-	OsBlockSIGIO();
+	sigio = sigio_block();
 	for (c = 0; c < xf86_config->num_crtc; c++) {
 		xf86CrtcPtr crtc = xf86_config->crtc[c];
 		struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
@@ -3282,7 +3305,7 @@ sna_show_cursors(ScrnInfoPtr scrn)
 		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg) == 0)
 			sna_crtc->cursor = cursor;
 	}
-	OsReleaseSIGIO();
+	sigio_unblock(sigio);
 }
 
 static void
@@ -3311,11 +3334,11 @@ sna_hide_cursors(ScrnInfoPtr scrn)
 {
 	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
 	struct sna *sna = to_sna(scrn);
-	int c;
+	int sigio, c;
 
 	__DBG(("%s\n", __FUNCTION__));
 
-	OsBlockSIGIO();
+	sigio = sigio_block();
 	for (c = 0; c < xf86_config->num_crtc; c++) {
 		xf86CrtcPtr crtc = xf86_config->crtc[c];
 		struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
@@ -3346,7 +3369,7 @@ sna_hide_cursors(ScrnInfoPtr scrn)
 		gem_close(sna->kgem.fd, cursor->handle);
 		free(cursor);
 	}
-	OsReleaseSIGIO();
+	sigio_unblock(sigio);
 }
 
 static void
@@ -3354,11 +3377,11 @@ sna_set_cursor_position(ScrnInfoPtr scrn, int x, int y)
 {
 	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
 	struct sna *sna = to_sna(scrn);
-	int c;
+	int sigio, c;
 
 	__DBG(("%s(%d, %d)\n", __FUNCTION__, x, y));
 
-	OsBlockSIGIO();
+	sigio = sigio_block();
 	sna->cursor.last_x = x;
 	sna->cursor.last_y = y;
 
@@ -3435,7 +3458,7 @@ disable:
 		    drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg) == 0)
 			sna_crtc->cursor = cursor;
 	}
-	OsReleaseSIGIO();
+	sigio_unblock(sigio);
 }
 
 static void
