@@ -3903,7 +3903,7 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 			xf86CrtcPtr crtc = config->crtc[j];
 
 			if (to_sna_crtc(crtc) == NULL)
-				break;
+				continue;
 
 			if (to_sna_crtc(crtc)->id != crtc_id)
 				continue;
