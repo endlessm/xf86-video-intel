@@ -1661,14 +1661,16 @@ done:
 
 static void clone_damage(struct clone *c, const XRectangle *rec)
 {
-	if (rec->x < c->damaged.x1)
-		c->damaged.x1 = rec->x;
-	if (rec->width > c->damaged.x2 - rec->x)
-		c->damaged.x2 = (int)rec->x + rec->width;
-	if (rec->y < c->damaged.y1)
-		c->damaged.y1 = rec->y;
-	if (rec->height > c->damaged.y2 - rec->y)
-		c->damaged.y2 = (int)rec->y + rec->height;
+	int v;
+
+	if ((v = rec->x) < c->damaged.x1)
+		c->damaged.x1 = v;
+	if ((v = (int)rec->x + rec->width) > c->damaged.x2)
+		c->damaged.x2 = v;
+	if ((v = rec->y) < c->damaged.y1)
+		c->damaged.y1 = v;
+	if ((v = (int)rec->y + rec->height) > c->damaged.y2)
+		c->damaged.y2 = v;
 
 	DBG(("%s-%s damaged: (%d, %d), (%d, %d)\n",
 	     DisplayString(c->dst.display->dpy), c->dst.name,
