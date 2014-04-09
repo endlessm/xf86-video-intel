@@ -234,6 +234,13 @@ static inline bool region_is_singular(const RegionRec *r)
 	return r->data == NULL;
 }
 
+static inline bool region_is_unclipped(const RegionRec *r, int w, int h)
+{
+	return (region_is_singular(r) &&
+		w == r->extents.x2 - r->extents.x1 &&
+		h == r->extents.y2 - r->extents.y1);
+}
+
 typedef struct box32 {
 	int32_t x1, y1, x2, y2;
 } Box32Rec;
@@ -4455,9 +4462,7 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 	if (wedged(sna))
 		return false;
 
-	replaces = region->data == NULL &&
-		w >= pixmap->drawable.width &&
-		h >= pixmap->drawable.height;
+	replaces = region_subsumes_pixmap(region, pixmap);
 
 	DBG(("%s: bo? %d, can map? %d, replaces? %d\n", __FUNCTION__,
 	     priv->gpu_bo != NULL,
@@ -4516,6 +4521,25 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 
 	if (priv->gpu_bo->tiling) {
 		do {
+			DBG(("%s: copy tiled box (%d, %d)->(%d, %d)x(%d, %d)\n",
+			     __FUNCTION__,
+			     box->x1 - x, box->y1 - y,
+			     box->x1, box->y1,
+			     box->x2 - box->x1, box->y2 - box->y1));
+
+			assert(box->x2 > box->x1);
+			assert(box->y2 > box->y1);
+
+			assert(box->x1 >= 0);
+			assert(box->y1 >= 0);
+			assert(box->x2 <= pixmap->drawable.width);
+			assert(box->y2 <= pixmap->drawable.height);
+
+			assert(box->x1 - x >= 0);
+			assert(box->y1 - y >= 0);
+			assert(box->x2 - x <= w);
+			assert(box->y2 - y <= h);
+
 			memcpy_to_tiled_x(&sna->kgem, bits, dst,
 					  pixmap->drawable.bitsPerPixel,
 					  stride, priv->gpu_bo->pitch,
@@ -4526,6 +4550,25 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 		} while (--n);
 	} else {
 		do {
+			DBG(("%s: copy lined box (%d, %d)->(%d, %d)x(%d, %d)\n",
+			     __FUNCTION__,
+			     box->x1 - x, box->y1 - y,
+			     box->x1, box->y1,
+			     box->x2 - box->x1, box->y2 - box->y1));
+
+			assert(box->x2 > box->x1);
+			assert(box->y2 > box->y1);
+
+			assert(box->x1 >= 0);
+			assert(box->y1 >= 0);
+			assert(box->x2 <= pixmap->drawable.width);
+			assert(box->y2 <= pixmap->drawable.height);
+
+			assert(box->x1 - x >= 0);
+			assert(box->y1 - y >= 0);
+			assert(box->x2 - x <= w);
+			assert(box->y2 - y <= h);
+
 			memcpy_blt(bits, dst,
 				   pixmap->drawable.bitsPerPixel,
 				   stride, priv->gpu_bo->pitch,
@@ -4602,8 +4645,8 @@ sna_put_zpixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 		return true;
 
 	hint = MOVE_WRITE;
-	if (w == pixmap->drawable.width && (h+1)*stride > 65536) {
-		DBG(("%s: large upload (%d bytes), marking WHOLE_HINT\n",
+	if (region_is_unclipped(region, w, h) && (h+1)*stride > 65536) {
+		DBG(("%s: segmented, unclipped large upload (%d bytes), marking WHOLE_HINT\n",
 		     __FUNCTION__, h*stride));
 		hint |= MOVE_WHOLE_HINT;
 	}
