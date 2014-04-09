@@ -55,9 +55,14 @@ struct sna_damage_box {
 
 static struct sna_damage *__freed_damage;
 
-static inline bool region_is_singular(RegionRec *r)
+static inline bool region_is_singular(const RegionRec *r)
 {
 	return r->data == NULL;
+}
+
+static inline bool region_is_singular_or_empty(const RegionRec *r)
+{
+	return r->data == NULL || r->data->numRects == 0;
 }
 
 #if HAS_DEBUG_FULL
@@ -641,7 +646,7 @@ static struct sna_damage *__sna_damage_add_box(struct sna_damage *damage,
 		break;
 	}
 
-	if (damage->region.data == NULL ||
+	if (region_is_singular_or_empty(&damage->region) ||
 	    box_contains_region(box, &damage->region)) {
 		_pixman_region_union_box(&damage->region, box);
 		assert(damage->region.extents.x2 > damage->region.extents.x1);
@@ -676,10 +681,10 @@ inline static struct sna_damage *__sna_damage_add(struct sna_damage *damage,
 		break;
 	}
 
-	if (region->data == NULL)
+	if (region_is_singular(region))
 		return __sna_damage_add_box(damage, &region->extents);
 
-	if (damage->region.data == NULL) {
+	if (region_is_singular_or_empty(&damage->region)) {
 		pixman_region_union(&damage->region, &damage->region, region);
 		assert(damage->region.extents.x2 > damage->region.extents.x1);
 		assert(damage->region.extents.y2 > damage->region.extents.y1);
