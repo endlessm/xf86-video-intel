@@ -648,6 +648,13 @@ box_inplace(PixmapPtr pixmap, const BoxRec *box)
 }
 
 static inline bool
+whole_pixmap_inplace(PixmapPtr pixmap)
+{
+	struct sna *sna = to_sna_from_pixmap(pixmap);
+	return ((int)pixmap->drawable.width * (int)pixmap->drawable.height * pixmap->drawable.bitsPerPixel >> 12) >= sna->kgem.half_cpu_cache_pages;
+}
+
+static inline bool
 region_subsumes_drawable(RegionPtr region, DrawablePtr drawable)
 {
 	const BoxRec *extents;
