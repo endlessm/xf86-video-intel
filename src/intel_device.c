@@ -270,6 +270,18 @@ static int get_fd(struct xf86_platform_device *dev)
 }
 #endif
 
+static int is_master(int fd)
+{
+	drmSetVersion sv;
+
+	sv.drm_di_major = 1;
+	sv.drm_di_minor = 1;
+	sv.drm_dd_major = -1;
+	sv.drm_dd_minor = -1;
+
+	return drmIoctl(fd, DRM_IOCTL_SET_VERSION, &sv) == 0;
+}
+
 int intel_open_device(int entity_num,
 		      const struct pci_device *pci,
 		      struct xf86_platform_device *platform)
@@ -314,6 +326,10 @@ int intel_open_device(int entity_num,
 
 	/* If hosted under a system compositor, just pretend to be master */
 	if (hosted())
+		master_count++;
+
+	/* Non-root user holding MASTER, don't let go */
+	if (geteuid() && is_master(fd))
 		master_count++;
 
 	dev->fd = fd;
