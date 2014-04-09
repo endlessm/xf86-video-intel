@@ -219,7 +219,13 @@ intel_glamor_init(ScreenPtr screen)
 	if ((intel->uxa_flags & UXA_GLAMOR_EGL_INITIALIZED) == 0)
 		goto fail;
 
-	if (!glamor_init(screen, GLAMOR_INVERTED_Y_AXIS | GLAMOR_USE_EGL_SCREEN)) {
+	if (!glamor_init(screen,
+#if defined(GLAMOR_NO_DRI3)
+			 /* Not doing DRI3 yet, since Present support hasn't landed. */
+			 GLAMOR_NO_DRI3 |
+#endif
+			 GLAMOR_INVERTED_Y_AXIS |
+			 GLAMOR_USE_EGL_SCREEN)) {
 		xf86DrvMsg(scrn->scrnIndex, X_ERROR,
 			   "Failed to initialize glamor.\n");
 		goto fail;
