@@ -432,8 +432,8 @@ intel_crtc_set_cursor_position (xf86CrtcPtr crtc, int x, int y)
 	drmModeMoveCursor(mode->fd, crtc_id(intel_crtc), x, y);
 }
 
-static void
-intel_crtc_load_cursor_argb(xf86CrtcPtr crtc, CARD32 *image)
+static int
+__intel_crtc_load_cursor_argb(xf86CrtcPtr crtc, CARD32 *image)
 {
 	struct intel_crtc *intel_crtc = crtc->driver_private;
 	int ret;
@@ -442,7 +442,23 @@ intel_crtc_load_cursor_argb(xf86CrtcPtr crtc, CARD32 *image)
 	if (ret)
 		xf86DrvMsg(crtc->scrn->scrnIndex, X_ERROR,
 			   "failed to set cursor: %s\n", strerror(-ret));
+
+	return ret;
 }
+
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,15,99,902,0)
+static Bool
+intel_crtc_load_cursor_argb(xf86CrtcPtr crtc, CARD32 *image)
+{
+	return __intel_crtc_load_cursor_argb(crtc, image) == 0;
+}
+#else
+static void
+intel_crtc_load_cursor_argb(xf86CrtcPtr crtc, CARD32 *image)
+{
+	__intel_crtc_load_cursor_argb(crtc, image);
+}
+#endif
 
 static void
 intel_crtc_hide_cursor(xf86CrtcPtr crtc)
