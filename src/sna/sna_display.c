@@ -3093,12 +3093,18 @@ static struct sna_cursor *__sna_create_cursor(struct sna *sna)
 		return NULL;
 	}
 
-	c->image = gem_mmap(sna->kgem.fd, c->handle, c->alloc);
-	if (c->image == NULL) {
-		gem_close(sna->kgem.fd, c->handle);
-		free(c);
-		return NULL;
-	}
+	/* Old hardware uses physical addresses, which the kernel
+	 * implements in an incoherent fashion requiring a pwrite.
+	 */
+	if (sna->kgem.gen >= 033) {
+		c->image = gem_mmap(sna->kgem.fd, c->handle, c->alloc);
+		if (c->image == NULL) {
+			gem_close(sna->kgem.fd, c->handle);
+			free(c);
+			return NULL;
+		}
+	} else
+		c->image = NULL;
 
 	__DBG(("%s: handle=%d, allocated %d\n", __FUNCTION__, c->handle, size));
 
@@ -3114,7 +3120,7 @@ static struct sna_cursor *__sna_create_cursor(struct sna *sna)
 static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 {
 	struct sna_cursor *cursor;
-	uint32_t *src;
+	uint32_t *src, *image;
 	int width, height, size, x, y;
 	Rotation rotation;
 
@@ -3198,10 +3204,21 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 		}
 	}
 
+	image = cursor->image;
+	if (image == NULL) {
+		image = malloc(4*size*size);
+		if (image == NULL) {
+			if (src != (uint32_t *)sna->cursor.ref->bits->argb)
+				free(src);
+			return NULL;
+		}
+
+		cursor->last_width = cursor->last_height = size;
+	}
 	if (width < cursor->last_width || height < cursor->last_height)
-		memset(cursor->image, 0, 4*size*size);
+		memset(image, 0, 4*size*size);
 	if (rotation == RR_Rotate_0) {
-		memcpy_blt(src, cursor->image, 32,
+		memcpy_blt(src, image, 32,
 			   width * 4, size * 4,
 			   0, 0,
 			   0, 0,
@@ -3217,8 +3234,21 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 					pixel = src[yin * width + xin];
 				else
 					pixel = 0;
-				cursor->image[y * size + x] = pixel;
+				image[y * size + x] = pixel;
 			}
+	}
+
+	if (image != cursor->image) {
+		struct drm_i915_gem_pwrite pwrite;
+
+		VG_CLEAR(pwrite);
+		pwrite.handle = cursor->handle;
+		pwrite.offset = 0;
+		pwrite.size = 4*size*size;
+		pwrite.data_ptr = (uintptr_t)image;
+		(void)drmIoctl(sna->kgem.fd, DRM_IOCTL_I915_GEM_PWRITE, &pwrite);
+
+		free(image);
 	}
 
 	if (src != (uint32_t *)sna->cursor.ref->bits->argb)
@@ -3365,7 +3395,8 @@ sna_hide_cursors(ScrnInfoPtr scrn)
 	while (sna->cursor.cursors) {
 		struct sna_cursor *cursor = sna->cursor.cursors;
 		sna->cursor.cursors = cursor->next;
-		munmap(cursor->image, cursor->alloc);
+		if (cursor->image)
+			munmap(cursor->image, cursor->alloc);
 		gem_close(sna->kgem.fd, cursor->handle);
 		free(cursor);
 	}
