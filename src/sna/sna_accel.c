@@ -2502,8 +2502,11 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 
 	if (flags & MOVE_READ || (priv->gpu_damage == NULL && priv->cpu_damage == NULL)) {
 		if (flags & MOVE_WHOLE_HINT ||
-		    (flags & MOVE_WRITE && (priv->create & KGEM_CAN_CREATE_GPU) == 0))
+		    (flags & MOVE_WRITE && (priv->create & KGEM_CAN_CREATE_GPU) == 0)) {
+			DBG(("%s: promoting to whole CPU migration (GPU damage? %d, CPU damage? %d), read? %d, write? %d, whole? %d, can-create-gpu? %d\n",
+			     __FUNCTION__, priv->gpu_damage != NULL, priv->cpu_damage != NULL, flags & MOVE_READ, flags & MOVE_WRITE, flags & MOVE_WHOLE_HINT, priv->create & KGEM_CAN_CREATE_GPU));
 			return _sna_pixmap_move_to_cpu(pixmap, flags);
+		}
 	}
 
 	if (get_drawable_deltas(drawable, pixmap, &dx, &dy)) {
