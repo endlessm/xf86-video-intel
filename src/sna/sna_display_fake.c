@@ -106,22 +106,11 @@ sna_crtc_destroy(xf86CrtcPtr crtc)
 {
 }
 
-#if HAS_PIXMAP_SHARING
-static Bool
-sna_crtc_set_scanout_pixmap(xf86CrtcPtr crtc, PixmapPtr pixmap)
-{
-	return TRUE;
-}
-#endif
-
 static const xf86CrtcFuncsRec sna_crtc_funcs = {
 	.dpms = sna_crtc_dpms,
 	.set_mode_major = sna_crtc_set_mode_major,
 	.gamma_set = sna_crtc_gamma_set,
 	.destroy = sna_crtc_destroy,
-#if HAS_PIXMAP_SHARING
-	.set_scanout_pixmap = sna_crtc_set_scanout_pixmap,
-#endif
 };
 
 static void
