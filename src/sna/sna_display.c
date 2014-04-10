@@ -3533,22 +3533,21 @@ sna_use_hw_cursor(ScreenPtr screen, CursorPtr cursor)
 	struct sna *sna = to_sna_from_screen(screen);
 
 	/* cursors are invariant */
-	if (cursor == sna->cursor.ref)
-		return TRUE;
+	if (cursor != sna->cursor.ref) {
+		cursor->refcnt++;
+		if (sna->cursor.ref)
+			FreeCursor(sna->cursor.ref, None);
+		sna->cursor.ref = cursor;
+		sna->cursor.size = __cursor_size(cursor);
+		sna->cursor.serial++;
 
-	cursor->refcnt++;
-	if (sna->cursor.ref)
-		FreeCursor(sna->cursor.ref, None);
-	sna->cursor.ref = cursor;
-	sna->cursor.size = __cursor_size(cursor);
-	sna->cursor.serial++;
-
-	__DBG(("%s(%dx%d): ARGB?=%d, serial->%d, size->%d\n", __FUNCTION__,
-	       cursor->bits->width,
-	       cursor->bits->height,
-	       cursor->bits->argb!=NULL,
-	       sna->cursor.serial,
-	       sna->cursor.size));
+		__DBG(("%s(%dx%d): ARGB?=%d, serial->%d, size->%d\n", __FUNCTION__,
+		       cursor->bits->width,
+		       cursor->bits->height,
+		       cursor->bits->argb!=NULL,
+		       sna->cursor.serial,
+		       sna->cursor.size));
+	}
 
 	return sna->cursor.size <= sna->cursor.max_size;
 }
