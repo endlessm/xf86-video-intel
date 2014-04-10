@@ -96,31 +96,6 @@ sna_crtc_set_mode_major(xf86CrtcPtr crtc, DisplayModePtr mode,
 }
 
 static void
-sna_crtc_set_cursor_colors(xf86CrtcPtr crtc, int bg, int fg)
-{
-}
-
-static void
-sna_crtc_set_cursor_position(xf86CrtcPtr crtc, int x, int y)
-{
-}
-
-static void
-sna_crtc_hide_cursor(xf86CrtcPtr crtc)
-{
-}
-
-static void
-sna_crtc_show_cursor(xf86CrtcPtr crtc)
-{
-}
-
-static void
-sna_crtc_load_cursor_argb(xf86CrtcPtr crtc, CARD32 *image)
-{
-}
-
-static void
 sna_crtc_gamma_set(xf86CrtcPtr crtc,
 		       CARD16 *red, CARD16 *green, CARD16 *blue, int size)
 {
@@ -142,11 +117,6 @@ sna_crtc_set_scanout_pixmap(xf86CrtcPtr crtc, PixmapPtr pixmap)
 static const xf86CrtcFuncsRec sna_crtc_funcs = {
 	.dpms = sna_crtc_dpms,
 	.set_mode_major = sna_crtc_set_mode_major,
-	.set_cursor_colors = sna_crtc_set_cursor_colors,
-	.set_cursor_position = sna_crtc_set_cursor_position,
-	.show_cursor = sna_crtc_show_cursor,
-	.hide_cursor = sna_crtc_hide_cursor,
-	.load_cursor_argb = sna_crtc_load_cursor_argb,
 	.gamma_set = sna_crtc_gamma_set,
 	.destroy = sna_crtc_destroy,
 #if HAS_PIXMAP_SHARING
