@@ -1390,17 +1390,19 @@ static void sna_crtc_randr(xf86CrtcPtr crtc)
 	xFixed *params;
 	int nparams;
 	RRTransformPtr transform;
+	int needs_transform;
 
 	transform = NULL;
 	if (crtc->transformPresent)
 		transform = &crtc->transform;
 
-	RRTransformCompute(crtc->x, crtc->y,
-			   crtc->mode.HDisplay, crtc->mode.VDisplay,
-			   crtc->rotation, transform,
-			   &crtc_to_fb,
-			   &f_crtc_to_fb,
-			   &f_fb_to_crtc);
+	needs_transform =
+		RRTransformCompute(crtc->x, crtc->y,
+				   crtc->mode.HDisplay, crtc->mode.VDisplay,
+				   crtc->rotation, transform,
+				   &crtc_to_fb,
+				   &f_crtc_to_fb,
+				   &f_fb_to_crtc);
 
 	filter = NULL;
 	params = NULL;
@@ -1420,7 +1422,7 @@ static void sna_crtc_randr(xf86CrtcPtr crtc)
 				filter = transform->filter;
 		}
 #endif
-		crtc->transform_in_use = TRUE;
+		crtc->transform_in_use = needs_transform;
 	} else
 		crtc->transform_in_use = sna_crtc->rotation != RR_Rotate_0;
 
