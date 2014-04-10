@@ -350,28 +350,39 @@ gen2_get_blend_factors(const struct sna_composite_op *op,
 	cblend = TB0C_LAST_STAGE | TB0C_RESULT_SCALE_1X | TB0C_OUTPUT_WRITE_CURRENT;
 	ablend = TB0A_RESULT_SCALE_1X | TB0A_OUTPUT_WRITE_CURRENT;
 
-
 	/* Get the source picture's channels into TBx_ARG1 */
-	if (op->src.is_solid)
-		cblend |= TB0C_ARG1_SEL_DIFFUSE;
-	else if (PICT_FORMAT_RGB(op->src.pict_format) != 0)
-		cblend |= TB0C_ARG1_SEL_TEXEL0;
-	else
-		cblend |= TB0C_ARG1_SEL_ONE | TB0C_ARG1_INVERT;	/* 0.0 */
-	if (op->src.is_solid)
-		ablend |= TB0A_ARG1_SEL_DIFFUSE;
-	else if (op->src.is_opaque)
-		ablend |= TB0A_ARG1_SEL_ONE;
-	else
-		ablend |= TB0A_ARG1_SEL_TEXEL0;
 	if ((op->has_component_alpha && gen2_blend_op[blend].src_alpha) ||
-	    op->dst.format == PICT_a8)
+	    op->dst.format == PICT_a8) {
 		/* Producing source alpha value, so the first set of channels
 		 * is src.A instead of src.X.  We also do this if the destination
 		 * is a8, in which case src.G is what's written, and the other
 		 * channels are ignored.
 		 */
-		cblend |= TB0C_ARG1_REPLICATE_ALPHA;
+		if (op->src.is_opaque) {
+			ablend |= TB0C_ARG1_SEL_ONE;
+			cblend |= TB0C_ARG1_SEL_ONE;
+		} else if (op->src.is_solid) {
+			ablend |= TB0C_ARG1_SEL_DIFFUSE;
+			cblend |= TB0C_ARG1_SEL_DIFFUSE | TB0C_ARG1_REPLICATE_ALPHA;
+		} else {
+			ablend |= TB0C_ARG1_SEL_TEXEL0;
+			cblend |= TB0C_ARG1_SEL_TEXEL0 | TB0C_ARG1_REPLICATE_ALPHA;
+		}
+	} else {
+		if (op->src.is_solid)
+			cblend |= TB0C_ARG1_SEL_DIFFUSE;
+		else if (PICT_FORMAT_RGB(op->src.pict_format) != 0)
+			cblend |= TB0C_ARG1_SEL_TEXEL0;
+		else
+			cblend |= TB0C_ARG1_SEL_ONE | TB0C_ARG1_INVERT;	/* 0.0 */
+
+		if (op->src.is_opaque)
+			ablend |= TB0A_ARG1_SEL_ONE;
+		else if (op->src.is_solid)
+			ablend |= TB0A_ARG1_SEL_DIFFUSE;
+		else
+			ablend |= TB0A_ARG1_SEL_TEXEL0;
+	}
 
 	if (op->mask.bo) {
 		if (op->src.is_solid) {
