@@ -344,9 +344,12 @@ if test "x$GLAMOR" != "xno"; then
 	if test "x$UXA" != "xyes"; then
 		AC_MSG_ERROR([Glamor acceleration requested but UXA is not enabled])
 	fi
-	if ! pkg-config --exists "xorg-server >= 1.15.99.901"; then
+	if pkg-config --exists "xorg-server >= 1.15.99.901"; then
+		GLAMOR="yes (using Xorg glamor module)"
+	else
 		PKG_CHECK_MODULES(LIBGLAMOR, [glamor >= 0.6.0])
 		PKG_CHECK_MODULES(LIBGLAMOR_EGL, [glamor-egl])
+		GLAMOR="yes (using libglamor)"
 	fi
 	AC_DEFINE(USE_GLAMOR, 1, [Enable glamor acceleration])
 fi
