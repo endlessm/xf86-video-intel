@@ -3266,7 +3266,7 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 static unsigned char *
 sna_realize_cursor(xf86CursorInfoPtr info, CursorPtr cursor)
 {
-	return (unsigned char *)1;
+	return NULL;
 }
 
 #if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,12,99,901,0)
