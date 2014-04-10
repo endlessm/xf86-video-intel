@@ -3124,8 +3124,7 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 	int width, height, size, x, y;
 	Rotation rotation;
 
-	if (sna->cursor.ref == NULL || sna->cursor.ref->bits == NULL)
-		return NULL;
+	assert(sna->cursor.ref);
 
 	cursor = to_sna_crtc(crtc)->cursor;
 	__DBG(("%s: current cursor handle=%d, serial=%d [expected %d]\n",
@@ -3265,7 +3264,7 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 static unsigned char *
 sna_realize_cursor(xf86CursorInfoPtr info, CursorPtr cursor)
 {
-	return NULL;
+	return (unsigned char *)1;
 }
 
 #if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,12,99,901,0)
@@ -3299,6 +3298,8 @@ sna_show_cursors(ScrnInfoPtr scrn)
 	int sigio, c;
 
 	__DBG(("%s\n", __FUNCTION__));
+	if (sna->cursor.ref == NULL)
+		return;
 
 	sigio = sigio_block();
 	for (c = 0; c < xf86_config->num_crtc; c++) {
@@ -3411,6 +3412,7 @@ sna_set_cursor_position(ScrnInfoPtr scrn, int x, int y)
 	int sigio, c;
 
 	__DBG(("%s(%d, %d)\n", __FUNCTION__, x, y));
+	assert(sna->cursor.ref);
 
 	sigio = sigio_block();
 	sna->cursor.last_x = x;
@@ -3533,23 +3535,30 @@ sna_use_hw_cursor(ScreenPtr screen, CursorPtr cursor)
 	struct sna *sna = to_sna_from_screen(screen);
 
 	/* cursors are invariant */
-	if (cursor != sna->cursor.ref) {
-		cursor->refcnt++;
-		if (sna->cursor.ref)
-			FreeCursor(sna->cursor.ref, None);
-		sna->cursor.ref = cursor;
-		sna->cursor.size = __cursor_size(cursor);
-		sna->cursor.serial++;
+	if (cursor == sna->cursor.ref)
+		return TRUE;
 
-		__DBG(("%s(%dx%d): ARGB?=%d, serial->%d, size->%d\n", __FUNCTION__,
-		       cursor->bits->width,
-		       cursor->bits->height,
-		       cursor->bits->argb!=NULL,
-		       sna->cursor.serial,
-		       sna->cursor.size));
+	if (sna->cursor.ref) {
+		FreeCursor(sna->cursor.ref, None);
+		sna->cursor.ref = NULL;
 	}
 
-	return sna->cursor.size <= sna->cursor.max_size;
+	sna->cursor.size = __cursor_size(cursor);
+	if (sna->cursor.size > sna->cursor.max_size)
+		return FALSE;
+
+	sna->cursor.ref = cursor;
+	cursor->refcnt++;
+	sna->cursor.serial++;
+
+	__DBG(("%s(%dx%d): ARGB?=%d, serial->%d, size->%d\n", __FUNCTION__,
+	       cursor->bits->width,
+	       cursor->bits->height,
+	       cursor->bits->argb!=NULL,
+	       sna->cursor.serial,
+	       sna->cursor.size));
+
+	return TRUE;
 }
 
 static void
@@ -3623,7 +3632,12 @@ sna_cursors_init(ScreenPtr screen, struct sna *sna)
 static void
 sna_cursors_reload(struct sna *sna)
 {
-	sna_set_cursor_position(sna->scrn, sna->cursor.last_x, sna->cursor.last_y);
+	if (sna->cursor.ref == NULL)
+		return;
+
+	sna_set_cursor_position(sna->scrn,
+				sna->cursor.last_x,
+				sna->cursor.last_y);
 }
 
 static void
