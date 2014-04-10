@@ -3492,6 +3492,19 @@ disable:
 	sigio_unblock(sigio);
 }
 
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,15,99,902,0)
+static Bool
+sna_load_cursor_argb(ScrnInfoPtr scrn, CursorPtr cursor)
+{
+	return TRUE;
+}
+
+static Bool
+sna_load_cursor_image(ScrnInfoPtr scrn, unsigned char *src)
+{
+	return TRUE;
+}
+#else
 static void
 sna_load_cursor_argb(ScrnInfoPtr scrn, CursorPtr cursor)
 {
@@ -3501,6 +3514,7 @@ static void
 sna_load_cursor_image(ScrnInfoPtr scrn, unsigned char *src)
 {
 }
+#endif
 
 static int __cursor_size(CursorPtr cursor)
 {
