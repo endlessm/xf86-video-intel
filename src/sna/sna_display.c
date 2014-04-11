@@ -3342,15 +3342,21 @@ sna_show_cursors(ScrnInfoPtr scrn)
 }
 
 static void
-sna_set_cursor_colors(ScrnInfoPtr scrn, int bg, int fg)
+sna_set_cursor_colors(ScrnInfoPtr scrn, int _bg, int _fg)
 {
 	struct sna *sna = to_sna(scrn);
+	uint32_t fg = _fg, bg = _bg;
 
 	__DBG(("%s(%08x, %08x)\n", __FUNCTION__, bg, fg));
 
 	/* Save ARGB versions of these colors */
-	sna->cursor.fg = (CARD32) fg | 0xff000000;
-	sna->cursor.bg = (CARD32) bg | 0xff000000;
+	fg |= 0xff000000;
+	bg |= 0xff000000;
+	if (fg == sna->cursor.fg && bg == sna->cursor.bg)
+		return;
+
+	sna->cursor.fg = fg;
+	sna->cursor.bg = bg;
 
 	if (sna->cursor.ref == NULL)
 		return;
@@ -3359,6 +3365,8 @@ sna_set_cursor_colors(ScrnInfoPtr scrn, int bg, int fg)
 		return;
 
 	sna->cursor.serial++;
+	__DBG(("%s: serial->%d\n", __FUNCTION__, sna->cursor.serial));
+
 	sna_show_cursors(scrn);
 }
 
@@ -3486,8 +3494,9 @@ disable:
 			}
 		}
 
-		__DBG(("%s: CRTC:%d (%d, %d), handle=%d, flags=%x (old cursor handle=%d)\n",
-		       __FUNCTION__, sna_crtc->id, arg.x, arg.y, arg.handle, arg.flags, sna_crtc->cursor ? sna_crtc->cursor->handle : 0));
+		__DBG(("%s: CRTC:%d (%d, %d), handle=%d, flags=%x (old cursor handle=%d), move? %d, update handle? %d\n",
+		       __FUNCTION__, sna_crtc->id, arg.x, arg.y, arg.handle, arg.flags, sna_crtc->cursor ? sna_crtc->cursor->handle : 0,
+		       arg.flags & DRM_MODE_CURSOR_MOVE, arg.flags & DRM_MODE_CURSOR_BO));
 
 		if (arg.flags &&
 		    drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg) == 0)
@@ -3535,6 +3544,9 @@ static Bool
 sna_use_hw_cursor(ScreenPtr screen, CursorPtr cursor)
 {
 	struct sna *sna = to_sna_from_screen(screen);
+
+	__DBG(("%s (%dx%d)\n", __FUNCTION__,
+	       cursor->bits->width, cursor->bits->height));
 
 	/* cursors are invariant */
 	if (cursor == sna->cursor.ref)
