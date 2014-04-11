@@ -3122,8 +3122,10 @@ static struct sna_cursor *__sna_create_cursor(struct sna *sna)
 static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 {
 	struct sna_cursor *cursor;
-	uint32_t *src, *image;
-	int width, height, size, x, y;
+	const uint8_t *source, *mask;
+	const uint32_t *argb;
+	uint32_t *image;
+	int width, height, pitch, size, x, y;
 	Rotation rotation;
 
 	assert(sna->cursor.ref);
@@ -3140,10 +3142,11 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 		return cursor;
 	}
 
-	__DBG(("%s: cursor=%dx%d, serial=%d\n", __FUNCTION__,
+	__DBG(("%s: cursor=%dx%d, serial=%d, argb?=%d\n", __FUNCTION__,
 	       sna->cursor.ref->bits->width,
 	       sna->cursor.ref->bits->height,
-	       sna->cursor.serial));
+	       sna->cursor.serial,
+	       sna->cursor.ref->bits->argb!=NULL));
 
 	rotation = crtc->transform_in_use ? crtc->rotation : RR_Rotate_0;
 	for (cursor = sna->cursor.cursors; cursor; cursor = cursor->next) {
@@ -3172,58 +3175,47 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 
 	width = sna->cursor.ref->bits->width;
 	height = sna->cursor.ref->bits->height;
-	src = (uint32_t *)sna->cursor.ref->bits->argb;
-	if (src == NULL) {
-		const uint8_t *source = sna->cursor.ref->bits->source;
-		const uint8_t *mask = sna->cursor.ref->bits->mask;
-		int pitch = BitmapBytePad(width);
-		uint32_t *p;
-
-		__DBG(("%s: converting from 2-color to ARGB\n", __FUNCTION__));
-
-		src = malloc(4*width*height);
-		if (src == NULL)
-			return NULL;
-
-		p = src;
-		for (y = 0; y < height; y++) {
-			for (x = 0; x < width; x++) {
-				int byte = x / 8;
-				int bit = x & 7;
-				uint32_t pixel;
-				if (mask[byte] & (1 << bit)) {
-					if (source[byte] & (1 << bit))
-						pixel = sna->cursor.fg;
-					else
-						pixel = sna->cursor.bg;
-				} else
-					pixel = 0;
-				*p++ = pixel;
-			}
-			mask += pitch;
-			source += pitch;
-		}
-	}
+	source = sna->cursor.ref->bits->source;
+	mask = sna->cursor.ref->bits->mask;
+	argb = (uint32_t *)sna->cursor.ref->bits->argb;
+	pitch = BitmapBytePad(width);
 
 	image = cursor->image;
 	if (image == NULL) {
 		image = malloc(4*size*size);
-		if (image == NULL) {
-			if (src != (uint32_t *)sna->cursor.ref->bits->argb)
-				free(src);
+		if (image == NULL)
 			return NULL;
-		}
 
 		cursor->last_width = cursor->last_height = size;
 	}
 	if (width < cursor->last_width || height < cursor->last_height)
 		memset(image, 0, 4*size*size);
 	if (rotation == RR_Rotate_0) {
-		memcpy_blt(src, image, 32,
-			   width * 4, size * 4,
-			   0, 0,
-			   0, 0,
-			   width, height);
+		if (argb == NULL) {
+			for (y = 0; y < height; y++) {
+				uint32_t *p = image + y*size;
+				for (x = 0; x < width; x++) {
+					int byte = x / 8;
+					int bit = x & 7;
+					uint32_t pixel;
+					if (mask[byte] & (1 << bit)) {
+						if (source[byte] & (1 << bit))
+							pixel = sna->cursor.fg;
+						else
+							pixel = sna->cursor.bg;
+					} else
+						pixel = 0;
+					*p++ = pixel;
+				}
+				mask += pitch;
+				source += pitch;
+			}
+		} else
+			memcpy_blt(argb, image, 32,
+				   width * 4, size * 4,
+				   0, 0,
+				   0, 0,
+				   width, height);
 	} else {
 		for (y = 0; y < size; y++)
 			for (x = 0; x < size; x++) {
@@ -3232,7 +3224,18 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 
 				rotate_coord(rotation, size, x, y, &xin, &yin);
 				if (xin < width && yin < height)
-					pixel = src[yin * width + xin];
+					if (argb == NULL) {
+						int byte = xin / 8;
+						int bit = xin & 7;
+						if (mask[yin*pitch + byte] & (1 << bit)) {
+							if (source[yin*pitch + byte] & (1 << bit))
+								pixel = sna->cursor.fg;
+							else
+								pixel = sna->cursor.bg;
+						} else
+							pixel = 0;
+					} else
+						pixel = argb[yin * width + xin];
 				else
 					pixel = 0;
 				image[y * size + x] = pixel;
@@ -3251,9 +3254,6 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 
 		free(image);
 	}
-
-	if (src != (uint32_t *)sna->cursor.ref->bits->argb)
-		free(src);
 
 	cursor->size = size;
 	cursor->rotation = rotation;
