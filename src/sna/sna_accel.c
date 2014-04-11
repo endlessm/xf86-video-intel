@@ -2501,8 +2501,9 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 	if (USE_INPLACE &&
 	    (priv->create & KGEM_CAN_CREATE_LARGE ||
 	     ((flags & (MOVE_READ | MOVE_ASYNC_HINT)) == 0 &&
-	      (priv->flush || box_inplace(pixmap, &region->extents))) ||
-	     (flags & MOVE_WHOLE_HINT && whole_pixmap_inplace(pixmap)))) {
+	      (priv->flush ||
+	       (flags & MOVE_WHOLE_HINT && whole_pixmap_inplace(pixmap)) ||
+	       box_inplace(pixmap, &region->extents))))) {
 		DBG(("%s: marking for inplace hint (%d, %d)\n",
 		     __FUNCTION__, priv->flush, box_inplace(pixmap, &region->extents)));
 		flags |= MOVE_INPLACE_HINT;
@@ -4645,7 +4646,9 @@ sna_put_zpixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 		return true;
 
 	hint = MOVE_WRITE;
-	if (region_is_unclipped(region, w, h) && (h+1)*stride > 65536) {
+	if (region_is_unclipped(region, w, h) &&
+	    w == pixmap->drawable.width &&
+	    (h+1)*stride > 65536) {
 		DBG(("%s: segmented, unclipped large upload (%d bytes), marking WHOLE_HINT\n",
 		     __FUNCTION__, h*stride));
 		hint |= MOVE_WHOLE_HINT;
