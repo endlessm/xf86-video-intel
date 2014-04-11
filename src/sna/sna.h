@@ -333,6 +333,10 @@ struct sna {
 
 	struct sna_render render;
 
+	int underscan;
+	int underscan_hborder;
+	int underscan_vborder;
+
 #if DEBUG_MEMORY
 	struct {
 		int pixmap_allocs;

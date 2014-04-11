@@ -699,17 +699,22 @@ mode_from_kmode(ScrnInfoPtr scrn,
 		const struct drm_mode_modeinfo *kmode,
 		DisplayModePtr mode)
 {
+	int xu, yu;
+
+	xu = kmode->hskew >> 8;
+	yu = kmode->hskew & 0xFF;
+
 	mode->status = MODE_OK;
 
 	mode->Clock = kmode->clock;
 
-	mode->HDisplay = kmode->hdisplay;
+	mode->HDisplay = kmode->hdisplay - 2 * xu;
 	mode->HSyncStart = kmode->hsync_start;
 	mode->HSyncEnd = kmode->hsync_end;
 	mode->HTotal = kmode->htotal;
 	mode->HSkew = kmode->hskew;
 
-	mode->VDisplay = kmode->vdisplay;
+	mode->VDisplay = kmode->vdisplay - 2 * yu;
 	mode->VSyncStart = kmode->vsync_start;
 	mode->VSyncEnd = kmode->vsync_end;
 	mode->VTotal = kmode->vtotal;
@@ -733,16 +738,21 @@ mode_from_kmode(ScrnInfoPtr scrn,
 static void
 mode_to_kmode(struct drm_mode_modeinfo *kmode, DisplayModePtr mode)
 {
+	int xu, yu;
+
+	xu = mode->HSkew >> 8;
+	yu = mode->HSkew & 0xFF;
+
 	memset(kmode, 0, sizeof(*kmode));
 
 	kmode->clock = mode->Clock;
-	kmode->hdisplay = mode->HDisplay;
+	kmode->hdisplay = mode->HDisplay + xu * 2;
 	kmode->hsync_start = mode->HSyncStart;
 	kmode->hsync_end = mode->HSyncEnd;
 	kmode->htotal = mode->HTotal;
 	kmode->hskew = mode->HSkew;
 
-	kmode->vdisplay = mode->VDisplay;
+	kmode->vdisplay = mode->VDisplay + yu * 2;
 	kmode->vsync_start = mode->VSyncStart;
 	kmode->vsync_end = mode->VSyncEnd;
 	kmode->vtotal = mode->VTotal;
@@ -752,6 +762,11 @@ mode_to_kmode(struct drm_mode_modeinfo *kmode, DisplayModePtr mode)
 	if (mode->name)
 		strncpy(kmode->name, mode->name, DRM_DISPLAY_MODE_LEN);
 	kmode->name[DRM_DISPLAY_MODE_LEN-1] = 0;
+
+	/* We need to store the underscan values...
+	 * the i915 drm module doesn't touch HSkew
+	 * so we steal it for this. */
+	mode->HSkew = (xu << 8) + yu;
 }
 
 static void
@@ -1135,6 +1150,9 @@ static bool use_shadow(struct sna *sna, xf86CrtcPtr crtc)
 
 	assert(sna->scrn->virtualX && sna->scrn->virtualY);
 
+	if (sna->underscan)
+		return true;
+
 	if (sna->flags & SNA_FORCE_SHADOW) {
 		DBG(("%s: forcing shadow\n", __FUNCTION__));
 		return true;
@@ -1230,6 +1248,7 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 	} else if (use_shadow(sna, crtc)) {
 		unsigned long tiled_limit;
 		int tiling;
+		int xu = 0, yu = 0;
 
 		if (!sna_crtc_enable_shadow(sna, sna_crtc))
 			return NULL;
@@ -1249,14 +1268,19 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 		if ((unsigned long)crtc->mode.HDisplay * scrn->bitsPerPixel > tiled_limit)
 			tiling = I915_TILING_NONE;
 
+		if (sna->underscan) {
+			xu = sna->underscan_hborder;
+			yu = sna->underscan_vborder;
+		}
+
 		bo = kgem_create_2d(&sna->kgem,
-				    crtc->mode.HDisplay, crtc->mode.VDisplay,
+				    crtc->mode.HDisplay + 2*xu, crtc->mode.VDisplay + 2*yu,
 				    scrn->bitsPerPixel,
 				    tiling, CREATE_SCANOUT);
 		if (bo == NULL)
 			return NULL;
 
-		if (!get_fb(sna, bo, crtc->mode.HDisplay, crtc->mode.VDisplay)) {
+		if (!get_fb(sna, bo, crtc->mode.HDisplay + 2*xu, crtc->mode.VDisplay + 2*yu)) {
 			kgem_bo_destroy(&sna->kgem, bo);
 			return NULL;
 		}
@@ -1448,6 +1472,7 @@ sna_crtc_set_mode_major(xf86CrtcPtr crtc, DisplayModePtr mode,
 	struct drm_mode_modeinfo saved_kmode;
 	bool saved_transform;
 	char outputs[256];
+	BoxRec box;
 
 	if (mode->HDisplay == 0 || mode->VDisplay == 0)
 		return FALSE;
@@ -1504,6 +1529,15 @@ retry: /* Attach per-crtc pixmap or direct */
 		kgem_bo_destroy(&sna->kgem, saved_bo);
 
 	sna_crtc_randr(crtc);
+
+	box.x1 = 0;
+	box.y1 = 0;
+	box.x2 = mode->HDisplay + 2*(mode->HSkew >> 8);
+	box.y2 = mode->VDisplay + 2*(mode->HSkew & 0xFF);
+	sna_blt_fill_boxes(sna, GXcopy,
+			   sna_crtc->bo, sna->front->drawable.bitsPerPixel,
+			   0, &box, 1);
+
 	if (sna_crtc->shadow)
 		sna_crtc_damage(crtc);
 
@@ -1607,14 +1641,18 @@ sna_crtc_set_cursor_position(xf86CrtcPtr crtc, int x, int y)
 {
 	struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
 	struct drm_mode_cursor arg;
+	int xu = 0, yu = 0;
 
 	__DBG(("%s: CRTC:%d (%d, %d)\n", __FUNCTION__, sna_crtc->id, x, y));
+
+	xu = sna_crtc->kmode.hskew >> 8;
+	yu = sna_crtc->kmode.hskew & 0xFF;
 
 	VG_CLEAR(arg);
 	arg.flags = DRM_MODE_CURSOR_MOVE;
 	arg.crtc_id = sna_crtc->id;
-	arg.x = x;
-	arg.y = y;
+	arg.x = x + xu;
+	arg.y = y + yu;
 	arg.handle = sna_crtc->cursor;
 
 	(void)drmIoctl(to_sna(crtc->scrn)->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg);
@@ -2037,45 +2075,26 @@ sna_output_panel_edid(xf86OutputPtr output, DisplayModePtr modes)
 static DisplayModePtr
 sna_output_get_modes(xf86OutputPtr output)
 {
+	struct sna *sna = to_sna(output->scrn);
 	struct sna_output *sna_output = output->driver_private;
 	DisplayModePtr Modes = NULL;
-	DisplayModeRec current;
-	bool has_current = false;
 	int i;
 
 	DBG(("%s(%s)\n", __FUNCTION__, output->name));
 
 	sna_output_attach_edid(output);
 
-	memset(&current, 0, sizeof(current));
-	if (output->crtc) {
-		struct drm_mode_crtc mode;
-
-		VG_CLEAR(mode);
-		mode.crtc_id = to_sna_crtc(output->crtc)->id;
-
-		if (drmIoctl(to_sna(output->scrn)->kgem.fd, DRM_IOCTL_MODE_GETCRTC, &mode) == 0) {
-			DBG(("%s: CRTC:%d, pipe=%d: has mode?=%d\n", __FUNCTION__,
-			     to_sna_crtc(output->crtc)->id,
-			     to_sna_crtc(output->crtc)->pipe,
-			     mode.mode_valid && mode.mode.clock));
-
-			if (mode.mode_valid && mode.mode.clock)
-				mode_from_kmode(output->scrn, &mode.mode, &current);
-		}
-	}
-
 	for (i = 0; i < sna_output->num_modes; i++) {
 		DisplayModePtr Mode;
 
 		Mode = calloc(1, sizeof(DisplayModeRec));
 		if (Mode) {
+			if (sna->underscan)
+				sna_output->modes[i].hskew = (sna->underscan_hborder << 8) + sna->underscan_vborder;
+
 			Mode = mode_from_kmode(output->scrn,
 					       &sna_output->modes[i],
 					       Mode);
-
-			if (!has_current && xf86ModesEqual(Mode, &current))
-				has_current = true;
 
 			Modes = xf86ModesAdd(Modes, Mode);
 		}
@@ -2105,20 +2124,6 @@ sna_output_get_modes(xf86OutputPtr output)
 
 		Modes = sna_output_panel_edid(output, Modes);
 	}
-
-	if (!has_current && current.Clock) {
-		DisplayModePtr Mode;
-
-		Mode = calloc(1, sizeof(DisplayModeRec));
-		if (Mode) {
-			*Mode = current;
-			current.name = NULL;
-
-			output->probed_modes =
-				xf86ModesAdd(output->probed_modes, Mode);
-		}
-	}
-	free(current.name);
 
 	return Modes;
 }
@@ -2255,6 +2260,7 @@ sna_output_create_ranged_atom(xf86OutputPtr output, Atom *atom,
 #define BACKLIGHT_NAME             "Backlight"
 #define BACKLIGHT_DEPRECATED_NAME  "BACKLIGHT"
 static Atom backlight_atom, backlight_deprecated_atom;
+static Atom underscan_hborder_atom, underscan_vborder_atom, underscan_atom;
 
 static void
 sna_output_create_resources(xf86OutputPtr output)
@@ -2262,6 +2268,7 @@ sna_output_create_resources(xf86OutputPtr output)
 	struct sna *sna = to_sna(output->scrn);
 	struct sna_output *sna_output = output->driver_private;
 	int i, j, err;
+	Atom *uatoms;
 
 	sna_output->props = calloc(sna_output->num_props,
 				   sizeof(struct sna_property));
@@ -2326,6 +2333,31 @@ sna_output_create_resources(xf86OutputPtr output)
 		}
 	}
 
+	/* fake props for underscan */
+	uatoms = calloc(2, sizeof(Atom));
+	underscan_atom = MakeAtom("underscan", 9, TRUE);
+	uatoms[0] = MakeAtom("off", 3, TRUE);
+	uatoms[1] = MakeAtom("crop", 4, TRUE);
+	err = RRConfigureOutputProperty(output->randr_output, underscan_atom,
+					FALSE, FALSE, FALSE,
+					2, (INT32 *)uatoms);
+	if (err != 0) {
+		xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
+			   "RRConfigureOutputProperty error, %d\n", err);
+	}
+	err = RRChangeOutputProperty(output->randr_output, underscan_atom,
+				     XA_ATOM, 32, PropModeReplace, 1, &uatoms[0],
+				     FALSE, FALSE);
+	if (err != 0) {
+		xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
+			   "RRChangeOutputProperty error, %d\n", err);
+	}
+
+	sna_output_create_ranged_atom(output, &underscan_hborder_atom,
+				      "underscan hborder", 0, 128, 0, FALSE);
+	sna_output_create_ranged_atom(output, &underscan_vborder_atom,
+				      "underscan vborder", 0, 128, 0, FALSE);
+
 	if (sna_output->backlight_iface) {
 		/* Set up the backlight property, which takes effect
 		 * immediately and accepts values only within the
@@ -2352,6 +2384,42 @@ sna_output_set_property(xf86OutputPtr output, Atom property,
 	struct sna *sna = to_sna(output->scrn);
 	struct sna_output *sna_output = output->driver_private;
 	int i;
+
+	if (property == underscan_atom) {
+		Atom atom;
+		const char *name;
+
+		if (value->type != XA_ATOM || value->format != 32 || value->size != 1)
+			return FALSE;
+
+		memcpy(&atom, value->data, 4);
+		name = NameForAtom(atom);
+		if (name == NULL)
+			return FALSE;
+
+		if (!strcmp(name, "crop"))
+			sna->underscan = 1;
+		else
+			sna->underscan = 0;
+
+		return TRUE;
+	}
+
+	if (property == underscan_vborder_atom) {
+		if (value->type != XA_INTEGER || value->format != 32 || value->size != 1)
+			return FALSE;
+
+		sna->underscan_vborder = *(uint32_t *)value->data;
+		return TRUE;
+	}
+
+	if (property == underscan_hborder_atom) {
+		if (value->type != XA_INTEGER || value->format != 32 || value->size != 1)
+			return FALSE;
+
+		sna->underscan_hborder = *(uint32_t *)value->data;
+		return TRUE;
+	}
 
 	if (property == backlight_atom || property == backlight_deprecated_atom) {
 		INT32 val;
@@ -2836,7 +2904,12 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 	struct sna *sna = to_sna(scrn);
 	ScreenPtr screen = scrn->pScreen;
 	PixmapPtr new_front;
-	int i;
+	int i, xu = 0, yu = 0;
+
+	if (sna->underscan) {
+		xu = sna->underscan_hborder;
+		yu = sna->underscan_vborder;
+	}
 
 	DBG(("%s (%d, %d) -> (%d, %d)\n", __FUNCTION__,
 	     scrn->virtualX, scrn->virtualY,
@@ -2853,8 +2926,8 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 	     __FUNCTION__, width, height));
 
 	new_front = screen->CreatePixmap(screen,
-					 width, height, scrn->depth,
-					 SNA_CREATE_FB);
+					 width + 2*xu, height + 2*yu,
+					 scrn->depth, SNA_CREATE_FB);
 	if (!new_front)
 		return FALSE;
 
@@ -4131,6 +4204,9 @@ sna_crtc_redisplay(xf86CrtcPtr crtc, RegionPtr region)
 	    sna_transform_is_integer_translation(&crtc->crtc_to_framebuffer,
 						 &tx, &ty)) {
 		PixmapRec tmp;
+
+		tx -= crtc->mode.HSkew >> 8;
+		ty -= crtc->mode.HSkew & 0xFF;
 
 		DBG(("%s: copy damage boxes\n", __FUNCTION__));
 
