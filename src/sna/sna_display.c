@@ -3160,10 +3160,22 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 
 	size = sna->cursor.size;
 	for (cursor = sna->cursor.cursors; cursor; cursor = cursor->next) {
-		if (cursor->alloc >= 4*size*size && cursor->serial != sna->cursor.serial) {
+		if (cursor->alloc >= 4*size*size && cursor->rotation == rotation) {
 			__DBG(("%s: stealing handle=%d, serial=%d, rotation=%d, alloc=%d\n",
 			       __FUNCTION__, cursor->handle, cursor->serial, cursor->rotation, cursor->alloc));
+			assert(cursor->serial != sna->cursor.serial);
 			break;
+		}
+	}
+
+	if (cursor == NULL) {
+		for (cursor = sna->cursor.cursors; cursor; cursor = cursor->next) {
+			if (cursor->alloc >= 4*size*size && cursor->serial != sna->cursor.serial) {
+				__DBG(("%s: stealing handle=%d, serial=%d, rotation=%d, alloc=%d\n",
+				       __FUNCTION__, cursor->handle, cursor->serial, cursor->rotation, cursor->alloc));
+				assert(cursor->rotation != sna->cursor.rotation);
+				break;
+			}
 		}
 	}
 
