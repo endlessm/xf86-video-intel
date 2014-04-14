@@ -155,6 +155,14 @@ static const char *_debug_describe_damage(char *buf, int max,
 }
 #endif
 
+static struct sna_damage_box *
+last_box(struct sna_damage *damage)
+{
+	return list_entry(damage->embedded_box.list.prev,
+			  struct sna_damage_box,
+			  list);
+}
+
 static void
 reset_embedded_box(struct sna_damage *damage)
 {
@@ -242,9 +250,7 @@ static void __sna_damage_reduce(struct sna_damage *damage)
 	if (damage->mode == DAMAGE_ADD)
 		nboxes += REGION_NUM_RECTS(region);
 
-	iter = list_entry(damage->embedded_box.list.prev,
-			  struct sna_damage_box,
-			  list);
+	iter = last_box(damage);
 	n = iter->size - damage->remain;
 	boxes = (BoxRec *)(iter+1);
 	DBG(("   last box count=%d/%d, need=%d\n", n, iter->size, nboxes));
@@ -332,16 +338,13 @@ done:
 	DBG(("    reduce: after region.n=%ld\n", (long)REGION_NUM_RECTS(region)));
 }
 
-
 static bool _sna_damage_create_boxes(struct sna_damage *damage,
 				     int count)
 {
 	struct sna_damage_box *box;
 	int n;
 
-	box = list_entry(damage->embedded_box.list.prev,
-			 struct sna_damage_box,
-			 list);
+	box = last_box(damage);
 	n = 4*box->size;
 	if (n < count)
 		n = ALIGN(count, 64);
@@ -388,6 +391,8 @@ restart:
 	}
 
 	DBG(("    %s(): new elt\n", __FUNCTION__));
+	assert(damage->remain == 0);
+	assert(damage->box - (BoxRec *)(last_box(damage)+1) == last_box(damage)->size);
 
 	if (!_sna_damage_create_boxes(damage, count)) {
 		unsigned mode;
@@ -442,6 +447,8 @@ restart:
 	}
 
 	DBG(("    %s(): new elt\n", __FUNCTION__));
+	assert(damage->remain == 0);
+	assert(damage->box - (BoxRec *)(last_box(damage)+1) == last_box(damage)->size);
 
 	if (!_sna_damage_create_boxes(damage, count)) {
 		unsigned mode;
@@ -502,6 +509,8 @@ restart:
 	}
 
 	DBG(("    %s(): new elt\n", __FUNCTION__));
+	assert(damage->remain == 0);
+	assert(damage->box - (BoxRec *)(last_box(damage)+1) == last_box(damage)->size);
 
 	if (!_sna_damage_create_boxes(damage, count)) {
 		unsigned mode;
@@ -562,6 +571,8 @@ restart:
 	}
 
 	DBG(("    %s(): new elt\n", __FUNCTION__));
+	assert(damage->remain == 0);
+	assert(damage->box - (BoxRec *)(last_box(damage)+1) == last_box(damage)->size);
 
 	if (!_sna_damage_create_boxes(damage, count)) {
 		unsigned mode;
@@ -1815,9 +1826,7 @@ void _sna_damage_debug_get_region(struct sna_damage *damage, RegionRec *r)
 	if (damage->mode == DAMAGE_ADD)
 		nboxes += REGION_NUM_RECTS(r);
 
-	iter = list_entry(damage->embedded_box.list.prev,
-			  struct sna_damage_box,
-			  list);
+	iter = last_box(damage);
 	n = iter->size - damage->remain;
 	boxes = malloc(sizeof(BoxRec)*nboxes);
 	if (boxes == NULL)
