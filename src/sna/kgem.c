@@ -4194,6 +4194,16 @@ static void __kgem_bo_make_scanout(struct kgem *kgem,
 	    do_ioctl(kgem->fd, DRM_IOCTL_MODE_ADDFB, &arg) == 0) {
 		bo->scanout = true;
 		bo->delta = arg.fb_id;
+
+		/* Pre-emptively move the object into the mappable
+		 * portion to avoid rebinding later when busy.
+		 */
+		if (bo->map__gtt == NULL)
+			bo->map__gtt = __kgem_bo_map__gtt(kgem, bo);
+		if (bo->map__gtt) {
+			*(uint32_t *)bo->map__gtt = 0;
+			bo->domain = DOMAIN_GTT;
+		}
 	}
 }
 
