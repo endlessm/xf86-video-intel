@@ -3173,7 +3173,7 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 			if (cursor->alloc >= 4*size*size && cursor->serial != sna->cursor.serial) {
 				__DBG(("%s: stealing handle=%d, serial=%d, rotation=%d, alloc=%d\n",
 				       __FUNCTION__, cursor->handle, cursor->serial, cursor->rotation, cursor->alloc));
-				assert(cursor->rotation != sna->cursor.rotation);
+				assert(cursor->rotation != rotation);
 				break;
 			}
 		}
