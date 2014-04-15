@@ -4168,6 +4168,35 @@ __kgem_bo_create_as_display(struct kgem *kgem, int size, int tiling, int pitch)
 	return bo;
 }
 
+static void __kgem_bo_make_scanout(struct kgem *kgem,
+				   struct kgem_bo *bo,
+				   int width, int height)
+{
+	ScrnInfoPtr scrn =
+		container_of(kgem, struct sna, kgem)->scrn;
+	struct drm_mode_fb_cmd arg;
+
+	if (!scrn->vtSema)
+		return;
+
+	DBG(("%s: create fb %dx%d@%d/%d\n",
+	     __FUNCTION__, width, height, scrn->depth, scrn->bitsPerPixel));
+
+	VG_CLEAR(arg);
+	arg.width = width;
+	arg.height = height;
+	arg.pitch = bo->pitch;
+	arg.bpp = scrn->bitsPerPixel;
+	arg.depth = scrn->depth;
+	arg.handle = bo->handle;
+
+	if (gem_set_caching(kgem->fd, bo->handle, DISPLAY) &&
+	    do_ioctl(kgem->fd, DRM_IOCTL_MODE_ADDFB, &arg) == 0) {
+		bo->scanout = true;
+		bo->delta = arg.fb_id;
+	}
+}
+
 struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 			       int width,
 			       int height,
@@ -4295,6 +4324,8 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 		bo = __kgem_bo_create_as_display(kgem, size, tiling, pitch);
 		if (bo)
 			return bo;
+
+		flags |= CREATE_INACTIVE;
 	}
 
 	if (bucket >= NUM_CACHE_BUCKETS) {
@@ -4386,6 +4417,10 @@ large_inactive:
 			assert(bo->pitch*kgem_aligned_height(kgem, height, bo->tiling) <= kgem_bo_size(bo));
 			assert_tiling(kgem, bo);
 			bo->refcnt = 1;
+
+			if (flags & CREATE_SCANOUT)
+				__kgem_bo_make_scanout(kgem, bo, width, height);
+
 			return bo;
 		}
 
@@ -4691,6 +4726,10 @@ search_inactive:
 		assert(bo->pitch*kgem_aligned_height(kgem, height, bo->tiling) <= kgem_bo_size(bo));
 		assert_tiling(kgem, bo);
 		bo->refcnt = 1;
+
+		if (flags & CREATE_SCANOUT)
+			__kgem_bo_make_scanout(kgem, bo, width, height);
+
 		return bo;
 	}
 
@@ -4728,6 +4767,8 @@ create:
 	    gem_set_tiling(kgem->fd, handle, tiling, pitch)) {
 		bo->tiling = tiling;
 		bo->pitch = pitch;
+		if (flags & CREATE_SCANOUT)
+			__kgem_bo_make_scanout(kgem, bo, width, height);
 	} else {
 		if (flags & CREATE_EXACT) {
 			gem_close(kgem->fd, handle);
