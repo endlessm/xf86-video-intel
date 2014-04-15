@@ -3131,10 +3131,24 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 	assert_pixmap_contains_box(pixmap, box);
 	assert(priv->gpu_damage == NULL || priv->gpu_bo);
 
-	if (priv->move_to_gpu &&
-	    !priv->move_to_gpu(sna, priv, flags | MOVE_READ | (priv->cpu_damage ? MOVE_WRITE : 0))) {
-		DBG(("%s: move-to-gpu override failed\n", __FUNCTION__));
-		return NULL;
+	if ((flags & MOVE_READ) == 0)
+		sna_damage_subtract_box(&priv->cpu_damage, box);
+
+	if (priv->move_to_gpu) {
+		unsigned int hint;
+
+		hint = flags | MOVE_READ | (priv->cpu_damage ? MOVE_WRITE : 0);
+		if ((flags & MOVE_READ) == 0) {
+			RegionRec region;
+
+			region.extents = *box;
+			region.data = NULL;
+			sna_pixmap_discard_shadow_damage(priv, &region);
+		}
+		if (!priv->move_to_gpu(sna, priv, hint)) {
+			DBG(("%s: move-to-gpu override failed\n", __FUNCTION__));
+			return NULL;
+		}
 	}
 
 	if (priv->cow && (flags & MOVE_WRITE || priv->cpu_damage)) {
@@ -3176,9 +3190,6 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 		kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
 		priv->gpu_bo = NULL;
 	}
-
-	if ((flags & MOVE_READ) == 0)
-		sna_damage_subtract_box(&priv->cpu_damage, box);
 
 	sna_damage_reduce(&priv->cpu_damage);
 	assert_pixmap_damage(pixmap);
@@ -3652,14 +3663,26 @@ use_gpu_bo:
 	if (priv->move_to_gpu) {
 		unsigned hint = MOVE_READ | MOVE_WRITE;
 
+		sna = to_sna_from_pixmap(pixmap);
+
 		if (flags & IGNORE_CPU) {
 			region.extents = *box;
 			region.data = NULL;
-			if (region_subsumes_drawable(&region, &pixmap->drawable))
+			if (region_subsumes_pixmap(&region, pixmap)) {
+				DBG(("%s: discarding move-to-gpu READ for subsumed pixmap\n", __FUNCTION__));
 				hint = MOVE_WRITE;
+			} else {
+				if (get_drawable_deltas(drawable, pixmap, &dx, &dy)) {
+					region.extents.x1 += dx;
+					region.extents.x2 += dx;
+					region.extents.y1 += dy;
+					region.extents.y2 += dy;
+				}
+				sna_pixmap_discard_shadow_damage(priv, &region);
+			}
 		}
 
-		if (!priv->move_to_gpu(to_sna_from_pixmap(pixmap), priv, hint)) {
+		if (!priv->move_to_gpu(sna, priv, hint)) {
 			DBG(("%s: move-to-gpu override failed\n", __FUNCTION__));
 			goto use_cpu_bo;
 		}

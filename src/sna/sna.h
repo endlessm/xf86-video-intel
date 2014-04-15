@@ -377,6 +377,8 @@ extern void sna_mode_update(struct sna *sna);
 extern void sna_mode_reset(struct sna *sna);
 extern void sna_mode_wakeup(struct sna *sna);
 extern void sna_mode_redisplay(struct sna *sna);
+extern void sna_pixmap_discard_shadow_damage(struct sna_pixmap *priv,
+					     RegionPtr region);
 extern void sna_mode_close(struct sna *sna);
 extern void sna_mode_fini(struct sna *sna);
 

@@ -855,7 +855,7 @@ static bool wait_for_shadow(struct sna *sna, struct sna_pixmap *priv, unsigned f
 
 	sna->mode.shadow_damage = damage;
 
-	if (flags & MOVE_READ) {
+	if (flags & MOVE_READ && RegionNotEmpty(&wait->region)) {
 		DBG(("%s: copying existing GPU damage: %ldx(%d, %d), (%d, %d)\n",
 		     __FUNCTION__, (long)REGION_NUM_RECTS(&wait->region),
 		     wait->region.extents.x1, wait->region.extents.y1,
@@ -885,6 +885,27 @@ done:
 	priv->move_to_gpu = NULL;
 
 	return ret;
+}
+
+void sna_pixmap_discard_shadow_damage(struct sna_pixmap *priv,
+				      RegionPtr region)
+{
+	struct wait_for_shadow *wait = priv->move_to_gpu_data;
+
+	if (priv->move_to_gpu != wait_for_shadow)
+		return;
+
+	DBG(("%s: discarding region %dx[(%d, %d), (%d, %d)] from damage %dx[(%d, %d], (%d, %d)]\n",
+	     __FUNCTION__,
+	     RegionNumRects(region),
+	     region->extents.x1, region->extents.y1,
+	     region->extents.x2, region->extents.y2,
+	     RegionNumRects(&wait->region),
+	     wait->region.extents.x1, wait->region.extents.y1,
+	     wait->region.extents.x2, wait->region.extents.y2));
+
+	assert(wait);
+	RegionSubtract(&wait->region, &wait->region, region);
 }
 
 static bool sna_mode_enable_shadow(struct sna *sna)
