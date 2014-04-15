@@ -1948,7 +1948,7 @@ gen4_render_composite(struct sna *sna,
 
 	if (!gen4_composite_set_target(sna, tmp, dst,
 				       dst_x, dst_y, width, height,
-				       flags & COMPOSITE_PARTIAL || op > PictOpSrc || dst->pCompositeClip->data)) {
+				       flags & COMPOSITE_PARTIAL || op > PictOpSrc)) {
 		DBG(("%s: failed to set composite target\n", __FUNCTION__));
 		goto fallback;
 	}

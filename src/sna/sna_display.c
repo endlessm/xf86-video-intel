@@ -4948,7 +4948,7 @@ sna_crtc_redisplay__composite(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo
 				   0, 0,
 				   0, 0,
 				   crtc->mode.HDisplay, crtc->mode.VDisplay,
-				   0, memset(&tmp, 0, sizeof(tmp)))) {
+				   COMPOSITE_PARTIAL, memset(&tmp, 0, sizeof(tmp)))) {
 		DBG(("%s: unsupported operation!\n", __FUNCTION__));
 		sna_crtc_redisplay__fallback(crtc, region, bo);
 		goto free_dst;

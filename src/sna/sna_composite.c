@@ -720,7 +720,8 @@ sna_composite(CARD8 op,
 				   region.extents.y1,
 				   region.extents.x2 - region.extents.x1,
 				   region.extents.y2 - region.extents.y1,
-				   0, memset(&tmp, 0, sizeof(tmp)))) {
+				   region.data ? COMPOSITE_PARTIAL : 0,
+				   memset(&tmp, 0, sizeof(tmp)))) {
 		DBG(("%s: fallback due unhandled composite op\n", __FUNCTION__));
 		goto fallback;
 	}

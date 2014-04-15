@@ -2222,7 +2222,7 @@ gen8_render_composite(struct sna *sna,
 	tmp->op = op;
 	if (!gen8_composite_set_target(sna, tmp, dst,
 				       dst_x, dst_y, width, height,
-				       flags & COMPOSITE_PARTIAL || op > PictOpSrc || dst->pCompositeClip->data))
+				       flags & COMPOSITE_PARTIAL || op > PictOpSrc))
 		goto fallback;
 
 	switch (gen8_composite_picture(sna, src, &tmp->src,
