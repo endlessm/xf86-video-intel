@@ -3262,7 +3262,8 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 		pwrite.offset = 0;
 		pwrite.size = 4*size*size;
 		pwrite.data_ptr = (uintptr_t)image;
-		(void)drmIoctl(sna->kgem.fd, DRM_IOCTL_I915_GEM_PWRITE, &pwrite);
+		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_I915_GEM_PWRITE, &pwrite))
+			__DBG(("%s: cursor update (pwrite) failed: %d\n", errno));
 
 		free(image);
 	}
