@@ -4366,6 +4366,7 @@ sna_cursor_pre_init(struct sna *sna)
 		uint64_t name;
 		uint64_t value;
 	} cap;
+	int v;
 
 	if (sna->mode.num_real_crtc == 0)
 		return;
@@ -4373,6 +4374,8 @@ sna_cursor_pre_init(struct sna *sna)
 #define LOCAL_IOCTL_GET_CAP	DRM_IOWR(0x0c, struct local_get_cap)
 #define DRM_CAP_CURSOR_WIDTH	8
 #define DRM_CAP_CURSOR_HEIGHT	9
+
+#define I915_PARAM_HAS_COHERENT_PHYS_GTT 29
 
 	sna->cursor.max_size = 64;
 
@@ -4387,7 +4390,17 @@ sna_cursor_pre_init(struct sna *sna)
 		assert(sna->cursor.max_size == cap.value);
 #endif
 
-	sna->cursor.use_gtt = sna->kgem.gen >= 033;
+	v = -1; /* No param uses the sign bit, reserve it for errors */
+	if (sna->kgem.gen >= 033) {
+		v = 1;
+	} else {
+		drm_i915_getparam_t gp = {
+			I915_PARAM_HAS_COHERENT_PHYS_GTT,
+			&v,
+		};
+		(void)drmIoctl(sna->kgem.fd, DRM_IOCTL_I915_GETPARAM, &gp);
+	}
+	sna->cursor.use_gtt = v > 0;
 	DBG(("%s: cursor updates use_gtt?=%d\n",
 	     __FUNCTION__, sna->cursor.use_gtt));
 
