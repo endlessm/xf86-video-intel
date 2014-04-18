@@ -540,7 +540,6 @@ bool kgem_bo_write(struct kgem *kgem, struct kgem_bo *bo,
 	int err;
 
 	assert(bo->refcnt);
-	assert(!bo->purged);
 	assert(bo->proxy == NULL);
 	ASSERT_IDLE(kgem, bo->handle);
 

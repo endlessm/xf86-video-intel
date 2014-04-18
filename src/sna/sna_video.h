@@ -87,7 +87,8 @@ struct sna_video {
 	uint32_t gamma5;
 
 	int color_key;
-	int color_key_changed;
+	bool color_key_changed;
+	bool has_color_key;
 
 	/** YUV data buffers */
 	struct kgem_bo *old_buf[2];

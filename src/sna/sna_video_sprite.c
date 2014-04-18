@@ -214,8 +214,9 @@ sna_video_sprite_show(struct sna *sna,
 		frame->height = tmp;
 	}
 
-#if defined(DRM_I915_SET_SPRITE_COLORKEY)
-	if (video->color_key_changed || video->plane != s.plane_id) {
+#define DRM_I915_SET_SPRITE_COLORKEY 0x2b
+	if ((video->color_key_changed || video->plane != s.plane_id) &&
+	    video->has_color_key) {
 		struct drm_intel_sprite_colorkey set;
 
 		DBG(("%s: updating color key: %x\n",
@@ -231,13 +232,14 @@ sna_video_sprite_show(struct sna *sna,
 
 		if (drmIoctl(sna->kgem.fd,
 			     DRM_IOCTL_I915_SET_SPRITE_COLORKEY,
-			     &set))
+			     &set)) {
 			xf86DrvMsg(sna->scrn->scrnIndex, X_ERROR,
-				   "failed to update color key\n");
+				   "failed to update color key, disabling future updates\n");
+			video->has_color_key = false;
+		}
 
 		video->color_key_changed = false;
 	}
-#endif
 
 	if (frame->bo->delta == 0) {
 		uint32_t offsets[4], pitches[4], handles[4];
@@ -603,6 +605,7 @@ void sna_video_sprite_setup(struct sna *sna, ScreenPtr screen)
 	video->alignment = 64;
 	video->color_key = sna_video_sprite_color_key(sna);
 	video->color_key_changed = true;
+	video->has_color_key = true;
 	video->brightness = -19;	/* (255/219) * -16 */
 	video->contrast = 75;	/* 255/219 * 64 */
 	video->saturation = 146;	/* 128/112 * 128 */
