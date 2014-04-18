@@ -632,7 +632,10 @@ static bool has_shadow(struct sna *sna)
 	if (!sna->mode.shadow_damage)
 		return false;
 
-	return RegionNotEmpty(DamageRegion(sna->mode.shadow_damage));
+	if (RegionNil(DamageRegion(sna->mode.shadow_damage)))
+		return false;
+
+	return sna->mode.shadow_flip == 0;
 }
 
 static void
