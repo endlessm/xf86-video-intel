@@ -3170,32 +3170,37 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 	       sna->cursor.ref->bits->argb!=NULL));
 
 	rotation = crtc->transform_in_use ? crtc->rotation : RR_Rotate_0;
-	for (cursor = sna->cursor.cursors; cursor; cursor = cursor->next) {
-		if (cursor->serial == sna->cursor.serial && cursor->rotation == rotation && cursor->image) {
-			__DBG(("%s: reusing handle=%d, serial=%d, rotation=%d, size=%d\n",
-			       __FUNCTION__, cursor->handle, cursor->serial, cursor->rotation, cursor->size));
-			assert(cursor->size == sna->cursor.size);
-			return cursor;
-		}
-	}
-
 	size = sna->cursor.size;
-	for (cursor = sna->cursor.cursors; cursor; cursor = cursor->next) {
-		if (cursor->alloc >= 4*size*size && cursor->rotation == rotation) {
-			__DBG(("%s: stealing handle=%d, serial=%d, rotation=%d, alloc=%d\n",
-			       __FUNCTION__, cursor->handle, cursor->serial, cursor->rotation, cursor->alloc));
-			assert(cursor->serial != sna->cursor.serial);
-			break;
-		}
-	}
+	if (cursor && cursor->alloc < 4*size*size)
+		cursor = NULL;
 
-	if (cursor == NULL) {
+	if (sna->kgem.gen >= 033) { /* Don't allow phys cursor sharing */
 		for (cursor = sna->cursor.cursors; cursor; cursor = cursor->next) {
-			if (cursor->alloc >= 4*size*size && cursor->serial != sna->cursor.serial) {
+			if (cursor->serial == sna->cursor.serial && cursor->rotation == rotation) {
+				__DBG(("%s: reusing handle=%d, serial=%d, rotation=%d, size=%d\n",
+				       __FUNCTION__, cursor->handle, cursor->serial, cursor->rotation, cursor->size));
+				assert(cursor->size == sna->cursor.size);
+				return cursor;
+			}
+		}
+
+		for (cursor = sna->cursor.cursors; cursor; cursor = cursor->next) {
+			if (cursor->alloc >= 4*size*size && cursor->rotation == rotation) {
 				__DBG(("%s: stealing handle=%d, serial=%d, rotation=%d, alloc=%d\n",
 				       __FUNCTION__, cursor->handle, cursor->serial, cursor->rotation, cursor->alloc));
-				assert(cursor->rotation != rotation);
+				assert(cursor->serial != sna->cursor.serial);
 				break;
+			}
+		}
+
+		if (cursor == NULL) {
+			for (cursor = sna->cursor.cursors; cursor; cursor = cursor->next) {
+				if (cursor->alloc >= 4*size*size && cursor->serial != sna->cursor.serial) {
+					__DBG(("%s: stealing handle=%d, serial=%d, rotation=%d, alloc=%d\n",
+					       __FUNCTION__, cursor->handle, cursor->serial, cursor->rotation, cursor->alloc));
+					assert(cursor->rotation != rotation);
+					break;
+				}
 			}
 		}
 	}
