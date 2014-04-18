@@ -627,6 +627,14 @@ cleanup:
 	return FALSE;
 }
 
+static bool has_shadow(struct sna *sna)
+{
+	if (!sna->mode.shadow_damage)
+		return false;
+
+	return RegionNotEmpty(DamageRegion(sna->mode.shadow_damage));
+}
+
 static void
 sna_block_handler(BLOCKHANDLER_ARGS_DECL)
 {
@@ -642,7 +650,7 @@ sna_block_handler(BLOCKHANDLER_ARGS_DECL)
 
 	sna->BlockHandler(BLOCKHANDLER_ARGS);
 
-	if (*tv == NULL || ((*tv)->tv_usec | (*tv)->tv_sec))
+	if (*tv == NULL || ((*tv)->tv_usec | (*tv)->tv_sec) || has_shadow(sna))
 		sna_accel_block_handler(sna, tv);
 }
 
