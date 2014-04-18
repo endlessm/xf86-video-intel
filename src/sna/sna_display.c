@@ -360,7 +360,7 @@ has_user_backlight_override(xf86OutputPtr output)
 	if (str == NULL)
 		return NULL;
 
-	DBG(("%s(s) requested %s\n", __FUNCTION__, output->name, str));
+	DBG(("%s(%s) requested %s\n", __FUNCTION__, output->name, str));
 
 	if (backlight_exists(str) == BL_NONE) {
 		xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
@@ -613,8 +613,8 @@ rotation_init(struct sna *sna, struct rotation *r, uint32_t obj_id, uint32_t obj
 		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPERTY, &prop))
 			continue;
 
-		DBG(("%s: prop[%d] .id=%d, .name=%s, .flags=%x, .value=%ld\n", __FUNCTION__, i,
-		     prop_values[i], prop.name, prop.flags, prop_values[i+props.count_props]));
+		DBG(("%s: prop[%d] .id=%ld, .name=%s, .flags=%x, .value=%ld\n", __FUNCTION__, i,
+		     (long)prop_values[i], prop.name, prop.flags, (long)prop_values[i+props.count_props]));
 		if ((prop.flags & (1 << 5)) == 0)
 			continue;
 
@@ -638,8 +638,8 @@ rotation_init(struct sna *sna, struct rotation *r, uint32_t obj_id, uint32_t obj
 				 * RandR remains fixed for our lifetimes.
 				 */
 				for (j = 0; j < prop.count_enum_blobs; j++) {
-					DBG(("%s: rotation[%d] = %s [%x]\n", __FUNCTION__,
-					     j, enums[j].name, enums[j].value));
+					DBG(("%s: rotation[%d] = %s [%lx]\n", __FUNCTION__,
+					     j, enums[j].name, (long)enums[j].value));
 					r->supported |= 1 << enums[j].value;
 				}
 			}
