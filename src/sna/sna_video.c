@@ -500,8 +500,9 @@ sna_video_copy_data(struct sna_video *video,
 			    ALIGN(w >> 1, 4) == frame->pitch[0] &&
 			    ALIGN(w, 4) == frame->pitch[1]) {
 				if (frame->bo) {
-					kgem_bo_write(&video->sna->kgem, frame->bo,
-						      buf, frame->size);
+					if (!kgem_bo_write(&video->sna->kgem, frame->bo,
+							   buf, frame->size))
+						goto use_gtt;
 				} else {
 					frame->bo = kgem_create_buffer(&video->sna->kgem, frame->size,
 								       KGEM_BUFFER_WRITE | KGEM_BUFFER_WRITE_INPLACE,
@@ -537,8 +538,9 @@ sna_video_copy_data(struct sna_video *video,
 			if (w*2 == frame->pitch[0]) {
 				buf += (2U*y * frame->width) + (x << 1);
 				if (frame->bo) {
-					kgem_bo_write(&video->sna->kgem, frame->bo,
-						      buf, 2U*h*frame->width);
+					if (!kgem_bo_write(&video->sna->kgem, frame->bo,
+							   buf, 2U*h*frame->width))
+						goto use_gtt;
 				} else {
 					frame->bo = kgem_create_buffer(&video->sna->kgem, frame->size,
 								       KGEM_BUFFER_WRITE | KGEM_BUFFER_WRITE_INPLACE,
@@ -555,7 +557,7 @@ sna_video_copy_data(struct sna_video *video,
 		DBG(("%s: source cropped, fallback\n", __FUNCTION__));
 	}
 
-	/* copy data, must use GTT so that we keep the overlay uncached */
+use_gtt: /* copy data, must use GTT so that we keep the overlay uncached */
 	if (frame->bo) {
 		dst = kgem_bo_map__gtt(&video->sna->kgem, frame->bo);
 		if (dst == NULL)
