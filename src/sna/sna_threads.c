@@ -149,6 +149,7 @@ void sna_threads_init(void)
 		pthread_cond_init(&threads[n].cond, NULL);
 
 		threads[n].func = NULL;
+		threads[n].arg = NULL;
 		if (pthread_create(&threads[n].thread, NULL,
 				   __run__, &threads[n]))
 			goto bail;
