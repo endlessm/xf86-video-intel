@@ -655,22 +655,22 @@ sna_tiling_fill_boxes(struct sna *sna,
 
 				assert(kgem_bo_can_blt(&sna->kgem, bo));
 
-				if (!sna->render.copy_boxes(sna, GXcopy,
-							     dst, dst_bo, 0, 0,
-							     &tmp, bo, -dx, -dy,
-							     REGION_RECTS(&this), REGION_NUM_RECTS(&this), 0))
+				if (op > PictOpSrc &&
+				    !sna->render.copy_boxes(sna, GXcopy,
+							    dst, dst_bo, 0, 0,
+							    &tmp, bo, -dx, -dy,
+							    REGION_RECTS(&this), REGION_NUM_RECTS(&this), 0))
 					goto err;
 
 				RegionTranslate(&this, -dx, -dy);
-				if (!sna->render.fill_boxes(sna, op, format, color,
-							     &tmp, bo,
-							     REGION_RECTS(&this), REGION_NUM_RECTS(&this)))
+				if (!sna->render.fill_boxes(sna, op, format, color, &tmp, bo,
+							    REGION_RECTS(&this), REGION_NUM_RECTS(&this)))
 					goto err;
 
 				if (!sna->render.copy_boxes(sna, GXcopy,
-							     &tmp, bo, 0, 0,
-							     dst, dst_bo, dx, dy,
-							     REGION_RECTS(&this), REGION_NUM_RECTS(&this), 0))
+							    &tmp, bo, 0, 0,
+							    dst, dst_bo, dx, dy,
+							    REGION_RECTS(&this), REGION_NUM_RECTS(&this), 0))
 					goto err;
 
 				kgem_bo_destroy(&sna->kgem, bo);
