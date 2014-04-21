@@ -248,7 +248,7 @@ intel_glamor_init(ScreenPtr screen)
 
   fail:
 	xf86DrvMsg(scrn->scrnIndex, X_INFO,
-		   "Use standard UXA acceleration.\n");
+		   "Use legacy UXA acceleration.\n");
 	return FALSE;
 }
 
