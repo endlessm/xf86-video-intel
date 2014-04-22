@@ -61,6 +61,7 @@ static struct kgem_bo *
 search_snoop_cache(struct kgem *kgem, unsigned int num_pages, unsigned flags);
 
 #define DBG_NO_HW 0
+#define DBG_NO_EXEC 0
 #define DBG_NO_TILING 0
 #define DBG_NO_CACHE 0
 #define DBG_NO_CACHE_LEVEL 0
@@ -2742,6 +2743,14 @@ static int kgem_batch_write(struct kgem *kgem, uint32_t handle, uint32_t size)
 	int ret;
 
 	ASSERT_IDLE(kgem, handle);
+
+#if DBG_NO_EXEC
+	{
+		uint32_t batch[] = { MI_BATCH_BUFFER_END, 0};
+		return gem_write(kgem->fd, handle, 0, sizeof(batch), batch);
+	}
+#endif
+
 
 retry:
 	/* If there is no surface data, just upload the batch */
