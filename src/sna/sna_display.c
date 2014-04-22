@@ -3460,8 +3460,10 @@ sna_set_cursor_position(ScrnInfoPtr scrn, int x, int y)
 	struct sna *sna = to_sna(scrn);
 	int sigio, c;
 
-	__DBG(("%s(%d, %d)\n", __FUNCTION__, x, y));
-	assert(sna->cursor.ref);
+	__DBG(("%s(%d, %d), cursor? %d\n", __FUNCTION__,
+	       x, y, sna->cursor.ref!=NULL));
+	if (sna->cursor.ref == NULL)
+		return;
 
 	sigio = sigio_block();
 	sna->cursor.last_x = x;
@@ -3685,9 +3687,6 @@ sna_cursors_init(ScreenPtr screen, struct sna *sna)
 static void
 sna_cursors_reload(struct sna *sna)
 {
-	if (sna->cursor.ref == NULL)
-		return;
-
 	sna_set_cursor_position(sna->scrn,
 				sna->cursor.last_x,
 				sna->cursor.last_y);
