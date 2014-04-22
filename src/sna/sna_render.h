@@ -326,9 +326,6 @@ struct sna_render {
 	} glyph[2];
 	pixman_image_t *white_image;
 	PicturePtr white_picture;
-#if HAS_PIXMAN_GLYPHS
-	pixman_glyph_cache_t *glyph_cache;
-#endif
 
 	uint16_t vb_id;
 	uint16_t vertex_offset;
