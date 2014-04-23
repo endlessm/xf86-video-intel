@@ -2777,7 +2777,7 @@ sna_output_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 
 	/* stash the active CRTC id for our probe function */
 	output->crtc = NULL;
-	if (compat_conn.conn.connection == DRM_MODE_CONNECTED)
+	if (compat_conn.conn.connection != DRM_MODE_DISCONNECTED)
 		output->crtc = (void *)(uintptr_t)enc.crtc_id;
 
 	DBG(("%s: created output '%s' %d [%ld]  (possible crtc:%x, possible clones:%x), edid=%d, dpms=%d, crtc=%lu\n",
