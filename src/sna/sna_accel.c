@@ -2100,12 +2100,11 @@ skip_inplace_map:
 	sna_pixmap_unmap(pixmap, priv);
 
 	if (USE_INPLACE &&
-	    priv->gpu_damage && priv->cpu_damage == NULL &&
+	    (flags & MOVE_WRITE ? (void *)priv->gpu_bo : (void *)priv->gpu_damage) && priv->cpu_damage == NULL &&
 	    priv->gpu_bo->tiling == I915_TILING_NONE &&
 	    (flags & MOVE_READ || kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, flags & MOVE_WRITE)) &&
 	    ((flags & (MOVE_WRITE | MOVE_ASYNC_HINT)) == 0 ||
-	     (!priv->cow && !priv->move_to_gpu &&
-	      !__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo)))) {
+	     (!priv->cow && !priv->move_to_gpu && !__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo)))) {
 		void *ptr;
 
 		DBG(("%s: try to operate inplace (CPU)\n", __FUNCTION__));
@@ -2131,8 +2130,8 @@ skip_inplace_map:
 				sna_pixmap_free_cpu(sna, priv, priv->cpu);
 				list_del(&priv->flush_list);
 				priv->clear = false;
+				priv->cpu = true;
 			}
-			priv->cpu = true;
 
 			assert(pixmap->devPrivate.ptr == MAP(priv->gpu_bo->map__cpu));
 			kgem_bo_sync__cpu_full(&sna->kgem, priv->gpu_bo,
