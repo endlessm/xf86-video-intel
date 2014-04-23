@@ -4032,11 +4032,17 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 		crtc_id = (uintptr_t)output->crtc;
 		output->crtc = NULL;
 
-		if (crtc_id == 0)
+		if (crtc_id == 0) {
+			DBG(("%s: not using output %s, disconnected\n",
+			     __FUNCTION__, output->name));
 			continue;
+		}
 
-		if (xf86ReturnOptValBool(output->options, OPTION_DISABLE, 0))
+		if (xf86ReturnOptValBool(output->options, OPTION_DISABLE, 0)) {
+			DBG(("%s: not using output %s, manually disabled\n",
+			     __FUNCTION__, output->name));
 			continue;
+		}
 
 		for (j = 0; j < config->num_crtc; j++) {
 			xf86CrtcPtr crtc = config->crtc[j];
@@ -4052,14 +4058,17 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 				const char *pref;
 
 				pref = preferred_mode(output);
-				if (pref && strcmp(pref, crtc->desiredMode.name))
+				if (pref && strcmp(pref, crtc->desiredMode.name)) {
+					DBG(("%s: output %s user requests a different preferred mode %s, found %s\n",
+					     __FUNCTION__, output->name, pref, crtc->desiredMode.name));
 					return false;
+				}
 
 				xf86DrvMsg(scrn->scrnIndex, X_PROBED,
-						"Output %s using initial mode %s on pipe %d\n",
-						output->name,
-						crtc->desiredMode.name,
-						to_sna_crtc(crtc)->pipe);
+					   "Output %s using initial mode %s on pipe %d\n",
+					   output->name,
+					   crtc->desiredMode.name,
+					   to_sna_crtc(crtc)->pipe);
 
 				output->crtc = crtc;
 				crtc->enabled = TRUE;
