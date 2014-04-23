@@ -77,8 +77,6 @@ struct sna_video {
 	int saturation;
 	xf86CrtcPtr desired_crtc;
 
-	RegionRec clip;
-
 	uint32_t gamma0;
 	uint32_t gamma1;
 	uint32_t gamma2;
@@ -86,8 +84,8 @@ struct sna_video {
 	uint32_t gamma4;
 	uint32_t gamma5;
 
-	int color_key;
-	bool color_key_changed;
+	unsigned color_key;
+	unsigned color_key_changed;
 	bool has_color_key;
 
 	/** YUV data buffers */
@@ -98,9 +96,10 @@ struct sna_video {
 	int alignment;
 	bool tiled;
 	bool textured;
-	Rotation rotation;
 	int plane;
-	struct kgem_bo *bo;
+
+	struct kgem_bo *bo[4];
+	RegionRec clip;
 
 	int SyncToVblank;	/* -1: auto, 0: off, 1: on */
 	int AlwaysOnTop;
@@ -112,6 +111,7 @@ struct sna_video_frame {
 	uint32_t size;
 	uint32_t UBufOffset;
 	uint32_t VBufOffset;
+	Rotation rotation;
 
 	uint16_t width, height;
 	uint16_t pitch[2];
@@ -178,6 +178,11 @@ void
 sna_video_frame_init(struct sna_video *video,
 		     int id, short width, short height,
 		     struct sna_video_frame *frame);
+
+void
+sna_video_frame_set_rotation(struct sna_video *video,
+			     struct sna_video_frame *frame,
+			     Rotation rotation);
 
 struct kgem_bo *
 sna_video_buffer(struct sna_video *video,

@@ -139,9 +139,9 @@ static int sna_video_overlay_stop(ClientPtr client,
 		       DRM_IOCTL_I915_OVERLAY_PUT_IMAGE,
 		       &request);
 
-	if (video->bo)
-		kgem_bo_destroy(&sna->kgem, video->bo);
-	video->bo = NULL;
+	if (video->bo[0])
+		kgem_bo_destroy(&sna->kgem, video->bo[0]);
+	video->bo[0] = NULL;
 
 	sna_video_free_buffers(video);
 	sna_window_set_port((WindowPtr)draw, NULL);
@@ -202,6 +202,7 @@ sna_video_overlay_set_attribute(ClientPtr client,
 		video->gamma5 = value;
 	} else if (attribute == xvColorKey) {
 		video->color_key = value;
+		RegionEmpty(&video->clip);
 		DBG(("COLORKEY\n"));
 	} else
 		return BadMatch;
@@ -217,9 +218,6 @@ sna_video_overlay_set_attribute(ClientPtr client,
 
 	if (!sna_video_overlay_update_attrs(video))
 		return BadValue;
-
-	if (attribute == xvColorKey)
-		RegionEmpty(&video->clip);
 
 	return Success;
 }
@@ -455,10 +453,10 @@ sna_video_overlay_show(struct sna *sna,
 		return false;
 	}
 
-	if (video->bo != frame->bo) {
-		if (video->bo)
-			kgem_bo_destroy(&sna->kgem, video->bo);
-		video->bo = kgem_bo_reference(frame->bo);
+	if (video->bo[0] != frame->bo) {
+		if (video->bo[0])
+			kgem_bo_destroy(&sna->kgem, video->bo[0]);
+		video->bo[0] = kgem_bo_reference(frame->bo);
 	}
 
 	return true;
@@ -535,7 +533,7 @@ sna_video_overlay_put_image(ClientPtr client,
 		goto invisible;
 
 	/* overlay can't handle rotation natively, store it for the copy func */
-	video->rotation = crtc->rotation;
+	sna_video_frame_set_rotation(video, &frame, crtc->rotation);
 
 	if (xvmc_passthrough(format->id)) {
 		DBG(("%s: using passthough, name=%d\n",
@@ -821,7 +819,6 @@ void sna_video_overlay_setup(struct sna *sna, ScreenPtr screen)
 	video->gamma2 = 0x202020;
 	video->gamma1 = 0x101010;
 	video->gamma0 = 0x080808;
-	video->rotation = RR_Rotate_0;
 	RegionNull(&video->clip);
 
 	xvColorKey = MAKE_ATOM("XV_COLORKEY");

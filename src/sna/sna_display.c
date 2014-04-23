@@ -194,7 +194,8 @@ static inline uint32_t fb_id(struct kgem_bo *bo)
 
 uint32_t sna_crtc_id(xf86CrtcPtr crtc)
 {
-	assert(to_sna_crtc(crtc));
+	if (to_sna_crtc(crtc) == NULL)
+		return 0;
 	return to_sna_crtc(crtc)->id;
 }
 

@@ -200,8 +200,6 @@ sna_video_frame_init(struct sna_video *video,
 		     int id, short width, short height,
 		     struct sna_video_frame *frame)
 {
-	int align;
-
 	DBG(("%s: id=%d [planar? %d], width=%d, height=%d, align=%d\n",
 	     __FUNCTION__, id, is_planar_fourcc(id), width, height, video->alignment));
 	assert(width && height);
@@ -210,21 +208,35 @@ sna_video_frame_init(struct sna_video *video,
 	frame->id = id;
 	frame->width = width;
 	frame->height = height;
+	frame->rotation = 0;
+}
+
+void
+sna_video_frame_set_rotation(struct sna_video *video,
+			     struct sna_video_frame *frame,
+			     Rotation rotation)
+{
+	unsigned width = frame->width;
+	unsigned height = frame->height;
+	unsigned align;
+
+	DBG(("%s: rotation=%d\n", __FUNCTION__, rotation));
+	frame->rotation = rotation;
 
 	align = video->alignment;
 #if SNA_XVMC
 	/* for i915 xvmc, hw requires 1kb aligned surfaces */
-	if (id == FOURCC_XVMC && video->sna->kgem.gen < 040 && align < 1024)
+	if (frame->id == FOURCC_XVMC && video->sna->kgem.gen < 040 && align < 1024)
 		align = 1024;
 #endif
 
 	/* Determine the desired destination pitch (representing the
 	 * chroma's pitch in the planar case).
 	 */
-	if (is_planar_fourcc(id)) {
+	if (is_planar_fourcc(frame->id)) {
 		assert((width & 1) == 0);
 		assert((height & 1) == 0);
-		if (video->rotation & (RR_Rotate_90 | RR_Rotate_270)) {
+		if (rotation & (RR_Rotate_90 | RR_Rotate_270)) {
 			frame->pitch[0] = ALIGN((height / 2), align);
 			frame->pitch[1] = ALIGN(height, align);
 			frame->size = width;
@@ -235,7 +247,7 @@ sna_video_frame_init(struct sna_video *video,
 		}
 		frame->size *= frame->pitch[0] + frame->pitch[1];
 
-		if (video->rotation & (RR_Rotate_90 | RR_Rotate_270)) {
+		if (rotation & (RR_Rotate_90 | RR_Rotate_270)) {
 			frame->UBufOffset = (int)frame->pitch[1] * width;
 			frame->VBufOffset =
 				frame->UBufOffset + (int)frame->pitch[0] * width / 2;
@@ -247,7 +259,7 @@ sna_video_frame_init(struct sna_video *video,
 	} else {
 		switch (frame->id) {
 		case FOURCC_RGB888:
-			if (video->rotation & (RR_Rotate_90 | RR_Rotate_270)) {
+			if (rotation & (RR_Rotate_90 | RR_Rotate_270)) {
 				frame->pitch[0] = ALIGN((height << 2), align);
 				frame->size = (int)frame->pitch[0] * width;
 			} else {
@@ -257,7 +269,7 @@ sna_video_frame_init(struct sna_video *video,
 			frame->UBufOffset = frame->VBufOffset = 0;
 			break;
 		case FOURCC_RGB565:
-			if (video->rotation & (RR_Rotate_90 | RR_Rotate_270)) {
+			if (rotation & (RR_Rotate_90 | RR_Rotate_270)) {
 				frame->pitch[0] = ALIGN((height << 1), align);
 				frame->size = (int)frame->pitch[0] * width;
 			} else {
@@ -268,7 +280,7 @@ sna_video_frame_init(struct sna_video *video,
 			break;
 
 		default:
-			if (video->rotation & (RR_Rotate_90 | RR_Rotate_270)) {
+			if (rotation & (RR_Rotate_90 | RR_Rotate_270)) {
 				frame->pitch[0] = ALIGN((height << 1), align);
 				frame->size = (int)frame->pitch[0] * width;
 			} else {
@@ -309,7 +321,7 @@ static void sna_memcpy_plane(struct sna_video *video,
 	if (!video->textured)
 		x = y = 0;
 
-	switch (video->rotation) {
+	switch (frame->rotation) {
 	case RR_Rotate_0:
 		dst += y * dstPitch + x;
 		if (srcPitch == dstPitch && srcPitch == w)
@@ -399,7 +411,7 @@ sna_copy_packed_data(struct sna_video *video,
 
 	src = buf + (y * pitch) + (x << 1);
 
-	switch (video->rotation) {
+	switch (frame->rotation) {
 	case RR_Rotate_0:
 		w <<= 1;
 		for (i = 0; i < h; i++) {
@@ -481,16 +493,17 @@ sna_video_copy_data(struct sna_video *video,
 	DBG(("%s: handle=%d, size=%dx%d [%d], pitch=[%d,%d] rotation=%d, is-texture=%d\n",
 	     __FUNCTION__, frame->bo ? frame->bo->handle : 0,
 	     frame->width, frame->height, frame->size, frame->pitch[0], frame->pitch[1],
-	     video->rotation, video->textured));
+	     frame->rotation, video->textured));
 	DBG(("%s: image=(%d, %d), (%d, %d), source=(%d, %d), (%d, %d)\n",
 	     __FUNCTION__,
 	     frame->image.x1, frame->image.y1, frame->image.x2, frame->image.y2,
 	     frame->src.x1, frame->src.y1, frame->src.x2, frame->src.y2));
 	assert(frame->width && frame->height);
+	assert(frame->rotation);
 	assert(frame->size);
 
 	/* In the common case, we can simply the upload in a single pwrite */
-	if (video->rotation == RR_Rotate_0 && !video->tiled) {
+	if (frame->rotation == RR_Rotate_0 && !video->tiled) {
 		DBG(("%s: unrotated, untiled fast paths: is-planar?=%d\n",
 		     __FUNCTION__, is_planar_fourcc(frame->id)));
 		if (is_planar_fourcc(frame->id)) {

@@ -211,6 +211,8 @@ sna_video_textured_put_image(ClientPtr client,
 				   &clip))
 		return Success;
 
+	sna_video_frame_set_rotation(video, &frame, RR_Rotate_0);
+
 	if (xvmc_passthrough(format->id)) {
 		DBG(("%s: using passthough, name=%d\n",
 		     __FUNCTION__, *(uint32_t *)buf));
@@ -403,7 +405,6 @@ void sna_video_textured_setup(struct sna *sna, ScreenPtr screen)
 		v->sna = sna;
 		v->textured = true;
 		v->alignment = 4;
-		v->rotation = RR_Rotate_0;
 		v->SyncToVblank = (sna->flags & SNA_NO_WAIT) == 0;
 
 		RegionNull(&v->clip);
