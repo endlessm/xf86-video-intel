@@ -2087,7 +2087,6 @@ static void __kgem_bo_destroy(struct kgem *kgem, struct kgem_bo *bo)
 
 	assert(list_is_empty(&bo->list));
 	assert(bo->refcnt == 0);
-	assert(!bo->purged || !bo->reusable);
 	assert(bo->proxy == NULL);
 	assert_tiling(kgem, bo);
 
@@ -5496,7 +5495,7 @@ void *kgem_bo_map__async(struct kgem *kgem, struct kgem_bo *bo)
 	assert(bo->proxy == NULL);
 	assert(list_is_empty(&bo->list));
 	assert_tiling(kgem, bo);
-	assert(!bo->purged || !bo->reusable);
+	assert(!bo->purged || bo->reusable);
 
 	if (bo->tiling == I915_TILING_NONE && !bo->scanout && kgem->has_llc) {
 		DBG(("%s: converting request for GTT map into CPU map\n",
@@ -5537,7 +5536,7 @@ void *kgem_bo_map(struct kgem *kgem, struct kgem_bo *bo)
 	assert(list_is_empty(&bo->list));
 	assert(bo->exec == NULL);
 	assert_tiling(kgem, bo);
-	assert(!bo->purged || !bo->reusable);
+	assert(!bo->purged || bo->reusable);
 
 	if (bo->tiling == I915_TILING_NONE && !bo->scanout &&
 	    (kgem->has_llc || bo->domain == DOMAIN_CPU)) {
@@ -5603,7 +5602,7 @@ void *kgem_bo_map__gtt(struct kgem *kgem, struct kgem_bo *bo)
 	assert(bo->exec == NULL);
 	assert(list_is_empty(&bo->list));
 	assert_tiling(kgem, bo);
-	assert(!bo->purged || !bo->reusable);
+	assert(!bo->purged || bo->reusable);
 
 	ptr = MAP(bo->map__gtt);
 	if (ptr == NULL) {
