@@ -4470,6 +4470,9 @@ large_inactive:
 					continue;
 				}
 
+				if (flags & UNCACHED && !kgem->has_llc && bo->domain != DOMAIN_CPU)
+					continue;
+
 				if (bo->tiling != tiling ||
 				    (tiling != I915_TILING_NONE && bo->pitch != pitch)) {
 					if (bo->map__gtt ||
@@ -4492,7 +4495,6 @@ large_inactive:
 				bo->pitch = pitch;
 				bo->delta = 0;
 				bo->unique_id = kgem_get_unique_id(kgem);
-				bo->domain = DOMAIN_NONE;
 
 				kgem_bo_remove_from_inactive(kgem, bo);
 				assert(list_is_empty(&bo->list));

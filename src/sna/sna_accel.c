@@ -4350,6 +4350,9 @@ create_upload_tiled_x(struct kgem *kgem,
 	tiling = sna_pixmap_choose_tiling(pixmap, I915_TILING_X);
 	assert(tiling != I915_TILING_Y && tiling != -I915_TILING_Y);
 
+	if (!kgem->has_llc && tiling != I915_TILING_NONE)
+		return false;
+
 	assert(priv->gpu_bo == NULL);
 	assert(priv->gpu_damage == NULL);
 
