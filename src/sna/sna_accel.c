@@ -2272,9 +2272,7 @@ done:
 			assert((flags & MOVE_WRITE) == 0 || !kgem_bo_is_busy(priv->cpu_bo));
 		}
 	}
-	priv->cpu =
-		(flags & (MOVE_INPLACE_HINT | MOVE_ASYNC_HINT)) == 0 &&
-		!DAMAGE_IS_ALL(priv->gpu_damage);
+	priv->cpu |= (flags & (MOVE_WRITE |MOVE_ASYNC_HINT)) == MOVE_WRITE;
 	assert(pixmap->devPrivate.ptr == PTR(priv->ptr));
 	assert(pixmap->devKind);
 	assert_pixmap_damage(pixmap);
@@ -2970,9 +2968,7 @@ out:
 				       FORCE_FULL_SYNC || flags & MOVE_WRITE);
 		assert((flags & MOVE_WRITE) == 0 || !kgem_bo_is_busy(priv->cpu_bo));
 	}
-	priv->cpu =
-		(flags & (MOVE_INPLACE_HINT | MOVE_ASYNC_HINT)) == 0 &&
-		!DAMAGE_IS_ALL(priv->gpu_damage);
+	priv->cpu |= (flags & (MOVE_WRITE |MOVE_ASYNC_HINT)) == MOVE_WRITE;
 	assert(pixmap->devPrivate.ptr == PTR(priv->ptr));
 	assert(pixmap->devKind);
 	assert_pixmap_damage(pixmap);
