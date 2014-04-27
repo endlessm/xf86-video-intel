@@ -3120,7 +3120,7 @@ static struct sna_cursor *__sna_create_cursor(struct sna *sna)
 	/* Old hardware uses physical addresses, which the kernel
 	 * implements in an incoherent fashion requiring a pwrite.
 	 */
-	if (sna->kgem.gen >= 033) {
+	if (sna->cursor.use_gtt) {
 		c->image = gem_mmap(sna->kgem.fd, c->handle, c->alloc);
 		if (c->image == NULL) {
 			gem_close(sna->kgem.fd, c->handle);
@@ -3175,7 +3175,7 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 	if (cursor && cursor->alloc < 4*size*size)
 		cursor = NULL;
 
-	if (sna->kgem.gen >= 033) { /* Don't allow phys cursor sharing */
+	if (sna->cursor.use_gtt) { /* Don't allow phys cursor sharing */
 		for (cursor = sna->cursor.cursors; cursor; cursor = cursor->next) {
 			if (cursor->serial == sna->cursor.serial && cursor->rotation == rotation) {
 				__DBG(("%s: reusing handle=%d, serial=%d, rotation=%d, size=%d\n",
@@ -3644,6 +3644,10 @@ sna_cursor_pre_init(struct sna *sna)
 	xf86DrvMsg(sna->scrn->scrnIndex, X_PROBED,
 		   "Using a maximum size of %dx%d for hardware cursors\n",
 		   sna->cursor.max_size, sna->cursor.max_size);
+
+	sna->cursor.use_gtt = sna->kgem.gen >= 033;
+	DBG(("%s: cursor updates use_gtt?=%d\n",
+	     __FUNCTION__, sna->cursor.use_gtt));
 }
 
 bool

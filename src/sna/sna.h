@@ -296,6 +296,7 @@ struct sna {
 		int last_y;
 
 		unsigned max_size;
+		bool use_gtt;
 	} cursor;
 
 	struct sna_dri {
