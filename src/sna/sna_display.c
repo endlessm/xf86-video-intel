@@ -3221,10 +3221,7 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 
 	image = cursor->image;
 	if (image == NULL) {
-		image = malloc(4*size*size);
-		if (image == NULL)
-			return NULL;
-
+		image = sna->cursor.scratch;
 		cursor->last_width = cursor->last_height = size;
 	}
 	if (width < cursor->last_width || height < cursor->last_height)
@@ -3291,8 +3288,6 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 		pwrite.data_ptr = (uintptr_t)image;
 		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_I915_GEM_PWRITE, &pwrite))
 			__DBG(("%s: cursor update (pwrite) failed: %d\n", errno));
-
-		free(image);
 	}
 
 	cursor->size = size;
@@ -3641,13 +3636,19 @@ sna_cursor_pre_init(struct sna *sna)
 		assert(sna->cursor.max_size == cap.value);
 #endif
 
-	xf86DrvMsg(sna->scrn->scrnIndex, X_PROBED,
-		   "Using a maximum size of %dx%d for hardware cursors\n",
-		   sna->cursor.max_size, sna->cursor.max_size);
-
 	sna->cursor.use_gtt = sna->kgem.gen >= 033;
 	DBG(("%s: cursor updates use_gtt?=%d\n",
 	     __FUNCTION__, sna->cursor.use_gtt));
+
+	if (!sna->cursor.use_gtt) {
+		sna->cursor.scratch = malloc(sna->cursor.max_size * sna->cursor.max_size * 4);
+		if (!sna->cursor.scratch)
+			sna->cursor.max_size = 0;
+	}
+
+	xf86DrvMsg(sna->scrn->scrnIndex, X_PROBED,
+		   "Using a maximum size of %dx%d for hardware cursors\n",
+		   sna->cursor.max_size, sna->cursor.max_size);
 }
 
 bool

@@ -297,6 +297,8 @@ struct sna {
 
 		unsigned max_size;
 		bool use_gtt;
+
+		void *scratch;
 	} cursor;
 
 	struct sna_dri {
