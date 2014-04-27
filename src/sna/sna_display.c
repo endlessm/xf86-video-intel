@@ -4168,8 +4168,6 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 	int num_fake = 0;
 	int i;
 
-	sna_cursor_pre_init(sna);
-
 	if (sna->flags & SNA_IS_HOSTED) {
 		sna_setup_provider(scrn);
 		return true;
@@ -4188,6 +4186,8 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 	if (mode->kmode) {
 		assert(mode->kmode->count_crtcs);
 		assert(mode->kmode->count_connectors);
+
+		sna_cursor_pre_init(sna);
 
 		xf86CrtcConfigInit(scrn, &sna_mode_funcs);
 		XF86_CRTC_CONFIG_PTR(scrn)->xf86_crtc_notify = sna_crtc_config_notify;
