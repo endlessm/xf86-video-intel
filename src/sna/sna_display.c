@@ -3105,17 +3105,14 @@ static struct sna_cursor *__sna_create_cursor(struct sna *sna)
 
 	__DBG(("%s(size=%d)\n", __FUNCTION__, size));
 
-	c = malloc(sizeof(*c));
-	if (c == NULL)
-		return NULL;
+	c = sna->cursor.stash;
+	assert(c);
 
 	size = size * size * 4;
 	c->alloc = ALIGN(size, 4096);
 	c->handle = gem_create(sna->kgem.fd, c->alloc);
-	if (c->handle == 0) {
-		free(c);
+	if (c->handle == 0)
 		return NULL;
-	}
 
 	/* Old hardware uses physical addresses, which the kernel
 	 * implements in an incoherent fashion requiring a pwrite.
@@ -3124,7 +3121,6 @@ static struct sna_cursor *__sna_create_cursor(struct sna *sna)
 		c->image = gem_mmap(sna->kgem.fd, c->handle, c->alloc);
 		if (c->image == NULL) {
 			gem_close(sna->kgem.fd, c->handle);
-			free(c);
 			return NULL;
 		}
 	} else
@@ -3134,6 +3130,9 @@ static struct sna_cursor *__sna_create_cursor(struct sna *sna)
 
 	c->serial = 0;
 	c->last_width = c->last_height = 0; /* all clear */
+
+	sna->cursor.num_stash--;
+	sna->cursor.stash = c->next;
 
 	c->next = sna->cursor.cursors;
 	sna->cursor.cursors = c;
@@ -3410,6 +3409,7 @@ sna_hide_cursors(ScrnInfoPtr scrn)
 {
 	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
 	struct sna *sna = to_sna(scrn);
+	struct sna_cursor *cursor, **prev;
 	int sigio, c;
 
 	__DBG(("%s\n", __FUNCTION__));
@@ -3438,14 +3438,22 @@ sna_hide_cursors(ScrnInfoPtr scrn)
 		sna_crtc->cursor = NULL;
 	}
 
-	while (sna->cursor.cursors) {
-		struct sna_cursor *cursor = sna->cursor.cursors;
-		sna->cursor.cursors = cursor->next;
+	for (prev = &sna->cursor.cursors; (cursor = *prev) != NULL; ) {
+		if (cursor->serial == sna->cursor.serial) {
+			prev = &cursor->next;
+			continue;
+		}
+
+		*prev = cursor->next;
 		if (cursor->image)
 			munmap(cursor->image, cursor->alloc);
 		gem_close(sna->kgem.fd, cursor->handle);
-		free(cursor);
+
+		cursor->next = sna->cursor.stash;
+		sna->cursor.stash = cursor;
+		sna->cursor.num_stash++;
 	}
+
 	sigio_unblock(sigio);
 }
 
@@ -3577,6 +3585,23 @@ static int __cursor_size(CursorPtr cursor)
 	return size;
 }
 
+static bool
+sna_cursor_preallocate(struct sna *sna)
+{
+	while (sna->cursor.num_stash < 0) {
+		struct sna_cursor *cursor = malloc(sizeof(*cursor));
+		if (!cursor)
+			return false;
+
+		cursor->next = sna->cursor.stash;
+		sna->cursor.stash = cursor;
+
+		sna->cursor.num_stash++;
+	}
+
+	return true;
+}
+
 static Bool
 sna_use_hw_cursor(ScreenPtr screen, CursorPtr cursor)
 {
@@ -3596,6 +3621,9 @@ sna_use_hw_cursor(ScreenPtr screen, CursorPtr cursor)
 
 	sna->cursor.size = __cursor_size(cursor);
 	if (sna->cursor.size > sna->cursor.max_size)
+		return FALSE;
+
+	if (!sna_cursor_preallocate(sna))
 		return FALSE;
 
 	sna->cursor.ref = cursor;
@@ -3646,9 +3674,26 @@ sna_cursor_pre_init(struct sna *sna)
 			sna->cursor.max_size = 0;
 	}
 
+	sna->cursor.num_stash = -sna->mode.kmode->count_crtcs;
+
 	xf86DrvMsg(sna->scrn->scrnIndex, X_PROBED,
 		   "Using a maximum size of %dx%d for hardware cursors\n",
 		   sna->cursor.max_size, sna->cursor.max_size);
+}
+
+static void
+sna_cursor_close(struct sna *sna)
+{
+	sna->cursor.serial = 0;
+	sna_hide_cursors(sna->scrn);
+
+	while (sna->cursor.stash) {
+		struct sna_cursor *cursor = sna->cursor.stash;
+		sna->cursor.stash = cursor->next;
+		free(cursor);
+	}
+
+	sna->cursor.num_stash = -sna->mode.kmode->count_crtcs;
 }
 
 bool
@@ -4243,7 +4288,7 @@ sna_mode_close(struct sna *sna)
 	if (sna->flags & SNA_IS_HOSTED)
 		return;
 
-	sna_hide_cursors(sna->scrn);
+	sna_cursor_close(sna);
 
 	for (i = 0; i < config->num_crtc; i++) {
 		struct sna_crtc *crtc;

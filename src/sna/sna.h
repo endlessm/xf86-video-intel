@@ -298,6 +298,8 @@ struct sna {
 		unsigned max_size;
 		bool use_gtt;
 
+		int num_stash;
+		struct sna_cursor *stash;
 		void *scratch;
 	} cursor;
 
