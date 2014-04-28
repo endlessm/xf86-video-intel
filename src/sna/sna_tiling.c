@@ -1018,6 +1018,9 @@ bool sna_tiling_blt_copy_boxes(struct sna *sna, uint8_t alu,
 	int max_size, step;
 	bool ret = false;
 
+	DBG(("%s: alu=%d, src size=%d, dst size=%d\n", __FUNCTION__,
+	     alu, kgem_bo_size(src_bo), kgem_bo_size(dst_bo)));
+
 	if (wedged(sna) ||
 	    !kgem_bo_can_blt(&sna->kgem, src_bo) ||
 	    !kgem_bo_can_blt(&sna->kgem, dst_bo)) {
