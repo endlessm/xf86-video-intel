@@ -7747,6 +7747,7 @@ sna_copy_bitmap_blt(DrawablePtr _bitmap, DrawablePtr drawable, GCPtr gc,
 		     sx, sy, bx1, bx2));
 
 		src_stride = bstride*bh;
+		assert(src_stride > 0);
 		if (src_stride <= 128) {
 			src_stride = ALIGN(src_stride, 8) / 4;
 			assert(src_stride <= 32);
@@ -12875,6 +12876,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 			     bx1, bx2));
 
 			src_stride = bstride*bh;
+			assert(src_stride > 0);
 			if (src_stride <= 128) {
 				src_stride = ALIGN(src_stride, 8) / 4;
 				assert(src_stride <= 32);
@@ -13067,6 +13069,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 				     bx1, bx2, bw, bstride));
 
 				src_stride = bstride*bh;
+				assert(src_stride > 0);
 				if (src_stride <= 128) {
 					src_stride = ALIGN(src_stride, 8) / 4;
 					assert(src_stride <= 32);
@@ -13257,6 +13260,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 					     bx1, bx2));
 
 					src_stride = bstride*bh;
+					assert(src_stride > 0);
 					if (src_stride <= 128) {
 						src_stride = ALIGN(src_stride, 8) / 4;
 						assert(src_stride <= 32);
@@ -13457,6 +13461,7 @@ sna_poly_fill_rect_stippled_n_box__imm(struct sna *sna,
 
 			len = bw*bh;
 			len = ALIGN(len, 8) / 4;
+			assert(len > 0);
 			assert(len <= 32);
 			if (!kgem_check_batch(&sna->kgem, 8+len) ||
 			    !kgem_check_bo_fenced(&sna->kgem, bo) ||
@@ -13582,6 +13587,7 @@ sna_poly_fill_rect_stippled_n_box(struct sna *sna,
 
 			len = bw*bh;
 			len = ALIGN(len, 8) / 4;
+			assert(len > 0);
 			if (!kgem_check_batch(&sna->kgem, 8+len) ||
 			    !kgem_check_bo_fenced(&sna->kgem, bo) ||
 			    !kgem_check_reloc(&sna->kgem, 2)) {
@@ -14691,6 +14697,7 @@ sna_glyph_blt(DrawablePtr drawable, GCPtr gc,
 			if (x1 + w <= extents->x1 || y1 + h <= extents->y1)
 				goto skip;
 
+			assert(len > 0);
 			if (!kgem_check_batch(&sna->kgem, 3+len)) {
 				_kgem_submit(&sna->kgem);
 				_kgem_set_mode(&sna->kgem, KGEM_BLT);
@@ -15429,6 +15436,7 @@ sna_reversed_glyph_blt(DrawablePtr drawable, GCPtr gc,
 				}
 			}
 
+			assert(len > 0);
 			if (!kgem_check_batch(&sna->kgem, 3+len)) {
 				_kgem_submit(&sna->kgem);
 				_kgem_set_mode(&sna->kgem, KGEM_BLT);
