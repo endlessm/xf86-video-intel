@@ -4971,35 +4971,34 @@ inline static bool needs_semaphore(struct kgem *kgem, struct kgem_bo *bo)
 
 static bool aperture_check(struct kgem *kgem, unsigned num_pages)
 {
-	if (kgem->aperture) {
-		struct drm_i915_gem_get_aperture aperture;
+	struct drm_i915_gem_get_aperture aperture;
+	int reserve;
 
-		VG_CLEAR(aperture);
-		aperture.aper_available_size = kgem->aperture_high;
-		aperture.aper_available_size *= PAGE_SIZE;
-		(void)do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_GET_APERTURE, &aperture);
+	if (kgem->aperture)
+		return false;
 
-		DBG(("%s: aperture required %ld bytes, available %ld bytes\n",
-		     __FUNCTION__,
-		     (long)num_pages * PAGE_SIZE,
-		     (long)aperture.aper_available_size));
+	/* Leave some space in case of alignment issues */
+	reserve = kgem->aperture_mappable / 2;
+	if (kgem->gen < 033 && reserve < kgem->aperture_max_fence)
+		reserve = kgem->aperture_max_fence;
+	if (!kgem->has_llc)
+		reserve += kgem->nexec * PAGE_SIZE * 2;
 
-		/* Leave some space in case of alignment issues */
-		aperture.aper_available_size -= 1024 * 1024;
-		aperture.aper_available_size -= kgem->aperture_mappable * PAGE_SIZE / 2;
-		if (kgem->gen < 033)
-			aperture.aper_available_size -= kgem->aperture_max_fence * PAGE_SIZE;
-		if (!kgem->has_llc)
-			aperture.aper_available_size -= 2 * kgem->nexec * PAGE_SIZE;
+	DBG(("%s: num_pages=%d, holding %d pages in reserve, total aperture %d\n",
+	     __FUNCTION__, num_pages, reserve, kgem->aperture_total));
+	num_pages += reserve;
 
-		DBG(("%s: num_pages=%d, estimated max usable=%ld\n",
-		     __FUNCTION__, num_pages, (long)(aperture.aper_available_size/PAGE_SIZE)));
+	VG_CLEAR(aperture);
+	aperture.aper_available_size = kgem->aperture_total;
+	aperture.aper_available_size *= PAGE_SIZE;
+	(void)do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_GET_APERTURE, &aperture);
 
-		if (num_pages <= aperture.aper_available_size / PAGE_SIZE)
-			return true;
-	}
+	DBG(("%s: aperture required %ld bytes, available %ld bytes\n",
+	     __FUNCTION__,
+	     (long)num_pages * PAGE_SIZE,
+	     (long)aperture.aper_available_size));
 
-	return false;
+	return num_pages <= aperture.aper_available_size / PAGE_SIZE;
 }
 
 static inline bool kgem_flush(struct kgem *kgem, bool flush)
@@ -5066,8 +5065,7 @@ bool kgem_check_bo(struct kgem *kgem, ...)
 	if (num_pages + kgem->aperture > kgem->aperture_high) {
 		DBG(("%s: final aperture usage (%d + %d) is greater than high water mark (%d)\n",
 		     __FUNCTION__, kgem->aperture, num_pages, kgem->aperture_high));
-		if (!aperture_check(kgem, num_pages + kgem->aperture))
-			return false;
+		return aperture_check(kgem, num_pages);
 	}
 
 	if (busy)
@@ -5169,8 +5167,7 @@ bool kgem_check_bo_fenced(struct kgem *kgem, struct kgem_bo *bo)
 	if (kgem->aperture + kgem->aperture_fenced + num_pages(bo) > kgem->aperture_high) {
 		DBG(("%s: final aperture usage (%d + %d) is greater than high water mark (%d)\n",
 		     __FUNCTION__, kgem->aperture, num_pages(bo), kgem->aperture_high));
-		if (!aperture_check(kgem, num_pages(bo) + kgem->aperture + kgem->aperture_fenced))
-			return false;
+		return aperture_check(kgem, num_pages(bo));
 	}
 
 	if (bo->rq)
@@ -5269,8 +5266,7 @@ bool kgem_check_many_bo_fenced(struct kgem *kgem, ...)
 	if (num_pages + kgem->aperture > kgem->aperture_high - kgem->aperture_fenced) {
 		DBG(("%s: final aperture usage (%d + %d + %d) is greater than high water mark (%d)\n",
 		     __FUNCTION__, kgem->aperture, kgem->aperture_fenced, num_pages, kgem->aperture_high));
-		if (!aperture_check(kgem, num_pages + kgem->aperture + kgem->aperture_fenced))
-			return false;
+		return aperture_check(kgem, num_pages);
 	}
 
 	if (busy)
