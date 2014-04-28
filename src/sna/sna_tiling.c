@@ -322,6 +322,7 @@ sna_tiling_composite(uint32_t op,
 	tmp->done  = sna_tiling_composite_done;
 
 	tmp->priv = tile;
+	tmp->dst.bo = priv->gpu_bo;
 	return true;
 }
 
@@ -586,6 +587,7 @@ sna_tiling_composite_spans(uint32_t op,
 	tmp->done  = sna_tiling_composite_spans_done;
 
 	tmp->base.priv = tile;
+	tmp->base.dst.bo = priv->gpu_bo;
 	return true;
 }
 
