@@ -708,7 +708,7 @@ static int sna_render_picture_downsample(struct sna *sna,
 	struct sna_pixmap *priv;
 	pixman_transform_t t;
 	PixmapPtr tmp;
-	int width, height, size;
+	int width, height, size, max_size;
 	int sx, sy, sw, sh;
 	int error, ret = 0;
 	BoxRec box, b;
@@ -818,8 +818,12 @@ fixup:
 	ValidatePicture(tmp_src);
 
 	/* Use a small size to accommodate enlargement through tile alignment */
+	max_size = sna_max_tile_copy_size(sna, sna_pixmap(pixmap)->gpu_bo, priv->gpu_bo);
+	if (max_size == 0)
+		goto cleanup_dst;
+
 	size = sna->render.max_3d_size - 4096 / pixmap->drawable.bitsPerPixel;
-	while (size * size * 4 > sna->kgem.max_copy_tile_size)
+	while (size * size * 4 > max_size)
 		size /= 2;
 
 	sw = size / sx - 2 * sx;

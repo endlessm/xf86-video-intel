@@ -524,6 +524,23 @@ static inline bool sna_pixmap_is_scanout(struct sna *sna, PixmapPtr pixmap)
 		(sna->flags & SNA_NO_WAIT) == 0);
 }
 
+static inline int sna_max_tile_copy_size(struct sna *sna, struct kgem_bo *src, struct kgem_bo *dst)
+{
+	int max_size;
+
+	max_size = sna->kgem.aperture_high * PAGE_SIZE;
+	max_size -= MAX(kgem_bo_size(src), kgem_bo_size(dst));
+	if (max_size <= 0) {
+		DBG(("%s: tiles cannot fit into aperture\n", __FUNCTION__));
+		return 0;
+	}
+
+	if (max_size > sna->kgem.max_copy_tile_size)
+		max_size = sna->kgem.max_copy_tile_size;
+	DBG(("%s: using max tile size of %d\n", __FUNCTION__, max_size));
+	return max_size;
+}
+
 PixmapPtr sna_pixmap_create_upload(ScreenPtr screen,
 				   int width, int height, int depth,
 				   unsigned flags);
