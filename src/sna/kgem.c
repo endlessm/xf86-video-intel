@@ -5064,8 +5064,8 @@ bool kgem_check_bo(struct kgem *kgem, ...)
 	}
 
 	if (num_pages + kgem->aperture > kgem->aperture_high) {
-		DBG(("%s: final aperture usage (%d) is greater than high water mark (%d)\n",
-		     __FUNCTION__, num_pages + kgem->aperture, kgem->aperture_high));
+		DBG(("%s: final aperture usage (%d + %d) is greater than high water mark (%d)\n",
+		     __FUNCTION__, kgem->aperture, num_pages, kgem->aperture_high));
 		if (!aperture_check(kgem, num_pages + kgem->aperture))
 			return false;
 	}
@@ -5109,13 +5109,13 @@ bool kgem_check_bo_fenced(struct kgem *kgem, struct kgem_bo *bo)
 			if (size > kgem->aperture_max_fence)
 				kgem->aperture_max_fence = size;
 			size += kgem->aperture_fenced;
-			if (kgem->gen < 033)
-				size += kgem->aperture_max_fence;
+			if (kgem->gen < 033 && size < 2 * kgem->aperture_max_fence)
+				size = 2 * kgem->aperture_max_fence;
 			if (kgem->aperture_total == kgem->aperture_mappable)
 				size += kgem->aperture;
 			if (size > kgem->aperture_mappable) {
-				DBG(("%s: estimated fence space required [%d] exceed aperture [%d]\n",
-				     __FUNCTION__, size, kgem->aperture_mappable));
+				DBG(("%s: estimated fence space required %d (fenced=%d, max_fence=%d, aperture=%d) exceeds aperture %d\n",
+				     __FUNCTION__, size, kgem->aperture_fenced, kgem->aperture_max_fence, kgem->aperture, kgem->aperture_mappable));
 				return false;
 			}
 		}
@@ -5155,20 +5155,20 @@ bool kgem_check_bo_fenced(struct kgem *kgem, struct kgem_bo *bo)
 		if (size > kgem->aperture_max_fence)
 			kgem->aperture_max_fence = size;
 		size += kgem->aperture_fenced;
-		if (kgem->gen < 033)
-			size += kgem->aperture_max_fence;
+		if (kgem->gen < 033 && size < 2 * kgem->aperture_max_fence)
+			size = 2 * kgem->aperture_max_fence;
 		if (kgem->aperture_total == kgem->aperture_mappable)
 			size += kgem->aperture;
 		if (size > kgem->aperture_mappable) {
-			DBG(("%s: estimated fence space required [%d] exceed aperture [%d]\n",
-			     __FUNCTION__, size, kgem->aperture_mappable));
+			DBG(("%s: estimated fence space required %d (fenced=%d, max_fence=%d, aperture=%d) exceeds aperture %d\n",
+			     __FUNCTION__, size, kgem->aperture_fenced, kgem->aperture_max_fence, kgem->aperture, kgem->aperture_mappable));
 			return false;
 		}
 	}
 
 	if (kgem->aperture + kgem->aperture_fenced + num_pages(bo) > kgem->aperture_high) {
-		DBG(("%s: final aperture usage (%d) is greater than high water mark (%d)\n",
-		     __FUNCTION__, num_pages(bo) + kgem->aperture, kgem->aperture_high));
+		DBG(("%s: final aperture usage (%d + %d) is greater than high water mark (%d)\n",
+		     __FUNCTION__, kgem->aperture, num_pages(bo), kgem->aperture_high));
 		if (!aperture_check(kgem, num_pages(bo) + kgem->aperture + kgem->aperture_fenced))
 			return false;
 	}
@@ -5249,13 +5249,13 @@ bool kgem_check_many_bo_fenced(struct kgem *kgem, ...)
 
 		size = kgem->aperture_fenced;
 		size += fenced_size;
-		if (kgem->gen < 033)
-			size += kgem->aperture_max_fence;
+		if (kgem->gen < 033 && size < 2 * kgem->aperture_max_fence)
+			size = 2 * kgem->aperture_max_fence;
 		if (kgem->aperture_total == kgem->aperture_mappable)
 			size += kgem->aperture;
 		if (size > kgem->aperture_mappable) {
-			DBG(("%s: estimated fence space required [%d] exceed aperture [%d]\n",
-			     __FUNCTION__, size, kgem->aperture_mappable));
+			DBG(("%s: estimated fence space required %d (fenced=%d, max_fence=%d, aperture=%d) exceeds aperture %d\n",
+			     __FUNCTION__, size, kgem->aperture_fenced, kgem->aperture_max_fence, kgem->aperture, kgem->aperture_mappable));
 			return false;
 		}
 	}
@@ -5267,8 +5267,8 @@ bool kgem_check_many_bo_fenced(struct kgem *kgem, ...)
 		return false;
 
 	if (num_pages + kgem->aperture > kgem->aperture_high - kgem->aperture_fenced) {
-		DBG(("%s: final aperture usage (%d) is greater than high water mark (%d)\n",
-		     __FUNCTION__, num_pages + kgem->aperture, kgem->aperture_high));
+		DBG(("%s: final aperture usage (%d + %d + %d) is greater than high water mark (%d)\n",
+		     __FUNCTION__, kgem->aperture, kgem->aperture_fenced, num_pages, kgem->aperture_high));
 		if (!aperture_check(kgem, num_pages + kgem->aperture + kgem->aperture_fenced))
 			return false;
 	}
