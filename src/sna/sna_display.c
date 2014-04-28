@@ -3103,7 +3103,7 @@ static struct sna_cursor *__sna_create_cursor(struct sna *sna)
 	struct sna_cursor *c;
 	int size = sna->cursor.size;
 
-	__DBG(("%s(size=%d)\n", __FUNCTION__, size));
+	__DBG(("%s(size=%d, num_stash=%d)\n", __FUNCTION__, size, sna->cursor.num_stash));
 
 	c = sna->cursor.stash;
 	assert(c);
@@ -3286,7 +3286,7 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 		pwrite.size = 4*size*size;
 		pwrite.data_ptr = (uintptr_t)image;
 		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_I915_GEM_PWRITE, &pwrite))
-			__DBG(("%s: cursor update (pwrite) failed: %d\n", errno));
+			__DBG(("%s: cursor update (pwrite) failed: %d\n", __FUNCTION__, errno));
 	}
 
 	cursor->size = size;
@@ -3611,8 +3611,10 @@ sna_use_hw_cursor(ScreenPtr screen, CursorPtr cursor)
 	       cursor->bits->width, cursor->bits->height));
 
 	/* cursors are invariant */
-	if (cursor == sna->cursor.ref)
+	if (cursor == sna->cursor.ref) {
+		assert(sna->cursor.num_stash >= 0);
 		return TRUE;
+	}
 
 	if (sna->cursor.ref) {
 		FreeCursor(sna->cursor.ref, None);
