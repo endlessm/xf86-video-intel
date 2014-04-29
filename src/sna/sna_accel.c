@@ -2531,9 +2531,14 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 		return _sna_pixmap_move_to_cpu(pixmap, flags | MOVE_READ);
 	}
 
-	if (priv->move_to_gpu && !priv->move_to_gpu(sna, priv, MOVE_READ)) {
-		DBG(("%s: move-to-gpu override failed\n", __FUNCTION__));
-		return false;
+
+	if (priv->move_to_gpu) {
+		if ((flags & MOVE_READ) == 0)
+			sna_pixmap_discard_shadow_damage(priv, region);
+		if (!priv->move_to_gpu(sna, priv, MOVE_READ)) {
+			DBG(("%s: move-to-gpu override failed\n", __FUNCTION__));
+			return NULL;
+		}
 	}
 
 	if (get_drawable_deltas(drawable, pixmap, &dx, &dy)) {
