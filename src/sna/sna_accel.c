@@ -2028,7 +2028,7 @@ _sna_pixmap_move_to_cpu(PixmapPtr pixmap, unsigned int flags)
 			assert(!priv->shm);
 			assert(priv->cpu_bo == NULL || !priv->cpu_bo->flush);
 			sna_pixmap_free_cpu(sna, priv, priv->cpu);
-			priv->cpu = false;
+			priv->cpu &= priv->mapped == MAPPED_CPU;
 
 			assert_pixmap_damage(pixmap);
 			return true;
@@ -2089,7 +2089,7 @@ skip_inplace_map:
 				list_del(&priv->flush_list);
 				priv->clear = false;
 			}
-			priv->cpu = false;
+			priv->cpu &= priv->mapped == MAPPED_CPU;
 
 			assert_pixmap_damage(pixmap);
 			DBG(("%s: operate inplace (GTT)\n", __FUNCTION__));
@@ -2579,7 +2579,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 				}
 				priv->clear = false;
 			}
-			priv->cpu = false;
+			priv->cpu &= priv->mapped == MAPPED_CPU;
 			assert_pixmap_damage(pixmap);
 			if (dx | dy)
 				RegionTranslate(region, -dx, -dy);
