@@ -557,9 +557,11 @@ static int sna_video_sprite_query(ClientPtr client,
 	switch (format->id) {
 	case FOURCC_RGB888:
 	case FOURCC_RGB565:
-		sna_video_frame_init(video, format->id, *w, *h, &frame);
-		if (pitches)
+		if (pitches) {
+			sna_video_frame_init(video, format->id, *w, *h, &frame);
+			sna_video_frame_set_rotation(video, &frame, RR_Rotate_0);
 			pitches[0] = frame.pitch[0];
+		}
 		size = 4;
 		break;
 

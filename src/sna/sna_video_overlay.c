@@ -642,6 +642,7 @@ sna_video_overlay_query(ClientPtr client,
 	case FOURCC_XVMC:
 		*h = (*h + 1) & ~1;
 		sna_video_frame_init(video, format->id, *w, *h, &frame);
+		sna_video_frame_set_rotation(video, &frame, RR_Rotate_0);
 		size = sizeof(uint32_t);
 		if (pitches) {
 			pitches[0] = frame.pitch[1];
