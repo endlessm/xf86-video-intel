@@ -1615,7 +1615,6 @@ retry: /* Attach per-crtc pixmap or direct */
 	if (saved_bo)
 		kgem_bo_destroy(&sna->kgem, saved_bo);
 
-	sna_crtc->cursor = NULL; /* reattach cursor on next update */
 	sna_crtc_randr(crtc);
 	if (sna_crtc->shadow)
 		sna_crtc_damage(crtc);
@@ -3025,6 +3024,7 @@ struct sna_cursor {
 	struct sna_cursor *next;
 	uint32_t *image;
 	Rotation rotation;
+	int ref;
 	int size;
 	int last_width;
 	int last_height;
@@ -3098,17 +3098,23 @@ rotate_coord_back(Rotation rotation, int size, int *x, int *y)
 	}
 }
 
-static struct sna_cursor *__sna_create_cursor(struct sna *sna)
+static struct sna_cursor *__sna_create_cursor(struct sna *sna, int size)
 {
 	struct sna_cursor *c;
-	int size = sna->cursor.size;
+
+	for (c = sna->cursor.cursors; c; c = c->next) {
+		if (c->ref == 0 && c->alloc >= size) {
+			__DBG(("%s: stealing handle=%d, serial=%d, rotation=%d, alloc=%d\n",
+			       __FUNCTION__, c->handle, c->serial, c->rotation, c->alloc));
+			return c;
+		}
+	}
 
 	__DBG(("%s(size=%d, num_stash=%d)\n", __FUNCTION__, size, sna->cursor.num_stash));
 
 	c = sna->cursor.stash;
 	assert(c);
 
-	size = size * size * 4;
 	c->alloc = ALIGN(size, 4096);
 	c->handle = gem_create(sna->kgem.fd, c->alloc);
 	if (c->handle == 0)
@@ -3128,6 +3134,7 @@ static struct sna_cursor *__sna_create_cursor(struct sna *sna)
 
 	__DBG(("%s: handle=%d, allocated %d\n", __FUNCTION__, c->handle, size));
 
+	c->ref = 0;
 	c->serial = 0;
 	c->last_width = c->last_height = 0; /* all clear */
 
@@ -3160,6 +3167,7 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 	if (cursor && cursor->serial == sna->cursor.serial) {
 		assert(cursor->size == sna->cursor.size);
 		assert(cursor->rotation == crtc->transform_in_use ? crtc->rotation : RR_Rotate_0);
+		assert(cursor->ref);
 		return cursor;
 	}
 
@@ -3170,9 +3178,6 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 	       sna->cursor.ref->bits->argb!=NULL));
 
 	rotation = crtc->transform_in_use ? crtc->rotation : RR_Rotate_0;
-	size = sna->cursor.size;
-	if (cursor && cursor->alloc < 4*size*size)
-		cursor = NULL;
 
 	if (sna->cursor.use_gtt) { /* Don't allow phys cursor sharing */
 		for (cursor = sna->cursor.cursors; cursor; cursor = cursor->next) {
@@ -3184,29 +3189,15 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 			}
 		}
 
-		for (cursor = sna->cursor.cursors; cursor; cursor = cursor->next) {
-			if (cursor->alloc >= 4*size*size && cursor->rotation == rotation) {
-				__DBG(("%s: stealing handle=%d, serial=%d, rotation=%d, alloc=%d\n",
-				       __FUNCTION__, cursor->handle, cursor->serial, cursor->rotation, cursor->alloc));
-				assert(cursor->serial != sna->cursor.serial);
-				break;
-			}
-		}
-
-		if (cursor == NULL) {
-			for (cursor = sna->cursor.cursors; cursor; cursor = cursor->next) {
-				if (cursor->alloc >= 4*size*size && cursor->serial != sna->cursor.serial) {
-					__DBG(("%s: stealing handle=%d, serial=%d, rotation=%d, alloc=%d\n",
-					       __FUNCTION__, cursor->handle, cursor->serial, cursor->rotation, cursor->alloc));
-					assert(cursor->rotation != rotation);
-					break;
-				}
-			}
-		}
+		cursor = to_sna_crtc(crtc)->cursor;
 	}
 
+	size = sna->cursor.size;
+	if (cursor && cursor->alloc < 4*size*size)
+		cursor = NULL;
+
 	if (cursor == NULL) {
-		cursor = __sna_create_cursor(sna);
+		cursor = __sna_create_cursor(sna, 4*size*size);
 		if (cursor == NULL)
 			return NULL;
 	}
@@ -3369,8 +3360,10 @@ sna_show_cursors(ScrnInfoPtr scrn)
 		arg.width = arg.height = cursor->size;
 		arg.handle = cursor->handle;
 
-		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg) == 0)
+		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg) == 0) {
+			cursor->ref++;
 			sna_crtc->cursor = cursor;
+		}
 	}
 	sigio_unblock(sigio);
 }
@@ -3427,6 +3420,7 @@ sna_hide_cursors(ScrnInfoPtr scrn)
 			continue;
 
 		__DBG(("%s: CRTC:%d, handle=%d\n", __FUNCTION__, sna_crtc->id, sna_crtc->cursor->handle));
+		assert(sna_crtc->cursor->ref);
 
 		VG_CLEAR(arg);
 		arg.flags = DRM_MODE_CURSOR_BO;
@@ -3435,10 +3429,14 @@ sna_hide_cursors(ScrnInfoPtr scrn)
 		arg.handle = 0;
 
 		(void)drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg);
+		assert(sna_crtc->cursor->ref > 0);
+		sna_crtc->cursor->ref--;
 		sna_crtc->cursor = NULL;
 	}
 
 	for (prev = &sna->cursor.cursors; (cursor = *prev) != NULL; ) {
+		assert(cursor->ref == 0);
+
 		if (cursor->serial == sna->cursor.serial) {
 			prev = &cursor->next;
 			continue;
@@ -3544,8 +3542,17 @@ disable:
 		       arg.flags & DRM_MODE_CURSOR_MOVE, arg.flags & DRM_MODE_CURSOR_BO));
 
 		if (arg.flags &&
-		    drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg) == 0)
-			sna_crtc->cursor = cursor;
+		    drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg) == 0) {
+			if (arg.flags & DRM_MODE_CURSOR_BO) {
+				if (sna_crtc->cursor) {
+					assert(sna_crtc->cursor->ref > 0);
+					sna_crtc->cursor->ref--;
+				}
+				sna_crtc->cursor = cursor;
+				if (cursor)
+					cursor->ref++;
+			}
+		}
 	}
 	sigio_unblock(sigio);
 }
