@@ -2314,45 +2314,34 @@ sna_dri_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc,
 	info->type = DRI2_WAITMSC;
 	sna_dri_add_frame_event(draw, info);
 
+	vbl.request.signal = (unsigned long)info;
+	vbl.request.type =
+		DRM_VBLANK_ABSOLUTE | DRM_VBLANK_EVENT | pipe_select(pipe);
 	/*
 	 * If divisor is zero, or current_msc is smaller than target_msc,
 	 * we just need to make sure target_msc passes before waking up the
 	 * client.
 	 */
 	if (divisor == 0 || current_msc < target_msc) {
-		vbl.request.type =
-			DRM_VBLANK_ABSOLUTE |
-			DRM_VBLANK_EVENT |
-			pipe_select(pipe);
 		vbl.request.sequence = target_msc;
-		vbl.request.signal = (unsigned long)info;
-		if (sna_wait_vblank(sna, &vbl))
-			goto out_free_info;
+	} else {
+		/*
+		 * If we get here, target_msc has already passed or we don't have one,
+		 * so we queue an event that will satisfy the divisor/remainder
+		 * equation.
+		 */
+		vbl.request.sequence = current_msc - current_msc % divisor + remainder;
 
-		DRI2BlockClient(client, draw);
-		return TRUE;
+		/*
+		 * If calculated remainder is larger than requested remainder,
+		 * it means we've passed the last point where
+		 * seq % divisor == remainder, so we need to wait for the next time
+		 * that will happen.
+		 */
+		if ((current_msc % divisor) >= remainder)
+			vbl.request.sequence += divisor;
 	}
 
-	/*
-	 * If we get here, target_msc has already passed or we don't have one,
-	 * so we queue an event that will satisfy the divisor/remainder
-	 * equation.
-	 */
-	vbl.request.type =
-		DRM_VBLANK_ABSOLUTE | DRM_VBLANK_EVENT | pipe_select(pipe);
-
-	vbl.request.sequence = current_msc - current_msc % divisor + remainder;
-
-	/*
-	 * If calculated remainder is larger than requested remainder,
-	 * it means we've passed the last point where
-	 * seq % divisor == remainder, so we need to wait for the next time
-	 * that will happen.
-	 */
-	if ((current_msc % divisor) >= remainder)
-		vbl.request.sequence += divisor;
-
-	vbl.request.signal = (unsigned long)info;
 	if (sna_wait_vblank(sna, &vbl))
 		goto out_free_info;
 
