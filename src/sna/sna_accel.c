@@ -4337,11 +4337,12 @@ static inline void box32_add_rect(Box32Rec *box, const xRectangle *r)
 static bool
 create_upload_tiled_x(struct kgem *kgem,
 		      PixmapPtr pixmap,
-		      struct sna_pixmap *priv)
+		      struct sna_pixmap *priv,
+		      bool replaces)
 {
 	unsigned create, tiling;
 
-	if (priv->shm || priv->cpu)
+	if (priv->shm || (priv->cpu && !replaces))
 		return false;
 
 	if ((priv->create & KGEM_CAN_CREATE_GPU) == 0)
@@ -4496,7 +4497,12 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 	     priv->gpu_bo ? kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, true) : 0,
 	     replaces));
 
-	if (priv->gpu_bo && (replaces || priv->gpu_bo->proxy)) {
+	if (priv->gpu_bo && priv->gpu_bo->proxy) {
+		kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
+		priv->gpu_bo = NULL;
+	}
+
+	if (priv->gpu_bo && replaces) {
 		DBG(("%s: discarding cached upload proxy\n", __FUNCTION__));
 		sna_pixmap_free_gpu(sna, priv);
 		replaces = true; /* Mark it all GPU damaged afterwards */
@@ -4509,7 +4515,7 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 	}
 
 	if (priv->gpu_bo == NULL &&
-	    !create_upload_tiled_x(&sna->kgem, pixmap, priv))
+	    !create_upload_tiled_x(&sna->kgem, pixmap, priv, replaces))
 		return false;
 
 	DBG(("%s: tiling=%d\n", __FUNCTION__, priv->gpu_bo->tiling));
@@ -4672,8 +4678,7 @@ sna_put_zpixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 		return true;
 
 	hint = MOVE_WRITE;
-	if (region_is_unclipped(region, w, h) &&
-	    w == pixmap->drawable.width &&
+	if (region_is_unclipped(region, pixmap->drawable.width, h) &&
 	    (h+1)*stride > 65536) {
 		DBG(("%s: segmented, unclipped large upload (%d bytes), marking WHOLE_HINT\n",
 		     __FUNCTION__, h*stride));
