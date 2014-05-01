@@ -2521,8 +2521,7 @@ clear:
 		hint = 0;
 		if (can_render(sna)) {
 			hint |= PREFER_GPU;
-			if (dst->pCompositeClip->data == NULL &&
-			    (flags & COMPOSITE_PARTIAL) == 0) {
+			if ((flags & COMPOSITE_PARTIAL) == 0) {
 				hint |= IGNORE_CPU;
 				if (width  == tmp->dst.pixmap->drawable.width &&
 				    height == tmp->dst.pixmap->drawable.height)
@@ -2545,8 +2544,10 @@ clear:
 			region.extents = dst_box;
 			region.data = NULL;
 
-			if (!sna_drawable_move_region_to_cpu(dst->pDrawable, &region,
-							     MOVE_INPLACE_HINT | MOVE_WRITE))
+			hint = MOVE_WRITE | MOVE_INPLACE_HINT;
+			if (flags & COMPOSITE_PARTIAL)
+				hint |= MOVE_READ;
+			if (!sna_drawable_move_region_to_cpu(dst->pDrawable, &region, hint))
 				return false;
 		}
 
@@ -2610,8 +2611,7 @@ fill:
 		hint = 0;
 		if (can_render(sna)) {
 			hint |= PREFER_GPU;
-			if (dst->pCompositeClip->data == NULL &&
-			    (flags & COMPOSITE_PARTIAL) == 0) {
+			if ((flags & COMPOSITE_PARTIAL) == 0) {
 				hint |= IGNORE_CPU;
 				if (width  == tmp->dst.pixmap->drawable.width &&
 				    height == tmp->dst.pixmap->drawable.height)
@@ -2634,8 +2634,10 @@ fill:
 			region.extents = dst_box;
 			region.data = NULL;
 
-			if (!sna_drawable_move_region_to_cpu(dst->pDrawable, &region,
-							     MOVE_INPLACE_HINT | MOVE_WRITE))
+			hint = MOVE_WRITE | MOVE_INPLACE_HINT;
+			if (flags & COMPOSITE_PARTIAL)
+				hint |= MOVE_READ;
+			if (!sna_drawable_move_region_to_cpu(dst->pDrawable, &region, hint))
 				return false;
 		}
 
@@ -2775,8 +2777,7 @@ fill:
 	hint = 0;
 	if (bo || can_render(sna)) {
 		hint |= PREFER_GPU;
-		if (dst->pCompositeClip->data == NULL &&
-		    (flags & COMPOSITE_PARTIAL) == 0) {
+		if ((flags & COMPOSITE_PARTIAL) == 0) {
 			hint |= IGNORE_CPU;
 			if (width  == tmp->dst.pixmap->drawable.width &&
 			    height == tmp->dst.pixmap->drawable.height)
@@ -2824,7 +2825,7 @@ put:
 
 		if (tmp->dst.bo == NULL) {
 			hint = MOVE_INPLACE_HINT | MOVE_WRITE;
-			if (dst->pCompositeClip->data)
+			if (flags & COMPOSITE_PARTIAL)
 				hint |= MOVE_READ;
 
 			region.extents = dst_box;
