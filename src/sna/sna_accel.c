@@ -78,6 +78,7 @@
 #define UNDO 1
 
 #define MIGRATE_ALL 0
+#define DBG_NO_PARTIAL_MOVE_TO_CPU 0
 #define DBG_NO_CPU_UPLOAD 0
 #define DBG_NO_CPU_DOWNLOAD 0
 
@@ -2394,6 +2395,12 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 	if (box_empty(&region->extents))
 		return true;
 
+	if (MIGRATE_ALL || DBG_NO_PARTIAL_MOVE_TO_CPU) {
+		if (!region_subsumes_pixmap(region, pixmap))
+			flags |= MOVE_READ;
+		return _sna_pixmap_move_to_cpu(pixmap, flags);
+	}
+
 	priv = sna_pixmap(pixmap);
 	if (priv == NULL) {
 		DBG(("%s: not attached to pixmap %ld (depth %d)\n",
@@ -2730,34 +2737,6 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 			priv->clear = false;
 		}
 		goto done;
-	}
-
-	if (MIGRATE_ALL && priv->gpu_damage) {
-		BoxPtr box;
-		int n = sna_damage_get_boxes(priv->gpu_damage, &box);
-		if (n) {
-			bool ok;
-
-			DBG(("%s: forced migration\n", __FUNCTION__));
-
-			assert(pixmap_contains_damage(pixmap, priv->gpu_damage));
-			assert(priv->gpu_bo);
-
-			ok = false;
-			if (use_cpu_bo_for_download(sna, priv, n, box)) {
-				DBG(("%s: using CPU bo for download from GPU\n", __FUNCTION__));
-				ok = sna->render.copy_boxes(sna, GXcopy,
-							    pixmap, priv->gpu_bo, 0, 0,
-							    pixmap, priv->cpu_bo, 0, 0,
-							    box, n, COPY_LAST);
-			}
-			if (!ok) {
-				assert(has_coherent_ptr(sna, sna_pixmap(pixmap), MOVE_READ));
-				sna_read_boxes(sna, pixmap, priv->gpu_bo,
-					       box, n);
-			}
-		}
-		sna_damage_destroy(&priv->gpu_damage);
 	}
 
 	if (priv->gpu_damage &&
