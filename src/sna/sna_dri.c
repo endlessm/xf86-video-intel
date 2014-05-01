@@ -2345,6 +2345,7 @@ sna_dri_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc,
 	if (sna_wait_vblank(sna, &vbl))
 		goto out_free_info;
 
+	DBG(("%s: waiting until MSC=%llu\n", __FUNCTION__, (long long)vbl.request.sequence));
 	DRI2BlockClient(client, draw);
 	return TRUE;
 

@@ -4764,6 +4764,8 @@ void sna_mode_update(struct sna *sna)
 	if (sna->flags & SNA_IS_HOSTED)
 		return;
 
+	DBG(("%s\n", __FUNCTION__));
+
 	/* Validate CRTC attachments and force consistency upon the kernel */
 	sna->mode.front_active = 0;
 	for (i = 0; i < config->num_crtc; i++) {
@@ -4821,6 +4823,8 @@ void sna_mode_reset(struct sna *sna)
 
 	if (sna->flags & SNA_IS_HOSTED)
 		return;
+
+	DBG(("%s\n", __FUNCTION__));
 
 	sna_hide_cursors(sna->scrn);
 
@@ -5334,7 +5338,7 @@ disable1:
 				continue;
 
 			assert(config->crtc[i]->enabled);
-			assert(crtc->dpms_mode == DPMSModeOn);
+			assert(crtc->dpms_mode <= DPMSModeOn);
 
 			arg.crtc_id = crtc->id;
 			arg.fb_id = get_fb(sna, new,
