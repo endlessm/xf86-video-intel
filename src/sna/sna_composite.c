@@ -943,37 +943,37 @@ sna_composite_rectangles(CARD8		 op,
 	 */
 	hint = can_render(sna) ? PREFER_GPU : 0;
 	if (op <= PictOpSrc) {
-		if (priv->cpu_damage &&
-		    region_subsumes_damage(&region, priv->cpu_damage)) {
-			DBG(("%s: discarding existing CPU damage\n", __FUNCTION__));
-			if (priv->gpu_bo && priv->gpu_bo->proxy) {
-				assert(priv->gpu_damage == NULL);
-				kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
-				priv->gpu_bo = NULL;
+		if (region.data == NULL) {
+			hint |= IGNORE_CPU;
+			if (region_subsumes_drawable(&region, &pixmap->drawable))
+				hint |= REPLACES;
+			if (priv->cpu_damage &&
+			    (hint & REPLACES ||
+			     region_subsumes_damage(&region, priv->cpu_damage))) {
+				DBG(("%s: discarding existing CPU damage\n", __FUNCTION__));
+				if (priv->gpu_bo && priv->gpu_bo->proxy) {
+					assert(priv->gpu_damage == NULL);
+					kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
+					priv->gpu_bo = NULL;
+				}
+				sna_damage_destroy(&priv->cpu_damage);
+				list_del(&priv->flush_list);
 			}
-			sna_damage_destroy(&priv->cpu_damage);
-			list_del(&priv->flush_list);
-		}
-		if (region_subsumes_drawable(&region, &pixmap->drawable))
-			hint |= REPLACES;
-		if (hint & REPLACES ||
-		    box_covers_pixmap(pixmap, &region.extents) ||
-		    box_inplace(pixmap, &region.extents)) {
-			DBG(("%s: promoting to full GPU\n", __FUNCTION__));
-			if (priv->gpu_bo && priv->cpu_damage == NULL) {
-				assert(priv->gpu_bo->proxy == NULL);
-				sna_damage_all(&priv->gpu_damage,
-					       pixmap->drawable.width,
-					       pixmap->drawable.height);
+			if (hint & REPLACES ||
+			    box_inplace(pixmap, &region.extents)) {
+				if (priv->gpu_bo && priv->cpu_damage == NULL) {
+					DBG(("%s: promoting to full GPU\n", __FUNCTION__));
+					assert(priv->gpu_bo->proxy == NULL);
+					sna_damage_all(&priv->gpu_damage,
+						       pixmap->drawable.width,
+						       pixmap->drawable.height);
+				}
 			}
 		}
 		if (priv->cpu_damage == NULL) {
 			DBG(("%s: dropping last-cpu hint\n", __FUNCTION__));
 			priv->cpu = false;
 		}
-
-		if (region.data == NULL)
-			hint |= IGNORE_CPU;
 	}
 
 	bo = sna_drawable_use_bo(&pixmap->drawable, hint,
