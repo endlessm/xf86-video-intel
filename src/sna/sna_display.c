@@ -3765,10 +3765,8 @@ sna_use_hw_cursor(ScreenPtr screen, CursorPtr cursor)
 	       cursor->bits->width, cursor->bits->height));
 
 	/* cursors are invariant */
-	if (cursor == sna->cursor.ref) {
-		assert(sna->cursor.num_stash >= 0);
+	if (cursor == sna->cursor.ref)
 		return TRUE;
-	}
 
 	if (sna->cursor.ref) {
 		FreeCursor(sna->cursor.ref, None);
