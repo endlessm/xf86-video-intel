@@ -270,13 +270,13 @@ struct sna {
 	PixmapPtr freed_pixmap;
 
 	struct sna_mode {
-		drmModeResPtr kmode;
-
 		DamagePtr shadow_damage;
 		struct kgem_bo *shadow;
 		int shadow_active;
 		int shadow_flip;
 		int front_active;
+
+		int max_crtc_width, max_crtc_height;
 
 		unsigned num_real_crtc;
 		unsigned num_real_output;

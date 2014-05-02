@@ -1213,13 +1213,12 @@ static bool use_shadow(struct sna *sna, xf86CrtcPtr crtc)
 		return true;
 	}
 
-	if (sna->scrn->virtualX > sna->mode.kmode->max_width ||
-	    sna->scrn->virtualY > sna->mode.kmode->max_height) {
+	if (sna->scrn->virtualX > sna->mode.max_crtc_width ||
+	    sna->scrn->virtualY > sna->mode.max_crtc_height) {
 		DBG(("%s: framebuffer too large (%dx%d) > (%dx%d)\n",
 		    __FUNCTION__,
 		    sna->scrn->virtualX, sna->scrn->virtualY,
-		    sna->mode.kmode->max_width,
-		    sna->mode.kmode->max_height));
+		    sna->mode.max_crtc_width, sna->mode.max_crtc_height));
 		return true;
 	}
 
@@ -1571,8 +1570,8 @@ sna_crtc_set_mode_major(xf86CrtcPtr crtc, DisplayModePtr mode,
 		   outputs_for_crtc(crtc, outputs, sizeof(outputs)), sna_crtc->pipe,
 		   x, y, rotation_to_str(rotation), reflection_to_str(rotation));
 
-	assert(mode->HDisplay <= sna->mode.kmode->max_width &&
-	       mode->VDisplay <= sna->mode.kmode->max_height);
+	assert(mode->HDisplay <= sna->mode.max_crtc_width &&
+	       mode->VDisplay <= sna->mode.max_crtc_height);
 
 #if HAS_GAMMA
 	drmModeCrtcSetGamma(sna->kgem.fd, sna_crtc->id,
@@ -1800,20 +1799,20 @@ sna_crtc_init__cursor(struct sna *sna, struct sna_crtc *crtc)
 }
 
 static bool
-sna_crtc_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
+sna_crtc_init(ScrnInfoPtr scrn, int id)
 {
 	struct sna *sna = to_sna(scrn);
 	xf86CrtcPtr crtc;
 	struct sna_crtc *sna_crtc;
 	struct drm_i915_get_pipe_from_crtc_id get_pipe;
 
-	DBG(("%s(%d)\n", __FUNCTION__, num));
+	DBG(("%s(%d)\n", __FUNCTION__, id));
 
 	sna_crtc = calloc(sizeof(struct sna_crtc), 1);
 	if (sna_crtc == NULL)
 		return false;
 
-	sna_crtc->id = mode->kmode->crtcs[num];
+	sna_crtc->id = id;
 	sna_crtc->dpms_mode = -1;
 
 	VG_CLEAR(get_pipe);
@@ -1844,8 +1843,8 @@ sna_crtc_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 	sna_crtc_init__cursor(sna, sna_crtc);
 
 	crtc->driver_private = sna_crtc;
-	DBG(("%s: attached crtc[%d] id=%d, pipe=%d\n",
-	     __FUNCTION__, num, sna_crtc->id, sna_crtc->pipe));
+	DBG(("%s: attached crtc[%d] pipe=%d\n",
+	     __FUNCTION__, id, sna_crtc->pipe));
 
 	return true;
 }
@@ -1953,9 +1952,9 @@ sna_output_mode_valid(xf86OutputPtr output, DisplayModePtr mode)
 	struct sna_output *sna_output = output->driver_private;
 	struct sna *sna = to_sna(output->scrn);
 
-	if (mode->HDisplay > sna->mode.kmode->max_width)
+	if (mode->HDisplay > sna->mode.max_crtc_width)
 		return MODE_VIRTUAL_X;
-	if (mode->VDisplay > sna->mode.kmode->max_height)
+	if (mode->VDisplay > sna->mode.max_crtc_height)
 		return MODE_VIRTUAL_Y;
 
 	/* Check that we can successfully pin this into the global GTT */
@@ -2636,7 +2635,7 @@ output_ignored(ScrnInfoPtr scrn, const char *name)
 }
 
 static bool
-sna_output_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
+sna_output_init(ScrnInfoPtr scrn, int id, drmModeResPtr res)
 {
 	struct sna *sna = to_sna(scrn);
 	xf86OutputPtr output;
@@ -2651,12 +2650,12 @@ sna_output_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 
 	COMPILE_TIME_ASSERT(sizeof(struct drm_mode_get_connector) <= sizeof(compat_conn.pad));
 
-	DBG(("%s(num=%d)\n", __FUNCTION__, num));
+	DBG(("%s(%d)\n", __FUNCTION__, id));
 
 	VG_CLEAR(compat_conn);
 	VG_CLEAR(enc);
 
-	compat_conn.conn.connector_id = mode->kmode->connectors[num];
+	compat_conn.conn.connector_id = id;
 	compat_conn.conn.count_props = 0;
 	compat_conn.conn.count_modes = 1; /* skip detect */
 	compat_conn.conn.modes_ptr = (uintptr_t)&dummy;
@@ -2761,8 +2760,8 @@ sna_output_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 	output->subpixel_order = subpixel_conv_table[compat_conn.conn.subpixel];
 	output->driver_private = sna_output;
 
-	for (i = 0; i < mode->kmode->count_encoders; i++) {
-		if (enc.encoder_id == mode->kmode->encoders[i]) {
+	for (i = 0; i < res->count_encoders; i++) {
+		if (enc.encoder_id == res->encoders[i]) {
 			sna_output->encoder_idx = i;
 			break;
 		}
@@ -2780,8 +2779,8 @@ sna_output_init(ScrnInfoPtr scrn, struct sna_mode *mode, int num)
 	if (compat_conn.conn.connection != DRM_MODE_DISCONNECTED)
 		output->crtc = (void *)(uintptr_t)enc.crtc_id;
 
-	DBG(("%s: created output '%s' %d [%ld]  (possible crtc:%x, possible clones:%x), edid=%d, dpms=%d, crtc=%lu\n",
-	     __FUNCTION__, name, num, (long)sna_output->id,
+	DBG(("%s: created output '%s' %d (possible crtc:%x, possible clones:%x), edid=%d, dpms=%d, crtc=%lu\n",
+	     __FUNCTION__, name, id,
 	     (uint32_t)output->possible_crtcs,
 	     (uint32_t)output->possible_clones,
 	     sna_output->edid_idx, sna_output->dpms_id,
@@ -3683,7 +3682,7 @@ sna_cursor_pre_init(struct sna *sna)
 			sna->cursor.max_size = 0;
 	}
 
-	sna->cursor.num_stash = -sna->mode.kmode->count_crtcs;
+	sna->cursor.num_stash = -sna->mode.num_real_crtc;
 
 	xf86DrvMsg(sna->scrn->scrnIndex, X_PROBED,
 		   "Using a maximum size of %dx%d for hardware cursors\n",
@@ -3702,7 +3701,7 @@ sna_cursor_close(struct sna *sna)
 		free(cursor);
 	}
 
-	sna->cursor.num_stash = -sna->mode.kmode->count_crtcs;
+	sna->cursor.num_stash = -sna->mode.num_real_crtc;
 }
 
 bool
@@ -4223,7 +4222,7 @@ sna_crtc_config_notify(ScreenPtr screen)
 
 bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 {
-	struct sna_mode *mode = &sna->mode;
+	drmModeResPtr res;
 	int num_fake = 0;
 	int i;
 
@@ -4235,32 +4234,43 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 	if (!xf86GetOptValInteger(sna->Options, OPTION_VIRTUAL, &num_fake))
 		num_fake = 1;
 
-	mode->kmode = drmModeGetResources(sna->kgem.fd);
-	if (mode->kmode &&
-	    (mode->kmode->count_crtcs == 0 ||
-	     mode->kmode->count_connectors == 0)) {
-		drmModeFreeResources(mode->kmode);
-		mode->kmode = NULL;
+	res = drmModeGetResources(sna->kgem.fd);
+	if (res &&
+	    (res->count_crtcs == 0 || res->count_connectors == 0)) {
+		drmModeFreeResources(res);
+		res = NULL;
 	}
-	if (mode->kmode) {
-		assert(mode->kmode->count_crtcs);
-		assert(mode->kmode->count_connectors);
+	if (res) {
+		xf86CrtcConfigPtr xf86_config;
+
+		assert(res->count_crtcs);
+		assert(res->count_connectors);
 
 		sna_cursor_pre_init(sna);
 
 		xf86CrtcConfigInit(scrn, &sna_mode_funcs);
-		XF86_CRTC_CONFIG_PTR(scrn)->xf86_crtc_notify = sna_crtc_config_notify;
 
-		for (i = 0; i < mode->kmode->count_crtcs; i++)
-			if (!sna_crtc_init(scrn, mode, i))
+		xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
+		xf86_config->xf86_crtc_notify = sna_crtc_config_notify;
+
+		for (i = 0; i < res->count_crtcs; i++)
+			if (!sna_crtc_init(scrn, res->crtcs[i]))
 				return false;
 
-		for (i = 0; i < mode->kmode->count_connectors; i++)
-			if (!sna_output_init(scrn, mode, i))
+		for (i = 0; i < res->count_connectors; i++)
+			if (!sna_output_init(scrn, res->connectors[i], res))
 				return false;
+
+		sna->mode.num_real_crtc   = xf86_config->num_crtc;
+		sna->mode.num_real_output = xf86_config->num_output;
 
 		if (!xf86IsEntityShared(scrn->entityList[0]))
 			sna_mode_compute_possible_outputs(scrn);
+
+		sna->mode.max_crtc_width  = res->max_width;
+		sna->mode.max_crtc_height = res->max_height;
+
+		drmModeFreeResources(res);
 	} else {
 		if (num_fake == 0)
 			num_fake = 1;

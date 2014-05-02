@@ -340,14 +340,10 @@ err:
 
 bool sna_mode_fake_init(struct sna *sna, int num_fake)
 {
-	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(sna->scrn);
 	bool ret;
 
 	if (num_fake == 0)
 		return true;
-
-	sna->mode.num_real_crtc = xf86_config->num_crtc;
-	sna->mode.num_real_output = xf86_config->num_output;
 
 	if (sna->mode.num_real_crtc == 0)
 		xf86CrtcConfigInit(sna->scrn, &sna_mode_funcs);
