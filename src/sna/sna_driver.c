@@ -689,7 +689,7 @@ sna_handle_uevents(int fd, void *closure)
 	ScrnInfoPtr scrn = closure;
 	struct sna *sna = to_sna(scrn);
 	struct udev_device *dev;
-	const char *hotplug;
+	const char *str;
 	struct stat s;
 	dev_t udev_devnum;
 
@@ -700,21 +700,13 @@ sna_handle_uevents(int fd, void *closure)
 		return;
 
 	udev_devnum = udev_device_get_devnum(dev);
-	if (fstat(sna->kgem.fd, &s)) {
+	if (fstat(sna->kgem.fd, &s) || memcmp(&s.st_rdev, &udev_devnum, sizeof (dev_t))) {
 		udev_device_unref(dev);
 		return;
 	}
 
-	/*
-	 * Check to make sure this event is directed at our
-	 * device (by comparing dev_t values), then make
-	 * sure it's a hotplug event (HOTPLUG=1)
-	 */
-
-	hotplug = udev_device_get_property_value(dev, "HOTPLUG");
-
-	if (memcmp(&s.st_rdev, &udev_devnum, sizeof (dev_t)) == 0 &&
-	    hotplug && atoi(hotplug) == 1) {
+	str = udev_device_get_property_value(dev, "HOTPLUG");
+	if (str && atoi(str) == 1) {
 		DBG(("%s: hotplug event (vtSema?=%d)\n",
 		     __FUNCTION__, sna->scrn->vtSema));
 		if (sna->scrn->vtSema) {
@@ -722,6 +714,16 @@ sna_handle_uevents(int fd, void *closure)
 			RRGetInfo(xf86ScrnToScreen(scrn), TRUE);
 		} else
 			sna->flags |= SNA_REPROBE;
+	}
+
+	str = udev_device_get_property_value(dev, "DISCOVER");
+	if (str && atoi(str) == 1) {
+		DBG(("%s: discover event (vtSema?=%d)\n",
+		     __FUNCTION__, sna->scrn->vtSema));
+		if (sna->scrn->vtSema)
+			sna_mode_discover(sna);
+		else
+			sna->flags |= SNA_REDISCOVER;
 	}
 
 	udev_device_unref(dev);
@@ -1093,6 +1095,13 @@ static Bool sna_enter_vt(VT_FUNC_ARGS_DECL)
 
 	if (!sna_set_desired_mode(sna))
 		return FALSE;
+
+	if (sna->flags & SNA_REDISCOVER) {
+		DBG(("%s: reporting deferred discover event\n",
+		     __FUNCTION__));
+		sna_mode_discover(sna);
+		sna->flags &= ~SNA_REDISCOVER;
+	}
 
 	if (sna->flags & SNA_REPROBE) {
 		DBG(("%s: reporting deferred hotplug event\n",

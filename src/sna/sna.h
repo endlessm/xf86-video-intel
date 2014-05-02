@@ -242,6 +242,7 @@ struct sna {
 #define SNA_IS_HOSTED		0x80
 #define SNA_PERFORMANCE		0x100
 #define SNA_POWERSAVE		0x200
+#define SNA_REDISCOVER		0x40000000
 #define SNA_REPROBE		0x80000000
 
 	unsigned cpu_features;
@@ -281,6 +282,7 @@ struct sna {
 		unsigned num_real_crtc;
 		unsigned num_real_output;
 		unsigned num_fake;
+		unsigned serial;
 	} mode;
 
 	struct {
@@ -378,6 +380,7 @@ struct sna {
 bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna);
 bool sna_mode_fake_init(struct sna *sna, int num_fake);
 void sna_mode_adjust_frame(struct sna *sna, int x, int y);
+extern void sna_mode_discover(struct sna *sna);
 extern void sna_mode_update(struct sna *sna);
 extern void sna_mode_reset(struct sna *sna);
 extern void sna_mode_wakeup(struct sna *sna);

@@ -47,6 +47,7 @@
 #include "backlight.h"
 
 #include <xf86Crtc.h>
+#include <xf86RandR12.h>
 #include <cursorstr.h>
 
 #if XF86_CRTC_VERSION >= 3
@@ -128,7 +129,8 @@ struct sna_property {
 
 struct sna_output {
 	int id;
-	int encoder_idx;
+	int encoder_id, encoder_idx;
+	int serial;
 
 	unsigned int is_panel : 1;
 
@@ -743,14 +745,15 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 		if (output->crtc != crtc)
 			continue;
 
-		assert(output->possible_crtcs & (1 << sna_crtc->pipe) ||
-		       xf86IsEntityShared(crtc->scrn->entityList[0]));
-
 		DBG(("%s: attaching output '%s' %d [%d] to crtc:%d (pipe %d) (possible crtc:%x, possible clones:%x)\n",
 		     __FUNCTION__, output->name, i, to_connector_id(output),
 		     sna_crtc->id, sna_crtc->pipe,
 		     (uint32_t)output->possible_crtcs,
 		     (uint32_t)output->possible_clones));
+
+		assert(output->possible_crtcs & (1 << sna_crtc->pipe) ||
+		       xf86IsEntityShared(crtc->scrn->entityList[0]));
+
 		output_ids[output_count] = to_connector_id(output);
 		if (++output_count == ARRAY_SIZE(output_ids))
 			return false;
@@ -1799,7 +1802,7 @@ sna_crtc_init__cursor(struct sna *sna, struct sna_crtc *crtc)
 }
 
 static bool
-sna_crtc_init(ScrnInfoPtr scrn, int id)
+sna_crtc_add(ScrnInfoPtr scrn, int id)
 {
 	struct sna *sna = to_sna(scrn);
 	xf86CrtcPtr crtc;
@@ -2634,23 +2637,97 @@ output_ignored(ScrnInfoPtr scrn, const char *name)
 	return xf86CheckBoolOption(conf->mon_option_lst, "Ignore", 0);
 }
 
-static bool
-sna_output_init(ScrnInfoPtr scrn, int id, drmModeResPtr res)
+/* We need to map from kms encoder based possible_clones mask to X output based
+ * possible clones masking. Note that for SDVO and on Haswell with DP/HDMI we
+ * can have more than one output hanging off the same encoder.
+ */
+static void
+sna_mode_compute_possible_outputs(struct sna *sna, drmModeResPtr res)
 {
-	struct sna *sna = to_sna(scrn);
-	xf86OutputPtr output;
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	int i, j;
+
+	assert(sna->mode.num_real_output < 32);
+	assert(sna->mode.num_real_crtc < 32);
+
+	for (i = 0; i < sna->mode.num_real_output; i++) {
+		xf86OutputPtr output = config->output[i];
+		struct sna_output *sna_output = to_sna_output(output);
+		struct drm_mode_get_encoder enc;
+
+		assert(to_sna_output(output));
+
+		sna_output->encoder_idx = -1;
+		output->possible_clones = 0;
+
+		VG_CLEAR(enc);
+		enc.encoder_id = sna_output->encoder_id;
+
+		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETENCODER, &enc)) {
+			DBG(("%s: GETENCODER failed, ret=%d\n", __FUNCTION__, errno));
+			continue;
+		}
+
+		for (j = 0; j < res->count_encoders; j++) {
+			if (enc.encoder_id == res->encoders[j]) {
+				sna_output->encoder_idx = j;
+				break;
+			}
+		}
+		assert(sna_output->encoder_idx != -1);
+
+		output->possible_clones = enc.possible_clones;
+	}
+
+	/* Convert from encoder numbering to output numbering */
+	for (i = 0; i < sna->mode.num_real_output; i++) {
+		xf86OutputPtr output = config->output[i];
+		unsigned mask = output->possible_clones;
+		unsigned clones = 0;
+
+		assert(to_sna_output(output));
+		if (output->possible_clones == 0)
+			continue;
+
+		for (j = 0; j < sna->mode.num_real_output; j++) {
+			struct sna_output *sna_output = to_sna_output(config->output[j]);
+
+			if (i == j)
+				continue;
+
+			if (sna_output->encoder_idx == -1)
+				continue;
+
+			if (mask & (1 << sna_output->encoder_idx))
+				clones |= 1 << j;
+		}
+
+		output->possible_clones = clones;
+
+		DBG(("%s: updated output '%s' %d [%d] (possible crtc:%x, possible clones:%x)\n",
+		     __FUNCTION__, output->name, i, to_connector_id(output),
+		     (uint32_t)output->possible_crtcs,
+		     (uint32_t)output->possible_clones));
+	}
+}
+
+static int
+sna_output_add(struct sna *sna, int id, drmModeResPtr res, int serial)
+{
+	ScrnInfoPtr scrn = sna->scrn;
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(scrn);
 	union compat_mode_get_connector compat_conn;
 	struct drm_mode_get_encoder enc;
 	struct drm_mode_modeinfo dummy;
 	struct sna_output *sna_output;
+	xf86OutputPtr *outputs, output;
 	const char *output_name;
 	char name[32];
-	bool ret = false;
-	int i;
-
-	COMPILE_TIME_ASSERT(sizeof(struct drm_mode_get_connector) <= sizeof(compat_conn.pad));
+	int len, i, ret = -1;
 
 	DBG(("%s(%d)\n", __FUNCTION__, id));
+
+	COMPILE_TIME_ASSERT(sizeof(struct drm_mode_get_connector) <= sizeof(compat_conn.pad));
 
 	VG_CLEAR(compat_conn);
 	VG_CLEAR(enc);
@@ -2664,23 +2741,23 @@ sna_output_init(ScrnInfoPtr scrn, int id, drmModeResPtr res)
 
 	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETCONNECTOR, &compat_conn.conn)) {
 		DBG(("%s: GETCONNECTOR failed, ret=%d\n", __FUNCTION__, errno));
-		return false;
+		return -1;
 	}
 
 	if (compat_conn.conn.count_encoders != 1) {
 		DBG(("%s: unexpected number [%d] of encoders attached\n",
 		     __FUNCTION__, compat_conn.conn.count_encoders));
-		return false;
+		return 0;
 	}
 
 	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETENCODER, &enc)) {
 		DBG(("%s: GETENCODER failed, ret=%d\n", __FUNCTION__, errno));
-		return false;
+		return 0;
 	}
 
 	sna_output = calloc(sizeof(struct sna_output), 1);
 	if (!sna_output)
-		return false;
+		return -1;
 
 	sna_output->num_props = compat_conn.conn.count_props;
 	sna_output->prop_ids = malloc(sizeof(uint32_t)*compat_conn.conn.count_props);
@@ -2710,7 +2787,9 @@ sna_output_init(ScrnInfoPtr scrn, int id, drmModeResPtr res)
 		output_name = output_names[compat_conn.conn.connector_type];
 	else
 		output_name = "UNKNOWN";
-	snprintf(name, 32, "%s%d", output_name, compat_conn.conn.connector_type_id);
+	len = snprintf(name, 32, "%s%d", output_name, compat_conn.conn.connector_type_id);
+	if (output_ignored(scrn, name))
+		return 0;
 
 	if (xf86IsEntityShared(scrn->entityList[0])) {
 		const char *str;
@@ -2718,7 +2797,7 @@ sna_output_init(ScrnInfoPtr scrn, int id, drmModeResPtr res)
 		str = xf86GetOptValString(sna->Options, OPTION_ZAPHOD);
 		if (str && !sna_zaphod_match(str, name)) {
 			DBG(("%s: zaphod mismatch, want %s, have %s\n", __FUNCTION__, str, name));
-			ret = true;
+			ret = 0;
 			goto cleanup;
 		}
 
@@ -2732,22 +2811,39 @@ sna_output_init(ScrnInfoPtr scrn, int id, drmModeResPtr res)
 		}
 
 		enc.possible_crtcs = 1;
-		enc.possible_clones = 0;
 	}
 
-	output = xf86OutputCreate(scrn, &sna_output_funcs, name);
-	if (!output) {
-		/* xf86OutputCreate does not differentiate between
-		 * a failure to allocate the output, and a user request
-		 * to ignore the output. So reconstruct whether the user
-		 * explicitly ignored the output.
-		 */
-		ret = output_ignored(scrn, name);
-		DBG(("%s: create failed, ignored? %d\n", __FUNCTION__, ret));
+	output = calloc(1, sizeof(*output) + len + 1);
+	if (!output)
+		goto cleanup;
+
+	outputs = realloc(config->output, (config->num_output + 1) * sizeof(output));
+	if (outputs == NULL) {
+		free(output);
 		goto cleanup;
 	}
 
+	for (i = config->num_output; i > sna->mode.num_real_output; i--) {
+		outputs[i] = outputs[i-1];
+		assert(outputs[i]->driver_private == NULL);
+		outputs[i]->possible_clones <<= 1;
+	}
+	outputs[i] = output;
+	sna->mode.num_real_output++;
+	config->num_output++;
+	config->output = outputs;
+
+	output->scrn = scrn;
+	output->funcs = &sna_output_funcs;
+	output->name = (char *)(output + 1);
+	memcpy(output->name, name, len + 1);
+
+	output->use_screen_monitor = config->num_output;
+	xf86OutputUseScreenMonitor(output, !config->num_output);
+
 	sna_output->id = compat_conn.conn.connector_id;
+	sna_output->encoder_id = enc.encoder_id;
+	sna_output->encoder_idx = -1;
 	sna_output->is_panel = is_panel(compat_conn.conn.connector_type);
 	sna_output->edid_idx = find_property(sna, sna_output, "EDID");
 	sna_output->dpms_id = find_property_id(sna, sna_output, "DPMS");
@@ -2760,33 +2856,34 @@ sna_output_init(ScrnInfoPtr scrn, int id, drmModeResPtr res)
 	output->subpixel_order = subpixel_conv_table[compat_conn.conn.subpixel];
 	output->driver_private = sna_output;
 
-	for (i = 0; i < res->count_encoders; i++) {
-		if (enc.encoder_id == res->encoders[i]) {
-			sna_output->encoder_idx = i;
-			break;
-		}
-	}
-
 	if (sna_output->is_panel)
 		sna_output_backlight_init(output);
 
-	output->possible_crtcs = enc.possible_crtcs;
-	output->possible_clones = enc.possible_clones;
+	output->possible_crtcs = enc.possible_crtcs & ((1 << sna->mode.num_real_crtc) - 1);
 	output->interlaceAllowed = TRUE;
 
-	/* stash the active CRTC id for our probe function */
-	output->crtc = NULL;
-	if (compat_conn.conn.connection != DRM_MODE_DISCONNECTED)
-		output->crtc = (void *)(uintptr_t)enc.crtc_id;
+	if (serial) {
+		output->randr_output = RROutputCreate(xf86ScrnToScreen(scrn), name, len, output);
+		if (output->randr_output == NULL)
+			goto cleanup;
 
-	DBG(("%s: created output '%s' %d (possible crtc:%x, possible clones:%x), edid=%d, dpms=%d, crtc=%lu\n",
+		sna_output_create_resources(output);
+		RRPostPendingProperties(output->randr_output);
+
+		sna_output->serial = serial;
+	} else {
+		/* stash the active CRTC id for our probe function */
+		if (compat_conn.conn.connection != DRM_MODE_DISCONNECTED)
+			output->crtc = (void *)(uintptr_t)enc.crtc_id;
+	}
+
+	DBG(("%s: created output '%s' %d (possible crtc:%x), serial=%d, edid=%d, dpms=%d, crtc=%lu\n",
 	     __FUNCTION__, name, id,
 	     (uint32_t)output->possible_crtcs,
-	     (uint32_t)output->possible_clones,
-	     sna_output->edid_idx, sna_output->dpms_id,
+	     serial, sna_output->edid_idx, sna_output->dpms_id,
 	     (unsigned long)(uintptr_t)output->crtc));
 
-	return true;
+	return 1;
 
 cleanup:
 	free(sna_output->prop_ids);
@@ -2795,41 +2892,92 @@ cleanup:
 	return ret;
 }
 
-/* We need to map from kms encoder based possible_clones mask to X output based
- * possible clones masking. Note that for SDVO and on Haswell with DP/HDMI we
- * can have more than one output hanging off the same encoder.
- */
-static void
-sna_mode_compute_possible_outputs(ScrnInfoPtr scrn)
+static void sna_output_del(xf86OutputPtr output)
 {
+	ScrnInfoPtr scrn = output->scrn;
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(scrn);
-	unsigned crtc_mask;
-	int i, j;
+	int i;
 
-	assert(config->num_output < 32);
-	assert(config->num_crtc < 32);
+	assert(to_sna_output(output));
 
-	crtc_mask = (1 << config->num_crtc) - 1;
+	RROutputDestroy(output->randr_output);
+	sna_output_destroy(output);
 
-	/* Convert from encoder numbering to output numbering */
-	for (i = 0; i < config->num_output; i++) {
-		xf86OutputPtr output = config->output[i];
-		unsigned mask = output->possible_clones;
-		unsigned clones = 0;
+	while (output->probed_modes)
+		xf86DeleteMode(&output->probed_modes, output->probed_modes);
 
-		for (j = 0; j < config->num_output; j++) {
-			if (mask & (1 << to_sna_output(config->output[j])->encoder_idx))
-				clones |= 1 << j;
-		}
+	free(output);
 
-		output->possible_clones = clones;
-		output->possible_crtcs &= crtc_mask;
+	for (i = 0; i < config->num_output; i++)
+		if (config->output[i] == output)
+			break;
+	assert(i < to_sna(scrn)->mode.num_real_output);
 
-		DBG(("%s: updated output '%s' %d [%d] (possible crtc:%x, possible clones:%x)\n",
-		     __FUNCTION__, output->name, i, to_connector_id(output),
-		     (uint32_t)output->possible_crtcs,
-		     (uint32_t)output->possible_clones));
+	for (; i < config->num_output; i++) {
+		config->output[i] = config->output[i+1];
+		config->output[i]->possible_clones >>= 1;
 	}
+	config->num_output--;
+	to_sna(scrn)->mode.num_real_output--;
+}
+
+static void sort_randr_outputs(struct sna *sna, ScreenPtr screen)
+{
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	rrScrPriv(screen);
+	int i;
+
+	assert(pScrPriv->numOutputs = config->num_output);
+	for (i = 0; i < config->num_output; i++) {
+		assert(config->output[i]->randr_output);
+		pScrPriv->outputs[i] = config->output[i]->randr_output;
+	}
+}
+
+void sna_mode_discover(struct sna *sna)
+{
+	ScreenPtr screen = xf86ScrnToScreen(sna->scrn);
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	drmModeResPtr res;
+	int i, j, serial = ++sna->mode.serial;
+	bool changed = false;
+
+	res = drmModeGetResources(sna->kgem.fd);
+	if (res == NULL)
+		return;
+
+	assert(res->count_crtcs == sna->mode.num_real_crtc);
+	assert(sna->mode.max_crtc_width  == res->max_width);
+	assert(sna->mode.max_crtc_height == res->max_height);
+
+	for (i = 0; i < res->count_connectors; i++) {
+		for (j = 0; j < sna->mode.num_real_output; j++) {
+			if (to_sna_output(config->output[j])->id == res->connectors[i]) {
+				to_sna_output(config->output[j])->serial = serial;
+				break;
+			}
+		}
+		if (j == sna->mode.num_real_output)
+			changed |= sna_output_add(sna, res->connectors[i], res, serial) > 0;
+	}
+
+	for (i = 0; i < sna->mode.num_real_output; i++) {
+		xf86OutputPtr output = config->output[i];
+		if (to_sna_output(output)->serial != serial) {
+			sna_output_del(output);
+			changed = true;
+		}
+	}
+
+	if (changed) {
+		sna_mode_compute_possible_outputs(sna, res);
+
+		/* Reorder user visible listing */
+		sort_randr_outputs(sna, screen);
+		xf86RandR12TellChanged(screen);
+	}
+
+	drmModeFreeResources(res);
 }
 
 static void copy_front(struct sna *sna, PixmapPtr old, PixmapPtr new)
@@ -4254,18 +4402,18 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 		xf86_config->xf86_crtc_notify = sna_crtc_config_notify;
 
 		for (i = 0; i < res->count_crtcs; i++)
-			if (!sna_crtc_init(scrn, res->crtcs[i]))
+			if (!sna_crtc_add(scrn, res->crtcs[i]))
 				return false;
+
+		sna->mode.num_real_crtc = xf86_config->num_crtc;
 
 		for (i = 0; i < res->count_connectors; i++)
-			if (!sna_output_init(scrn, res->connectors[i], res))
+			if (sna_output_add(sna, res->connectors[i], res, 0) < 0)
 				return false;
 
-		sna->mode.num_real_crtc   = xf86_config->num_crtc;
 		sna->mode.num_real_output = xf86_config->num_output;
 
-		if (!xf86IsEntityShared(scrn->entityList[0]))
-			sna_mode_compute_possible_outputs(scrn);
+		sna_mode_compute_possible_outputs(sna, res);
 
 		sna->mode.max_crtc_width  = res->max_width;
 		sna->mode.max_crtc_height = res->max_height;
