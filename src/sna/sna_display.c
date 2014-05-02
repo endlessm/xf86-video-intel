@@ -3802,6 +3802,9 @@ sna_cursor_pre_init(struct sna *sna)
 		uint64_t value;
 	} cap;
 
+	if (sna->mode.num_real_crtc == 0)
+		return;
+
 #define LOCAL_IOCTL_GET_CAP	DRM_IOWR(0x0c, struct local_get_cap)
 #define DRM_CAP_CURSOR_WIDTH	8
 #define DRM_CAP_CURSOR_HEIGHT	9
@@ -4392,8 +4395,6 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 		assert(res->count_crtcs);
 		assert(res->count_connectors);
 
-		sna_cursor_pre_init(sna);
-
 		xf86CrtcConfigInit(scrn, &sna_mode_funcs);
 
 		xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
@@ -4417,6 +4418,8 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 		sna->mode.max_crtc_height = res->max_height;
 
 		drmModeFreeResources(res);
+
+		sna_cursor_pre_init(sna);
 	} else {
 		if (num_fake == 0)
 			num_fake = 1;
