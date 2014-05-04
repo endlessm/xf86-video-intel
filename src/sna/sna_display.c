@@ -4523,15 +4523,33 @@ sna_covering_crtc(struct sna *sna, const BoxRec *box, xf86CrtcPtr desired)
 	DBG(("%s for box=(%d, %d), (%d, %d)\n",
 	     __FUNCTION__, box->x1, box->y1, box->x2, box->y2));
 
+	if (desired == NULL) {
+		rrScrPrivPtr rr = rrGetScrPriv(xf86ScrnToScreen(sna->scrn));
+		if (rr && rr->primaryOutput) {
+			xf86OutputPtr output = rr->primaryOutput->devPrivate;
+			DBG(("%s: have PrimaryOutput? %d marking as desired\n", __FUNCTION__, output->crtc != NULL));
+			desired = output->crtc;
+		}
+	}
+	if (desired && to_sna_crtc(desired) && to_sna_crtc(desired)->bo) {
+		BoxRec cover_box;
+		if (sna_box_intersect(&cover_box, &desired->bounds, box)) {
+			DBG(("%s: box overlaps desired crtc: (%d, %d), (%d, %d)\n",
+			     __FUNCTION__,
+			     cover_box.x1, cover_box.y1,
+			     cover_box.x2, cover_box.y2));
+			return desired;
+		}
+	}
+
 	best_crtc = NULL;
 	best_coverage = 0;
-	for (c = 0; c < config->num_crtc; c++) {
+	for (c = 0; c < sna->mode.num_real_crtc; c++) {
 		xf86CrtcPtr crtc = config->crtc[c];
 		BoxRec cover_box;
 		int coverage;
 
-		if (to_sna_crtc(crtc) == NULL)
-			break;
+		assert(to_sna_crtc(crtc));
 
 		/* If the CRTC is off, treat it as not covering */
 		if (to_sna_crtc(crtc)->bo == NULL) {
@@ -4557,11 +4575,6 @@ sna_covering_crtc(struct sna *sna, const BoxRec *box, xf86CrtcPtr desired)
 		     cover_box.x1, cover_box.y1,
 		     cover_box.x2, cover_box.y2,
 		     c));
-		if (crtc == desired) {
-			DBG(("%s: box is on desired crtc [%p]\n",
-			     __FUNCTION__, crtc));
-			return crtc;
-		}
 
 		coverage = sna_box_area(&cover_box);
 		DBG(("%s: box covers %d of crtc %d\n",
