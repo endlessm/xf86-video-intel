@@ -851,10 +851,37 @@ sna_dri_copy_region(DrawablePtr draw,
 	__sna_dri_copy_region(sna, draw, region, src, dst, false);
 }
 
-static inline int sna_wait_vblank(struct sna *sna, drmVBlank *vbl)
+inline static uint32_t pipe_select(int pipe)
 {
-	DBG(("%s\n", __FUNCTION__));
-	return drmIoctl(sna->kgem.fd, DRM_IOCTL_WAIT_VBLANK, vbl);
+	/* The third pipe was introduced with IvyBridge long after
+	 * multiple pipe support was added to the kernel, hence
+	 * we can safely ignore the capability check - if we have more
+	 * than two pipes, we can assume that they are fully supported.
+	 */
+	if (pipe > 1)
+		return pipe << DRM_VBLANK_HIGH_CRTC_SHIFT;
+	else if (pipe > 0)
+		return DRM_VBLANK_SECONDARY;
+	else
+		return 0;
+}
+
+static inline int sna_wait_vblank(struct sna *sna, drmVBlank *vbl, int pipe)
+{
+	int ret;
+
+	DBG(("%s(pipe=%d)\n", __FUNCTION__, pipe));
+
+	vbl->request.type |= pipe_select(pipe);
+	ret = drmIoctl(sna->kgem.fd, DRM_IOCTL_WAIT_VBLANK, vbl);
+	if (ret)
+		return ret;
+
+	assert(pipe < MAX_PIPES);
+	DBG(("%s: last_msc[%d] = %u\n", __FUNCTION__, pipe, vbl->request.sequence));
+	sna->dri.last_msc[pipe] = vbl->request.sequence;
+
+	return 0;
 }
 
 #if DRI2INFOREC_VERSION >= 4
@@ -1223,21 +1250,6 @@ can_flip(struct sna * sna,
 	return true;
 }
 
-inline static uint32_t pipe_select(int pipe)
-{
-	/* The third pipe was introduced with IvyBridge long after
-	 * multiple pipe support was added to the kernel, hence
-	 * we can safely ignore the capability check - if we have more
-	 * than two pipes, we can assume that they are fully supported.
-	 */
-	if (pipe > 1)
-		return pipe << DRM_VBLANK_HIGH_CRTC_SHIFT;
-	else if (pipe > 0)
-		return DRM_VBLANK_SECONDARY;
-	else
-		return 0;
-}
-
 static void
 sna_dri_exchange_buffers(DrawablePtr draw,
 			 DRI2BufferPtr front,
@@ -1307,12 +1319,11 @@ static void chain_swap(struct sna *sna,
 		VG_CLEAR(vbl);
 		vbl.request.type =
 			DRM_VBLANK_RELATIVE |
-			DRM_VBLANK_EVENT |
-			pipe_select(chain->pipe);
+			DRM_VBLANK_EVENT;
 		vbl.request.sequence = 1;
 		vbl.request.signal = (unsigned long)chain;
 
-		if (!sna_wait_vblank(sna, &vbl))
+		if (!sna_wait_vblank(sna, &vbl, chain->pipe))
 			return;
 
 		DBG(("%s -- requeue failed, errno=%d\n", __FUNCTION__, errno));
@@ -1330,11 +1341,10 @@ static void chain_swap(struct sna *sna,
 	vbl.request.type =
 		DRM_VBLANK_RELATIVE |
 		DRM_VBLANK_NEXTONMISS |
-		DRM_VBLANK_EVENT |
-		pipe_select(chain->pipe);
+		DRM_VBLANK_EVENT;
 	vbl.request.sequence = 0;
 	vbl.request.signal = (unsigned long)chain;
-	if (sna_wait_vblank(sna, &vbl))
+	if (sna_wait_vblank(sna, &vbl, chain->pipe))
 		sna_dri_frame_event_info_free(sna, draw, chain);
 }
 
@@ -1350,11 +1360,10 @@ static bool sna_dri_blit_complete(struct sna *sna,
 		VG_CLEAR(vbl);
 		vbl.request.type =
 			DRM_VBLANK_RELATIVE |
-			DRM_VBLANK_EVENT |
-			pipe_select(info->pipe);
+			DRM_VBLANK_EVENT;
 		vbl.request.sequence = 1;
 		vbl.request.signal = (unsigned long)info;
-		if (!sna_wait_vblank(sna, &vbl))
+		if (!sna_wait_vblank(sna, &vbl, info->pipe))
 			return false;
 	}
 
@@ -1393,12 +1402,11 @@ void sna_dri_vblank_handler(struct sna *sna, struct drm_event_vblank *event)
 			VG_CLEAR(vbl);
 			vbl.request.type =
 				DRM_VBLANK_RELATIVE |
-				DRM_VBLANK_EVENT |
-				pipe_select(info->pipe);
+				DRM_VBLANK_EVENT;
 			vbl.request.sequence = 1;
 			vbl.request.signal = (unsigned long)info;
 
-			if (!sna_wait_vblank(sna, &vbl))
+			if (!sna_wait_vblank(sna, &vbl, info->pipe))
 				return;
 
 			DBG(("%s -- requeue failed, errno=%d\n", __FUNCTION__, errno));
@@ -1488,11 +1496,10 @@ sna_dri_immediate_blit(struct sna *sna,
 				vbl.request.type =
 					DRM_VBLANK_RELATIVE |
 					DRM_VBLANK_NEXTONMISS |
-					DRM_VBLANK_EVENT |
-					pipe_select(info->pipe);
+					DRM_VBLANK_EVENT;
 				vbl.request.sequence = 0;
 				vbl.request.signal = (unsigned long)info;
-				ret = !sna_wait_vblank(sna, &vbl);
+				ret = !sna_wait_vblank(sna, &vbl, info->pipe);
 			}
 		} else {
 			DBG(("%s: pending blit, chained\n", __FUNCTION__));
@@ -1790,7 +1797,7 @@ get_current_msc_for_target(struct sna *sna, CARD64 target_msc, int pipe)
 		VG_CLEAR(vbl);
 		vbl.request.type = DRM_VBLANK_RELATIVE | pipe_select(pipe);
 		vbl.request.sequence = 0;
-		if (sna_wait_vblank(sna, &vbl) == 0)
+		if (sna_wait_vblank(sna, &vbl, pipe) == 0)
 			ret = vbl.reply.sequence;
 	}
 
@@ -1951,8 +1958,7 @@ out:
 
 	vbl.request.type =
 		DRM_VBLANK_ABSOLUTE |
-		DRM_VBLANK_EVENT |
-		pipe_select(pipe);
+		DRM_VBLANK_EVENT;
 
 	/*
 	 * If divisor is zero, or current_msc is smaller than target_msc
@@ -1999,7 +2005,7 @@ out:
 	/* Account for 1 frame extra pageflip delay */
 	vbl.request.sequence -= 1;
 	vbl.request.signal = (unsigned long)info;
-	if (sna_wait_vblank(sna, &vbl)) {
+	if (sna_wait_vblank(sna, &vbl, pipe)) {
 		sna_dri_frame_event_info_free(sna, draw, info);
 		return false;
 	}
@@ -2142,11 +2148,10 @@ sna_dri_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 
 		vbl.request.type =
 			DRM_VBLANK_ABSOLUTE |
-			DRM_VBLANK_EVENT |
-			pipe_select(pipe);
+			DRM_VBLANK_EVENT;
 		vbl.request.sequence = *target_msc;
 		vbl.request.signal = (unsigned long)info;
-		if (sna_wait_vblank(sna, &vbl))
+		if (sna_wait_vblank(sna, &vbl, pipe))
 			goto blit;
 
 		return TRUE;
@@ -2169,8 +2174,7 @@ sna_dri_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 	vbl.request.type =
 		DRM_VBLANK_ABSOLUTE |
 		DRM_VBLANK_EVENT |
-		DRM_VBLANK_NEXTONMISS |
-		pipe_select(pipe);
+		DRM_VBLANK_NEXTONMISS;
 
 	vbl.request.sequence = current_msc - current_msc % divisor + remainder;
 	/*
@@ -2186,7 +2190,7 @@ sna_dri_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 
 	vbl.request.sequence -= 1;
 	vbl.request.signal = (unsigned long)info;
-	if (sna_wait_vblank(sna, &vbl))
+	if (sna_wait_vblank(sna, &vbl, pipe))
 		goto blit;
 
 	return TRUE;
@@ -2223,21 +2227,21 @@ sna_dri_get_msc(DrawablePtr draw, CARD64 *ust, CARD64 *msc)
 	drmVBlank vbl;
 	int pipe;
 
-
 	pipe = sna_dri_get_pipe(draw);
 	DBG(("%s(pipe=%d)\n", __FUNCTION__, pipe));
 	if (pipe == -1) {
 fail:
 		/* Drawable not displayed, make up a *monotonic* value */
+		assert(pipe < MAX_PIPES);
 		*ust = gettime_us();
-		*msc = 0;
+		*msc = sna->dri.last_msc[pipe < 0 ? 0 : pipe];
 		return TRUE;
 	}
 
 	VG_CLEAR(vbl);
-	vbl.request.type = DRM_VBLANK_RELATIVE | pipe_select(pipe);
+	vbl.request.type = DRM_VBLANK_RELATIVE;
 	vbl.request.sequence = 0;
-	if (sna_wait_vblank(sna, &vbl) == 0) {
+	if (sna_wait_vblank(sna, &vbl, pipe) == 0) {
 		*ust = ((CARD64)vbl.reply.tval_sec * 1000000) + vbl.reply.tval_usec;
 		*msc = vbl.reply.sequence;
 		DBG(("%s: msc=%llu, ust=%llu\n", __FUNCTION__,
@@ -2286,9 +2290,9 @@ sna_dri_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc,
 	VG_CLEAR(vbl);
 
 	/* Get current count */
-	vbl.request.type = DRM_VBLANK_RELATIVE | pipe_select(pipe);
+	vbl.request.type = DRM_VBLANK_RELATIVE;
 	vbl.request.sequence = 0;
-	if (sna_wait_vblank(sna, &vbl))
+	if (sna_wait_vblank(sna, &vbl, pipe))
 		goto out_complete;
 
 	current_msc = vbl.reply.sequence;
@@ -2315,8 +2319,7 @@ sna_dri_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc,
 	sna_dri_add_frame_event(draw, info);
 
 	vbl.request.signal = (unsigned long)info;
-	vbl.request.type =
-		DRM_VBLANK_ABSOLUTE | DRM_VBLANK_EVENT | pipe_select(pipe);
+	vbl.request.type = DRM_VBLANK_ABSOLUTE | DRM_VBLANK_EVENT;
 	/*
 	 * If divisor is zero, or current_msc is smaller than target_msc,
 	 * we just need to make sure target_msc passes before waking up the
@@ -2342,7 +2345,7 @@ sna_dri_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc,
 			vbl.request.sequence += divisor;
 	}
 
-	if (sna_wait_vblank(sna, &vbl))
+	if (sna_wait_vblank(sna, &vbl, pipe))
 		goto out_free_info;
 
 	DBG(("%s: waiting until MSC=%llu\n", __FUNCTION__, (long long)vbl.request.sequence));

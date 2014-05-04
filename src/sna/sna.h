@@ -72,6 +72,8 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <signal.h>
 #include <setjmp.h>
 
+#define MAX_PIPES 4
+
 #include "compiler.h"
 
 #if HAS_DEBUG_FULL
@@ -307,6 +309,7 @@ struct sna {
 
 	struct sna_dri {
 		void *flip_pending;
+		unsigned int last_msc[MAX_PIPES];
 	} dri;
 
 	struct sna_xv {
