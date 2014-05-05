@@ -209,8 +209,11 @@ composite_aligned_boxes(struct sna *sna,
 		     __FUNCTION__));
 
 		flags = MOVE_READ | MOVE_WRITE;
-		if (n == 1 && op <= PictOpSrc)
-			flags = MOVE_WRITE | MOVE_INPLACE_HINT;
+		if (op <= PictOpSrc) {
+			flags |= MOVE_INPLACE_HINT;
+			if (n == 1)
+				flags &= ~MOVE_READ;
+		}
 
 		if (!sna_drawable_move_region_to_cpu(dst->pDrawable, &clip, flags))
 			goto done;
