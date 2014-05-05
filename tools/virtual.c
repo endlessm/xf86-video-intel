@@ -447,15 +447,15 @@ static void clone_update_edid(struct clone *clone)
 	}
 }
 
-static void disable_crtc(Display *dpy, XRRScreenResources *res, RRCrtc crtc)
+static int disable_crtc(Display *dpy, XRRScreenResources *res, RRCrtc crtc)
 {
 	XRRPanning panning;
 
 	if (crtc == 0)
-		return;
+		return 1;
 
 	XRRSetPanning(dpy, res, crtc, memset(&panning, 0, sizeof(panning)));
-	XRRSetCrtcConfig(dpy, res, crtc, CurrentTime, 0, 0, None, RR_Rotate_0, NULL, 0);
+	return XRRSetCrtcConfig(dpy, res, crtc, CurrentTime, 0, 0, None, RR_Rotate_0, NULL, 0) == Success;
 }
 
 static int clone_update_modes__randr(struct clone *clone)
@@ -528,9 +528,10 @@ static int clone_update_modes__randr(struct clone *clone)
 	if (from_info->crtc != clone->dst.rr_crtc) {
 		DBG(("%s(%s-%s): disabling active CRTC\n", __func__,
 		     DisplayString(clone->dst.dpy), clone->dst.name));
-		disable_crtc(clone->dst.dpy, from_res, from_info->crtc);
-		clone->dst.rr_crtc = 0;
-		clone->dst.mode.id = 0;
+		if (disable_crtc(clone->dst.dpy, from_res, from_info->crtc)) {
+			clone->dst.rr_crtc = 0;
+			clone->dst.mode.id = 0;
+		}
 	}
 
 	/* Clear all current UserModes on the output, including any active ones */
@@ -1108,9 +1109,10 @@ static int context_update(struct context *ctx)
 
 				DBG(("%s: disabling output '%s'\n",
 				     DisplayString(dst->dpy), dst->name));
-				disable_crtc(dpy, res, dst->rr_crtc);
-				dst->rr_crtc = 0;
-				dst->mode.id = 0;
+				if (disable_crtc(dpy, res, dst->rr_crtc)) {
+					dst->rr_crtc = 0;
+					dst->mode.id = 0;
+				}
 			}
 			goto free_res;
 		}
@@ -1132,9 +1134,10 @@ static int context_update(struct context *ctx)
 
 				DBG(("%s: disabling output '%s'\n",
 				     DisplayString(dst->dpy), dst->name));
-				disable_crtc(dpy, res, dst->rr_crtc);
-				dst->rr_crtc = 0;
-				dst->mode.id = 0;
+				if (disable_crtc(dpy, res, dst->rr_crtc)) {
+					dst->rr_crtc = 0;
+					dst->mode.id = 0;
+				}
 			}
 
 			DBG(("%s: XRRSetScreenSize %dx%d\n", DisplayString(display->dpy), x2, y2));
@@ -1162,9 +1165,10 @@ err:
 				if (dst->rr_crtc) {
 					DBG(("%s: disabling unused output '%s'\n",
 					     DisplayString(dst->dpy), dst->name));
-					disable_crtc(dpy, res, dst->rr_crtc);
-					dst->rr_crtc = 0;
-					dst->mode.id = 0;
+					if (disable_crtc(dpy, res, dst->rr_crtc)) {
+						dst->rr_crtc = 0;
+						dst->mode.id = 0;
+					}
 				}
 				continue;
 			}
