@@ -239,9 +239,8 @@ static bool add_fake_output(struct sna *sna, bool late)
 	xf86CrtcPtr crtc;
 	RROutputPtr clones[32];
 	RRCrtcPtr crtcs[32];
-	unsigned mask;
 	char buf[80];
-	int i, j, len;
+	int i, len;
 
 	if (sna->mode.num_fake >= 32)
 		return false;
@@ -264,6 +263,9 @@ static bool add_fake_output(struct sna *sna, bool late)
 	output->interlaceAllowed = FALSE;
 	output->subpixel_order = SubPixelNone;
 
+	output->possible_crtcs = ~((1 << sna->mode.num_real_crtc) - 1);
+	output->possible_clones = ~((1 << sna->mode.num_real_output) - 1);
+
 	if (late) {
 		ScreenPtr screen = xf86ScrnToScreen(scrn);
 
@@ -277,46 +279,27 @@ static bool add_fake_output(struct sna *sna, bool late)
 
 		RRPostPendingProperties(output->randr_output);
 
-		mask = (1 << ++sna->mode.num_fake) - 1;
-		for (i = j = 0; i < xf86_config->num_output; i++) {
-			output = xf86_config->output[i];
-			if (output->driver_private)
-				continue;
+		for (i = sna->mode.num_real_output; i < xf86_config->num_output; i++)
+			clones[i - sna->mode.num_real_output] = xf86_config->output[i]->randr_output;
+		assert(i - sna->mode.num_real_output == sna->mode.num_fake + 1);
 
-			output->possible_crtcs = mask << sna->mode.num_real_crtc;
-			output->possible_clones = mask << sna->mode.num_real_output;
+		for (i = sna->mode.num_real_crtc; i < xf86_config->num_crtc; i++)
+			crtcs[i - sna->mode.num_real_crtc] = xf86_config->crtc[i]->randr_crtc;
+		assert(i - sna->mode.num_real_crtc == sna->mode.num_fake + 1);
 
-			clones[j++] = output->randr_output;
-		}
-		assert(j == sna->mode.num_fake);
+		for (i = sna->mode.num_real_output; i < xf86_config->num_output; i++) {
+			RROutputPtr rr_output = xf86_config->output[i]->randr_output;
 
-		for (i = j = 0; i < xf86_config->num_crtc; i++) {
-			crtc = xf86_config->crtc[i];
-			if (crtc->driver_private)
-				continue;
-
-			crtcs[j++] = crtc->randr_crtc;
-		}
-		assert(j == sna->mode.num_fake);
-
-		for (i = 0; i < xf86_config->num_output; i++) {
-			output = xf86_config->output[i];
-			if (output->driver_private)
-				continue;
-
-			if (!RROutputSetCrtcs(output->randr_output, crtcs, j) ||
-			    !RROutputSetClones(output->randr_output, clones, j))
+			if (!RROutputSetCrtcs(rr_output, crtcs, sna->mode.num_fake + 1) ||
+			    !RROutputSetClones(rr_output, clones, sna->mode.num_fake + 1))
 				goto err;
 		}
 
 		RRCrtcSetRotations(crtc->randr_crtc,
 				   RR_Rotate_All | RR_Reflect_All);
-	} else {
-		mask = (1 << ++sna->mode.num_fake) - 1;
-		output->possible_crtcs = mask << sna->mode.num_real_crtc;
-		output->possible_clones = mask << sna->mode.num_real_output;
 	}
 
+	sna->mode.num_fake++;
 	return true;
 
 err:
