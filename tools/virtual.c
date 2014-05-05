@@ -1995,10 +1995,27 @@ static int add_display(struct context *ctx, Display *dpy)
 				       &display->shm_event,
 				       &display->shm_opcode,
 				       &display->has_shm_pixmap);
+	DBG(("%s: has_shm?=%d, event=%d, opcode=%d, has_pixmap?=%d\n",
+	     DisplayString(dpy),
+	     display->has_shm,
+	     display->shm_event,
+	     display->shm_opcode,
+	     display->has_shm_pixmap));
 
 	display->rr_active = XRRQueryExtension(dpy, &display->rr_event, &display->rr_error);
+	DBG(("%s: randr_active?=%d, event=%d, error=%d\n",
+	     DisplayString(dpy),
+	     display->rr_active,
+	     display->rr_event,
+	     display->rr_error));
+
 	if (XineramaQueryExtension(dpy, &display->xinerama_event, &display->xinerama_error))
 		display->xinerama_active = XineramaIsActive(dpy);
+	DBG(("%s: xinerama_active?=%d, event=%d, error=%d\n",
+	     DisplayString(dpy),
+	     display->xinerama_active,
+	     display->xinerama_event,
+	     display->xinerama_error));
 
 	/* first display (source) is slightly special */
 	if (!first_display) {
