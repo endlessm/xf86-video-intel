@@ -934,7 +934,7 @@ static int clone_init_xfer(struct clone *clone)
 	}
 	if (clone->dst.use_shm) {
 		clone->dst.shm = clone->shm;
-		clone->dst.shm.readOnly = True;
+		clone->dst.shm.readOnly = !clone->dst.use_shm_pixmap;
 		XShmAttach(clone->dst.dpy, &clone->dst.shm);
 		XSync(clone->dst.dpy, False);
 	}
