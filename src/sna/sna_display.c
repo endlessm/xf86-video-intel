@@ -2964,7 +2964,7 @@ void sna_mode_discover(struct sna *sna)
 	for (i = 0; i < sna->mode.num_real_output; i++) {
 		xf86OutputPtr output = config->output[i];
 		if (to_sna_output(output)->serial != serial) {
-			sna_output_del(output);
+			sna_output_del(output); i--;
 			changed = true;
 		}
 	}
