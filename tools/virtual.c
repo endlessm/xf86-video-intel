@@ -827,6 +827,9 @@ static void output_init_xfer(struct clone *clone, struct output *output)
 {
 	if (output->use_shm_pixmap) {
 		DBG(("%s-%s: creating shm pixmap\n", DisplayString(output->dpy), output->name));
+		XSync(output->dpy, False);
+		_x_error_occurred = 0;
+
 		if (output->pixmap)
 			XFreePixmap(output->dpy, output->pixmap);
 		output->pixmap = XShmCreatePixmap(output->dpy, output->window,
@@ -835,6 +838,13 @@ static void output_init_xfer(struct clone *clone, struct output *output)
 		if (output->pix_picture) {
 			XRenderFreePicture(output->dpy, output->pix_picture);
 			output->pix_picture = None;
+		}
+
+		XSync(output->dpy, False);
+		if (_x_error_occurred) {
+			XFreePixmap(output->dpy, output->pixmap);
+			output->pixmap = None;
+			output->use_shm_pixmap = 0;
 		}
 	}
 	if (output->use_render) {
