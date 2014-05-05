@@ -572,6 +572,9 @@ static int clone_update_modes__randr(struct clone *clone)
 		}
 	}
 
+	/* Create matching modes for the real output on the virtual */
+	XGrabServer(clone->src.dpy);
+
 	/* Clear all current UserModes on the output, including any active ones */
 	if (to_info->crtc) {
 		DBG(("%s(%s-%s): disabling active CRTC\n", __func__,
@@ -586,8 +589,6 @@ static int clone_update_modes__randr(struct clone *clone)
 
 	clone->src.rr_crtc = 0;
 
-	/* Create matching modes for the real output on the virtual */
-	XGrabServer(clone->src.dpy);
 	for (i = 0; i < from_info->nmode; i++) {
 		XRRModeInfo *mode, *old;
 		RRMode id;
