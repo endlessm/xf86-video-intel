@@ -2723,7 +2723,7 @@ sna_output_add(struct sna *sna, int id, drmModeResPtr res, int serial)
 	xf86OutputPtr *outputs, output;
 	const char *output_name;
 	char name[32];
-	int len, i, ret = -1;
+	int len, i;
 
 	DBG(("%s(%d)\n", __FUNCTION__, id));
 
@@ -2750,9 +2750,39 @@ sna_output_add(struct sna *sna, int id, drmModeResPtr res, int serial)
 		return 0;
 	}
 
+	if (compat_conn.conn.connector_type < ARRAY_SIZE(output_names))
+		output_name = output_names[compat_conn.conn.connector_type];
+	else
+		output_name = "UNKNOWN";
+	len = snprintf(name, 32, "%s%d", output_name, compat_conn.conn.connector_type_id);
+	if (output_ignored(scrn, name))
+		return 0;
+
 	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETENCODER, &enc)) {
 		DBG(("%s: GETENCODER failed, ret=%d\n", __FUNCTION__, errno));
 		return 0;
+	}
+
+	if (xf86IsEntityShared(scrn->entityList[0])) {
+		const char *str;
+
+		str = xf86GetOptValString(sna->Options, OPTION_ZAPHOD);
+		if (str && !sna_zaphod_match(str, name)) {
+			DBG(("%s: zaphod mismatch, want %s, have %s\n", __FUNCTION__, str, name));
+			return 0;
+		}
+
+		if ((enc.possible_crtcs & (1 << scrn->confScreen->device->screen)) == 0) {
+			if (str) {
+				xf86DrvMsg(scrn->scrnIndex, X_ERROR,
+					   "%s is an invalid output for screen (pipe) %d\n",
+					   name, scrn->confScreen->device->screen);
+				return -1;
+			} else
+				return 0;
+		}
+
+		enc.possible_crtcs = 1;
 	}
 
 	sna_output = calloc(sizeof(struct sna_output), 1);
@@ -2782,36 +2812,6 @@ sna_output_add(struct sna *sna, int id, drmModeResPtr res, int serial)
 	assert(sna_output->num_props == compat_conn.conn.count_props);
 	VG(VALGRIND_MAKE_MEM_DEFINED(sna_output->prop_ids, sizeof(uint32_t)*sna_output->num_props));
 	VG(VALGRIND_MAKE_MEM_DEFINED(sna_output->prop_values, sizeof(uint64_t)*sna_output->num_props));
-
-	if (compat_conn.conn.connector_type < ARRAY_SIZE(output_names))
-		output_name = output_names[compat_conn.conn.connector_type];
-	else
-		output_name = "UNKNOWN";
-	len = snprintf(name, 32, "%s%d", output_name, compat_conn.conn.connector_type_id);
-	if (output_ignored(scrn, name))
-		return 0;
-
-	if (xf86IsEntityShared(scrn->entityList[0])) {
-		const char *str;
-
-		str = xf86GetOptValString(sna->Options, OPTION_ZAPHOD);
-		if (str && !sna_zaphod_match(str, name)) {
-			DBG(("%s: zaphod mismatch, want %s, have %s\n", __FUNCTION__, str, name));
-			ret = 0;
-			goto cleanup;
-		}
-
-		if ((enc.possible_crtcs & (1 << scrn->confScreen->device->screen)) == 0) {
-			if (str) {
-				xf86DrvMsg(scrn->scrnIndex, X_ERROR,
-					   "%s is an invalid output for screen (pipe) %d\n",
-					   name, scrn->confScreen->device->screen);
-			}
-			goto cleanup;
-		}
-
-		enc.possible_crtcs = 1;
-	}
 
 	output = calloc(1, sizeof(*output) + len + 1);
 	if (!output)
@@ -2889,7 +2889,7 @@ cleanup:
 	free(sna_output->prop_ids);
 	free(sna_output->prop_values);
 	free(sna_output);
-	return ret;
+	return -1;
 }
 
 static void sna_output_del(xf86OutputPtr output)
