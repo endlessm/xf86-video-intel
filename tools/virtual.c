@@ -560,6 +560,15 @@ static int clone_update_modes__randr(struct clone *clone)
 		if (disable_crtc(clone->dst.dpy, from_res, from_info->crtc)) {
 			clone->dst.rr_crtc = 0;
 			clone->dst.mode.id = 0;
+		} else {
+			XRRCrtcInfo *c = XRRGetCrtcInfo(clone->dst.dpy, from_res, from_info->crtc);
+			if (c) {
+				clone->dst.x = c->x;
+				clone->dst.y = c->y;
+				clone->dst.rotation = c->rotation;
+				clone->dst.mode.id = c->mode;
+				XRRFreeCrtcInfo(c);
+			}
 		}
 	}
 
