@@ -451,11 +451,40 @@ static int disable_crtc(Display *dpy, XRRScreenResources *res, RRCrtc crtc)
 {
 	XRRPanning panning;
 
-	if (crtc == 0)
-		return 1;
+	if (crtc) {
+		XRRSetPanning(dpy, res, crtc, memset(&panning, 0, sizeof(panning)));
 
-	XRRSetPanning(dpy, res, crtc, memset(&panning, 0, sizeof(panning)));
-	return XRRSetCrtcConfig(dpy, res, crtc, CurrentTime, 0, 0, None, RR_Rotate_0, NULL, 0) == Success;
+		if (XRRSetCrtcConfig(dpy, res, crtc, CurrentTime, 0, 0, None, RR_Rotate_0, NULL, 0) != Success)
+			return 0;
+
+		if (XRRSetPanning(dpy, res, crtc, memset(&panning, 0, sizeof(panning))) != Success) {
+			DBG(("%s failed to clear panning on CRTC:%ld\n", DisplayString(dpy), (long)crtc));
+			if (EXTRA_DBG) {
+				XRRCrtcInfo *c;
+				XRRPanning *p;
+
+				c = XRRGetCrtcInfo(dpy, res, crtc);
+				if (c) {
+					DBG(("%s CRTC:%ld x=%d, y=%d, rotation=%d, mode=%ld\n",
+					     DisplayString(dpy), (long)crtc,
+					     c->x, c->y, c->rotation, c->mode));
+					XRRFreeCrtcInfo(c);
+				}
+
+				p = XRRGetPanning(dpy, res, crtc);
+				if (p) {
+					DBG(("%s CRTC:%ld panning (%d, %d)x(%d, %d), tracking (%d, %d)x(%d, %d), border (%d, %d),(%d, %d)\n",
+					     DisplayString(dpy), (long)crtc,
+					     p->left, p->top, p->width, p->height,
+					     p->track_left, p->track_top, p->track_width, p->track_height,
+					     p->border_left, p->border_top, p->border_right, p->border_bottom));
+					XRRFreePanning(p);
+				}
+			}
+		}
+	}
+
+	return 1;
 }
 
 static int clone_update_modes__randr(struct clone *clone)
