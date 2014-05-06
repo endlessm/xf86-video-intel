@@ -1974,6 +1974,8 @@ _sna_pixmap_move_to_cpu(PixmapPtr pixmap, unsigned int flags)
 			kgem_bo_undo(&sna->kgem, priv->gpu_bo);
 		if (priv->cpu_bo)
 			kgem_bo_undo(&sna->kgem, priv->cpu_bo);
+		if (priv->move_to_gpu)
+			sna_pixmap_discard_shadow_damage(priv, NULL);
 	}
 
 	if (flags & MOVE_WRITE && priv->gpu_bo && priv->gpu_bo->proxy) {
@@ -2526,6 +2528,15 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 		return _sna_pixmap_move_to_cpu(pixmap, flags);
 	}
 
+	if (priv->move_to_gpu) {
+		if ((flags & MOVE_READ) == 0)
+			sna_pixmap_discard_shadow_damage(priv, region);
+		if (!priv->move_to_gpu(sna, priv, MOVE_READ)) {
+			DBG(("%s: move-to-gpu override failed\n", __FUNCTION__));
+			return NULL;
+		}
+	}
+
 	if (flags & MOVE_WHOLE_HINT) {
 		DBG(("%s: region (%d, %d), (%d, %d) marked with WHOLE hint, pixmap %dx%d\n",
 		       __FUNCTION__,
@@ -2536,16 +2547,6 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 		       pixmap->drawable.width,
 		       pixmap->drawable.height));
 		return _sna_pixmap_move_to_cpu(pixmap, flags | MOVE_READ);
-	}
-
-
-	if (priv->move_to_gpu) {
-		if ((flags & MOVE_READ) == 0)
-			sna_pixmap_discard_shadow_damage(priv, region);
-		if (!priv->move_to_gpu(sna, priv, MOVE_READ)) {
-			DBG(("%s: move-to-gpu override failed\n", __FUNCTION__));
-			return NULL;
-		}
 	}
 
 	if (get_drawable_deltas(drawable, pixmap, &dx, &dy)) {
@@ -4353,7 +4354,7 @@ create_upload_tiled_x(struct kgem *kgem,
 
 static bool
 try_upload_blt(PixmapPtr pixmap, RegionRec *region,
-		int x, int y, int w, int  h, char *bits, int stride)
+	       int x, int y, int w, int  h, char *bits, int stride)
 {
 	struct sna *sna = to_sna_from_pixmap(pixmap);
 	struct sna_pixmap *priv;
@@ -4488,7 +4489,8 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 	}
 	assert(priv->gpu_bo == NULL || priv->gpu_bo->proxy == NULL);
 
-	if (priv->cow || priv->move_to_gpu) {
+	if ((priv->cow || priv->move_to_gpu) &&
+	    (!replaces || !sna_pixmap_move_to_gpu(pixmap, MOVE_WRITE))) {
 		DBG(("%s: no, has COW or pending move-to-gpu\n", __FUNCTION__));
 		return false;
 	}

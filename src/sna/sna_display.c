@@ -909,7 +909,10 @@ void sna_pixmap_discard_shadow_damage(struct sna_pixmap *priv,
 	     wait->region.extents.x2, wait->region.extents.y2));
 
 	assert(wait);
-	RegionSubtract(&wait->region, &wait->region, region);
+	if (region)
+		RegionSubtract(&wait->region, &wait->region, region);
+	else
+		RegionEmpty(&wait->region);
 }
 
 static bool sna_mode_enable_shadow(struct sna *sna)
