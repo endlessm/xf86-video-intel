@@ -2648,9 +2648,7 @@ output_ignored(ScrnInfoPtr scrn, const char *name)
 }
 
 static bool
-gather_encoders(struct sna *sna,
-		drmModeResPtr res,
-		uint32_t id, int count,
+gather_encoders(struct sna *sna, uint32_t id, int count,
 		struct drm_mode_get_encoder *out)
 {
 	union compat_mode_get_connector compat_conn;
@@ -2695,8 +2693,8 @@ gather_encoders(struct sna *sna,
 		out->possible_crtcs |= enc.possible_crtcs;
 		out->possible_clones |= enc.possible_clones;
 
-		for (id = 0; id < res->count_encoders; id++) {
-			if (enc.encoder_id == res->encoders[id]) {
+		for (id = 0; id < sna->mode.num_real_encoder; id++) {
+			if (enc.encoder_id == sna->mode.encoders[id]) {
 				out->crtc_id |= 1 << id;
 				break;
 			}
@@ -2753,7 +2751,7 @@ sna_mode_compute_possible_outputs(struct sna *sna)
 }
 
 static int
-sna_output_add(struct sna *sna, int id, drmModeResPtr res, int serial)
+sna_output_add(struct sna *sna, int id, int serial)
 {
 	ScrnInfoPtr scrn = sna->scrn;
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(scrn);
@@ -2802,8 +2800,8 @@ sna_output_add(struct sna *sna, int id, drmModeResPtr res, int serial)
 
 		possible_encoders = enc.possible_clones;
 		attached_encoders = 0;
-		for (i = 0; i < res->count_encoders; i++) {
-			if (enc.encoder_id == res->encoders[i]) {
+		for (i = 0; i < sna->mode.num_real_encoder; i++) {
+			if (enc.encoder_id == sna->mode.encoders[i]) {
 				attached_encoders = 1 << i;
 				break;
 			}
@@ -2816,7 +2814,7 @@ sna_output_add(struct sna *sna, int id, drmModeResPtr res, int serial)
 	} else {
 		DBG(("%s: unexpected number [%d] of encoders attached\n",
 		     __FUNCTION__, compat_conn.conn.count_encoders));
-		if (!gather_encoders(sna, res, id, compat_conn.conn.count_encoders, &enc)) {
+		if (!gather_encoders(sna, id, compat_conn.conn.count_encoders, &enc)) {
 			DBG(("%s: gather encoders failed\n", __FUNCTION__));
 			return 0;
 		}
@@ -3006,30 +3004,39 @@ void sna_mode_discover(struct sna *sna)
 {
 	ScreenPtr screen = xf86ScrnToScreen(sna->scrn);
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
-	drmModeResPtr res;
-	int i, j, serial = ++sna->mode.serial;
+	struct drm_mode_card_res res;
+	uint32_t connectors[32];
+	int i, j, serial;
 	bool changed = false;
 
-	res = drmModeGetResources(sna->kgem.fd);
-	if (res == NULL)
+	VG_CLEAR(connectors);
+
+	memset(&res, 0, sizeof(res));
+	res.count_connectors = 32;
+	res.connector_id_ptr = (uintptr_t)connectors;
+
+	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETRESOURCES, &res))
 		return;
 
-	assert(res->count_crtcs == sna->mode.num_real_crtc);
-	assert(sna->mode.max_crtc_width  == res->max_width);
-	assert(sna->mode.max_crtc_height == res->max_height);
+	if (res.count_connectors > 32)
+		return;
 
-	for (i = 0; i < res->count_connectors; i++) {
+	assert(sna->mode.num_real_crtc == res.count_crtcs);
+	assert(sna->mode.max_crtc_width  == res.max_width);
+	assert(sna->mode.max_crtc_height == res.max_height);
+	assert(sna->mode.num_real_encoder == res.count_encoders);
+
+	serial = ++sna->mode.serial;
+	for (i = 0; i < res.count_connectors; i++) {
 		for (j = 0; j < sna->mode.num_real_output; j++) {
-			if (to_sna_output(config->output[j])->id == res->connectors[i]) {
+			if (to_sna_output(config->output[j])->id == connectors[i]) {
 				to_sna_output(config->output[j])->serial = serial;
 				break;
 			}
 		}
 		if (j == sna->mode.num_real_output)
-			changed |= sna_output_add(sna, res->connectors[i], res, serial) > 0;
+			changed |= sna_output_add(sna, connectors[i], serial) > 0;
 	}
-
-	drmModeFreeResources(res);
 
 	for (i = 0; i < sna->mode.num_real_output; i++) {
 		xf86OutputPtr output = config->output[i];
@@ -4453,7 +4460,9 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 
 	res = drmModeGetResources(sna->kgem.fd);
 	if (res &&
-	    (res->count_crtcs == 0 || res->count_connectors == 0)) {
+	    (res->count_crtcs == 0 ||
+	     res->count_encoders == 0 ||
+	     res->count_connectors == 0)) {
 		drmModeFreeResources(res);
 		res = NULL;
 	}
@@ -4474,8 +4483,12 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 
 		sna->mode.num_real_crtc = xf86_config->num_crtc;
 
+		sna->mode.num_real_encoder = res->count_encoders;
+		sna->mode.encoders = res->encoders;
+		res->encoders = NULL;
+
 		for (i = 0; i < res->count_connectors; i++)
-			if (sna_output_add(sna, res->connectors[i], res, 0) < 0)
+			if (sna_output_add(sna, res->connectors[i], 0) < 0)
 				return false;
 
 		sna->mode.num_real_output = xf86_config->num_output;
@@ -4542,6 +4555,7 @@ sna_mode_close(struct sna *sna)
 void
 sna_mode_fini(struct sna *sna)
 {
+	free(sna->mode.encoders);
 }
 
 static bool sna_box_intersect(BoxPtr r, const BoxRec *a, const BoxRec *b)

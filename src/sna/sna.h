@@ -283,8 +283,11 @@ struct sna {
 
 		unsigned num_real_crtc;
 		unsigned num_real_output;
+		unsigned num_real_encoder;
 		unsigned num_fake;
 		unsigned serial;
+
+		uint32_t *encoders;
 	} mode;
 
 	struct {
