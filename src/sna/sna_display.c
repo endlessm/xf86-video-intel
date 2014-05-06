@@ -129,8 +129,10 @@ struct sna_property {
 
 struct sna_output {
 	int id;
-	int encoder_id, encoder_idx;
 	int serial;
+
+	unsigned possible_encoders;
+	unsigned attached_encoders;
 
 	unsigned int is_panel : 1;
 
@@ -157,6 +159,11 @@ struct sna_output {
 	struct sna_property *props;
 
 };
+
+inline static unsigned count_to_mask(int x)
+{
+	return (1 << x) - 1;
+}
 
 static inline struct sna_output *to_sna_output(xf86OutputPtr output)
 {
@@ -2640,14 +2647,75 @@ output_ignored(ScrnInfoPtr scrn, const char *name)
 	return xf86CheckBoolOption(conf->mon_option_lst, "Ignore", 0);
 }
 
+static bool
+gather_encoders(struct sna *sna,
+		drmModeResPtr res,
+		uint32_t id, int count,
+		struct drm_mode_get_encoder *out)
+{
+	union compat_mode_get_connector compat_conn;
+	struct drm_mode_modeinfo dummy;
+	struct drm_mode_get_encoder enc;
+	uint32_t *ids = NULL;
+
+	VG_CLEAR(compat_conn);
+	memset(out, 0, sizeof(*out));
+
+	do {
+		free(ids);
+		ids = malloc(sizeof(*ids) * count);
+		if (ids == 0)
+			return false;
+
+		compat_conn.conn.connector_id = id;
+		compat_conn.conn.count_props = 0;
+		compat_conn.conn.count_modes = 1; /* skip detect */
+		compat_conn.conn.modes_ptr = (uintptr_t)&dummy;
+		compat_conn.conn.count_encoders = count;
+		compat_conn.conn.encoders_ptr = (uintptr_t)ids;
+
+		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETCONNECTOR, &compat_conn.conn)) {
+			DBG(("%s: GETCONNECTOR[%d] failed, ret=%d\n", __FUNCTION__, id, errno));
+			compat_conn.conn.count_encoders = count = 0;
+		}
+
+		if (count == compat_conn.conn.count_encoders)
+			break;
+
+		count = compat_conn.conn.count_encoders;
+	} while (1);
+
+	for (count = 0; count < compat_conn.conn.count_encoders; count++) {
+		enc.encoder_id = ids[count];
+		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETENCODER, &enc)) {
+			DBG(("%s: GETENCODER[%d] failed, ret=%d\n", __FUNCTION__, ids[count], errno));
+			count = 0;
+			break;
+		}
+		out->possible_crtcs |= enc.possible_crtcs;
+		out->possible_clones |= enc.possible_clones;
+
+		for (id = 0; id < res->count_encoders; id++) {
+			if (enc.encoder_id == res->encoders[id]) {
+				out->crtc_id |= 1 << id;
+				break;
+			}
+		}
+	}
+
+	free(ids);
+	return count > 0;
+}
+
 /* We need to map from kms encoder based possible_clones mask to X output based
  * possible clones masking. Note that for SDVO and on Haswell with DP/HDMI we
  * can have more than one output hanging off the same encoder.
  */
 static void
-sna_mode_compute_possible_outputs(struct sna *sna, drmModeResPtr res)
+sna_mode_compute_possible_outputs(struct sna *sna)
 {
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	int encoder_mask[32];
 	int i, j;
 
 	assert(sna->mode.num_real_output < 32);
@@ -2656,55 +2724,25 @@ sna_mode_compute_possible_outputs(struct sna *sna, drmModeResPtr res)
 	for (i = 0; i < sna->mode.num_real_output; i++) {
 		xf86OutputPtr output = config->output[i];
 		struct sna_output *sna_output = to_sna_output(output);
-		struct drm_mode_get_encoder enc;
 
-		assert(to_sna_output(output));
+		assert(sna_output);
 
-		sna_output->encoder_idx = -1;
-		output->possible_clones = 0;
-
-		VG_CLEAR(enc);
-		enc.encoder_id = sna_output->encoder_id;
-
-		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETENCODER, &enc)) {
-			DBG(("%s: GETENCODER failed, ret=%d\n", __FUNCTION__, errno));
-			continue;
-		}
-
-		for (j = 0; j < res->count_encoders; j++) {
-			if (enc.encoder_id == res->encoders[j]) {
-				sna_output->encoder_idx = j;
-				break;
-			}
-		}
-		assert(sna_output->encoder_idx != -1);
-
-		output->possible_clones = enc.possible_clones;
+		output->possible_clones = sna_output->possible_encoders;
+		encoder_mask[i] = sna_output->attached_encoders;
 	}
 
 	/* Convert from encoder numbering to output numbering */
 	for (i = 0; i < sna->mode.num_real_output; i++) {
 		xf86OutputPtr output = config->output[i];
-		unsigned mask = output->possible_clones;
-		unsigned clones = 0;
+		unsigned clones;
 
-		assert(to_sna_output(output));
 		if (output->possible_clones == 0)
 			continue;
 
-		for (j = 0; j < sna->mode.num_real_output; j++) {
-			struct sna_output *sna_output = to_sna_output(config->output[j]);
-
-			if (i == j)
-				continue;
-
-			if (sna_output->encoder_idx == -1)
-				continue;
-
-			if (mask & (1 << sna_output->encoder_idx))
+		clones = 0;
+		for (j = 0; j < sna->mode.num_real_output; j++)
+			if (i != j && output->possible_clones & encoder_mask[j])
 				clones |= 1 << j;
-		}
-
 		output->possible_clones = clones;
 
 		DBG(("%s: updated output '%s' %d [%d] (possible crtc:%x, possible clones:%x)\n",
@@ -2724,6 +2762,7 @@ sna_output_add(struct sna *sna, int id, drmModeResPtr res, int serial)
 	struct drm_mode_modeinfo dummy;
 	struct sna_output *sna_output;
 	xf86OutputPtr *outputs, output;
+	unsigned possible_encoders, attached_encoders;
 	const char *output_name;
 	char name[32];
 	int len, i;
@@ -2733,7 +2772,7 @@ sna_output_add(struct sna *sna, int id, drmModeResPtr res, int serial)
 	COMPILE_TIME_ASSERT(sizeof(struct drm_mode_get_connector) <= sizeof(compat_conn.pad));
 
 	VG_CLEAR(compat_conn);
-	VG_CLEAR(enc);
+	memset(&enc, 0, sizeof(enc));
 
 	compat_conn.conn.connector_id = id;
 	compat_conn.conn.count_props = 0;
@@ -2743,14 +2782,8 @@ sna_output_add(struct sna *sna, int id, drmModeResPtr res, int serial)
 	compat_conn.conn.encoders_ptr = (uintptr_t)&enc.encoder_id;
 
 	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETCONNECTOR, &compat_conn.conn)) {
-		DBG(("%s: GETCONNECTOR failed, ret=%d\n", __FUNCTION__, errno));
+		DBG(("%s: GETCONNECTOR[%d] failed, ret=%d\n", __FUNCTION__, id, errno));
 		return -1;
-	}
-
-	if (compat_conn.conn.count_encoders != 1) {
-		DBG(("%s: unexpected number [%d] of encoders attached\n",
-		     __FUNCTION__, compat_conn.conn.count_encoders));
-		return 0;
 	}
 
 	if (compat_conn.conn.connector_type < ARRAY_SIZE(output_names))
@@ -2761,9 +2794,38 @@ sna_output_add(struct sna *sna, int id, drmModeResPtr res, int serial)
 	if (output_ignored(scrn, name))
 		return 0;
 
-	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETENCODER, &enc)) {
-		DBG(("%s: GETENCODER failed, ret=%d\n", __FUNCTION__, errno));
-		return 0;
+	if (enc.encoder_id) {
+		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETENCODER, &enc)) {
+			DBG(("%s: GETENCODER[%d] failed, ret=%d\n", __FUNCTION__, enc.encoder_id, errno));
+			return 0;
+		}
+
+		possible_encoders = enc.possible_clones;
+		attached_encoders = 0;
+		for (i = 0; i < res->count_encoders; i++) {
+			if (enc.encoder_id == res->encoders[i]) {
+				attached_encoders = 1 << i;
+				break;
+			}
+		}
+
+		if (attached_encoders == 0) {
+			DBG(("%s: failed to find attached encoder\n", __FUNCTION__));
+			return 0;
+		}
+	} else {
+		DBG(("%s: unexpected number [%d] of encoders attached\n",
+		     __FUNCTION__, compat_conn.conn.count_encoders));
+		if (!gather_encoders(sna, res, id, compat_conn.conn.count_encoders, &enc)) {
+			DBG(("%s: gather encoders failed\n", __FUNCTION__));
+			return 0;
+		}
+		possible_encoders = enc.possible_clones;
+		attached_encoders = enc.crtc_id;
+
+		memset(&enc, 0, sizeof(enc));
+		enc.encoder_id = compat_conn.conn.encoder_id;
+		(void)drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETENCODER, &enc);
 	}
 
 	if (xf86IsEntityShared(scrn->entityList[0])) {
@@ -2845,11 +2907,12 @@ sna_output_add(struct sna *sna, int id, drmModeResPtr res, int serial)
 	xf86OutputUseScreenMonitor(output, !config->num_output);
 
 	sna_output->id = compat_conn.conn.connector_id;
-	sna_output->encoder_id = enc.encoder_id;
-	sna_output->encoder_idx = -1;
 	sna_output->is_panel = is_panel(compat_conn.conn.connector_type);
 	sna_output->edid_idx = find_property(sna, sna_output, "EDID");
 	sna_output->dpms_id = find_property_id(sna, sna_output, "DPMS");
+
+	sna_output->possible_encoders = possible_encoders;
+	sna_output->attached_encoders = attached_encoders;
 
 	output->mm_width = compat_conn.conn.mm_width;
 	output->mm_height = compat_conn.conn.mm_height;
@@ -2862,7 +2925,7 @@ sna_output_add(struct sna *sna, int id, drmModeResPtr res, int serial)
 	if (sna_output->is_panel)
 		sna_output_backlight_init(output);
 
-	output->possible_crtcs = enc.possible_crtcs & ((1 << sna->mode.num_real_crtc) - 1);
+	output->possible_crtcs = enc.possible_crtcs & count_to_mask(sna->mode.num_real_crtc);
 	output->interlaceAllowed = TRUE;
 
 	if (serial) {
@@ -2880,9 +2943,11 @@ sna_output_add(struct sna *sna, int id, drmModeResPtr res, int serial)
 			output->crtc = (void *)(uintptr_t)enc.crtc_id;
 	}
 
-	DBG(("%s: created output '%s' %d (possible crtc:%x), serial=%d, edid=%d, dpms=%d, crtc=%lu\n",
-	     __FUNCTION__, name, id,
+	DBG(("%s: created output '%s' %d, encoder=%d (possible crtc:%x, attached encoders:%x, possible clones:%x), serial=%d, edid=%d, dpms=%d, crtc=%lu\n",
+	     __FUNCTION__, name, id, enc.encoder_id,
 	     (uint32_t)output->possible_crtcs,
+	     sna_output->attached_encoders,
+	     sna_output->possible_encoders,
 	     serial, sna_output->edid_idx, sna_output->dpms_id,
 	     (unsigned long)(uintptr_t)output->crtc));
 
@@ -2964,6 +3029,8 @@ void sna_mode_discover(struct sna *sna)
 			changed |= sna_output_add(sna, res->connectors[i], res, serial) > 0;
 	}
 
+	drmModeFreeResources(res);
+
 	for (i = 0; i < sna->mode.num_real_output; i++) {
 		xf86OutputPtr output = config->output[i];
 		if (to_sna_output(output)->serial != serial) {
@@ -2973,14 +3040,12 @@ void sna_mode_discover(struct sna *sna)
 	}
 
 	if (changed) {
-		sna_mode_compute_possible_outputs(sna, res);
+		sna_mode_compute_possible_outputs(sna);
 
 		/* Reorder user visible listing */
 		sort_randr_outputs(sna, screen);
 		xf86RandR12TellChanged(screen);
 	}
-
-	drmModeFreeResources(res);
 }
 
 static void copy_front(struct sna *sna, PixmapPtr old, PixmapPtr new)
@@ -4415,7 +4480,7 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 
 		sna->mode.num_real_output = xf86_config->num_output;
 
-		sna_mode_compute_possible_outputs(sna, res);
+		sna_mode_compute_possible_outputs(sna);
 
 		sna->mode.max_crtc_width  = res->max_width;
 		sna->mode.max_crtc_height = res->max_height;
