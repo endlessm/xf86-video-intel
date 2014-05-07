@@ -747,14 +747,10 @@ __sna_dri_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		unsigned int flags;
 
 		flags = MOVE_WRITE | __MOVE_FORCE;
-		if (clip.data ||
-		    clip.extents.x1 > 0 ||
-		    clip.extents.x2 < pixmap->drawable.width ||
-		    clip.extents.y1 > 0 ||
-		    clip.extents.y2 < pixmap->drawable.height)
+		if (clip.data)
 			flags |= MOVE_READ;
 
-		priv = sna_pixmap_move_to_gpu(pixmap, flags);
+		priv = sna_pixmap_move_area_to_gpu(pixmap, &clip.extents, flags);
 		if (priv) {
 			damage(pixmap, priv, region);
 			dst_bo = priv->gpu_bo;
