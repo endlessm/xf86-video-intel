@@ -55,6 +55,17 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #error DRI2 version supported by the Xserver is too old
 #endif
 
+#if DRI2INFOREC_VERSION < 6
+#define XORG_CAN_TRIPLE_BUFFER 0
+#else
+#define XORG_CAN_TRIPLE_BUFFER 1
+static Bool
+sna_dri_swap_limit_validate(DrawablePtr draw, int swap_limit)
+{
+	return swap_limit >= 1;
+}
+#endif
+
 #if DRI2INFOREC_VERSION < 10
 #undef USE_ASYNC_SWAP
 #define USE_ASYNC_SWAP 0
@@ -969,6 +980,7 @@ sna_dri_window_set_chain(WindowPtr win,
 {
 	DBG(("%s: head now %p\n", __FUNCTION__, chain));
 	assert(win->drawable.type == DRAWABLE_WINDOW);
+	assert(sna_dri_window_get_chain(win) != chain);
 	((void **)__get_private(win, sna_window_key))[1] = chain;
 }
 
@@ -1121,6 +1133,11 @@ sna_dri_page_flip(struct sna *sna, struct sna_dri_frame_event *info)
 	get_private(info->back)->bo = tmp.bo;
 
 	sna->dri.flip_pending = info;
+
+#if XORG_CAN_TRIPLE_BUFFER
+	DRI2SwapLimit(info->draw, 1 + (info->type == DRI2_FLIP_THROTTLE));
+#endif
+
 	return true;
 }
 
@@ -1304,48 +1321,53 @@ static void chain_swap(struct sna *sna,
 	DBG(("%s: chaining type=%d\n", __FUNCTION__, chain->type));
 	switch (chain->type) {
 	case DRI2_SWAP_THROTTLE:
+		DBG(("%s: emitting chained vsync'ed blit\n", __FUNCTION__));
+		if (sna->mode.shadow_flip && !sna->mode.shadow_damage) {
+			/* recursed from wait_for_shadow(), simply requeue */
+			DBG(("%s -- recursed from wait_for_shadow(), requeuing\n", __FUNCTION__));
+			chain->type = DRI2_SWAP;
+
+			VG_CLEAR(vbl);
+			vbl.request.type =
+				DRM_VBLANK_RELATIVE |
+				DRM_VBLANK_EVENT;
+			vbl.request.sequence = 1;
+			vbl.request.signal = (unsigned long)chain;
+
+			if (!sna_wait_vblank(sna, &vbl, chain->pipe))
+				return;
+
+			DBG(("%s -- requeue failed, errno=%d\n", __FUNCTION__, errno));
+		} else {
+			chain->bo = __sna_dri_copy_region(sna, draw, NULL,
+							  chain->back, chain->front, true);
+		}
+	case DRI2_SWAP:
 		break;
 	default:
 		return;
 	}
 
-	DBG(("%s: emitting chained vsync'ed blit\n", __FUNCTION__));
-
-	if (sna->mode.shadow_flip && !sna->mode.shadow_damage) {
-		/* recursed from wait_for_shadow(), simply requeue */
-		DBG(("%s -- recursed from wait_for_shadow(), requeuing\n", __FUNCTION__));
-		chain->type = DRI2_SWAP;
-
-		VG_CLEAR(vbl);
-		vbl.request.type =
-			DRM_VBLANK_RELATIVE |
-			DRM_VBLANK_EVENT;
-		vbl.request.sequence = 1;
-		vbl.request.signal = (unsigned long)chain;
-
-		if (!sna_wait_vblank(sna, &vbl, chain->pipe))
-			return;
-
-		DBG(("%s -- requeue failed, errno=%d\n", __FUNCTION__, errno));
-	} else {
-		chain->bo = __sna_dri_copy_region(sna, draw, NULL,
-						  chain->back, chain->front, true);
-	}
-
-	DRI2SwapComplete(chain->client, draw,
-			 frame, tv_sec, tv_usec,
-			 DRI2_BLIT_COMPLETE,
-			 chain->client ? chain->event_complete : NULL, chain->event_data);
-
 	VG_CLEAR(vbl);
 	vbl.request.type =
 		DRM_VBLANK_RELATIVE |
-		DRM_VBLANK_NEXTONMISS |
 		DRM_VBLANK_EVENT;
-	vbl.request.sequence = 0;
+	vbl.request.sequence = 1;
 	vbl.request.signal = (unsigned long)chain;
-	if (sna_wait_vblank(sna, &vbl, chain->pipe))
+	if (sna_wait_vblank(sna, &vbl, chain->pipe)) {
+		DRI2SwapComplete(chain->client, draw,
+				 frame, tv_sec, tv_usec,
+				 DRI2_BLIT_COMPLETE,
+				 chain->client ? chain->event_complete : NULL, chain->event_data);
 		sna_dri_frame_event_info_free(sna, draw, chain);
+	} else {
+#if !XORG_CAN_TRIPLE_BUFFER
+		DRI2SwapComplete(chain->client, draw,
+				 frame, tv_sec, tv_usec,
+				 DRI2_BLIT_COMPLETE,
+				 chain->client ? chain->event_complete : NULL, chain->event_data);
+#endif
+	}
 }
 
 static bool sna_dri_blit_complete(struct sna *sna,
@@ -1432,6 +1454,18 @@ void sna_dri_vblank_handler(struct sna *sna, struct drm_event_vblank *event)
 		DBG(("%s: %d complete, frame=%d tv=%d.%06d\n",
 		     __FUNCTION__, info->type,
 		     event->sequence, event->tv_sec, event->tv_usec));
+
+#if XORG_CAN_TRIPLE_BUFFER
+		if (!sna_dri_blit_complete(sna, info))
+			return;
+
+		DRI2SwapComplete(info->client,
+				 draw, event->sequence,
+				 event->tv_sec, event->tv_usec,
+				 DRI2_BLIT_COMPLETE,
+				 info->client ? info->event_complete : NULL,
+				 info->event_data);
+#endif
 		break;
 
 	case DRI2_WAITMSC:
@@ -1448,6 +1482,7 @@ void sna_dri_vblank_handler(struct sna *sna, struct drm_event_vblank *event)
 	}
 
 	if (info->chain) {
+		assert(info->chain != info);
 		sna_dri_remove_frame_event((WindowPtr)draw, info);
 		chain_swap(sna, draw,
 			   event->sequence, event->tv_sec, event->tv_usec,
@@ -1475,10 +1510,7 @@ sna_dri_immediate_blit(struct sna *sna,
 	     event));
 
 	if (sync) {
-		info->type = DRI2_SWAP_THROTTLE;
 		if (sna_dri_window_get_chain((WindowPtr)draw) == info) {
-			drmVBlank vbl;
-
 			DBG(("%s: no pending blit, starting chain\n",
 			     __FUNCTION__));
 
@@ -1487,24 +1519,59 @@ sna_dri_immediate_blit(struct sna *sna,
 							 info->front,
 							 true);
 			if (event) {
-				DRI2SwapComplete(info->client, draw, 0, 0, 0,
-						 DRI2_BLIT_COMPLETE,
-						 info->event_complete,
-						 info->event_data);
+				drmVBlank vbl;
+
+				info->type = DRI2_SWAP_THROTTLE;
 
 				VG_CLEAR(vbl);
 				vbl.request.type =
 					DRM_VBLANK_RELATIVE |
-					DRM_VBLANK_NEXTONMISS |
 					DRM_VBLANK_EVENT;
-				vbl.request.sequence = 0;
+				vbl.request.sequence = 1;
 				vbl.request.signal = (unsigned long)info;
 				ret = !sna_wait_vblank(sna, &vbl, info->pipe);
+#if XORG_CAN_TRIPLE_BUFFER
+				if (ret)
+					DRI2SwapLimit(draw, 2);
+#endif
+				if (!XORG_CAN_TRIPLE_BUFFER || !ret)
+					DRI2SwapComplete(info->client, draw, 0, 0, 0,
+							 DRI2_BLIT_COMPLETE,
+							 info->event_complete,
+							 info->event_data);
 			}
 		} else {
 			DBG(("%s: pending blit, chained\n", __FUNCTION__));
 			ret = true;
 		}
+#if XORG_CAN_TRIPLE_BUFFER
+	} else if (event) {
+		if (sna_dri_window_get_chain((WindowPtr)draw) == info) {
+			drmVBlank vbl;
+
+			info->type = DRI2_SWAP_THROTTLE;
+			info->bo = __sna_dri_copy_region(sna, draw, NULL,
+							 info->back, info->front, false);
+
+			VG_CLEAR(vbl);
+			vbl.request.type =
+				DRM_VBLANK_RELATIVE |
+				DRM_VBLANK_EVENT;
+			vbl.request.sequence = 1;
+			vbl.request.signal = (unsigned long)info;
+			ret = !sna_wait_vblank(sna, &vbl, info->pipe);
+			if (ret)
+				DRI2SwapLimit(draw, 2);
+			else
+				DRI2SwapComplete(info->client, draw, 0, 0, 0,
+						 DRI2_BLIT_COMPLETE,
+						 info->event_complete,
+						 info->event_data);
+		} else {
+			DBG(("%s: pending blit, chained\n", __FUNCTION__));
+			ret = true;
+		}
+#endif
 	} else {
 		DBG(("%s: immediate blit\n", __FUNCTION__));
 		info->bo = __sna_dri_copy_region(sna, draw, NULL,
@@ -1618,11 +1685,13 @@ sna_dri_flip_continue(struct sna *sna, struct sna_dri_frame_event *info)
 			return false;
 
 		sna_dri_flip_get_back(sna, info);
+#if !XORG_CAN_TRIPLE_BUFFER
 		DRI2SwapComplete(info->client, info->draw,
 				 0, 0, 0,
 				 DRI2_FLIP_COMPLETE,
 				 info->client ? info->event_complete : NULL,
 				 info->event_data);
+#endif
 	}
 
 	info->mode = 0;
@@ -1653,6 +1722,23 @@ static void chain_flip(struct sna *sna)
 		chain->bo = __sna_dri_copy_region(sna, chain->draw, NULL,
 						  chain->back, chain->front,
 						  true);
+#if XORG_CAN_TRIPLE_BUFFER
+		{
+			drmVBlank vbl;
+
+			VG_CLEAR(vbl);
+
+			chain->type = DRI2_SWAP_WAIT;
+			vbl.request.type =
+				DRM_VBLANK_RELATIVE |
+				DRM_VBLANK_EVENT;
+			vbl.request.sequence = 1;
+			vbl.request.signal = (unsigned long)chain;
+
+			if (!sna_wait_vblank(sna, &vbl, chain->pipe))
+				return;
+		}
+#endif
 		DRI2SwapComplete(chain->client, chain->draw, 0, 0, 0,
 				 DRI2_BLIT_COMPLETE, chain->client ? chain->event_complete : NULL, chain->event_data);
 		sna_dri_frame_event_info_free(sna, chain->draw, chain);
@@ -1729,6 +1815,16 @@ static void sna_dri_flip_event(struct sna *sna,
 		break;
 
 	case DRI2_FLIP_THROTTLE:
+#if XORG_CAN_TRIPLE_BUFFER
+		if (flip->draw)
+			DRI2SwapComplete(flip->client, flip->draw,
+					 flip->fe_frame,
+					 flip->fe_tv_sec,
+					 flip->fe_tv_usec,
+					 DRI2_FLIP_COMPLETE,
+					 flip->client ? flip->event_complete : NULL,
+					 flip->event_data);
+#endif
 		if (sna->dri.flip_pending) {
 			sna_dri_frame_event_info_free(sna, flip->draw, flip);
 			chain_flip(sna);
@@ -1804,29 +1900,32 @@ get_current_msc_for_target(struct sna *sna, CARD64 target_msc, int pipe)
 	return ret;
 }
 
+#if !XORG_CAN_TRIPLE_BUFFER && XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,12,99,901,0)
 static Bool find(pointer value, XID id, pointer cdata)
 {
 	return TRUE;
 }
+#endif
 
 static int use_triple_buffer(struct sna *sna, ClientPtr client)
 {
-	struct sna_client *priv;
-
 	if ((sna->flags & SNA_TRIPLE_BUFFER) == 0)
 		return DRI2_FLIP;
 
+#if XORG_CAN_TRIPLE_BUFFER
+	return DRI2_FLIP_THROTTLE;
+#elif XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,12,99,901,0)
 	/* Hack: Disable triple buffering for compositors */
+	{
+		struct sna_client *priv = sna_client(client);
+		if (priv->is_compositor == 0)
+			priv->is_compositor =
+				LookupClientResourceComplex(client,
+							    CompositeClientWindowType+1,
+							    find, NULL) ? DRI2_FLIP : DRI2_FLIP_THROTTLE;
 
-#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,12,99,901,0)
-	priv = sna_client(client);
-	if (priv->is_compositor == 0)
-		priv->is_compositor =
-			LookupClientResourceComplex(client,
-						    CompositeClientWindowType+1,
-						    find, NULL) ? DRI2_FLIP : DRI2_FLIP_THROTTLE;
-
-	return priv->is_compositor;
+		return priv->is_compositor;
+	}
 #else
 	return DRI2_FLIP_THROTTLE;
 #endif
@@ -1919,9 +2018,11 @@ sna_dri_schedule_flip(ClientPtr client, DrawablePtr draw,
 		if (info->type != DRI2_FLIP) {
 new_back:
 			sna_dri_flip_get_back(sna, info);
+#if !XORG_CAN_TRIPLE_BUFFER
 			DRI2SwapComplete(client, draw, 0, 0, 0,
 					 DRI2_EXCHANGE_COMPLETE,
 					 func, data);
+#endif
 		}
 out:
 		DBG(("%s: target_msc=%lu\n", __FUNCTION__, (unsigned long)current_msc));
@@ -2009,6 +2110,10 @@ out:
 		sna_dri_frame_event_info_free(sna, draw, info);
 		return false;
 	}
+
+#if XORG_CAN_TRIPLE_BUFFER
+	DRI2SwapLimit(draw, 1);
+#endif
 
 	return true;
 }
@@ -2345,10 +2450,10 @@ sna_dri_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc,
 			vbl.request.sequence += divisor;
 	}
 
+	DBG(("%s: waiting until MSC=%llu\n", __FUNCTION__, (long long)vbl.request.sequence));
 	if (sna_wait_vblank(sna, &vbl, pipe))
 		goto out_free_info;
 
-	DBG(("%s: waiting until MSC=%llu\n", __FUNCTION__, (long long)vbl.request.sequence));
 	DRI2BlockClient(client, draw);
 	return TRUE;
 
@@ -2506,9 +2611,9 @@ bool sna_dri_open(struct sna *sna, ScreenPtr screen)
 	driverNames[1] = info.driverName;
 #endif
 
-#if DRI2INFOREC_VERSION >= 6
+#if XORG_CAN_TRIPLE_BUFFER
 	info.version = 6;
-	info.SwapLimitValidate = NULL;
+	info.SwapLimitValidate = sna_dri_swap_limit_validate;
 	info.ReuseBufferNotify = NULL;
 #endif
 
