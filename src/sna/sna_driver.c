@@ -1093,9 +1093,6 @@ static Bool sna_enter_vt(VT_FUNC_ARGS_DECL)
 	if (intel_get_master(scrn))
 		return FALSE;
 
-	if (!sna_set_desired_mode(sna))
-		return FALSE;
-
 	if (sna->flags & SNA_REDISCOVER) {
 		DBG(("%s: reporting deferred discover event\n",
 		     __FUNCTION__));
@@ -1110,7 +1107,7 @@ static Bool sna_enter_vt(VT_FUNC_ARGS_DECL)
 		sna->flags &= ~SNA_REPROBE;
 	}
 
-	return TRUE;
+	return sna_set_desired_mode(sna);
 }
 
 static Bool sna_switch_mode(SWITCH_MODE_ARGS_DECL)
