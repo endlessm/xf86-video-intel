@@ -705,6 +705,16 @@ sna_handle_uevents(int fd, void *closure)
 		return;
 	}
 
+	str = udev_device_get_property_value(dev, "DISCOVER");
+	if (str && atoi(str) == 1) {
+		DBG(("%s: discover event (vtSema?=%d)\n",
+		     __FUNCTION__, sna->scrn->vtSema));
+		if (sna->scrn->vtSema)
+			sna_mode_discover(sna);
+		else
+			sna->flags |= SNA_REDISCOVER;
+	}
+
 	str = udev_device_get_property_value(dev, "HOTPLUG");
 	if (str && atoi(str) == 1) {
 		DBG(("%s: hotplug event (vtSema?=%d)\n",
@@ -714,16 +724,6 @@ sna_handle_uevents(int fd, void *closure)
 			RRGetInfo(xf86ScrnToScreen(scrn), TRUE);
 		} else
 			sna->flags |= SNA_REPROBE;
-	}
-
-	str = udev_device_get_property_value(dev, "DISCOVER");
-	if (str && atoi(str) == 1) {
-		DBG(("%s: discover event (vtSema?=%d)\n",
-		     __FUNCTION__, sna->scrn->vtSema));
-		if (sna->scrn->vtSema)
-			sna_mode_discover(sna);
-		else
-			sna->flags |= SNA_REDISCOVER;
 	}
 
 	udev_device_unref(dev);
