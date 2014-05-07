@@ -2813,7 +2813,7 @@ sna_output_add(struct sna *sna, int id, int serial)
 		}
 
 		possible_crtcs = enc.possible_crtcs;
-		assert(enc.encoder_id = compat_conn.conn.encoder_id);
+		assert(enc.encoder_id = compat_conn.conn.encoder_id || compat_conn.conn.encoder_id == 0);
 	} else {
 		DBG(("%s: unexpected number [%d] of encoders attached\n",
 		     __FUNCTION__, compat_conn.conn.count_encoders));
