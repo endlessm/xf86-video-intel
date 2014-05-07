@@ -2760,7 +2760,7 @@ sna_output_add(struct sna *sna, int id, int serial)
 	struct drm_mode_modeinfo dummy;
 	struct sna_output *sna_output;
 	xf86OutputPtr *outputs, output;
-	unsigned possible_encoders, attached_encoders;
+	unsigned possible_encoders, attached_encoders, possible_crtcs;
 	const char *output_name;
 	char name[32];
 	int len, i;
@@ -2811,6 +2811,9 @@ sna_output_add(struct sna *sna, int id, int serial)
 			DBG(("%s: failed to find attached encoder\n", __FUNCTION__));
 			return 0;
 		}
+
+		possible_crtcs = enc.possible_crtcs;
+		assert(enc.encoder_id = compat_conn.conn.encoder_id);
 	} else {
 		DBG(("%s: unexpected number [%d] of encoders attached\n",
 		     __FUNCTION__, compat_conn.conn.count_encoders));
@@ -2820,6 +2823,7 @@ sna_output_add(struct sna *sna, int id, int serial)
 		}
 		possible_encoders = enc.possible_clones;
 		attached_encoders = enc.crtc_id;
+		possible_crtcs = enc.possible_crtcs;
 
 		memset(&enc, 0, sizeof(enc));
 		enc.encoder_id = compat_conn.conn.encoder_id;
@@ -2835,7 +2839,7 @@ sna_output_add(struct sna *sna, int id, int serial)
 			return 0;
 		}
 
-		if ((enc.possible_crtcs & (1 << scrn->confScreen->device->screen)) == 0) {
+		if ((possible_crtcs & (1 << scrn->confScreen->device->screen)) == 0) {
 			if (str) {
 				xf86DrvMsg(scrn->scrnIndex, X_ERROR,
 					   "%s is an invalid output for screen (pipe) %d\n",
@@ -2845,7 +2849,7 @@ sna_output_add(struct sna *sna, int id, int serial)
 				return 0;
 		}
 
-		enc.possible_crtcs = 1;
+		possible_crtcs = 1;
 	}
 
 	sna_output = calloc(sizeof(struct sna_output), 1);
@@ -2923,7 +2927,7 @@ sna_output_add(struct sna *sna, int id, int serial)
 	if (sna_output->is_panel)
 		sna_output_backlight_init(output);
 
-	output->possible_crtcs = enc.possible_crtcs & count_to_mask(sna->mode.num_real_crtc);
+	output->possible_crtcs = possible_crtcs & count_to_mask(sna->mode.num_real_crtc);
 	output->interlaceAllowed = TRUE;
 
 	if (serial) {
