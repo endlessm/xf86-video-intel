@@ -1157,8 +1157,9 @@ static int context_update(struct context *ctx)
 					continue;
 
 				DBG(("%s: disabling output '%s'\n",
-				     DisplayString(dst->dpy), dst->name));
-				if (disable_crtc(dpy, res, dst->rr_crtc)) {
+				     DisplayString(display->dpy), dst->name));
+				assert(clone->dst.display == display);
+				if (disable_crtc(display->dpy, res, dst->rr_crtc)) {
 					dst->rr_crtc = 0;
 					dst->mode.id = 0;
 				}
@@ -1182,8 +1183,9 @@ static int context_update(struct context *ctx)
 					continue;
 
 				DBG(("%s: disabling output '%s'\n",
-				     DisplayString(dst->dpy), dst->name));
-				if (disable_crtc(dpy, res, dst->rr_crtc)) {
+				     DisplayString(display->dpy), dst->name));
+				assert(clone->dst.display == display);
+				if (disable_crtc(display->dpy, res, dst->rr_crtc)) {
 					dst->rr_crtc = 0;
 					dst->mode.id = 0;
 				}
@@ -1205,7 +1207,7 @@ static int context_update(struct context *ctx)
 			Status ret;
 
 			DBG(("%s: copying configuration from %s (mode=%ld: %dx%d) to %s\n",
-			     DisplayString(dst->dpy),
+			     DisplayString(display->dpy),
 			     src->name, (long)src->mode.id, src->mode.width, src->mode.height,
 			     dst->name));
 
@@ -1213,8 +1215,9 @@ static int context_update(struct context *ctx)
 err:
 				if (dst->rr_crtc) {
 					DBG(("%s: disabling unused output '%s'\n",
-					     DisplayString(dst->dpy), dst->name));
-					if (disable_crtc(dpy, res, dst->rr_crtc)) {
+					     DisplayString(display->dpy), dst->name));
+					assert(clone->dst.display == display);
+					if (disable_crtc(display->dpy, res, dst->rr_crtc)) {
 						dst->rr_crtc = 0;
 						dst->mode.id = 0;
 					}
