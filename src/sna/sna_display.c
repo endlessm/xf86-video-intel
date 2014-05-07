@@ -3890,6 +3890,7 @@ sna_cursor_pre_init(struct sna *sna)
 
 	sna->cursor.max_size = 64;
 
+	cap.value = 0;
 	cap.name = DRM_CAP_CURSOR_WIDTH;
 	if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_GET_CAP, &cap) == 0)
 		sna->cursor.max_size = cap.value;
