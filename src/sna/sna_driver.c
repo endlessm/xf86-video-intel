@@ -616,9 +616,9 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 	xf86SetGamma(scrn, zeros);
 	xf86SetDpi(scrn, 0, 0);
 
-	sna->dri_available = false;
+	sna->dri2.available = false;
 	if (sna_option_cast_to_bool(sna, OPTION_DRI, TRUE))
-		sna->dri_available = !!xf86LoadSubModule(scrn, "dri2");
+		sna->dri2.available = !!xf86LoadSubModule(scrn, "dri2");
 
 	sna_acpi_init(sna);
 
@@ -841,9 +841,9 @@ static Bool sna_early_close_screen(CLOSE_SCREEN_ARGS_DECL)
 	sna_uevent_fini(scrn);
 	sna_mode_close(sna);
 
-	if (sna->dri_open) {
-		sna_dri_close(sna, screen);
-		sna->dri_open = false;
+	if (sna->dri2.open) {
+		sna_dri2_close(sna, screen);
+		sna->dri2.open = false;
 	}
 
 	if (sna->front) {
@@ -1046,9 +1046,9 @@ sna_screen_init(SCREEN_INIT_ARGS_DECL)
 	xf86DPMSInit(screen, xf86DPMSSet, 0);
 
 	sna_video_init(sna, screen);
-	if (sna->dri_available)
-		sna->dri_open = sna_dri_open(sna, screen);
-	if (sna->dri_open)
+	if (sna->dri2.available)
+		sna->dri2.open = sna_dri2_open(sna, screen);
+	if (sna->dri2.open)
 		xf86DrvMsg(scrn->scrnIndex, X_INFO,
 			   "direct rendering: DRI2 Enabled\n");
 

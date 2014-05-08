@@ -17020,7 +17020,7 @@ static Bool
 sna_destroy_window(WindowPtr win)
 {
 	sna_video_destroy_window(win);
-	sna_dri_destroy_window(win);
+	sna_dri2_destroy_window(win);
 	return TRUE;
 }
 

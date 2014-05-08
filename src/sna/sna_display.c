@@ -887,7 +887,7 @@ static bool wait_for_shadow(struct sna *sna, struct sna_pixmap *priv, unsigned f
 	sna_pixmap_unmap(pixmap, priv);
 	priv->gpu_bo = bo;
 
-	sna_dri_pixmap_update_bo(sna, pixmap);
+	sna_dri2_pixmap_update_bo(sna, pixmap);
 
 done:
 	kgem_bo_destroy(&sna->kgem, wait->bo);
@@ -5702,11 +5702,11 @@ void sna_mode_wakeup(struct sna *sna)
 		struct drm_event *e = (struct drm_event *)&buffer[i];
 		switch (e->type) {
 		case DRM_EVENT_VBLANK:
-			sna_dri_vblank_handler(sna, (struct drm_event_vblank *)e);
+			sna_dri2_vblank_handler(sna, (struct drm_event_vblank *)e);
 			break;
 		case DRM_EVENT_FLIP_COMPLETE:
 			if (((struct drm_event_vblank *)e)->user_data) {
-				sna_dri_page_flip_handler(sna, (struct drm_event_vblank *)e);
+				sna_dri2_page_flip_handler(sna, (struct drm_event_vblank *)e);
 			} else {
 				if (!--sna->mode.shadow_flip)
 					sna_mode_redisplay(sna);
