@@ -172,6 +172,8 @@ static inline struct sna_output *to_sna_output(xf86OutputPtr output)
 
 static inline int to_connector_id(xf86OutputPtr output)
 {
+	assert(to_sna_output(output));
+	assert(to_sna_output(output)->id);
 	return to_sna_output(output)->id;
 }
 
@@ -1904,7 +1906,10 @@ sna_output_detect(xf86OutputPtr output)
 	struct sna_output *sna_output = output->driver_private;
 	union compat_mode_get_connector compat_conn;
 
-	DBG(("%s(%s)\n", __FUNCTION__, output->name));
+	DBG(("%s(%s:%d)\n", __FUNCTION__, output->name, sna_output->id));
+
+	if (!sna_output->id)
+		return XF86OutputStatusDisconnected;
 
 	VG_CLEAR(compat_conn);
 	compat_conn.conn.connector_id = sna_output->id;
@@ -2134,7 +2139,8 @@ sna_output_get_modes(xf86OutputPtr output)
 	DisplayModePtr Modes = NULL, Mode, current = NULL;
 	int i;
 
-	DBG(("%s(%s)\n", __FUNCTION__, output->name));
+	DBG(("%s(%s:%d)\n", __FUNCTION__, output->name, sna_output->id));
+	assert(sna_output->id);
 
 	sna_output_attach_edid(output);
 
@@ -2245,7 +2251,7 @@ sna_output_dpms_backlight(xf86OutputPtr output, int oldmode, int mode)
 	if (!sna_output->backlight.iface)
 		return;
 
-	DBG(("%s(%s) -- %d -> %d\n", __FUNCTION__, output->name, oldmode, mode));
+	DBG(("%s(%s:%d) -- %d -> %d\n", __FUNCTION__, output->name, sna_output->id, oldmode, mode));
 
 	if (mode == DPMSModeOn) {
 		/* If we're going from off->on we may need to turn on the backlight. */
@@ -2266,10 +2272,13 @@ sna_output_dpms(xf86OutputPtr output, int dpms)
 	struct sna *sna = to_sna(output->scrn);
 	struct sna_output *sna_output = output->driver_private;
 
-	DBG(("%s(%s): dpms=%d (current: %d), active? %d\n",
-	     __FUNCTION__, output->name,
+	DBG(("%s(%s:%d): dpms=%d (current: %d), active? %d\n",
+	     __FUNCTION__, output->name, sna_output->id,
 	     dpms, sna_output->dpms_mode,
 	     output->crtc != NULL));
+
+	if (!sna_output->id)
+		return;
 
 	if (sna_output->dpms_mode == dpms)
 		return;
@@ -2464,6 +2473,9 @@ sna_output_set_property(xf86OutputPtr output, Atom property,
 		sna_output->backlight_active_level = val;
 		return TRUE;
 	}
+
+	if (!sna_output->id)
+		return TRUE;
 
 	for (i = 0; i < sna_output->num_props; i++) {
 		struct sna_property *p = &sna_output->props[i];
@@ -2725,8 +2737,13 @@ sna_mode_compute_possible_outputs(struct sna *sna)
 
 		assert(sna_output);
 
-		output->possible_clones = sna_output->possible_encoders;
-		encoder_mask[i] = sna_output->attached_encoders;
+		if (sna_output->id) {
+			output->possible_clones = sna_output->possible_encoders;
+			encoder_mask[i] = sna_output->attached_encoders;
+		} else {
+			output->possible_clones = 0;
+			encoder_mask[i] = 0;
+		}
 	}
 
 	/* Convert from encoder numbering to output numbering */
@@ -3045,7 +3062,12 @@ void sna_mode_discover(struct sna *sna)
 	for (i = 0; i < sna->mode.num_real_output; i++) {
 		xf86OutputPtr output = config->output[i];
 		if (to_sna_output(output)->serial != serial) {
-			sna_output_del(output); i--;
+			if (sna->flags & SNA_REMOVE_OUTPUTS) {
+				sna_output_del(output); i--;
+			} else {
+				to_sna_output(output)->id = 0;
+				output->crtc = NULL;
+			}
 			changed = true;
 		}
 	}

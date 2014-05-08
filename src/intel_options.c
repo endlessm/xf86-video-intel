@@ -20,6 +20,7 @@ const OptionInfoRec intel_options[] = {
 	{OPTION_PREFER_OVERLAY, "XvPreferOverlay", OPTV_BOOLEAN, {0}, 0},
 	{OPTION_HOTPLUG,	"HotPlug",	OPTV_BOOLEAN,	{0},	1},
 	{OPTION_REPROBE,	"ReprobeOutputs", OPTV_BOOLEAN,	{0},	0},
+	{OPTION_DELETE_DP12,	"DeleteUnusedDP12Displays", OPTV_BOOLEAN,	{0},	0},
 #ifdef INTEL_XVMC
 	{OPTION_XVMC,		"XvMC",		OPTV_BOOLEAN,	{0},	1},
 #endif
