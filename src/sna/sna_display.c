@@ -2592,6 +2592,8 @@ sna_output_destroy(xf86OutputPtr output)
 
 	free(sna_output->edid_raw);
 	for (i = 0; i < sna_output->num_props; i++) {
+		if (output->randr_output)
+			RRDeleteOutputProperty(output->randr_output, sna_output->props[i].atoms[0]);
 		drmModeFreeProperty(sna_output->props[i].kprop);
 		free(sna_output->props[i].atoms);
 	}
@@ -3122,6 +3124,66 @@ sna_mode_compute_possible_outputs(struct sna *sna)
 	}
 }
 
+static int name_from_path(struct sna *sna,
+			  struct sna_output *sna_output,
+			  char *name)
+{
+	struct drm_mode_get_blob blob;
+	char buf[32], *path = buf;
+	int id;
+
+	id = find_property(sna, sna_output, "PATH");
+	DBG(("%s: found? PATH=%d\n", __FUNCTION__, id));
+	if (id == -1)
+		return 0;
+
+	VG_CLEAR(blob);
+	blob.blob_id = sna_output->prop_values[id];
+	blob.length = sizeof(buf)-1;
+	blob.data = (uintptr_t)path;
+	VG(memset(path, 0, blob.length));
+	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPBLOB, &blob))
+		return 0;
+
+	if (blob.length >= sizeof(buf)) {
+		path = alloca(blob.length + 1);
+		blob.data = (uintptr_t)path;
+		VG(memset(path, 0, blob.length));
+		DBG(("%s: reading %d bytes for path blob\n", __FUNCTION__, blob.length));
+		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPBLOB, &blob))
+			return 0;
+	}
+
+	path[blob.length] = '\0'; /* paranoia */
+	DBG(("%s: PATH='%s'\n", __FUNCTION__, path));
+
+	/* we only handle MST paths for now */
+	if (strncmp(path, "mst:", 4) == 0) {
+		xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+		char tmp[5], *c;
+		int n;
+
+		c = strchr(path + 4, '-');
+		if (c == NULL)
+			return 0;
+
+		id = c - (path + 4);
+		if (id + 1> 5)
+			return 0;
+
+		memcpy(tmp, path + 4, id);
+		tmp[id] = '\0';
+		id = strtoul(tmp, NULL, 0);
+
+		for (n = 0; n < sna->mode.num_real_output; n++) {
+			if (to_sna_output(config->output[n])->id == id)
+				return snprintf(name, 32, "%s-%s", config->output[n]->name, c + 1);
+		}
+	}
+
+	return 0;
+}
+
 static int
 sna_output_add(struct sna *sna, int id, int serial)
 {
@@ -3135,7 +3197,7 @@ sna_output_add(struct sna *sna, int id, int serial)
 	unsigned possible_encoders, attached_encoders, possible_crtcs;
 	const char *output_name;
 	char name[32];
-	int len, i;
+	int path, len, i;
 
 	DBG(("%s(%d): serial=%d\n", __FUNCTION__, id, serial));
 
@@ -3251,6 +3313,39 @@ sna_output_add(struct sna *sna, int id, int serial)
 	VG(VALGRIND_MAKE_MEM_DEFINED(sna_output->prop_ids, sizeof(uint32_t)*sna_output->num_props));
 	VG(VALGRIND_MAKE_MEM_DEFINED(sna_output->prop_values, sizeof(uint64_t)*sna_output->num_props));
 
+	/* Construct name from topology, and recheck if output is acceptable */
+	path = name_from_path(sna, sna_output, name);
+	if (path) {
+		const char *str;
+
+		if (output_ignored(scrn, name)) {
+			len = 0;
+			goto skip;
+		}
+
+		if (serial) {
+			for (i = 0; i < sna->mode.num_real_output; i++) {
+				output = config->output[i];
+				if (strcmp(output->name, name) == 0) {
+					assert(output->scrn == scrn);
+					assert(output->funcs == &sna_output_funcs);
+					assert(to_sna_output(output)->id == 0);
+					sna_output_destroy(output);
+					goto reset;
+				}
+			}
+		}
+
+		str = xf86GetOptValString(sna->Options, OPTION_ZAPHOD);
+		if (str && !sna_zaphod_match(str, name)) {
+			DBG(("%s: zaphod mismatch, want %s, have %s\n", __FUNCTION__, str, name));
+			len = 0;
+			goto skip;
+		}
+
+		len = path;
+	}
+
 	output = calloc(1, sizeof(*output) + len + 1);
 	if (!output)
 		goto cleanup;
@@ -3279,6 +3374,7 @@ sna_output_add(struct sna *sna, int id, int serial)
 	output->use_screen_monitor = config->num_output != 1;
 	xf86OutputUseScreenMonitor(output, !output->use_screen_monitor);
 
+reset:
 	sna_output->id = compat_conn.conn.connector_id;
 	sna_output->is_panel = is_panel(compat_conn.conn.connector_type);
 	sna_output->edid_idx = find_property(sna, sna_output, "EDID");
@@ -3312,9 +3408,11 @@ sna_output_add(struct sna *sna, int id, int serial)
 	output->interlaceAllowed = TRUE;
 
 	if (serial) {
-		output->randr_output = RROutputCreate(xf86ScrnToScreen(scrn), name, len, output);
-		if (output->randr_output == NULL)
-			goto cleanup;
+		if (output->randr_output == NULL) {
+			output->randr_output = RROutputCreate(xf86ScrnToScreen(scrn), name, len, output);
+			if (output->randr_output == NULL)
+				goto cleanup;
+		}
 
 		sna_output_create_resources(output);
 		RRPostPendingProperties(output->randr_output);
@@ -3337,10 +3435,12 @@ sna_output_add(struct sna *sna, int id, int serial)
 	return 1;
 
 cleanup:
+	len = -1;
+skip:
 	free(sna_output->prop_ids);
 	free(sna_output->prop_values);
 	free(sna_output);
-	return -1;
+	return len;
 }
 
 static void sna_output_del(xf86OutputPtr output)
