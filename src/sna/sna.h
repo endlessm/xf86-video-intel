@@ -61,8 +61,12 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <drm.h>
 #include <i915_drm.h>
 
-#ifdef HAVE_DRI2_H
+#if HAVE_DRI2
 #include <dri2.h>
+#endif
+
+#if HAVE_DRI3
+#include <misync.h>
 #endif
 
 #if HAVE_UDEV
@@ -160,6 +164,9 @@ struct sna_pixmap {
 	uint8_t header :1;
 	uint8_t cpu :1;
 };
+
+#define IS_STATIC_PTR(ptr) ((uintptr_t)(ptr) & 1)
+#define MAKE_STATIC_PTR(ptr) ((void*)((uintptr_t)(ptr) | 1))
 
 struct sna_glyph {
 	PicturePtr atlas;
@@ -323,6 +330,15 @@ struct sna {
 		} scanout[2];
 #endif
 	} dri2;
+
+	struct sna_dri3 {
+		bool available;
+		bool open;
+#if HAVE_DRI3
+		SyncScreenCreateFenceFunc create_fence;
+		struct list pixmaps;
+#endif
+	} dri3;
 
 	struct sna_xv {
 		XvAdaptorPtr adaptors;
@@ -496,7 +512,7 @@ static inline uint64_t ust64(int tv_sec, int tv_usec)
 	return (uint64_t)tv_sec * 1000000 + tv_usec;
 }
 
-#if HAVE_DRI2_H
+#if HAVE_DRI2
 bool sna_dri2_open(struct sna *sna, ScreenPtr pScreen);
 void sna_dri2_page_flip_handler(struct sna *sna, struct drm_event_vblank *event);
 void sna_dri2_vblank_handler(struct sna *sna, struct drm_event_vblank *event);
@@ -512,6 +528,14 @@ static inline void sna_dri2_pixmap_update_bo(struct sna *sna, PixmapPtr pixmap) 
 static inline void sna_dri2_destroy_window(WindowPtr win) { }
 static inline void sna_dri2_reset_scanout(struct sna *sna) { }
 static inline void sna_dri2_close(struct sna *sna, ScreenPtr pScreen) { }
+#endif
+
+#if HAVE_DRI3
+bool sna_dri3_open(struct sna *sna, ScreenPtr pScreen);
+void sna_dri3_close(struct sna *sna, ScreenPtr pScreen);
+#else
+static inline bool sna_dri3_open(struct sna *sna, ScreenPtr pScreen) { return false; }
+static inline void sna_dri3_close(struct sna *sna, ScreenPtr pScreen) { }
 #endif
 
 extern bool sna_crtc_set_sprite_rotation(xf86CrtcPtr crtc, uint32_t rotation);
@@ -569,7 +593,7 @@ get_drawable_dy(DrawablePtr drawable)
 	return 0;
 }
 
-bool sna_pixmap_attach_to_bo(PixmapPtr pixmap, struct kgem_bo *bo);
+struct sna_pixmap *sna_pixmap_attach_to_bo(PixmapPtr pixmap, struct kgem_bo *bo);
 static inline bool sna_pixmap_is_scanout(struct sna *sna, PixmapPtr pixmap)
 {
 	return (pixmap == sna->front &&
@@ -929,6 +953,7 @@ void sna_accel_create(struct sna *sna);
 void sna_accel_block_handler(struct sna *sna, struct timeval **tv);
 void sna_accel_wakeup_handler(struct sna *sna);
 void sna_accel_watch_flush(struct sna *sna, int enable);
+void sna_accel_flush(struct sna *sna);
 void sna_accel_close(struct sna *sna);
 void sna_accel_free(struct sna *sna);
 

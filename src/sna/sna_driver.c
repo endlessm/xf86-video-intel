@@ -379,6 +379,37 @@ static Bool sna_option_cast_to_bool(struct sna *sna, int id, Bool val)
 	return val;
 }
 
+static unsigned sna_option_cast_to_unsigned(struct sna *sna, int id, unsigned val)
+{
+	const char *str = xf86GetOptValString(sna->Options, id);
+	unsigned v;
+
+	if (str == NULL || *str == '\0')
+		return val;
+
+	if (namecmp(str, "on") == 0)
+		return val;
+	if (namecmp(str, "true") == 0)
+		return val;
+	if (namecmp(str, "yes") == 0)
+		return val;
+
+	if (namecmp(str, "0") == 0)
+		return 0;
+	if (namecmp(str, "off") == 0)
+		return 0;
+	if (namecmp(str, "false") == 0)
+		return 0;
+	if (namecmp(str, "no") == 0)
+		return 0;
+
+	v = atoi(str);
+	if (v)
+		return v;
+
+	return val;
+}
+
 static Bool fb_supports_depth(int fd, int depth)
 {
 	struct drm_i915_gem_create create;
@@ -405,6 +436,24 @@ static Bool fb_supports_depth(int fd, int depth)
 	(void)drmIoctl(fd, DRM_IOCTL_GEM_CLOSE, &create.handle);
 
 	return ret;
+}
+
+static void setup_dri(struct sna *sna)
+{
+	unsigned level;
+
+	sna->dri2.available = false;
+	sna->dri3.available = false;
+
+	level = sna_option_cast_to_unsigned(sna, OPTION_DRI, ~0);
+#if HAVE_DRI3
+	if (level >= 3)
+		sna->dri3.available = !!xf86LoadSubModule(sna->scrn, "dri3");
+#endif
+#if HAVE_DRI2
+	if (level >= 2)
+		sna->dri2.available = !!xf86LoadSubModule(sna->scrn, "dri2");
+#endif
 }
 
 /**
@@ -595,9 +644,7 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 	xf86SetGamma(scrn, zeros);
 	xf86SetDpi(scrn, 0, 0);
 
-	sna->dri2.available = false;
-	if (sna_option_cast_to_bool(sna, OPTION_DRI, TRUE))
-		sna->dri2.available = !!xf86LoadSubModule(scrn, "dri2");
+	setup_dri(sna);
 
 	sna_acpi_init(sna);
 
@@ -820,6 +867,11 @@ static Bool sna_early_close_screen(CLOSE_SCREEN_ARGS_DECL)
 	sna_uevent_fini(scrn);
 	sna_mode_close(sna);
 
+	if (sna->dri3.open) {
+		sna_dri3_close(sna, screen);
+		sna->dri3.open = false;
+	}
+
 	if (sna->dri2.open) {
 		sna_dri2_close(sna, screen);
 		sna->dri2.open = false;
@@ -899,6 +951,25 @@ sna_register_all_privates(void)
 #endif
 
 	return TRUE;
+}
+
+static void sna_dri_init(struct sna *sna, ScreenPtr screen)
+{
+	char str[128] = "";
+
+	if (sna->dri2.available)
+		sna->dri2.open = sna_dri2_open(sna, screen);
+	if (sna->dri2.open)
+		strcat(str, "DRI2 ");
+
+	if (sna->dri3.available)
+		sna->dri3.open = sna_dri3_open(sna, screen);
+	if (sna->dri3.open)
+		strcat(str, "DRI3 ");
+
+	if (*str)
+		xf86DrvMsg(sna->scrn->scrnIndex, X_INFO,
+			   "direct rendering: %senabled\n", str);
 }
 
 static size_t
@@ -1025,11 +1096,7 @@ sna_screen_init(SCREEN_INIT_ARGS_DECL)
 	xf86DPMSInit(screen, xf86DPMSSet, 0);
 
 	sna_video_init(sna, screen);
-	if (sna->dri2.available)
-		sna->dri2.open = sna_dri2_open(sna, screen);
-	if (sna->dri2.open)
-		xf86DrvMsg(scrn->scrnIndex, X_INFO,
-			   "direct rendering: DRI2 Enabled\n");
+	sna_dri_init(sna, screen);
 
 	if (serverGeneration == 1)
 		xf86ShowUnusedOptions(scrn->scrnIndex, scrn->options);

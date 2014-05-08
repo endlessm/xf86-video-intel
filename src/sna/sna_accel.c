@@ -108,9 +108,6 @@
 #define NO_TILE_8x8 0
 #define NO_STIPPLE_8x8 0
 
-#define IS_STATIC_PTR(ptr) ((uintptr_t)(ptr) & 1)
-#define MAKE_STATIC_PTR(ptr) ((void*)((uintptr_t)(ptr) | 1))
-
 #define IS_COW_OWNER(ptr) ((uintptr_t)(ptr) & 1)
 #define MAKE_COW_OWNER(ptr) ((void*)((uintptr_t)(ptr) | 1))
 #define COW(ptr) (void *)((uintptr_t)(ptr) & ~1)
@@ -562,8 +559,8 @@ static void __sna_pixmap_free_cpu(struct sna *sna, struct sna_pixmap *priv)
 		sna->debug_memory.cpu_bo_allocs--;
 		sna->debug_memory.cpu_bo_bytes -= kgem_bo_size(priv->cpu_bo);
 #endif
-		if (!priv->cpu_bo->reusable) {
-			assert(priv->cpu_bo->flush == true);
+		if (priv->cpu_bo->flush) {
+			assert(!priv->cpu_bo->reusable);
 			kgem_bo_sync__cpu(&sna->kgem, priv->cpu_bo);
 			sna_accel_watch_flush(sna, -1);
 		}
@@ -712,6 +709,7 @@ static struct sna_pixmap *
 _sna_pixmap_init(struct sna_pixmap *priv, PixmapPtr pixmap)
 {
 	list_init(&priv->flush_list);
+	list_init(&priv->cow_list);
 	priv->source_count = SOURCE_BIAS;
 	priv->pixmap = pixmap;
 
@@ -747,26 +745,37 @@ static struct sna_pixmap *sna_pixmap_attach(PixmapPtr pixmap)
 	return _sna_pixmap_init(priv, pixmap);
 }
 
-bool sna_pixmap_attach_to_bo(PixmapPtr pixmap, struct kgem_bo *bo)
+struct sna_pixmap *sna_pixmap_attach_to_bo(PixmapPtr pixmap, struct kgem_bo *bo)
 {
 	struct sna_pixmap *priv;
 
 	assert(bo);
+	assert(bo->proxy == NULL);
+	assert(bo->unique_id);
 
 	priv = sna_pixmap_attach(pixmap);
 	if (!priv)
-		return false;
+		return NULL;
+
+	DBG(("%s: attaching %s handle=%d to pixmap=%ld\n",
+	     __FUNCTION__, bo->snoop ? "CPU" : "GPU", bo->handle, pixmap->drawable.serialNumber));
 
 	assert(!priv->mapped);
 	assert(!priv->move_to_gpu);
 
-	priv->gpu_bo = kgem_bo_reference(bo);
-	assert(priv->gpu_bo->proxy == NULL);
-	sna_damage_all(&priv->gpu_damage,
-		       pixmap->drawable.width,
-		       pixmap->drawable.height);
+	if (bo->snoop) {
+		priv->cpu_bo = bo;
+		sna_damage_all(&priv->cpu_damage,
+				pixmap->drawable.width,
+				pixmap->drawable.height);
+	} else {
+		priv->gpu_bo = bo;
+		sna_damage_all(&priv->gpu_damage,
+				pixmap->drawable.width,
+				pixmap->drawable.height);
+	}
 
-	return true;
+	return priv;
 }
 
 static int bits_per_pixel(int depth)
@@ -1402,6 +1411,7 @@ static void __sna_free_pixmap(struct sna *sna,
 			      PixmapPtr pixmap,
 			      struct sna_pixmap *priv)
 {
+	DBG(("%s(pixmap=%ld)\n", __FUNCTION__, pixmap->drawable.serialNumber));
 	list_del(&priv->flush_list);
 
 	assert(priv->gpu_damage == NULL);
@@ -1455,11 +1465,11 @@ static Bool sna_destroy_pixmap(PixmapPtr pixmap)
 		DBG(("%s: pixmap=%ld discarding cow, refcnt=%d\n",
 		     __FUNCTION__, pixmap->drawable.serialNumber, cow->refcnt));
 		assert(cow->refcnt);
-		list_del(&priv->cow_list);
 		if (!--cow->refcnt)
 			free(cow);
 		priv->cow = NULL;
 	}
+	list_del(&priv->cow_list);
 
 	if (priv->move_to_gpu)
 		(void)priv->move_to_gpu(sna, priv, 0);
@@ -1472,6 +1482,8 @@ static Bool sna_destroy_pixmap(PixmapPtr pixmap)
 	}
 
 	if (priv->shm && kgem_bo_is_busy(priv->cpu_bo)) {
+		DBG(("%s: deferring release of active SHM pixmap=%ld\n",
+		     __FUNCTION__, pixmap->drawable.serialNumber));
 		sna_add_flush_pixmap(sna, priv, priv->cpu_bo);
 		kgem_bo_submit(&sna->kgem, priv->cpu_bo); /* XXX ShmDetach */
 	} else
@@ -1813,7 +1825,8 @@ sna_pixmap_undo_cow(struct sna *sna, struct sna_pixmap *priv, unsigned flags)
 	assert(priv->gpu_bo == cow->bo);
 	assert(cow->refcnt);
 
-	list_del(&priv->cow_list);
+	if (!IS_COW_OWNER(priv->cow))
+		list_del(&priv->cow_list);
 
 	if (!--cow->refcnt) {
 		DBG(("%s: freeing cow\n", __FUNCTION__));
@@ -1960,7 +1973,6 @@ sna_pixmap_make_cow(struct sna *sna,
 		     cow->bo->handle));
 
 		src_priv->cow = MAKE_COW_OWNER(cow);
-		list_init(&src_priv->cow_list);
 	}
 
 	if (cow == COW(dst_priv->cow)) {
@@ -16509,11 +16521,8 @@ static Bool sna_change_window_attributes(WindowPtr win, unsigned long mask)
 	return ret;
 }
 
-static void
-sna_accel_flush_callback(CallbackListPtr *list,
-			 pointer user_data, pointer call_data)
+void sna_accel_flush(struct sna *sna)
 {
-	struct sna *sna = user_data;
 	struct sna_pixmap *priv;
 
 	/* XXX we should be able to reduce the frequency of flushes further
@@ -16557,6 +16566,13 @@ sna_accel_flush_callback(CallbackListPtr *list,
 
 	if (sna->kgem.flush)
 		kgem_submit(&sna->kgem);
+}
+
+static void
+sna_accel_flush_callback(CallbackListPtr *list,
+			 pointer user_data, pointer call_data)
+{
+	sna_accel_flush(user_data);
 }
 
 static struct sna_pixmap *sna_accel_scanout(struct sna *sna)
@@ -16673,7 +16689,7 @@ static void timer_enable(struct sna *sna, int whom, int interval)
 	DBG(("%s (time=%ld), starting timer %d\n", __FUNCTION__, (long)TIME, whom));
 }
 
-static bool sna_accel_do_flush(struct sna *sna)
+static bool sna_scanout_do_flush(struct sna *sna)
 {
 	struct sna_pixmap *priv;
 	int interval;
@@ -16862,7 +16878,7 @@ skip:
 #endif
 }
 
-static void sna_accel_flush(struct sna *sna)
+static void sna_scanout_flush(struct sna *sna)
 {
 	struct sna_pixmap *priv = sna_accel_scanout(sna);
 	bool busy;
@@ -17355,8 +17371,8 @@ void sna_accel_block_handler(struct sna *sna, struct timeval **tv)
 	}
 
 restart:
-	if (sna_accel_do_flush(sna))
-		sna_accel_flush(sna);
+	if (sna_scanout_do_flush(sna))
+		sna_scanout_flush(sna);
 	assert(sna_accel_scanout(sna) == NULL ||
 	       sna_accel_scanout(sna)->gpu_bo->exec == NULL ||
 	       sna->timer_active & (1<<(FLUSH_TIMER)));

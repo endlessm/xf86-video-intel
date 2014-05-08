@@ -1619,6 +1619,9 @@ static uint32_t kgem_surface_size(struct kgem *kgem,
 
 	*pitch = ALIGN(width * bpp / 8, tile_width);
 	height = ALIGN(height, tile_height);
+	DBG(("%s: tile_width=%d, tile_height=%d => aligned pitch=%d, height=%d\n",
+	     __FUNCTION__, tile_width, tile_height, *pitch, height));
+
 	if (kgem->gen >= 040)
 		return PAGE_ALIGN(*pitch * height);
 
@@ -1647,6 +1650,47 @@ static uint32_t kgem_surface_size(struct kgem *kgem,
 	while (tile_width < size)
 		tile_width *= 2;
 	return tile_width;
+}
+
+bool kgem_check_surface_size(struct kgem *kgem,
+			     uint32_t width,
+			     uint32_t height,
+			     uint32_t bpp,
+			     uint32_t tiling,
+			     uint32_t pitch,
+			     uint32_t size)
+{
+	uint32_t min_size, min_pitch;
+	int tile_width, tile_height, tile_size;
+
+	DBG(("%s(width=%d, height=%d, bpp=%d, tiling=%d, pitch=%d, size=%d)\n",
+	     __FUNCTION__, width, height, bpp, tiling, pitch, size));
+
+	if (pitch & 3)
+		return false;
+
+	min_size = kgem_surface_size(kgem, kgem->has_relaxed_fencing, 0,
+				     width, height, bpp, tiling,
+				     &min_pitch);
+
+	DBG(("%s: min_pitch=%d, min_size=%d\n", __FUNCTION__, min_pitch, min_size));
+
+	if (size < min_size)
+		return false;
+
+	if (pitch < min_pitch)
+		return false;
+
+	kgem_get_tile_size(kgem, tiling, min_pitch,
+			   &tile_width, &tile_height, &tile_size);
+
+	DBG(("%s: tile_width=%d, tile_size=%d\n", __FUNCTION__, tile_width, tile_size));
+	if (pitch & (tile_width - 1))
+		return false;
+	if (size & (tile_size - 1))
+		return false;
+
+	return true;
 }
 
 static uint32_t kgem_aligned_height(struct kgem *kgem,
@@ -3848,8 +3892,16 @@ struct kgem_bo *kgem_create_for_prime(struct kgem *kgem, int name, uint32_t size
 
 	/* Query actual size, overriding specified if available */
 	seek = lseek(args.fd, 0, SEEK_END);
-	if (seek != -1)
+	DBG(("%s: estimated size=%ld, actual=%lld\n",
+	     __FUNCTION__, (long)size, (long long)seek));
+	if (seek != -1) {
+		if (size > seek) {
+			DBG(("%s(name=%d) estimated required size [%d] is larger than actual [%ld]\n", __FUNCTION__, name, size, (long)seek));
+			gem_close(kgem->fd, args.handle);
+			return NULL;
+		}
 		size = seek;
+	}
 
 	DBG(("%s: new handle=%d, tiling=%d\n", __FUNCTION__,
 	     args.handle, tiling.tiling_mode));

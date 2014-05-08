@@ -309,8 +309,8 @@ static struct kgem_bo *sna_pixmap_set_dri(struct sna *sna,
 	     __FUNCTION__, pixmap->drawable.serialNumber));
 
 	priv = sna_pixmap(pixmap);
-	if (priv != NULL && priv->shm) {
-		DBG(("%s: SHM Pixmap, BadAlloc\n", __FUNCTION__));
+	if (priv != NULL && IS_STATIC_PTR(priv->ptr) && priv->cpu_bo) {
+		DBG(("%s: SHM or unattached Pixmap, BadAlloc\n", __FUNCTION__));
 		return NULL;
 	}
 
@@ -669,7 +669,7 @@ static void set_bo(PixmapPtr pixmap, struct kgem_bo *bo)
 	assert(bo->proxy == NULL);
 	assert(bo->flush);
 	assert(priv->pinned & PIN_DRI2);
-	assert((priv->pinned & PIN_PRIME) == 0);
+	assert((priv->pinned & (PIN_PRIME | PIN_DRI3)) == 0);
 	assert(priv->flush);
 
 	if (priv->cow && priv->gpu_bo != bo)
@@ -2601,32 +2601,36 @@ namecmp(const char *s1, const char *s2)
 	return c1 - c2;
 }
 
-static bool is_bool(const char *str)
+static bool is_level(const char **str)
 {
-	if (str == NULL)
+	const char *s = *str;
+	char *end;
+	unsigned val;
+
+	if (s == NULL || *s == '\0')
 		return true;
 
-	if (*str == '\0')
+	if (namecmp(s, "on") == 0)
+		return true;
+	if (namecmp(s, "true") == 0)
+		return true;
+	if (namecmp(s, "yes") == 0)
 		return true;
 
-	if (namecmp(str, "1") == 0)
+	if (namecmp(s, "0") == 0)
 		return true;
-	if (namecmp(str, "on") == 0)
+	if (namecmp(s, "off") == 0)
 		return true;
-	if (namecmp(str, "true") == 0)
+	if (namecmp(s, "false") == 0)
 		return true;
-	if (namecmp(str, "yes") == 0)
-		return true;
-
-	if (namecmp(str, "0") == 0)
-		return true;
-	if (namecmp(str, "off") == 0)
-		return true;
-	if (namecmp(str, "false") == 0)
-		return true;
-	if (namecmp(str, "no") == 0)
+	if (namecmp(s, "no") == 0)
 		return true;
 
+	val = strtoul(s, &end, 0);
+	if (val && *end == '\0')
+		return true;
+	if (val && *end == ':')
+		*str = end + 1;
 	return false;
 }
 
@@ -2634,7 +2638,7 @@ static const char *dri_driver_name(struct sna *sna)
 {
 	const char *s = xf86GetOptValString(sna->Options, OPTION_DRI);
 
-	if (is_bool(s)) {
+	if (is_level(&s)) {
 		if (sna->kgem.gen < 030)
 			return has_i830_dri() ? "i830" : "i915";
 		else if (sna->kgem.gen < 040)

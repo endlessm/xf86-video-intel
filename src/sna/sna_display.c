@@ -5356,8 +5356,10 @@ sna_crtc_redisplay__composite(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo
 					bo->pitch, NULL))
 		goto free_pixmap;
 
-	if (!sna_pixmap_attach_to_bo(pixmap, bo))
+	if (!sna_pixmap_attach_to_bo(pixmap, kgem_bo_reference(bo))) {
+		kgem_bo_destroy(&sna->kgem, bo);
 		goto free_pixmap;
+	}
 
 	src = CreatePicture(None, &sna->front->drawable, format,
 			    0, NULL, serverClient, &error);
