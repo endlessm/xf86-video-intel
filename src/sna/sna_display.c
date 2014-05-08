@@ -3014,7 +3014,7 @@ static void sort_randr_outputs(struct sna *sna, ScreenPtr screen)
 	rrScrPriv(screen);
 	int i;
 
-	assert(pScrPriv->numOutputs = config->num_output);
+	assert(pScrPriv->numOutputs == config->num_output);
 	for (i = 0; i < config->num_output; i++) {
 		assert(config->output[i]->randr_output);
 		pScrPriv->outputs[i] = config->output[i]->randr_output;
