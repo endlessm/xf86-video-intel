@@ -232,15 +232,15 @@ static void intel_check_dri_option(ScrnInfoPtr scrn)
 {
 	intel_screen_private *intel = intel_get_screen_private(scrn);
 
-	intel->directRenderingType = DRI_NONE;
+	intel->dri2 = intel->dri3 = DRI_NONE;
 	if (!intel_option_cast_string_to_bool(intel, OPTION_DRI, TRUE))
-		intel->directRenderingType = DRI_DISABLED;
+		intel->dri2 = intel->dri3 = DRI_DISABLED;
 
 	if (scrn->depth != 16 && scrn->depth != 24 && scrn->depth != 30) {
 		xf86DrvMsg(scrn->scrnIndex, X_CONFIG,
 			   "DRI is disabled because it "
 			   "runs only at depths 16, 24, and 30.\n");
-		intel->directRenderingType = DRI_DISABLED;
+		intel->dri2 = intel->dri3 = DRI_DISABLED;
 	}
 }
 
@@ -599,9 +599,15 @@ static Bool I830PreInit(ScrnInfoPtr scrn, int flags)
 		return FALSE;
 	}
 
-	/* Load the dri2 module if requested. */
-	if (intel->directRenderingType != DRI_DISABLED)
-		xf86LoadSubModule(scrn, "dri2");
+	/* Load the dri modules if requested. */
+#if HAVE_DRI2
+	if (intel->dri2 != DRI_DISABLED && !xf86LoadSubModule(scrn, "dri2"))
+		intel->dri2 = DRI_DISABLED;
+#endif
+#if HAVE_DRI3
+	if (intel->dri3 != DRI_DISABLED && !xf86LoadSubModule(scrn, "dri3"))
+		intel->dri3 = DRI_DISABLED;
+#endif
 
 	return TRUE;
 }
@@ -871,13 +877,6 @@ I830ScreenInit(SCREEN_INIT_ARGS_DECL)
 	 */
 	intel->XvEnabled = TRUE;
 
-#ifdef DRI2
-	if (intel->directRenderingType == DRI_NONE
-	    && I830DRI2ScreenInit(screen))
-		intel->directRenderingType = DRI_DRI2;
-#endif
-
-	if (!intel_init_initial_framebuffer(scrn))
 		return FALSE;
 
 	intel_batch_init(scrn);
@@ -893,6 +892,7 @@ I830ScreenInit(SCREEN_INIT_ARGS_DECL)
 	if (!miSetPixmapDepths())
 		return FALSE;
 
+	/* Must be first, before anything else installs screen callbacks. */
 	if (!fbScreenInit(screen, NULL,
 			  scrn->virtualX, scrn->virtualY,
 			  scrn->xDpi, scrn->yDpi,
@@ -923,6 +923,18 @@ I830ScreenInit(SCREEN_INIT_ARGS_DECL)
 			   "Hardware acceleration initialization failed\n");
 		return FALSE;
 	}
+
+#if HAVE_DRI2
+	if (intel->dri2 == DRI_NONE && I830DRI2ScreenInit(screen))
+		intel->dri2 = DRI_ACTIVE;
+#endif
+
+#if HAVE_DRI3
+	if (!intel_sync_init(screen))
+		intel->dri3 = DRI_DISABLED;
+	if (intel->dri3 == DRI_NONE && intel_dri3_screen_init(screen))
+		intel->dri3 = DRI_ACTIVE;
+#endif
 
 	xf86SetBackingStore(screen);
 	xf86SetSilkenMouse(screen);
@@ -977,7 +989,7 @@ I830ScreenInit(SCREEN_INIT_ARGS_DECL)
 #ifdef INTEL_XVMC
 	if (INTEL_INFO(intel)->gen >= 040)
 		intel->XvMCEnabled = TRUE;
-	from = ((intel->directRenderingType == DRI_DRI2) &&
+	from = (intel->dri2 == DRI_ACTIVE &&
 		xf86GetOptValBool(intel->Options, OPTION_XVMC,
 				  &intel->XvMCEnabled) ? X_CONFIG : X_DEFAULT);
 	xf86DrvMsg(scrn->scrnIndex, from, "Intel XvMC decoder %sabled\n",
@@ -987,25 +999,44 @@ I830ScreenInit(SCREEN_INIT_ARGS_DECL)
 	if (intel->XvEnabled)
 		I830InitVideo(screen);
 
-#if defined(DRI2)
-	switch (intel->directRenderingType) {
-	case DRI_DRI2:
-		intel->directRenderingOpen = TRUE;
+#if HAVE_DRI2
+	switch (intel->dri2) {
+	case DRI_ACTIVE:
 		xf86DrvMsg(scrn->scrnIndex, X_INFO,
-			   "direct rendering: DRI2 Enabled\n");
+			   "DRI2: Enabled\n");
 		break;
 	case DRI_DISABLED:
 		xf86DrvMsg(scrn->scrnIndex, X_INFO,
-			   "direct rendering: Disabled\n");
+			   "DRI2: Disabled\n");
 		break;
 	case DRI_NONE:
 		xf86DrvMsg(scrn->scrnIndex, X_INFO,
-			   "direct rendering: Failed\n");
+			   "DRI2: Failed\n");
 		break;
 	}
 #else
 	xf86DrvMsg(scrn->scrnIndex, X_INFO,
-		   "direct rendering: Not available\n");
+		   "DRI2: Not available\n");
+#endif
+
+#if HAVE_DRI3
+	switch (intel->dri3) {
+	case DRI_ACTIVE:
+		xf86DrvMsg(scrn->scrnIndex, X_INFO,
+			   "DRI3: Enabled\n");
+		break;
+	case DRI_DISABLED:
+		xf86DrvMsg(scrn->scrnIndex, X_INFO,
+			   "DRI3: Disabled\n");
+		break;
+	case DRI_NONE:
+		xf86DrvMsg(scrn->scrnIndex, X_INFO,
+			   "DRI3: Failed\n");
+		break;
+	}
+#else
+	xf86DrvMsg(scrn->scrnIndex, X_INFO,
+		   "DRI3: Not available\n");
 #endif
 
 	if (serverGeneration == 1)
@@ -1142,11 +1173,17 @@ static Bool I830CloseScreen(CLOSE_SCREEN_ARGS_DECL)
 	screen->CloseScreen = intel->CloseScreen;
 	(*screen->CloseScreen) (CLOSE_SCREEN_ARGS);
 
-	if (intel->directRenderingOpen
-	    && intel->directRenderingType == DRI_DRI2) {
-		intel->directRenderingOpen = FALSE;
+	if (intel->dri2 == DRI_ACTIVE) {
 		I830DRI2CloseScreen(screen);
+		intel->dri2 = DRI_NONE;
 	}
+
+	if (intel->dri3 == DRI_ACTIVE) {
+		/* nothing to do here? */
+		intel->dri3 = DRI_NONE;
+	}
+
+	intel_sync_close(screen);
 
 	xf86GARTCloseScreen(scrn->scrnIndex);
 

@@ -78,6 +78,10 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <libudev.h>
 #endif
 
+#if HAVE_DRI3
+#include "misync.h"
+#endif
+
 /* remain compatible to xorg-server 1.6 */
 #ifndef MONITOR_EDID_COMPLETE_RAWDATA
 #define MONITOR_EDID_COMPLETE_RAWDATA EDID_COMPLETE_RAWDATA
@@ -162,7 +166,7 @@ enum last_3d {
 enum dri_type {
 	DRI_DISABLED,
 	DRI_NONE,
-	DRI_DRI2
+	DRI_ACTIVE
 };
 
 typedef struct intel_screen_private {
@@ -324,9 +328,8 @@ typedef struct intel_screen_private {
 	/* 965 render acceleration state */
 	struct gen4_render_state *gen4_render_state;
 
-	enum dri_type directRenderingType;	/* DRI enabled this generation. */
-
-	Bool directRenderingOpen;
+	/* DRI enabled this generation. */
+	enum dri_type dri2, dri3;
 	int drmSubFD;
 	char *deviceName;
 
@@ -356,6 +359,11 @@ typedef struct intel_screen_private {
 	pointer uevent_handler;
 #endif
 	Bool has_prime_vmap_flush;
+
+#if HAVE_DRI3
+	SyncScreenFuncsRec save_sync_screen_funcs;
+#endif
+	void (*flush_rendering)(struct intel_screen_private *intel);
 } intel_screen_private;
 
 #define INTEL_INFO(intel) ((intel)->info)
@@ -484,6 +492,9 @@ void I830DRI2FrameEventHandler(unsigned int frame, unsigned int tv_sec,
 			       unsigned int tv_usec, DRI2FrameEventPtr flip_info);
 void I830DRI2FlipEventHandler(unsigned int frame, unsigned int tv_sec,
 			      unsigned int tv_usec, DRI2FrameEventPtr flip_info);
+
+/* intel_dri3.c */
+Bool intel_dri3_screen_init(ScreenPtr screen);
 
 extern Bool intel_crtc_on(xf86CrtcPtr crtc);
 int intel_crtc_to_pipe(xf86CrtcPtr crtc);
@@ -690,5 +701,13 @@ static inline Bool intel_pixmap_is_offscreen(PixmapPtr pixmap)
 	struct intel_pixmap *priv = intel_get_pixmap_private(pixmap);
 	return priv && priv->offscreen;
 }
+
+#if HAVE_DRI3
+Bool intel_sync_init(ScreenPtr screen);
+void intel_sync_close(ScreenPtr screen);
+#else
+static inline Bool intel_sync_init(ScreenPtr screen) { return 0; }
+void intel_sync_close(ScreenPtr screen);
+#endif
 
 #endif /* _I830_H_ */

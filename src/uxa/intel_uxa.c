@@ -633,18 +633,38 @@ dri_bo *intel_get_pixmap_bo(PixmapPtr pixmap)
 	return intel->bo;
 }
 
+static unsigned intel_get_tile_width(intel_screen_private *intel, int tiling, int pitch)
+{
+	unsigned long tile_width;
+
+	if (tiling == I915_TILING_NONE)
+		return 4;
+
+	tile_width = (tiling == I915_TILING_Y) ? 128 : 512;
+	if (INTEL_INFO(intel)->gen >= 040)
+		return tile_width;
+
+	while (tile_width < pitch)
+		tile_width <<= 1;
+
+	return tile_width;
+}
+
 void intel_set_pixmap_bo(PixmapPtr pixmap, dri_bo * bo)
 {
+	ScrnInfoPtr scrn = xf86ScreenToScrn(pixmap->drawable.pScreen);
+	intel_screen_private *intel = intel_get_screen_private(scrn);
 	struct intel_pixmap *priv;
 
 	priv = intel_get_pixmap_private(pixmap);
 	if (priv == NULL && bo == NULL)
-	    return;
+		return;
 
 	if (priv != NULL) {
 		if (priv->bo == bo)
 			return;
 
+free_priv:
 		dri_bo_unreference(priv->bo);
 		list_del(&priv->batch);
 
@@ -653,9 +673,9 @@ void intel_set_pixmap_bo(PixmapPtr pixmap, dri_bo * bo)
 	}
 
 	if (bo != NULL) {
-		uint32_t tiling;
-		uint32_t swizzle_mode;
-		int ret;
+		uint32_t tiling, swizzle_mode;
+		unsigned tile_width;
+		int size, stride;
 
 		priv = calloc(1, sizeof (struct intel_pixmap));
 		if (priv == NULL)
@@ -667,15 +687,45 @@ void intel_set_pixmap_bo(PixmapPtr pixmap, dri_bo * bo)
 		priv->bo = bo;
 		priv->stride = intel_pixmap_pitch(pixmap);
 
-		ret = drm_intel_bo_get_tiling(bo, &tiling, &swizzle_mode);
-		if (ret != 0) {
-			FatalError("Couldn't get tiling on bo %p: %s\n",
-				   bo, strerror(-ret));
+		if (drm_intel_bo_get_tiling(bo, &tiling, &swizzle_mode)) {
+			bo = NULL;
+			goto free_priv;
 		}
 
 		priv->tiling = tiling;
 		priv->busy = -1;
 		priv->offscreen = 1;
+
+		stride = (pixmap->drawable.width * pixmap->drawable.bitsPerPixel + 7) / 8;
+		tile_width = intel_get_tile_width(intel, tiling, stride);
+		stride = ALIGN(stride, tile_width);
+
+		if (priv->stride < stride ||
+		    priv->stride & (tile_width - 1) ||
+		    priv->stride >= KB(32)) {
+			bo = NULL;
+			goto free_priv;
+		}
+
+		if (tiling != I915_TILING_NONE) {
+			int height;
+
+			if (IS_GEN2(intel))
+				height = 16;
+			else if (tiling == I915_TILING_X)
+				height = 8;
+			else
+				height = 32;
+
+			height = ALIGN(pixmap->drawable.height, 2*height);
+			size = intel_get_fence_size(intel, priv->stride * height);
+		} else
+			size = priv->stride * pixmap->drawable.height;
+
+		if (bo->size < size || bo->size > intel->max_bo_size) {
+			bo = NULL;
+			goto free_priv;
+		}
 	}
 
   BAIL:
@@ -1422,5 +1472,6 @@ Bool intel_uxa_init(ScreenPtr screen)
 	uxa_set_fallback_debug(screen, intel->fallback_debug);
 	uxa_set_force_fallback(screen, intel->force_fallback);
 
+	intel->flush_rendering = intel_flush_rendering;
 	return TRUE;
 }

@@ -1650,6 +1650,5 @@ void I830DRI2CloseScreen(ScreenPtr screen)
 	intel_screen_private *intel = intel_get_screen_private(scrn);
 
 	DRI2CloseScreen(screen);
-	intel->directRenderingType = DRI_NONE;
 	drmFree(intel->deviceName);
 }
