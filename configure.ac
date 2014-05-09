@@ -239,6 +239,9 @@ if test "x$shm" = "xyes"; then
 		  AC_MSG_RESULT(assuming no))
 fi
 
+PKG_CHECK_MODULES(X11_DRI3, [xcb-dri3 xcb-sync x11-xcb xshmfence x11 xrender xext libdrm], [x11_dri3="yes"], [x11_dri3="no"])
+AM_CONDITIONAL(X11_DRI3, test "x$x11_dri3" = "xyes" -a "x$shm" = "xyes")
+
 AC_ARG_ENABLE(tools,
               AS_HELP_STRING([--disable-tools],
 			     [Enable building and installing the miscellaneous tools [default=auto]]),
