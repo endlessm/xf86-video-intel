@@ -9,6 +9,7 @@ const OptionInfoRec intel_options[] = {
 	{OPTION_ACCEL_METHOD,	"AccelMethod",	OPTV_STRING,	{0},	0},
 	{OPTION_BACKLIGHT,	"Backlight",	OPTV_STRING,	{0},	0},
 	{OPTION_DRI,		"DRI",		OPTV_STRING,	{0},	0},
+	{OPTION_PRESENT,	"Present",	OPTV_BOOLEAN,	{0},	1},
 	{OPTION_COLOR_KEY,	"ColorKey",	OPTV_INTEGER,	{0},	0},
 	{OPTION_VIDEO_KEY,	"VideoKey",	OPTV_INTEGER,	{0},	0},
 	{OPTION_TILING_2D,	"Tiling",	OPTV_BOOLEAN,	{0},	1},

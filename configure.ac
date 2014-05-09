@@ -276,7 +276,9 @@ AC_ARG_WITH(xorg-module-dir,
 
 AC_ARG_ENABLE(dri,
 	      AS_HELP_STRING([--disable-dri],
-			     [Disable DRI support [[default=auto]]]))
+			     [Disable DRI support [[default=auto]]]),
+	      [DRI=$enableval],
+	      [DRI=auto])
 
 AC_ARG_ENABLE(xvmc, AS_HELP_STRING([--disable-xvmc],
                                   [Disable XvMC support [[default=yes]]]),
@@ -445,13 +447,13 @@ fi
 
 
 DRI1=no
-if test "x$enable_dri" != "xno" -a "x$UMS" = "xyes"; then
-	PKG_CHECK_MODULES(DRI1, [xf86driproto], [DRI1="yes"], [DRI1="no"])
+if test "x$DRI" != "xno" -a "x$UMS" = "xyes"; then
+	PKG_CHECK_MODULES(DRI1, [xf86driproto], [DRI1=$DRI], [DRI1=no])
         save_CFLAGS="$CFLAGS"
         save_CPPFLAGS="$CPPFLAGS"
         CFLAGS="$CFLAGS $XORG_CFLAGS $DRI1_CFLAGS $DRM_CFLAGS"
         CPPFLAGS="$CPPFLAGS $XORG_CFLAGS $DRI1_CFLAGS $DRM_CFLAGS"
-        AC_CHECK_HEADERS([dri.h sarea.h dristruct.h], [DRI1="yes"], [DRI1="no"],
+        AC_CHECK_HEADERS([dri.h sarea.h dristruct.h], [], [DRI1=no],
                 [/* for dri.h */
                  #include <xf86str.h>
                  /* for dristruct.h */
@@ -463,7 +465,7 @@ if test "x$enable_dri" != "xno" -a "x$UMS" = "xyes"; then
                  # include <sarea.h>
                  #endif
                 ])
-        CFLAGS="$save_CFLAGS $DEBUGFLAGS"
+        CFLAGS="$save_CFLAGS"
         CPPFLAGS="$save_CPPFLAGS"
 fi
 
@@ -478,14 +480,15 @@ else
         DRI1_CFLAGS=""
         DRI1_LIBS=""
 
-        if test "x$enable_dri" = "xyes" -a "x$UMS" = "xyes"; then
+        if test "x$DRI" = "xyes" -a "x$UMS" = "xyes"; then
                 AC_MSG_ERROR([DRI1 requested but prerequisites not found])
         fi
 fi
 
 DRI2=no
-if test "x$enable_dri" != "xno"; then
-	PKG_CHECK_MODULES(DRI2, [dri2proto >= 2.6], DRI2="yes", DRI2="no")
+DRI3=no
+if test "x$DRI" != "xno"; then
+	PKG_CHECK_MODULES(DRI2, [dri2proto >= 2.6], [DRI2=$DRI], [DRI2=no])
 	dridriverdir=`$PKG_CONFIG --variable=dridriverdir dri`
 	if test "x$dridriverdir" = "x"; then
 		dridriverdir="$libdir/dri"
@@ -494,21 +497,38 @@ if test "x$enable_dri" != "xno"; then
 	if test "x$DRI2" != "xno"; then
 		save_CFLAGS=$CFLAGS
 		CFLAGS="$XORG_CFLAGS $DRM_CFLAGS $DRI1_CFLAGS $DRI2_CFLAGS"
-		AC_CHECK_HEADERS([dri2.h], DRI2="yes", DRI2="no", [
+		AC_CHECK_HEADERS([dri2.h], [], [DRI2=no], [
 #include <dixstruct.h>
 #include <drm.h>
 ])
 		CFLAGS=$save_CFLAGS
 	fi
+
+	XORG_DRIVER_CHECK_EXT(DRI3, dri3proto)
+	if test "x$_EXT_CHECK" != "xno"; then
+		DRI3=$DRI
+	fi
+	if test "x$DRI3" != "xno"; then
+		save_CFLAGS=$CFLAGS
+		CFLAGS="$XORG_CFLAGS $DRI3_CFLAGS"
+		AC_CHECK_DECL(DRI3, [], [DRI3=no], [#include <xorg-server.h>])
+		AC_CHECK_HEADERS([misyncstr.h misyncshm.h], [], [DRI3=no], [
+#include <xorg-server.h>
+#include <xf86str.h>
+#include <misync.h>
+])
+		CFLAGS=$save_CFLAGS
+	fi
 fi
+
 AC_MSG_CHECKING([whether to include DRI2 support])
-AM_CONDITIONAL(DRI2, test "x$DRI2" = "xyes")
+AM_CONDITIONAL(DRI2, test "x$DRI2" != "xno")
 AC_MSG_RESULT([$DRI2])
 if test "x$DRI2" != "xno"; then
         AC_DEFINE(HAVE_DRI2,1,[Enable DRI2 driver support])
 	dri_msg="$dri_msg DRI2"
 else
-	if test "x$enable_dri" = "xyes" -a "x$KMS" = "xyes"; then
+	if test "x$DRI" = "xyes" -a "x$KMS" = "xyes"; then
 		AC_MSG_ERROR([DRI2 requested but prerequisites not found])
 	fi
 
@@ -516,7 +536,38 @@ else
 	UXA=no
 fi
 
+AC_MSG_CHECKING([whether to include DRI3 support])
+AM_CONDITIONAL(DRI3, test "x$DRI3" != "xno")
+AC_MSG_RESULT([$DRI3])
+if test "x$DRI3" != "xno"; then
+        AC_DEFINE(HAVE_DRI3,1,[Enable DRI3 driver support])
+	dri_msg="$dri_msg DRI3"
+else
+	if test "x$DRI" = "xyes" -a "x$KMS" = "xyes"; then
+		AC_MSG_ERROR([DRI3 requested but prerequisites not found])
+	fi
+fi
+
 AC_CHECK_HEADERS([X11/extensions/dpmsconst.h])
+
+has_present="no"
+XORG_DRIVER_CHECK_EXT(PRESENT, presentproto)
+if test "x$_EXT_CHECK" != "xno"; then
+	save_CFLAGS=$CFLAGS
+	CFLAGS=$XORG_CFLAGS
+	AC_CHECK_HEADERS([present.h], [has_present="yes"], [], [
+#include <xorg-server.h>
+#include <xf86str.h>
+])
+	CFLAGS=$save_CFLAGS
+fi
+AC_MSG_CHECKING([whether to include PRESENT support])
+AM_CONDITIONAL(PRESENT, test "x$has_present" != "xno")
+AC_MSG_RESULT([$has_present])
+if test "x$has_present" != "xno"; then
+        AC_DEFINE(HAVE_PRESENT,1,[Enable PRESENT driver support])
+	dri_msg="$dri_msg Present"
+fi
 
 AC_MSG_CHECKING([whether to include UXA support])
 AC_MSG_RESULT([$UXA])

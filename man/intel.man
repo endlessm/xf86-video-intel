@@ -121,6 +121,11 @@ Disable or enable acceleration.
 .IP
 Default: acceleration is enabled.
 .TP
+.BI "Option \*qPresent\*q \*q" boolean \*q
+Enable use of hardware counters and flow control for the Present extension.
+.IP
+Default: Enabled
+.TP
 .BI "Option \*qAccelMethod\*q \*q" string \*q
 Select acceleration method.
 There are a couple of backends available for accelerating the DDX. \*qUXA\*q (Unified

@@ -104,7 +104,7 @@ static inline void intel_set_device(ScrnInfoPtr scrn, struct intel_device *dev)
 	xf86GetEntityPrivate(scrn->entityList[0], intel_device_key)->ptr = dev;
 }
 
-static Bool is_i915_device(int fd)
+static int is_i915_device(int fd)
 {
 	drm_version_t version;
 	char name[5] = "";
@@ -114,9 +114,26 @@ static Bool is_i915_device(int fd)
 	version.name = name;
 
 	if (drmIoctl(fd, DRM_IOCTL_VERSION, &version))
-		return FALSE;
+		return 0;
 
 	return strcmp("i915", name) == 0;
+}
+
+static int is_i915_gem(int fd)
+{
+	int ret = is_i915_device(fd);
+
+	if (ret) {
+		struct drm_i915_getparam gp;
+
+		gp.param = I915_PARAM_HAS_GEM;
+		gp.value = &ret;
+
+		if (drmIoctl(fd, DRM_IOCTL_I915_GETPARAM, &gp))
+			ret = 0;
+	}
+
+	return ret;
 }
 
 static int __intel_check_device(int fd)
@@ -124,20 +141,13 @@ static int __intel_check_device(int fd)
 	int ret;
 
 	/* Confirm that this is a i915.ko device with GEM/KMS enabled */
-	ret = is_i915_device(fd);
-	if (ret) {
-		struct drm_i915_getparam gp;
-		gp.param = I915_PARAM_HAS_GEM;
-		gp.value = &ret;
-		if (drmIoctl(fd, DRM_IOCTL_I915_GETPARAM, &gp))
-			ret = FALSE;
-	}
+	ret = is_i915_gem(fd);
 	if (ret && !hosted()) {
 		struct drm_mode_card_res res;
 
 		memset(&res, 0, sizeof(res));
 		if (drmIoctl(fd, DRM_IOCTL_MODE_GETRESOURCES, &res))
-			ret = FALSE;
+			ret = 0;
 	}
 
 	return ret;
@@ -203,20 +213,25 @@ static char *find_master_node(int fd)
 	return drmGetDeviceNameFromFd(fd);
 }
 
+static int is_render_node(int fd, struct stat *st)
+{
+	if (fstat(fd, st))
+		return 0;
+
+	if (!S_ISCHR(st->st_mode))
+		return 0;
+
+	return st->st_rdev & 0x80;
+}
+
 static char *find_render_node(int fd)
 {
 #if defined(USE_RENDERNODE)
 	struct stat master, render;
 	char buf[128];
 
-	if (fstat(fd, &master))
-		return NULL;
-
-	if (!S_ISCHR(master.st_mode))
-		return NULL;
-
 	/* Are we a render-node ourselves? */
-	if (master.st_rdev & 0x80)
+	if (is_render_node(fd, &master))
 		return NULL;
 
 	sprintf(buf, "/dev/dri/renderD%d", (int)((master.st_rdev | 0x80) & 0xbf));
@@ -398,6 +413,45 @@ const char *intel_get_client_name(ScrnInfoPtr scrn)
 	struct intel_device *dev = intel_device(scrn);
 	assert(dev && dev->render_node);
 	return dev->render_node;
+}
+
+static int authorise(struct intel_device *dev, int fd)
+{
+	struct stat st;
+	drm_magic_t magic;
+
+	assert(is_i915_gem(fd));
+
+	if (is_render_node(fd, &st)) /* restricted authority, do not elevate */
+		return 1;
+
+	return drmGetMagic(fd, &magic) == 0 && drmAuthMagic(dev->fd, magic) == 0;
+}
+
+int intel_get_client_fd(ScrnInfoPtr scrn)
+{
+	struct intel_device *dev;
+	int fd = -1;
+
+	dev = intel_device(scrn);
+	assert(dev);
+	assert(dev->fd != -1);
+	assert(dev->render_node);
+
+#ifdef O_CLOEXEC
+	fd = open(dev->render_node, O_RDWR | O_CLOEXEC);
+#endif
+	if (fd < 0)
+		fd = fd_set_cloexec(open(dev->render_node, O_RDWR));
+	if (fd < 0)
+		return -BadAlloc;
+
+	if (!authorise(dev, fd)) {
+		close(fd);
+		return -BadMatch;
+	}
+
+	return fd;
 }
 
 int intel_get_device_id(ScrnInfoPtr scrn)
