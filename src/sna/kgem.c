@@ -169,7 +169,9 @@ struct local_i915_gem_caching {
 };
 
 #define LOCAL_I915_GEM_SET_CACHING	0x2f
+#define LOCAL_I915_GEM_GET_CACHING	0x30
 #define LOCAL_IOCTL_I915_GEM_SET_CACHING DRM_IOW(DRM_COMMAND_BASE + LOCAL_I915_GEM_SET_CACHING, struct local_i915_gem_caching)
+#define LOCAL_IOCTL_I915_GEM_GET_CACHING DRM_IOW(DRM_COMMAND_BASE + LOCAL_I915_GEM_GET_CACHING, struct local_i915_gem_caching)
 
 struct kgem_buffer {
 	struct kgem_bo base;
@@ -2108,7 +2110,7 @@ static void __kgem_bo_destroy(struct kgem *kgem, struct kgem_bo *bo)
 	if (!IS_USER_MAP(bo->map__cpu))
 		bo->flush = false;
 
-	if (bo->scanout) {
+	if (bo->scanout && bo->delta) {
 		kgem_bo_move_to_scanout(kgem, bo);
 		return;
 	}
@@ -2241,7 +2243,7 @@ static bool kgem_retire__flushing(struct kgem *kgem)
 
 		if (bo->snoop) {
 			kgem_bo_move_to_snoop(kgem, bo);
-		} else if (bo->scanout) {
+		} else if (bo->scanout && bo->delta) {
 			kgem_bo_move_to_scanout(kgem, bo);
 		} else if ((bo = kgem_bo_replace_io(bo))->reusable &&
 			   kgem_bo_set_purgeable(kgem, bo)) {
@@ -2303,7 +2305,7 @@ static bool __kgem_retire_rq(struct kgem *kgem, struct kgem_request *rq)
 
 		if (bo->snoop) {
 			kgem_bo_move_to_snoop(kgem, bo);
-		} else if (bo->scanout) {
+		} else if (bo->scanout && bo->delta) {
 			kgem_bo_move_to_scanout(kgem, bo);
 		} else if ((bo = kgem_bo_replace_io(bo))->reusable &&
 			   kgem_bo_set_purgeable(kgem, bo)) {
@@ -2836,7 +2838,7 @@ void kgem_reset(struct kgem *kgem)
 
 			if (bo->snoop) {
 				kgem_bo_move_to_snoop(kgem, bo);
-			} else if (bo->scanout) {
+			} else if (bo->scanout && bo->delta) {
 				kgem_bo_move_to_scanout(kgem, bo);
 			} else if ((bo = kgem_bo_replace_io(bo))->reusable &&
 				   kgem_bo_set_purgeable(kgem, bo)) {
@@ -3817,6 +3819,7 @@ struct kgem_bo *kgem_create_for_prime(struct kgem *kgem, int name, uint32_t size
 #ifdef DRM_IOCTL_PRIME_FD_TO_HANDLE
 	struct drm_prime_handle args;
 	struct drm_i915_gem_get_tiling tiling;
+	struct local_i915_gem_caching caching;
 	struct kgem_bo *bo;
 	off_t seek;
 
@@ -3851,9 +3854,41 @@ struct kgem_bo *kgem_create_for_prime(struct kgem *kgem, int name, uint32_t size
 		return NULL;
 	}
 
+	bo->unique_id = kgem_get_unique_id(kgem);
 	bo->tiling = tiling.tiling_mode;
 	bo->reusable = false;
 	bo->domain = DOMAIN_NONE;
+
+	/* is this a special bo (e.g. scanout or CPU coherent)? */
+
+	VG_CLEAR(caching);
+	caching.handle = args.handle;
+	caching.caching = kgem->has_llc;
+	(void)drmIoctl(kgem->fd, LOCAL_IOCTL_I915_GEM_GET_CACHING, &caching);
+	DBG(("%s: imported handle=%d has caching %d\n", __FUNCTION__, args.handle, caching.caching));
+	switch (caching.caching) {
+	case 0:
+		if (kgem->has_llc) {
+			DBG(("%s: interpreting handle=%d as a foreign scanout\n"));
+			bo->scanout = true;
+		}
+		break;
+	case 1:
+		if (!kgem->has_llc) {
+			DBG(("%s: interpreting handle=%d as a foreign snooped buffer\n"));
+			bo->snoop = true;
+			if (bo->tiling) {
+				DBG(("%s: illegal snooped tiled buffer\n", __FUNCTION__));
+				kgem_bo_free(kgem, bo);
+				return NULL;
+			}
+		}
+		break;
+	case 2:
+		DBG(("%s: interpreting handle=%d as a foreign scanout\n"));
+		bo->scanout = true;
+		break;
+	}
 
 	debug_alloc__bo(kgem, bo);
 	return bo;
