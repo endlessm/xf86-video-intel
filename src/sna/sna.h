@@ -315,8 +315,14 @@ struct sna {
 		bool available;
 		bool open;
 
+#if HAVE_DRI2
 		void *flip_pending;
-		unsigned int last_msc[MAX_PIPES];
+		struct {
+			uint64_t msc;
+			unsigned int tv_sec;
+			unsigned int tv_usec;
+		} last_swap[MAX_PIPES];
+#endif
 	} dri2;
 
 	struct sna_xv {

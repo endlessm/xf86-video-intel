@@ -876,20 +876,10 @@ inline static uint32_t pipe_select(int pipe)
 
 static inline int sna_wait_vblank(struct sna *sna, drmVBlank *vbl, int pipe)
 {
-	int ret;
-
 	DBG(("%s(pipe=%d)\n", __FUNCTION__, pipe));
 
 	vbl->request.type |= pipe_select(pipe);
-	ret = drmIoctl(sna->kgem.fd, DRM_IOCTL_WAIT_VBLANK, vbl);
-	if (ret)
-		return ret;
-
-	assert(pipe < MAX_PIPES);
-	DBG(("%s: last_msc[%d] = %u\n", __FUNCTION__, pipe, vbl->request.sequence));
-	sna->dri2.last_msc[pipe] = vbl->request.sequence;
-
-	return 0;
+	return drmIoctl(sna->kgem.fd, DRM_IOCTL_WAIT_VBLANK, vbl);
 }
 
 #if DRI2INFOREC_VERSION >= 4
@@ -1309,6 +1299,21 @@ sna_dri2_exchange_buffers(DrawablePtr draw,
 	back->name = tmp;
 }
 
+static void fake_swap_complete(struct sna *sna,
+			       ClientPtr client, DrawablePtr draw, int type,
+			       DRI2SwapEventPtr func, void *data)
+{
+	DBG(("%s: frame=%d, tv=%d.%06d\n", __FUNCTION__,
+	     sna->dri2.last_swap[0].msc,
+	     sna->dri2.last_swap[0].tv_sec,
+	     sna->dri2.last_swap[0].tv_usec));
+	DRI2SwapComplete(client, draw,
+			 sna->dri2.last_swap[0].msc,
+			 sna->dri2.last_swap[0].tv_sec,
+			 sna->dri2.last_swap[0].tv_usec,
+			 type, func, data);
+}
+
 static void chain_swap(struct sna *sna,
 		       DrawablePtr draw,
 		       int frame, unsigned int tv_sec, unsigned int tv_usec,
@@ -1400,8 +1405,12 @@ void sna_dri2_vblank_handler(struct sna *sna, struct drm_event_vblank *event)
 {
 	struct sna_dri2_frame_event *info = (void *)(uintptr_t)event->user_data;
 	DrawablePtr draw;
+	drmVBlank vbl;
 
-	DBG(("%s(type=%d)\n", __FUNCTION__, info->type));
+	DBG(("%s(type=%d, sequence=%d)\n", __FUNCTION__, info->type, event->sequence));
+	sna->dri2.last_swap[info->pipe].msc = event->sequence;
+	sna->dri2.last_swap[info->pipe].tv_sec = event->tv_sec;
+	sna->dri2.last_swap[info->pipe].tv_usec = event->tv_usec;
 
 	draw = info->draw;
 	if (draw == NULL) {
@@ -1419,27 +1428,26 @@ void sna_dri2_vblank_handler(struct sna *sna, struct drm_event_vblank *event)
 		/* else fall through to blit */
 	case SWAP:
 		if (sna->mode.shadow_flip && !sna->mode.shadow_damage) {
-			drmVBlank vbl;
-
 			/* recursed from wait_for_shadow(), simply requeue */
 			DBG(("%s -- recursed from wait_for_shadow(), requeuing\n", __FUNCTION__));
 
-			VG_CLEAR(vbl);
-			vbl.request.type =
-				DRM_VBLANK_RELATIVE |
-				DRM_VBLANK_EVENT;
-			vbl.request.sequence = 1;
-			vbl.request.signal = (unsigned long)info;
-
-			if (!sna_wait_vblank(sna, &vbl, info->pipe))
-				return;
-
-			DBG(("%s -- requeue failed, errno=%d\n", __FUNCTION__, errno));
 		} else {
 			info->bo = __sna_dri2_copy_region(sna, draw, NULL,
 							 info->back, info->front, true);
 			info->type = SWAP_WAIT;
 		}
+
+		VG_CLEAR(vbl);
+		vbl.request.type =
+			DRM_VBLANK_RELATIVE |
+			DRM_VBLANK_EVENT;
+		vbl.request.sequence = 1;
+		vbl.request.signal = (unsigned long)info;
+
+		if (!sna_wait_vblank(sna, &vbl, info->pipe))
+			return;
+
+		DBG(("%s -- requeue failed, errno=%d\n", __FUNCTION__, errno));
 		/* fall through to SwapComplete */
 	case SWAP_WAIT:
 		if (!sna_dri2_blit_complete(sna, info))
@@ -1545,10 +1553,10 @@ sna_dri2_immediate_blit(struct sna *sna,
 #endif
 				if (!XORG_CAN_TRIPLE_BUFFER || !ret) {
 					DBG(("%s: fake triple bufferring, unblocking client\n", __FUNCTION__));
-					DRI2SwapComplete(info->client, draw, 0, 0, 0,
-							 DRI2_BLIT_COMPLETE,
-							 info->event_complete,
-							 info->event_data);
+					fake_swap_complete(sna, info->client, draw,
+							   DRI2_BLIT_COMPLETE,
+							   info->event_complete,
+							   info->event_data);
 				}
 			}
 		} else {
@@ -1561,10 +1569,10 @@ sna_dri2_immediate_blit(struct sna *sna,
 						 info->back, info->front, false);
 		if (event) {
 			DBG(("%s: unblocking client\n", __FUNCTION__));
-			DRI2SwapComplete(info->client, draw, 0, 0, 0,
-					 DRI2_BLIT_COMPLETE,
-					 info->event_complete,
-					 info->event_data);
+			fake_swap_complete(sna, info->client, draw,
+					   DRI2_BLIT_COMPLETE,
+					   info->event_complete,
+					   info->event_data);
 		}
 	}
 
@@ -1674,11 +1682,10 @@ sna_dri2_flip_continue(struct sna *sna, struct sna_dri2_frame_event *info)
 		sna_dri2_flip_get_back(sna, info);
 #if !XORG_CAN_TRIPLE_BUFFER
 		DBG(("%s: fake triple buffering, unblocking client\n", __FUNCTION__));
-		DRI2SwapComplete(info->client, info->draw,
-				 0, 0, 0,
-				 DRI2_FLIP_COMPLETE,
-				 info->client ? info->event_complete : NULL,
-				 info->event_data);
+		fake_swap_complete(sna, info->client, info->draw,
+				   DRI2_FLIP_COMPLETE,
+				   info->client ? info->event_complete : NULL,
+				   info->event_data);
 #endif
 	}
 
@@ -1728,8 +1735,9 @@ static void chain_flip(struct sna *sna)
 		}
 #endif
 		DBG(("%s: fake triple buffering (or vblank wait failed), unblocking client\n", __FUNCTION__));
-		DRI2SwapComplete(chain->client, chain->draw, 0, 0, 0,
-				 DRI2_BLIT_COMPLETE, chain->client ? chain->event_complete : NULL, chain->event_data);
+		fake_swap_complete(sna, chain->client, chain->draw,
+				   DRI2_BLIT_COMPLETE,
+				   chain->client ? chain->event_complete : NULL, chain->event_data);
 		sna_dri2_frame_event_info_free(sna, chain->draw, chain);
 	}
 }
@@ -1873,22 +1881,33 @@ sna_dri2_page_flip_handler(struct sna *sna,
 	if (--info->count)
 		return;
 
+	DBG(("%s: sequence=%d\n", __FUNCTION__, event->sequence));
+	sna->dri2.last_swap[info->pipe].msc = event->sequence;
+	sna->dri2.last_swap[info->pipe].tv_sec = event->tv_sec;
+	sna->dri2.last_swap[info->pipe].tv_usec = event->tv_usec;
 	sna_dri2_flip_event(sna, info);
 }
 
 static CARD64
-get_current_msc_for_target(struct sna *sna, CARD64 target_msc, int pipe)
+get_current_msc(struct sna *sna, int pipe)
 {
+	drmVBlank vbl;
 	CARD64 ret = -1;
 
-	if (target_msc && (sna->flags & SNA_NO_WAIT) == 0) {
-		drmVBlank vbl;
+	VG_CLEAR(vbl);
+	vbl.request.type = DRM_VBLANK_RELATIVE | pipe_select(pipe);
+	vbl.request.sequence = 0;
+	if (sna_wait_vblank(sna, &vbl, pipe) == 0) {
+		DBG(("%s: recording last swap on pipe=%d, frame %d, time %d.%06d\n",
+		     __FUNCTION__, pipe,
+		     vbl.reply.sequence,
+		     vbl.reply.tval_sec,
+		     vbl.reply.tval_usec));
+		sna->dri2.last_swap[pipe].tv_sec = vbl.reply.tval_sec;
+		sna->dri2.last_swap[pipe].tv_usec = vbl.reply.tval_usec;
+		sna->dri2.last_swap[pipe].msc = vbl.reply.sequence;
 
-		VG_CLEAR(vbl);
-		vbl.request.type = DRM_VBLANK_RELATIVE | pipe_select(pipe);
-		vbl.request.sequence = 0;
-		if (sna_wait_vblank(sna, &vbl, pipe) == 0)
-			ret = vbl.reply.sequence;
+		ret = vbl.reply.sequence;
 	}
 
 	return ret;
@@ -1936,6 +1955,35 @@ static int use_triple_buffer(struct sna *sna, ClientPtr client, bool async)
 #endif
 }
 
+static bool immediate_swap(struct sna *sna,
+			   uint64_t target_msc,
+			   uint64_t divisor,
+			   int pipe,
+			   uint64_t *current_msc)
+{
+	if (divisor == 0) {
+		*current_msc = -1;
+
+		if (sna->flags & SNA_NO_WAIT) {
+			DBG(("%s: yes, waits are disabled\n", __FUNCTION__));
+			return true;
+		}
+
+		if (target_msc)
+			*current_msc = get_current_msc(sna, pipe);
+
+		DBG(("%s: current_msc=%ld, target_msc=%ld -- %\n",
+		     __FUNCTION__, (long)*current_msc, (long)target_msc,
+		     (*current_msc >= target_msc - 1) ? "yes" : "no"));
+		return *current_msc >= target_msc - 1;
+	}
+
+	DBG(("%s: explicit waits requests, divisor=%ld\n",
+	     __FUNCTION__, (long)divisor));
+	*current_msc = get_current_msc(sna, pipe);
+	return false;
+}
+
 static bool
 sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw,
 		      DRI2BufferPtr front, DRI2BufferPtr back, int pipe,
@@ -1947,12 +1995,7 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw,
 	drmVBlank vbl;
 	CARD64 current_msc;
 
-	current_msc = get_current_msc_for_target(sna, *target_msc, pipe);
-
-	DBG(("%s: target_msc=%u, current_msc=%u, divisor=%u\n", __FUNCTION__,
-	     (uint32_t)*target_msc, (uint32_t)current_msc, (uint32_t)divisor));
-
-	if (divisor == 0 && current_msc >= *target_msc - 1) {
+	if (immediate_swap(sna, *target_msc, divisor, pipe, &current_msc)) {
 		int type;
 
 		info = sna->dri2.flip_pending;
@@ -2031,9 +2074,7 @@ new_back:
 			sna_dri2_flip_get_back(sna, info);
 			if (type == FLIP_COMPLETE) {
 				DBG(("%s: fake triple bufferring, unblocking client\n", __FUNCTION__));
-				DRI2SwapComplete(client, draw, 0, 0, 0,
-						 DRI2_EXCHANGE_COMPLETE,
-						 func, data);
+				fake_swap_complete(sna, client, draw, DRI2_EXCHANGE_COMPLETE, func, data);
 			}
 		}
 out:
@@ -2078,13 +2119,13 @@ out:
 	 * we just need to make sure target_msc passes before initiating
 	 * the swap.
 	 */
-	if (current_msc <= *target_msc - 1) {
+	if (current_msc < *target_msc) {
 		DBG(("%s: waiting for swap: current=%d, target=%d, divisor=%d\n",
 		     __FUNCTION__,
 		     (int)current_msc,
 		     (int)*target_msc,
 		     (int)divisor));
-		vbl.request.sequence = *target_msc;
+		vbl.request.sequence = *target_msc - 1;
 	} else {
 		DBG(("%s: missed target, queueing event for next: current=%d, target=%d, divisor=%d\n",
 		     __FUNCTION__,
@@ -2092,10 +2133,9 @@ out:
 		     (int)*target_msc,
 		     (int)divisor));
 
-		if (divisor == 0)
-			divisor = 1;
-
-		vbl.request.sequence = current_msc - current_msc % divisor + remainder;
+		vbl.request.sequence = current_msc;
+		if (divisor)
+			vbl.request.sequence += remainder - current_msc % divisor;
 
 		/*
 		 * If the calculated deadline vbl.request.sequence is
@@ -2108,6 +2148,7 @@ out:
 		 * This comparison takes the 1 frame swap delay
 		 * in pageflipping mode into account.
 		 */
+		vbl.request.sequence -= 1;
 		if (vbl.request.sequence <= current_msc)
 			vbl.request.sequence += divisor;
 
@@ -2116,7 +2157,6 @@ out:
 	}
 
 	/* Account for 1 frame extra pageflip delay */
-	vbl.request.sequence -= 1;
 	vbl.request.signal = (unsigned long)info;
 	if (sna_wait_vblank(sna, &vbl, pipe)) {
 		sna_dri2_frame_event_info_free(sna, draw, info);
@@ -2237,11 +2277,7 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 
 	info->type = swap_type;
 
-	current_msc = get_current_msc_for_target(sna, *target_msc, pipe);
-	DBG(("%s: target_msc=%u, current_msc=%u, divisor=%u\n", __FUNCTION__,
-	     (uint32_t)*target_msc, (uint32_t)current_msc, (uint32_t)divisor));
-
-	if (divisor == 0 && current_msc >= *target_msc - 1) {
+	if (immediate_swap(sna, *target_msc, divisor, pipe, &current_msc)) {
 		bool sync = current_msc < *target_msc;
 		if (!sna_dri2_immediate_blit(sna, info, sync, true))
 			sna_dri2_frame_event_info_free(sna, draw, info);
@@ -2249,6 +2285,11 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 			*target_msc = current_msc + sync;
 		return TRUE;
 	}
+
+	vbl.request.type =
+		DRM_VBLANK_ABSOLUTE |
+		DRM_VBLANK_EVENT;
+	vbl.request.signal = (unsigned long)info;
 
 	/*
 	 * If divisor is zero, or current_msc is smaller than target_msc
@@ -2264,51 +2305,48 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 
 		info->type = SWAP;
 
-		vbl.request.type =
-			DRM_VBLANK_ABSOLUTE |
-			DRM_VBLANK_EVENT;
-		vbl.request.sequence = *target_msc;
-		vbl.request.signal = (unsigned long)info;
-		if (sna_wait_vblank(sna, &vbl, pipe))
-			goto blit;
+		vbl.request.sequence = *target_msc - 1;
+	} else {
+		/*
+		 * If we get here, target_msc has already passed or we don't have one,
+		 * and we need to queue an event that will satisfy the divisor/remainder
+		 * equation.
+		 */
+		DBG(("%s: missed target, queueing event for next: current=%d, target=%d,  divisor=%d\n",
+		     __FUNCTION__,
+		     (int)current_msc,
+		     (int)*target_msc,
+		     (int)divisor));
 
-		return TRUE;
+		vbl.request.sequence = current_msc;
+		if (divisor)
+			vbl.request.sequence += remainder - current_msc % divisor;
+		/*
+		 * If the calculated deadline vbl.request.sequence is smaller than
+		 * or equal to current_msc, it means we've passed the last point
+		 * when effective onset frame seq could satisfy
+		 * seq % divisor == remainder, so we need to wait for the next time
+		 * this will happen.
+		 */
+		vbl.request.sequence -= 1;
+		if (vbl.request.sequence < current_msc)
+			vbl.request.sequence += divisor;
+		*target_msc = vbl.reply.sequence;
+		DBG(("%s: queueing target_msc = %d\n", __FUNCTION__, vbl.reply.sequence));
+		if (vbl.request.sequence == current_msc) {
+			DBG(("%s: performing blit before queueing\n", __FUNCTION__));
+			info->bo = __sna_dri2_copy_region(sna, draw, NULL,
+							  info->back, info->front,
+							  true);
+			info->type = SWAP_WAIT;
+
+			vbl.request.type =
+				DRM_VBLANK_RELATIVE |
+				DRM_VBLANK_EVENT;
+			vbl.request.sequence = 1;
+		}
 	}
 
-	/*
-	 * If we get here, target_msc has already passed or we don't have one,
-	 * and we need to queue an event that will satisfy the divisor/remainder
-	 * equation.
-	 */
-	DBG(("%s: missed target, queueing event for next: current=%d, target=%d,  divisor=%d\n",
-	     __FUNCTION__,
-	     (int)current_msc,
-	     (int)*target_msc,
-	     (int)divisor));
-
-	if (divisor == 0)
-		divisor = 1;
-
-	vbl.request.type =
-		DRM_VBLANK_ABSOLUTE |
-		DRM_VBLANK_EVENT |
-		DRM_VBLANK_NEXTONMISS;
-
-	vbl.request.sequence = current_msc - current_msc % divisor + remainder;
-	/*
-	 * If the calculated deadline vbl.request.sequence is smaller than
-	 * or equal to current_msc, it means we've passed the last point
-	 * when effective onset frame seq could satisfy
-	 * seq % divisor == remainder, so we need to wait for the next time
-	 * this will happen.
-	 */
-	if (vbl.request.sequence < current_msc)
-		vbl.request.sequence += divisor;
-	*target_msc = vbl.reply.sequence;
-	DBG(("%s: queueing target_msc = %d\n", __FUNCTION__, vbl.reply.sequence));
-
-	vbl.request.sequence -= 1;
-	vbl.request.signal = (unsigned long)info;
 	if (sna_wait_vblank(sna, &vbl, pipe))
 		goto blit;
 
@@ -2321,19 +2359,9 @@ blit:
 		sna_dri2_frame_event_info_free(sna, draw, info);
 skip:
 	DBG(("%s: unable to show frame, unblocking client\n", __FUNCTION__));
-	DRI2SwapComplete(client, draw, 0, 0, 0, DRI2_BLIT_COMPLETE, func, data);
+	fake_swap_complete(sna, client, draw, DRI2_BLIT_COMPLETE, func, data);
 	*target_msc = 0; /* offscreen, so zero out target vblank count */
 	return TRUE;
-}
-
-static uint64_t gettime_us(void)
-{
-	struct timespec tv;
-
-	if (clock_gettime(CLOCK_MONOTONIC, &tv))
-		return 0;
-
-	return (uint64_t)tv.tv_sec * 1000000 + tv.tv_nsec / 1000;
 }
 
 /*
@@ -2353,8 +2381,11 @@ sna_dri2_get_msc(DrawablePtr draw, CARD64 *ust, CARD64 *msc)
 fail:
 		/* Drawable not displayed, make up a *monotonic* value */
 		assert(pipe < MAX_PIPES);
-		*ust = gettime_us();
-		*msc = sna->dri2.last_msc[pipe < 0 ? 0 : pipe];
+		if (pipe < 0)
+			pipe = 0;
+		*msc = sna->dri2.last_swap[pipe].msc;
+		*ust = ((uint64_t)sna->dri2.last_swap[pipe].tv_sec * 100000 +
+			sna->dri2.last_swap[pipe].tv_usec);
 		return TRUE;
 	}
 
@@ -2362,6 +2393,15 @@ fail:
 	vbl.request.type = DRM_VBLANK_RELATIVE;
 	vbl.request.sequence = 0;
 	if (sna_wait_vblank(sna, &vbl, pipe) == 0) {
+		DBG(("%s: recording last swap on pipe=%d, frame %d, time %d.%06d\n",
+		     __FUNCTION__, pipe,
+		     vbl.reply.sequence,
+		     vbl.reply.tval_sec,
+		     vbl.reply.tval_usec));
+		sna->dri2.last_swap[pipe].tv_sec = vbl.reply.tval_sec;
+		sna->dri2.last_swap[pipe].tv_usec = vbl.reply.tval_usec;
+		sna->dri2.last_swap[pipe].msc = vbl.reply.sequence;
+
 		*ust = ((CARD64)vbl.reply.tval_sec * 1000000) + vbl.reply.tval_usec;
 		*msc = vbl.reply.sequence;
 		DBG(("%s: msc=%llu, ust=%llu\n", __FUNCTION__,
