@@ -74,12 +74,13 @@ sna_dri2_swap_limit_validate(DrawablePtr draw, int swap_limit)
 #define COLOR_PREFER_TILING_Y 0
 
 enum frame_event_type {
-	DRI2_WAITMSC = 0,
-	DRI2_SWAP,
-	DRI2_SWAP_WAIT,
-	DRI2_SWAP_THROTTLE,
-	DRI2_FLIP,
-	DRI2_FLIP_THROTTLE,
+	WAITMSC = 0,
+	SWAP,
+	SWAP_WAIT,
+	SWAP_THROTTLE,
+	FLIP,
+	FLIP_THROTTLE,
+	FLIP_COMPLETE,
 };
 
 struct sna_dri2_private {
@@ -1131,7 +1132,9 @@ sna_dri2_page_flip(struct sna *sna, struct sna_dri2_frame_event *info)
 	sna->dri2.flip_pending = info;
 
 #if XORG_CAN_TRIPLE_BUFFER
-	DRI2SwapLimit(info->draw, 1 + (info->type == DRI2_FLIP_THROTTLE));
+	DBG(("%s: setting swap limit to %d\n", __FUNCTION__,
+	     1 + (info->type == FLIP_THROTTLE)));
+	DRI2SwapLimit(info->draw, 1 + (info->type == FLIP_THROTTLE));
 #endif
 
 	return true;
@@ -1316,13 +1319,11 @@ static void chain_swap(struct sna *sna,
 	assert(chain == sna_dri2_window_get_chain((WindowPtr)draw));
 	DBG(("%s: chaining type=%d\n", __FUNCTION__, chain->type));
 	switch (chain->type) {
-	case DRI2_SWAP_THROTTLE:
+	case SWAP_THROTTLE:
 		DBG(("%s: emitting chained vsync'ed blit\n", __FUNCTION__));
 		if (sna->mode.shadow_flip && !sna->mode.shadow_damage) {
 			/* recursed from wait_for_shadow(), simply requeue */
 			DBG(("%s -- recursed from wait_for_shadow(), requeuing\n", __FUNCTION__));
-			chain->type = DRI2_SWAP;
-
 			VG_CLEAR(vbl);
 			vbl.request.type =
 				DRM_VBLANK_RELATIVE |
@@ -1334,11 +1335,12 @@ static void chain_swap(struct sna *sna,
 				return;
 
 			DBG(("%s -- requeue failed, errno=%d\n", __FUNCTION__, errno));
-		} else {
-			chain->bo = __sna_dri2_copy_region(sna, draw, NULL,
-							  chain->back, chain->front, true);
 		}
-	case DRI2_SWAP:
+
+		chain->bo = __sna_dri2_copy_region(sna, draw, NULL,
+						   chain->back, chain->front,
+						   true);
+	case SWAP:
 		break;
 	default:
 		return;
@@ -1351,6 +1353,7 @@ static void chain_swap(struct sna *sna,
 	vbl.request.sequence = 1;
 	vbl.request.signal = (unsigned long)chain;
 	if (sna_wait_vblank(sna, &vbl, chain->pipe)) {
+		DBG(("%s: vblank wait failed, unblocking client\n", __FUNCTION__));
 		DRI2SwapComplete(chain->client, draw,
 				 frame, tv_sec, tv_usec,
 				 DRI2_BLIT_COMPLETE,
@@ -1358,10 +1361,14 @@ static void chain_swap(struct sna *sna,
 		sna_dri2_frame_event_info_free(sna, draw, chain);
 	} else {
 #if !XORG_CAN_TRIPLE_BUFFER
+		DBG(("%s: fake triple buffering, unblocking client\n", __FUNCTION__));
 		DRI2SwapComplete(chain->client, draw,
 				 frame, tv_sec, tv_usec,
 				 DRI2_BLIT_COMPLETE,
 				 chain->client ? chain->event_complete : NULL, chain->event_data);
+#else
+		DBG(("%s: setting swap limit to 2\n", __FUNCTION__));
+		DRI2SwapLimit(draw, 2);
 #endif
 	}
 }
@@ -1403,14 +1410,14 @@ void sna_dri2_vblank_handler(struct sna *sna, struct drm_event_vblank *event)
 	}
 
 	switch (info->type) {
-	case DRI2_FLIP:
+	case FLIP:
 		/* If we can still flip... */
 		if (can_flip(sna, draw, info->front, info->back) &&
 		    sna_dri2_page_flip(sna, info))
 			return;
 
 		/* else fall through to blit */
-	case DRI2_SWAP:
+	case SWAP:
 		if (sna->mode.shadow_flip && !sna->mode.shadow_damage) {
 			drmVBlank vbl;
 
@@ -1431,13 +1438,15 @@ void sna_dri2_vblank_handler(struct sna *sna, struct drm_event_vblank *event)
 		} else {
 			info->bo = __sna_dri2_copy_region(sna, draw, NULL,
 							 info->back, info->front, true);
-			info->type = DRI2_SWAP_WAIT;
+			info->type = SWAP_WAIT;
 		}
 		/* fall through to SwapComplete */
-	case DRI2_SWAP_WAIT:
+	case SWAP_WAIT:
 		if (!sna_dri2_blit_complete(sna, info))
 			return;
 
+		DBG(("%s: swap complete, unblocking client (frame=%d, tv=%d.%06d)\n", __FUNCTION__,
+		     event->sequence, event->tv_sec, event->tv_usec));
 		DRI2SwapComplete(info->client,
 				 draw, event->sequence,
 				 event->tv_sec, event->tv_usec,
@@ -1446,7 +1455,7 @@ void sna_dri2_vblank_handler(struct sna *sna, struct drm_event_vblank *event)
 				 info->event_data);
 		break;
 
-	case DRI2_SWAP_THROTTLE:
+	case SWAP_THROTTLE:
 		DBG(("%s: %d complete, frame=%d tv=%d.%06d\n",
 		     __FUNCTION__, info->type,
 		     event->sequence, event->tv_sec, event->tv_usec));
@@ -1455,6 +1464,8 @@ void sna_dri2_vblank_handler(struct sna *sna, struct drm_event_vblank *event)
 		if (!sna_dri2_blit_complete(sna, info))
 			return;
 
+		DBG(("%s: triple buffer swap complete, unblocking client (frame=%d, tv=%d.%06d)\n", __FUNCTION__,
+		     event->sequence, event->tv_sec, event->tv_usec));
 		DRI2SwapComplete(info->client,
 				 draw, event->sequence,
 				 event->tv_sec, event->tv_usec,
@@ -1464,7 +1475,7 @@ void sna_dri2_vblank_handler(struct sna *sna, struct drm_event_vblank *event)
 #endif
 		break;
 
-	case DRI2_WAITMSC:
+	case WAITMSC:
 		DRI2WaitMSCComplete(info->client, draw,
 				    event->sequence,
 				    event->tv_sec,
@@ -1517,7 +1528,7 @@ sna_dri2_immediate_blit(struct sna *sna,
 			if (event) {
 				drmVBlank vbl;
 
-				info->type = DRI2_SWAP_THROTTLE;
+				info->type = SWAP_THROTTLE;
 
 				VG_CLEAR(vbl);
 				vbl.request.type =
@@ -1527,56 +1538,34 @@ sna_dri2_immediate_blit(struct sna *sna,
 				vbl.request.signal = (unsigned long)info;
 				ret = !sna_wait_vblank(sna, &vbl, info->pipe);
 #if XORG_CAN_TRIPLE_BUFFER
-				if (ret)
+				if (ret) {
+					DBG(("%s: setting swap limit to 2\n", __FUNCTION__));
 					DRI2SwapLimit(draw, 2);
+				}
 #endif
-				if (!XORG_CAN_TRIPLE_BUFFER || !ret)
+				if (!XORG_CAN_TRIPLE_BUFFER || !ret) {
+					DBG(("%s: fake triple bufferring, unblocking client\n", __FUNCTION__));
 					DRI2SwapComplete(info->client, draw, 0, 0, 0,
 							 DRI2_BLIT_COMPLETE,
 							 info->event_complete,
 							 info->event_data);
+				}
 			}
 		} else {
 			DBG(("%s: pending blit, chained\n", __FUNCTION__));
 			ret = true;
 		}
-#if XORG_CAN_TRIPLE_BUFFER
-	} else if (event) {
-		if (sna_dri2_window_get_chain((WindowPtr)draw) == info) {
-			drmVBlank vbl;
-
-			info->type = DRI2_SWAP_THROTTLE;
-			info->bo = __sna_dri2_copy_region(sna, draw, NULL,
-							 info->back, info->front, false);
-
-			VG_CLEAR(vbl);
-			vbl.request.type =
-				DRM_VBLANK_RELATIVE |
-				DRM_VBLANK_EVENT;
-			vbl.request.sequence = 1;
-			vbl.request.signal = (unsigned long)info;
-			ret = !sna_wait_vblank(sna, &vbl, info->pipe);
-			if (ret)
-				DRI2SwapLimit(draw, 2);
-			else
-				DRI2SwapComplete(info->client, draw, 0, 0, 0,
-						 DRI2_BLIT_COMPLETE,
-						 info->event_complete,
-						 info->event_data);
-		} else {
-			DBG(("%s: pending blit, chained\n", __FUNCTION__));
-			ret = true;
-		}
-#endif
 	} else {
 		DBG(("%s: immediate blit\n", __FUNCTION__));
 		info->bo = __sna_dri2_copy_region(sna, draw, NULL,
 						 info->back, info->front, false);
-		if (event)
+		if (event) {
+			DBG(("%s: unblocking client\n", __FUNCTION__));
 			DRI2SwapComplete(info->client, draw, 0, 0, 0,
 					 DRI2_BLIT_COMPLETE,
 					 info->event_complete,
 					 info->event_data);
+		}
 	}
 
 	DBG(("%s: continue? %d\n", __FUNCTION__, ret));
@@ -1653,7 +1642,7 @@ sna_dri2_flip_continue(struct sna *sna, struct sna_dri2_frame_event *info)
 {
 	DBG(("%s(mode=%d)\n", __FUNCTION__, info->mode));
 
-	if (info->mode > 1){
+	if (info->mode > 0){
 		if (get_private(info->front)->bo != sna_pixmap(sna->front)->gpu_bo)
 			return false;
 
@@ -1669,6 +1658,8 @@ sna_dri2_flip_continue(struct sna *sna, struct sna_dri2_frame_event *info)
 		info->scanout[0].name = info->front->name;
 		assert(info->scanout[0].bo->scanout);
 		sna->dri2.flip_pending = info;
+
+		info->type = info->mode;
 	} else {
 		if (!info->draw)
 			return false;
@@ -1682,6 +1673,7 @@ sna_dri2_flip_continue(struct sna *sna, struct sna_dri2_frame_event *info)
 
 		sna_dri2_flip_get_back(sna, info);
 #if !XORG_CAN_TRIPLE_BUFFER
+		DBG(("%s: fake triple buffering, unblocking client\n", __FUNCTION__));
 		DRI2SwapComplete(info->client, info->draw,
 				 0, 0, 0,
 				 DRI2_FLIP_COMPLETE,
@@ -1698,7 +1690,7 @@ static void chain_flip(struct sna *sna)
 {
 	struct sna_dri2_frame_event *chain = sna->dri2.flip_pending;
 
-	assert(chain->type == DRI2_FLIP);
+	assert(chain->type == FLIP);
 	DBG(("%s: chaining type=%d\n", __FUNCTION__, chain->type));
 
 	sna->dri2.flip_pending = NULL;
@@ -1709,7 +1701,7 @@ static void chain_flip(struct sna *sna)
 
 	assert(chain == sna_dri2_window_get_chain((WindowPtr)chain->draw));
 
-	if (chain->type == DRI2_FLIP &&
+	if (chain->type == FLIP &&
 	    can_flip(sna, chain->draw, chain->front, chain->back) &&
 	    sna_dri2_page_flip(sna, chain)) {
 		DBG(("%s: performing chained flip\n", __FUNCTION__));
@@ -1724,7 +1716,7 @@ static void chain_flip(struct sna *sna)
 
 			VG_CLEAR(vbl);
 
-			chain->type = DRI2_SWAP_WAIT;
+			chain->type = SWAP_WAIT;
 			vbl.request.type =
 				DRM_VBLANK_RELATIVE |
 				DRM_VBLANK_EVENT;
@@ -1735,6 +1727,7 @@ static void chain_flip(struct sna *sna)
 				return;
 		}
 #endif
+		DBG(("%s: fake triple buffering (or vblank wait failed), unblocking client\n", __FUNCTION__));
 		DRI2SwapComplete(chain->client, chain->draw, 0, 0, 0,
 				 DRI2_BLIT_COMPLETE, chain->client ? chain->event_complete : NULL, chain->event_data);
 		sna_dri2_frame_event_info_free(sna, chain->draw, chain);
@@ -1792,10 +1785,12 @@ static void sna_dri2_flip_event(struct sna *sna,
 
 	/* We assume our flips arrive in order, so we don't check the frame */
 	switch (flip->type) {
-	case DRI2_FLIP:
+	case FLIP:
 		DBG(("%s: flip complete (drawable gone? %d), msc=%d\n",
 		     __FUNCTION__, flip->draw == NULL, flip->fe_frame));
-		if (flip->draw)
+		if (flip->draw) {
+			DBG(("%s: swap complete, unblocking client (frame=%d, tv=%d.%06d)\n", __FUNCTION__,
+			     flip->fe_frame, flip->fe_tv_sec, flip->fe_tv_usec));
 			DRI2SwapComplete(flip->client, flip->draw,
 					 flip->fe_frame,
 					 flip->fe_tv_sec,
@@ -1803,6 +1798,7 @@ static void sna_dri2_flip_event(struct sna *sna,
 					 DRI2_FLIP_COMPLETE,
 					 flip->client ? flip->event_complete : NULL,
 					 flip->event_data);
+		}
 
 		sna_dri2_frame_event_info_free(sna, flip->draw, flip);
 
@@ -1810,9 +1806,10 @@ static void sna_dri2_flip_event(struct sna *sna,
 			chain_flip(sna);
 		break;
 
-	case DRI2_FLIP_THROTTLE:
-#if XORG_CAN_TRIPLE_BUFFER
-		if (flip->draw)
+	case FLIP_THROTTLE:
+		if (flip->draw) {
+			DBG(("%s: triple buffer swap complete, unblocking client (frame=%d, tv=%d.%06d)\n", __FUNCTION__,
+			     flip->fe_frame, flip->fe_tv_sec, flip->fe_tv_usec));
 			DRI2SwapComplete(flip->client, flip->draw,
 					 flip->fe_frame,
 					 flip->fe_tv_sec,
@@ -1820,7 +1817,8 @@ static void sna_dri2_flip_event(struct sna *sna,
 					 DRI2_FLIP_COMPLETE,
 					 flip->client ? flip->event_complete : NULL,
 					 flip->event_data);
-#endif
+		}
+	case FLIP_COMPLETE:
 		if (sna->dri2.flip_pending) {
 			sna_dri2_frame_event_info_free(sna, flip->draw, flip);
 			chain_flip(sna);
@@ -1903,13 +1901,21 @@ static Bool find(pointer value, XID id, pointer cdata)
 }
 #endif
 
-static int use_triple_buffer(struct sna *sna, ClientPtr client)
+static int use_triple_buffer(struct sna *sna, ClientPtr client, bool async)
 {
-	if ((sna->flags & SNA_TRIPLE_BUFFER) == 0)
-		return DRI2_FLIP;
+	if ((sna->flags & SNA_TRIPLE_BUFFER) == 0) {
+		DBG(("%s: triple buffer disabled, using FLIP\n", __FUNCTION__));
+		return FLIP;
+	}
+
+	if (async) {
+		DBG(("%s: running async, using FLIP_COMPLETE\n", __FUNCTION__));
+		return FLIP_COMPLETE;
+	}
 
 #if XORG_CAN_TRIPLE_BUFFER
-	return DRI2_FLIP_THROTTLE;
+	DBG(("%s: triple buffer enabled, using FLIP_THROTTLE\n", __FUNCTION__));
+	return FLIP_THROTTLE;
 #elif XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,12,99,901,0)
 	/* Hack: Disable triple buffering for compositors */
 	{
@@ -1918,12 +1924,15 @@ static int use_triple_buffer(struct sna *sna, ClientPtr client)
 			priv->is_compositor =
 				LookupClientResourceComplex(client,
 							    CompositeClientWindowType+1,
-							    find, NULL) ? DRI2_FLIP : DRI2_FLIP_THROTTLE;
+							    find, NULL) ? FLIP : FLIP_COMPLETE;
 
+		DBG(("%s: fake triple buffer enabled?=%d using %s\n", __FUNCTION__,
+		     priv->is_compositor != FLIP, priv->is_compositor == FLIP ? "FLIP" : "FLIP_COMPLETE"));
 		return priv->is_compositor;
 	}
 #else
-	return DRI2_FLIP_THROTTLE;
+	DBG(("%s: fake triple buffer enabled, using FLIP_COMPLETE\n", __FUNCTION__));
+	return FLIP_COMPLETE;
 #endif
 }
 
@@ -1944,13 +1953,14 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw,
 	     (uint32_t)*target_msc, (uint32_t)current_msc, (uint32_t)divisor));
 
 	if (divisor == 0 && current_msc >= *target_msc - 1) {
-		info = sna->dri2.flip_pending;
+		int type;
 
+		info = sna->dri2.flip_pending;
 		DBG(("%s: performing immediate swap on pipe %d, pending? %d, mode: %d\n",
 		     __FUNCTION__, pipe, info != NULL, info ? info->mode : 0));
 
 		if (info && info->draw == draw) {
-			assert(info->type == DRI2_FLIP_THROTTLE);
+			assert(info->type != FLIP);
 			assert(info->front == front);
 			if (info->back != back) {
 				_sna_dri2_destroy_buffer(sna, info->back);
@@ -1961,12 +1971,13 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw,
 				DBG(("%s: executing xchg of pending flip\n",
 				     __FUNCTION__));
 				sna_dri2_exchange_buffers(draw, front, back);
-				info->mode = 2;
+				info->mode = type = FLIP_COMPLETE;
 				current_msc = *target_msc;
 				goto new_back;
 			} else {
 				DBG(("%s: chaining flip\n", __FUNCTION__));
-				info->mode = 1;
+				type = FLIP_THROTTLE;
+				info->mode = -type;
 				current_msc++;
 				goto out;
 			}
@@ -1977,7 +1988,6 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw,
 			return false;
 
 		list_init(&info->cache);
-		info->type = use_triple_buffer(sna, client);
 		info->draw = draw;
 		info->client = client;
 		info->event_complete = func;
@@ -2001,9 +2011,14 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw,
 			 */
 			DBG(("%s: queueing flip after pending completion\n",
 			     __FUNCTION__));
-			info->type = DRI2_FLIP;
+			info->type = type = FLIP;
 			sna->dri2.flip_pending = info;
+#if XORG_CAN_TRIPLE_BUFFER
+			DBG(("%s: setting swap limit to 1\n", __FUNCTION__));
+			DRI2SwapLimit(draw, 1);
+#endif
 		} else {
+			info->type = type = use_triple_buffer(sna, client, *target_msc == 0);
 			if (!sna_dri2_page_flip(sna, info)) {
 				sna_dri2_frame_event_info_free(sna, draw, info);
 				return false;
@@ -2011,14 +2026,15 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw,
 		}
 
 		current_msc++;
-		if (info->type != DRI2_FLIP) {
+		if (info->type != FLIP) {
 new_back:
 			sna_dri2_flip_get_back(sna, info);
-#if !XORG_CAN_TRIPLE_BUFFER
-			DRI2SwapComplete(client, draw, 0, 0, 0,
-					 DRI2_EXCHANGE_COMPLETE,
-					 func, data);
-#endif
+			if (type == FLIP_COMPLETE) {
+				DBG(("%s: fake triple bufferring, unblocking client\n", __FUNCTION__));
+				DRI2SwapComplete(client, draw, 0, 0, 0,
+						 DRI2_EXCHANGE_COMPLETE,
+						 func, data);
+			}
 		}
 out:
 		DBG(("%s: target_msc=%lu\n", __FUNCTION__, (unsigned long)current_msc));
@@ -2038,7 +2054,7 @@ out:
 	info->front = front;
 	info->back = back;
 	info->pipe = pipe;
-	info->type = DRI2_FLIP;
+	info->type = FLIP;
 
 	info->scanout[0].bo = ref(get_private(front)->bo);
 	info->scanout[0].name = info->front->name;
@@ -2108,6 +2124,7 @@ out:
 	}
 
 #if XORG_CAN_TRIPLE_BUFFER
+	DBG(("%s: setting swap limit to 1\n", __FUNCTION__));
 	DRI2SwapLimit(draw, 1);
 #endif
 
@@ -2143,7 +2160,7 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 	drmVBlank vbl;
 	int pipe;
 	struct sna_dri2_frame_event *info = NULL;
-	enum frame_event_type swap_type = DRI2_SWAP;
+	enum frame_event_type swap_type = SWAP;
 	CARD64 current_msc;
 
 	DBG(("%s: pixmap=%ld, back=%u (refs=%d/%d, flush=%d) , fron=%u (refs=%d/%d, flush=%d)\n",
@@ -2245,7 +2262,7 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 		     (int)*target_msc,
 		     (int)divisor));
 
-		info->type = DRI2_SWAP;
+		info->type = SWAP;
 
 		vbl.request.type =
 			DRM_VBLANK_ABSOLUTE |
@@ -2288,6 +2305,7 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 	if (vbl.request.sequence < current_msc)
 		vbl.request.sequence += divisor;
 	*target_msc = vbl.reply.sequence;
+	DBG(("%s: queueing target_msc = %d\n", __FUNCTION__, vbl.reply.sequence));
 
 	vbl.request.sequence -= 1;
 	vbl.request.signal = (unsigned long)info;
@@ -2302,6 +2320,7 @@ blit:
 	if (info)
 		sna_dri2_frame_event_info_free(sna, draw, info);
 skip:
+	DBG(("%s: unable to show frame, unblocking client\n", __FUNCTION__));
 	DRI2SwapComplete(client, draw, 0, 0, 0, DRI2_BLIT_COMPLETE, func, data);
 	*target_msc = 0; /* offscreen, so zero out target vblank count */
 	return TRUE;
@@ -2416,7 +2435,7 @@ sna_dri2_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc
 	list_init(&info->cache);
 	info->draw = draw;
 	info->client = client;
-	info->type = DRI2_WAITMSC;
+	info->type = WAITMSC;
 	sna_dri2_add_frame_event(draw, info);
 
 	vbl.request.signal = (unsigned long)info;
