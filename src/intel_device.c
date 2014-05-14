@@ -37,8 +37,6 @@
 #include <stdlib.h>
 #include <errno.h>
 
-#include <sys/ioctl.h>
-
 #include <pciaccess.h>
 
 #include <xorg-server.h>
@@ -51,6 +49,16 @@
 #ifdef XSERVER_PLATFORM_BUS
 #include <xf86platformBus.h>
 #endif
+
+#ifdef HAVE_VALGRIND
+#include <valgrind.h>
+#include <memcheck.h>
+#define VG(x) x
+#else
+#define VG(x)
+#endif
+
+#define VG_CLEAR(s) VG(memset(&s, 0, sizeof(s)))
 
 #include "intel_driver.h"
 #include "fd.h"
@@ -70,11 +78,11 @@ static int __intel_get_device_id(int fd)
 	struct drm_i915_getparam gp;
 	int devid = 0;
 
-	memset(&gp, 0, sizeof(gp));
+	VG_CLEAR(gp);
 	gp.param = I915_PARAM_CHIPSET_ID;
 	gp.value = &devid;
 
-	if (ioctl(fd, DRM_IOCTL_I915_GETPARAM, &gp, sizeof(gp)))
+	if (drmIoctl(fd, DRM_IOCTL_I915_GETPARAM, &gp))
 		return 0;
 
 	return devid;
@@ -126,6 +134,7 @@ static int is_i915_gem(int fd)
 	if (ret) {
 		struct drm_i915_getparam gp;
 
+		VG_CLEAR(gp);
 		gp.param = I915_PARAM_HAS_GEM;
 		gp.value = &ret;
 
