@@ -1542,19 +1542,18 @@ sna_dri2_immediate_blit(struct sna *sna,
 	     __FUNCTION__, sync, sna_dri2_window_get_chain((WindowPtr)draw) != info,
 	     event));
 
-	if (sync) {
-		if (sna_dri2_window_get_chain((WindowPtr)draw) == info) {
-			DBG(("%s: no pending blit, starting chain\n",
-			     __FUNCTION__));
+	info->type = SWAP_THROTTLE;
+	if (sna_dri2_window_get_chain((WindowPtr)draw) == info) {
+		DBG(("%s: no pending blit, starting chain\n",
+		     __FUNCTION__));
 
-			info->bo = __sna_dri2_copy_region(sna, draw, NULL,
-							 info->back,
-							 info->front,
-							 true);
-			if (event) {
+		info->bo = __sna_dri2_copy_region(sna, draw, NULL,
+						  info->back,
+						  info->front,
+						  sync);
+		if (event) {
+			if (sync) {
 				drmVBlank vbl;
-
-				info->type = SWAP_THROTTLE;
 
 				VG_CLEAR(vbl);
 				vbl.request.type =
@@ -1569,29 +1568,18 @@ sna_dri2_immediate_blit(struct sna *sna,
 					DRI2SwapLimit(draw, 2);
 				}
 #endif
-				if (!XORG_CAN_TRIPLE_BUFFER || !ret) {
-					DBG(("%s: fake triple bufferring, unblocking client\n", __FUNCTION__));
-					fake_swap_complete(sna, info->client, draw,
-							   DRI2_BLIT_COMPLETE,
-							   info->event_complete,
-							   info->event_data);
-				}
 			}
-		} else {
-			DBG(("%s: pending blit, chained\n", __FUNCTION__));
-			ret = true;
+			if (!XORG_CAN_TRIPLE_BUFFER || !ret) {
+				DBG(("%s: fake triple bufferring, unblocking client\n", __FUNCTION__));
+				fake_swap_complete(sna, info->client, draw,
+						   DRI2_BLIT_COMPLETE,
+						   info->event_complete,
+						   info->event_data);
+			}
 		}
 	} else {
-		DBG(("%s: immediate blit\n", __FUNCTION__));
-		info->bo = __sna_dri2_copy_region(sna, draw, NULL,
-						 info->back, info->front, false);
-		if (event) {
-			DBG(("%s: unblocking client\n", __FUNCTION__));
-			fake_swap_complete(sna, info->client, draw,
-					   DRI2_BLIT_COMPLETE,
-					   info->event_complete,
-					   info->event_data);
-		}
+		DBG(("%s: pending blit, chained\n", __FUNCTION__));
+		ret = true;
 	}
 
 	DBG(("%s: continue? %d\n", __FUNCTION__, ret));
@@ -1990,7 +1978,7 @@ static bool immediate_swap(struct sna *sna,
 		if (target_msc)
 			*current_msc = get_current_msc(sna, pipe);
 
-		DBG(("%s: current_msc=%ld, target_msc=%ld -- %\n",
+		DBG(("%s: current_msc=%ld, target_msc=%ld -- %s\n",
 		     __FUNCTION__, (long)*current_msc, (long)target_msc,
 		     (*current_msc >= target_msc - 1) ? "yes" : "no"));
 		return *current_msc >= target_msc - 1;
@@ -2218,7 +2206,6 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 	drmVBlank vbl;
 	int pipe;
 	struct sna_dri2_frame_event *info = NULL;
-	enum frame_event_type swap_type = SWAP;
 	CARD64 current_msc;
 
 	DBG(("%s: pixmap=%ld, back=%u (refs=%d/%d, flush=%d) , fron=%u (refs=%d/%d, flush=%d)\n",
@@ -2293,7 +2280,7 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 	sna_dri2_reference_buffer(front);
 	sna_dri2_reference_buffer(back);
 
-	info->type = swap_type;
+	info->type = SWAP;
 
 	if (immediate_swap(sna, *target_msc, divisor, pipe, &current_msc)) {
 		bool sync = current_msc < *target_msc;
