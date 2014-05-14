@@ -5746,6 +5746,8 @@ struct kgem_bo *kgem_create_map(struct kgem *kgem,
 
 	assert(MAP(ptr) == ptr);
 
+	DBG(("%s(%p size=%d, read-only?=%d) - has_userptr?=%d\n", __FUNCTION__,
+	     ptr, size, read_only, kgem->has_userptr));
 	if (!kgem->has_userptr)
 		return NULL;
 
@@ -5759,8 +5761,10 @@ struct kgem_bo *kgem_create_map(struct kgem *kgem,
 	handle = gem_userptr(kgem->fd,
 			     (void *)first_page, last_page-first_page,
 			     read_only);
-	if (handle == 0)
+	if (handle == 0) {
+		DBG(("%s: import failed, errno=%d\n", __FUNCTION__, errno));
 		return NULL;
+	}
 
 	bo = __kgem_bo_alloc(handle, (last_page - first_page) / PAGE_SIZE);
 	if (bo == NULL) {

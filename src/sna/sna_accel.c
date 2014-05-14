@@ -959,11 +959,14 @@ fallback:
 	}
 
 	pixmap = create_pixmap_hdr(sna, screen, width, height, depth, 0, &priv);
-	if (pixmap == NullPixmap)
+	if (pixmap == NullPixmap) {
+		DBG(("%s: allocation failed\n", __FUNCTION__));
 		goto fallback;
+	}
 
 	priv->cpu_bo = kgem_create_map(&sna->kgem, addr, pitch*height, false);
 	if (priv->cpu_bo == NULL) {
+		DBG(("%s: mapping SHM segment failed\n", __FUNCTION__));
 		priv->header = true;
 		sna_pixmap_destroy(pixmap);
 		goto fallback;
@@ -1001,7 +1004,7 @@ sna_pixmap_create_unattached(ScreenPtr screen,
 {
 	return create_pixmap(to_sna_from_screen(screen),
 			     screen, width, height, depth,
-			     CREATE_PIXMAP_USAGE_SCRATCH);
+			     -1);
 }
 
 static PixmapPtr
@@ -3073,6 +3076,11 @@ __sna_pixmap_for_gpu(struct sna *sna, PixmapPtr pixmap, unsigned flags)
 		DBG(("%s: not attached\n", __FUNCTION__));
 		if ((flags & __MOVE_DRI) == 0)
 			return NULL;
+
+		if (pixmap->usage_hint == -1) {
+			DBG(("%s: not promoting SHM Pixmap for DRI\n", __FUNCTION__));
+			return NULL;
+		}
 
 		DBG(("%s: forcing the creation on the GPU\n", __FUNCTION__));
 
