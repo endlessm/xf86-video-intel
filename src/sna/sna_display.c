@@ -3240,6 +3240,14 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 	scrn->virtualY = height;
 	scrn->displayWidth = width;
 
+	/* Flush pending shadow updates */
+	if (sna->mode.shadow_flip) {
+		DBG(("%s: waiting for %d outstanding TearFree flips\n",
+		     __FUNCTION__, sna->mode.shadow_flip));
+		while (sna->mode.shadow_flip && sna_mode_wait_for_event(sna))
+			sna_mode_wakeup(sna);
+	}
+
 	/* Only update the CRTCs if we are in control */
 	if (!scrn->vtSema)
 		return TRUE;
