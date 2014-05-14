@@ -196,16 +196,23 @@ fi
 PKG_CHECK_MODULES(X11, [x11 xrender xrandr xext xfixes pixman-1], [x11="yes"], [x11="no"])
 AM_CONDITIONAL(HAVE_X11, test "x$x11" = "xyes")
 
-PKG_CHECK_MODULES(TOOL, [xinerama xrandr xdamage xfixes xcursor xtst xrender xext x11 pixman-1], [tools="yes"], [tools="no"])
+shm=yes
+AC_CHECK_HEADERS([sys/ipc.h sys/ipc.h], [], [shm="no"])
+AC_CHECK_HEADERS([X11/extensions/XShm.h], [], [shm="no"], [
+#include <X11/Xlibint.h>
+#include <X11/Xproto.h>
+])
+AC_CHECK_HEADERS([X11/extensions/shmproto.h X11/extensions/shmstr.h], [], [], [
+#include <X11/Xlibint.h>
+#include <X11/Xproto.h>
+])
+if test "x$ac_cv_header_X11_extensions_shmproto_h" != "xyes" -a "x$ac_cv_header_X11_extensions_shmstr_h" != "xyes"; then
+	shm="no"
+fi
 
-if test "x$tools" = "xyes"; then
-  AC_CHECK_HEADER([sys/ipc.h], [], [tools=no])
-  AC_CHECK_HEADER([sys/shm.h], [], [tools=no])
-  AC_CHECK_HEADER([sys/timerfd.h], [], [tools=no])
-
-  if test "$ac_cv_header_sys_ipc_h" = "yes" -a "$ac_cv_header_sys_shm_h" = "yes"; then
-      AC_MSG_CHECKING(whether shmctl IPC_RMID allows subsequent attaches)
-      AC_TRY_RUN([
+if test "x$shm" = "xyes"; then
+	AC_MSG_CHECKING(whether shmctl IPC_RMID allows subsequent attaches)
+	AC_TRY_RUN([
 		  #include <sys/types.h>
 		  #include <sys/ipc.h>
 		  #include <sys/shm.h>
@@ -230,18 +237,35 @@ if test "x$tools" = "xyes"; then
 		  AC_MSG_RESULT(yes),
 		  AC_MSG_RESULT(no),
 		  AC_MSG_RESULT(assuming no))
-      fi
-
-      AC_CHECK_HEADERS([X11/extensions/XShm.h X11/extensions/shmproto.h X11/extensions/shmstr.h], [], [tools=no],
-		       [#include <X11/Xlibint.h>
-			#include <X11/Xproto.h>])
 fi
 
-if test "x$tools" = "xyes"; then
+AC_ARG_ENABLE(tools,
+              AS_HELP_STRING([--disable-tools],
+			     [Enable building and installing the miscellaneous tools [default=auto]]),
+              [tools="$enableval"], [tools="auto"])
+if test "x$shm" != "xyes"; then
+	if test "x$tools" = "xyes"; then
+		AC_MSG_ERROR([Incomplete requirements for extra tools, X11 MIT-SHM extension required])
+	fi
+	tools="no"
+fi
+if test "x$tools" != "xno"; then
+	ivo_requires="xinerama xrandr xdamage xfixes xcursor xtst xrender xext x11 pixman-1"
+	PKG_CHECK_MODULES(IVO, [$ivo_requires], [ivo="yes"], [ivo="no"])
+	AC_CHECK_HEADER([sys/timerfd.h], [], [ivo="no"])
+	if test "x$ivo" = "xno"; then
+		if test "x$tools" = "xyes"; then
+			AC_MSG_ERROR([Incomplete requirements for intel-virtual-output, requires $ivo_requires])
+		fi
+		tools="no"
+	fi
+fi
+if test "x$tools" != "xno"; then
       tools_msg="$tools_msg intel-virtual-output"
 fi
-
-AM_CONDITIONAL(BUILD_TOOLS, test "x$tools" = "xyes")
+AC_MSG_CHECKING([whether to build additional tools])
+AC_MSG_RESULT([$tools])
+AM_CONDITIONAL(BUILD_TOOLS, test "x$tools" != "xno")
 
 # Define a configure option for an alternate module directory
 AC_ARG_WITH(xorg-module-dir,

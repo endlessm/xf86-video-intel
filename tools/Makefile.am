@@ -42,14 +42,14 @@ endif
 
 intel_virtual_output_CFLAGS = \
 	@CWARNFLAGS@ \
-	$(TOOL_CFLAGS) \
+	$(IVO_CFLAGS) \
 	@NOWARNFLAGS@ \
 	$(NULL)
 intel_virtual_output_SOURCES = \
 	virtual.c \
 	$(NULL)
 intel_virtual_output_LDADD = \
-	$(TOOL_LIBS) \
+	$(IVO_LIBS) \
 	$(NULL)
 
 xf86_video_intel_backlight_helper_SOURCES = \
