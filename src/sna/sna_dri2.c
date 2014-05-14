@@ -1378,10 +1378,28 @@ static void chain_swap(struct sna *sna,
 	}
 }
 
+static inline bool rq_is_busy(struct kgem *kgem, struct kgem_bo *bo)
+{
+	if (bo == NULL)
+		return false;
+
+	DBG(("%s: handle=%d, domain: %d exec? %d, rq? %d\n", __FUNCTION__,
+	     bo->handle, bo->domain, bo->exec != NULL, bo->rq != NULL));
+	assert(bo->refcnt);
+
+	if (bo->exec)
+		return true;
+
+	if (bo->rq == NULL)
+		return false;
+
+	return __kgem_busy(kgem, bo->handle);
+}
+
 static bool sna_dri2_blit_complete(struct sna *sna,
 				  struct sna_dri2_frame_event *info)
 {
-	if (info->bo && __kgem_bo_is_busy(&sna->kgem, info->bo)) {
+	if (rq_is_busy(&sna->kgem, info->bo)) {
 		drmVBlank vbl;
 
 		DBG(("%s: vsync'ed blit is still busy, postponing\n",
