@@ -553,6 +553,7 @@ static inline void kgem_bo_mark_busy(struct kgem_bo *bo, int ring)
 
 inline static void __kgem_bo_clear_busy(struct kgem_bo *bo)
 {
+	DBG(("%s: handle=%d\n", __FUNCTION__, bo->handle));
 	bo->rq = NULL;
 	list_del(&bo->request);
 
