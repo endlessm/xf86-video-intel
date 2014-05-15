@@ -4766,52 +4766,6 @@ static bool sna_emit_wait_for_scanline_hsw(struct sna *sna,
 	return true;
 }
 
-static bool sna_emit_wait_for_scanline_vlv(struct sna *sna,
-					   xf86CrtcPtr crtc,
-					   int pipe, int y1, int y2,
-					   bool full_height)
-{
-	uint32_t display_base = 0x180000;
-	uint32_t event;
-	uint32_t *b;
-
-	return false; /* synchronisation? I've heard of that */
-
-	if (!sna->kgem.has_secure_batches)
-		return false;
-
-	assert(y1 >= 0);
-	assert(y2 > y1);
-	assert(sna->kgem.mode);
-
-	/* Always program one less than the desired value */
-	if (--y1 < 0)
-		y1 = crtc->bounds.y2;
-	y2--;
-
-	b = kgem_get_batch(&sna->kgem);
-	sna->kgem.nbatch += 4;
-
-	if (pipe == 0) {
-		if (full_height)
-			event = MI_WAIT_FOR_PIPEA_SVBLANK;
-		else
-			event = MI_WAIT_FOR_PIPEA_SCAN_LINE_WINDOW;
-	} else {
-		if (full_height)
-			event = MI_WAIT_FOR_PIPEB_SVBLANK;
-		else
-			event = MI_WAIT_FOR_PIPEB_SCAN_LINE_WINDOW;
-	}
-	b[0] = MI_LOAD_REGISTER_IMM | 1;
-	b[1] = display_base + 0x70004 + 0x1000 * pipe;
-	b[2] = (1 << 31) | (y1 << 16) | y2;
-	b[3] = MI_WAIT_FOR_EVENT | event;
-
-	sna->kgem.batch_flags |= I915_EXEC_SECURE;
-	return true;
-}
-
 static bool sna_emit_wait_for_scanline_ivb(struct sna *sna,
 					   xf86CrtcPtr crtc,
 					   int pipe, int y1, int y2,
@@ -5029,10 +4983,12 @@ sna_wait_for_scanline(struct sna *sna,
 
 	if (sna->kgem.gen >= 0110)
 		ret = false;
+	else if (sna->kgem.gen == 0101)
+		ret = false; /* chv, vsync method unknown */
 	else if (sna->kgem.gen >= 075)
 		ret = sna_emit_wait_for_scanline_hsw(sna, crtc, pipe, y1, y2, full_height);
 	else if (sna->kgem.gen == 071)
-		ret = sna_emit_wait_for_scanline_vlv(sna, crtc, pipe, y1, y2, full_height);
+		ret = false; /* vlv, vsync method unknown */
 	else if (sna->kgem.gen >= 070)
 		ret = sna_emit_wait_for_scanline_ivb(sna, crtc, pipe, y1, y2, full_height);
 	else if (sna->kgem.gen >= 060)
