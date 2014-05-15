@@ -1585,6 +1585,7 @@ gen6_render_video(struct sna *sna,
 		  PixmapPtr pixmap)
 {
 	struct sna_composite_op tmp;
+	struct sna_pixmap *priv = sna_pixmap(pixmap);
 	int dst_width = dstRegion->extents.x2 - dstRegion->extents.x1;
 	int dst_height = dstRegion->extents.y2 - dstRegion->extents.y1;
 	int src_width = frame->src.x2 - frame->src.x1;
@@ -1592,7 +1593,6 @@ gen6_render_video(struct sna *sna,
 	float src_offset_x, src_offset_y;
 	float src_scale_x, src_scale_y;
 	int nbox, pix_xoff, pix_yoff;
-	struct sna_pixmap *priv;
 	unsigned filter;
 	BoxPtr box;
 
@@ -1605,10 +1605,7 @@ gen6_render_video(struct sna *sna,
 	     REGION_EXTENTS(NULL, dstRegion)->x2,
 	     REGION_EXTENTS(NULL, dstRegion)->y2));
 
-	priv = sna_pixmap_force_to_gpu(pixmap, MOVE_READ | MOVE_WRITE);
-	if (priv == NULL)
-		return false;
-
+	assert(priv->gpu_bo);
 	memset(&tmp, 0, sizeof(tmp));
 
 	tmp.dst.pixmap = pixmap;

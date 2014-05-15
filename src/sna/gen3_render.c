@@ -5398,9 +5398,8 @@ gen3_render_video(struct sna *sna,
 	DBG(("%s: src:%dx%d (frame:%dx%d) -> dst:%dx%d\n", __FUNCTION__,
 	     src_width, src_height, frame->width, frame->height, dst_width, dst_height));
 
+	assert(priv->gpu_bo);
 	dst_bo = priv->gpu_bo;
-	if (dst_bo == NULL)
-		return false;
 
 	bilinear = src_width != dst_width || src_height != dst_height;
 
