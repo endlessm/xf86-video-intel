@@ -640,17 +640,6 @@ if test "x$ROTATION" = "xyes"; then
 	xp_msg="$xp_msg rotation"
 fi
 
-AC_ARG_ENABLE(userptr,
-	      AS_HELP_STRING([--enable-userptr],
-			     [Enable use of userptr (experimental) [default=no]]),
-	      [USERPTR="$enableval"],
-	      [USERPTR="no"])
-AM_CONDITIONAL(USE_USERPTR, test "x$USERPTR" = "xyes")
-if test "x$USERPTR" = "xyes"; then
-	AC_DEFINE(USE_USERPTR,1,[Assume "userptr" support])
-	xp_msg="$xp_msg userptr"
-fi
-
 AC_ARG_ENABLE(async-swap,
 	      AS_HELP_STRING([--enable-async-swap],
 			     [Enable use of asynchronous swaps (experimental) [default=no]]),
