@@ -6073,7 +6073,7 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 		if (bo != dst_priv->gpu_bo)
 			goto fallback;
 
-		if (use_shm_bo(sna, bo, src_priv, alu, replaces)) {
+		if (use_shm_bo(sna, bo, src_priv, alu, replaces && !dst_priv->pinned)) {
 			bool ret;
 
 			DBG(("%s: region overlaps CPU damage, copy from CPU bo (shm? %d)\n",
