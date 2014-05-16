@@ -1303,8 +1303,8 @@ static void fake_swap_complete(struct sna *sna,
 			       ClientPtr client, DrawablePtr draw, int type,
 			       DRI2SwapEventPtr func, void *data)
 {
-	DBG(("%s: frame=%d, tv=%d.%06d\n", __FUNCTION__,
-	     sna->dri2.last_swap[0].msc,
+	DBG(("%s: frame=%lld, tv=%d.%06d\n", __FUNCTION__,
+	     (long long)sna->dri2.last_swap[0].msc,
 	     sna->dri2.last_swap[0].tv_sec,
 	     sna->dri2.last_swap[0].tv_usec));
 	DRI2SwapComplete(client, draw,
@@ -1657,6 +1657,8 @@ sna_dri2_flip_continue(struct sna *sna, struct sna_dri2_frame_event *info)
 	DBG(("%s(mode=%d)\n", __FUNCTION__, info->mode));
 
 	if (info->mode > 0){
+		info->type = info->mode;
+
 		if (get_private(info->front)->bo != sna_pixmap(sna->front)->gpu_bo)
 			return false;
 
@@ -1672,9 +1674,9 @@ sna_dri2_flip_continue(struct sna *sna, struct sna_dri2_frame_event *info)
 		info->scanout[0].name = info->front->name;
 		assert(info->scanout[0].bo->scanout);
 		sna->dri2.flip_pending = info;
-
-		info->type = info->mode;
 	} else {
+		info->type = -info->mode;
+
 		if (!info->draw)
 			return false;
 
@@ -1904,11 +1906,11 @@ get_current_msc(struct sna *sna, int pipe)
 	vbl.request.type = DRM_VBLANK_RELATIVE | pipe_select(pipe);
 	vbl.request.sequence = 0;
 	if (sna_wait_vblank(sna, &vbl, pipe) == 0) {
-		DBG(("%s: recording last swap on pipe=%d, frame %d, time %d.%06d\n",
+		DBG(("%s: recording last swap on pipe=%d, frame %lld, time %ld.%06ld\n",
 		     __FUNCTION__, pipe,
-		     vbl.reply.sequence,
-		     vbl.reply.tval_sec,
-		     vbl.reply.tval_usec));
+		     (long long)vbl.reply.sequence,
+		     (long)vbl.reply.tval_sec,
+		     (long)vbl.reply.tval_usec));
 		sna->dri2.last_swap[pipe].tv_sec = vbl.reply.tval_sec;
 		sna->dri2.last_swap[pipe].tv_usec = vbl.reply.tval_usec;
 		sna->dri2.last_swap[pipe].msc = vbl.reply.sequence;
@@ -2398,11 +2400,11 @@ fail:
 	vbl.request.type = DRM_VBLANK_RELATIVE;
 	vbl.request.sequence = 0;
 	if (sna_wait_vblank(sna, &vbl, pipe) == 0) {
-		DBG(("%s: recording last swap on pipe=%d, frame %d, time %d.%06d\n",
+		DBG(("%s: recording last swap on pipe=%d, frame %lld, time %ld.%06ld\n",
 		     __FUNCTION__, pipe,
-		     vbl.reply.sequence,
-		     vbl.reply.tval_sec,
-		     vbl.reply.tval_usec));
+		     (long long)vbl.reply.sequence,
+		     (long)vbl.reply.tval_sec,
+		     (long)vbl.reply.tval_usec));
 		sna->dri2.last_swap[pipe].tv_sec = vbl.reply.tval_sec;
 		sna->dri2.last_swap[pipe].tv_usec = vbl.reply.tval_usec;
 		sna->dri2.last_swap[pipe].msc = vbl.reply.sequence;
