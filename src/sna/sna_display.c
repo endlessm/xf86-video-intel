@@ -1045,11 +1045,10 @@ static void update_flush_interval(struct sna *sna)
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
 	int i, max_vrefresh = 0;
 
-	for (i = 0; i < config->num_crtc; i++) {
+	for (i = 0; i < sna->mode.num_real_crtc; i++) {
 		xf86CrtcPtr crtc = config->crtc[i];
 
-		if (to_sna_crtc(crtc) == NULL)
-			break;
+		assert(to_sna_crtc(crtc) != NULL);
 
 		if (!crtc->enabled) {
 			DBG(("%s: CRTC:%d (pipe %d) disabled\n",
@@ -1131,12 +1130,11 @@ void sna_copy_fbcon(struct sna *sna)
 	/* Scan the connectors for a framebuffer and assume that is the fbcon */
 	VG_CLEAR(fbcon);
 	fbcon.fb_id = 0;
-	for (i = 0; i < config->num_crtc; i++) {
+	for (i = 0; i < sna->mode.num_real_crtc; i++) {
 		struct sna_crtc *crtc = to_sna_crtc(config->crtc[i]);
 		struct drm_mode_crtc mode;
 
-		if (!crtc)
-			break;
+		assert(crtc != NULL);
 
 		VG_CLEAR(mode);
 		mode.crtc_id = crtc->id;
@@ -3216,15 +3214,8 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 		   "resizing framebuffer to %dx%d\n",
 		   width, height);
 
-	for (i = 0; i < config->num_crtc; i++) {
-		struct sna_crtc *crtc;
-
-		crtc = to_sna_crtc(config->crtc[i]);
-		if (crtc == NULL)
-			break;
-
-		sna_crtc_disable_shadow(sna, crtc);
-	}
+	for (i = 0; i < sna->mode.num_real_crtc; i++)
+		sna_crtc_disable_shadow(sna, to_sna_crtc(config->crtc[i]));
 	assert(sna->mode.shadow_active == 0);
 	assert(sna->mode.shadow_damage == NULL);
 	assert(sna->mode.shadow == NULL);
@@ -3252,12 +3243,10 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 	if (!scrn->vtSema)
 		return TRUE;
 
-	for (i = 0; i < config->num_crtc; i++) {
+	for (i = 0; i < sna->mode.num_real_crtc; i++) {
 		xf86CrtcPtr crtc = config->crtc[i];
 
-		if (to_sna_crtc(crtc) == NULL)
-			break;
-
+		assert(to_sna_crtc(crtc) != NULL);
 		if (!crtc->enabled)
 			continue;
 
@@ -3585,15 +3574,13 @@ sna_show_cursors(ScrnInfoPtr scrn)
 		return;
 
 	sigio = sigio_block();
-	for (c = 0; c < xf86_config->num_crtc; c++) {
+	for (c = 0; c < sna->mode.num_real_crtc; c++) {
 		xf86CrtcPtr crtc = xf86_config->crtc[c];
 		struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
 		struct drm_mode_cursor arg;
 		struct sna_cursor *cursor;
 
-		if (!sna_crtc)
-			break;
-
+		assert(sna_crtc != NULL);
 		if (!crtc->enabled)
 			continue;
 
@@ -3664,14 +3651,12 @@ sna_hide_cursors(ScrnInfoPtr scrn)
 	__DBG(("%s\n", __FUNCTION__));
 
 	sigio = sigio_block();
-	for (c = 0; c < xf86_config->num_crtc; c++) {
+	for (c = 0; c < sna->mode.num_real_crtc; c++) {
 		xf86CrtcPtr crtc = xf86_config->crtc[c];
 		struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
 		struct drm_mode_cursor arg;
 
-		if (!sna_crtc)
-			break;
-
+		assert(sna_crtc != NULL);
 		if (!sna_crtc->cursor)
 			continue;
 
@@ -3730,14 +3715,13 @@ sna_set_cursor_position(ScrnInfoPtr scrn, int x, int y)
 	/* undo what xf86HWCurs did to the coordinates */
 	x += scrn->frameX0;
 	y += scrn->frameY0;
-	for (c = 0; c < xf86_config->num_crtc; c++) {
+	for (c = 0; c < sna->mode.num_real_crtc; c++) {
 		xf86CrtcPtr crtc = xf86_config->crtc[c];
 		struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
 		struct sna_cursor *cursor = NULL;
 		struct drm_mode_cursor arg;
 
-		if (!sna_crtc)
-			break;
+		assert(sna_crtc != NULL);
 
 		VG_CLEAR(arg);
 		arg.flags = 0;
@@ -4042,13 +4026,13 @@ static int do_page_flip(struct sna *sna, struct kgem_bo *bo,
 	 * Also, flips queued on disabled or incorrectly configured displays
 	 * may never complete; this is a configuration error.
 	 */
-	for (i = 0; i < config->num_crtc; i++) {
+	for (i = 0; i < sna->mode.num_real_crtc; i++) {
 		struct sna_crtc *crtc = config->crtc[i]->driver_private;
 		struct drm_mode_crtc_page_flip arg;
 
-		DBG(("%s: crtc %d active? %d\n",
-		     __FUNCTION__, i, crtc && crtc->bo));
-		if (crtc == NULL || crtc->bo == NULL)
+		DBG(("%s: crtc %d id=%d, pipe=%d active? %d\n",
+		     __FUNCTION__, i, crtc->id, crtc->pipe, crtc->bo != NULL));
+		if (crtc->bo == NULL)
 			continue;
 
 		arg.crtc_id = crtc->id;
@@ -4064,12 +4048,12 @@ static int do_page_flip(struct sna *sna, struct kgem_bo *bo,
 		arg.flags = DRM_MODE_PAGE_FLIP_EVENT;
 		arg.reserved = 0;
 
-		DBG(("%s: crtc %d [ref? %d] --> fb %d\n",
-		     __FUNCTION__, crtc->id,
+		DBG(("%s: crtc %d id=%d, pipe=%d, [ref? %d] --> fb %d\n",
+		     __FUNCTION__, i, crtc->id, crtc->pipe,
 		     crtc->pipe == ref_crtc_hw_id, arg.fb_id));
 		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_PAGE_FLIP, &arg)) {
-			DBG(("%s: flip [fb=%d] on crtc %d [%d] failed - %d\n",
-			     __FUNCTION__, arg.fb_id, i, crtc->id, errno));
+			DBG(("%s: flip [fb=%d] on crtc %d id=%d failed - %d\n",
+			     __FUNCTION__, arg.fb_id, i, crtc->id, crtc->pipe errno));
 disable:
 			if (count == 0)
 				return 0;
@@ -4304,13 +4288,10 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 	}
 
 	/* Copy the existing modes on each CRTCs */
-	for (i = 0; i < config->num_crtc; i++) {
+	for (i = 0; i < sna->mode.num_real_crtc; i++) {
 		xf86CrtcPtr crtc = config->crtc[i];
 		struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
 		struct drm_mode_crtc mode;
-
-		if (sna_crtc == NULL)
-			break;
 
 		crtc->enabled = FALSE;
 		crtc->desiredMode.status = MODE_NOMODE;
@@ -4362,12 +4343,10 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 			continue;
 		}
 
-		for (j = 0; j < config->num_crtc; j++) {
+		for (j = 0; j < sna->mode.num_real_crtc; j++) {
 			xf86CrtcPtr crtc = config->crtc[j];
 
-			if (to_sna_crtc(crtc) == NULL)
-				continue;
-
+			assert(to_sna_crtc(crtc));
 			if (to_sna_crtc(crtc)->id != crtc_id)
 				continue;
 
@@ -4410,7 +4389,7 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 			break;
 		}
 
-		if (j == config->num_crtc) {
+		if (j == sna->mode.num_real_crtc) {
 			/* Can not find the earlier associated CRTC, bail */
 			DBG(("%s: existing setup conflicts with output assignment (Zaphod), reprobing\n",
 			     __FUNCTION__));
@@ -4574,15 +4553,8 @@ sna_mode_close(struct sna *sna)
 
 	sna_cursor_close(sna);
 
-	for (i = 0; i < config->num_crtc; i++) {
-		struct sna_crtc *crtc;
-
-		crtc = to_sna_crtc(config->crtc[i]);
-		if (crtc == NULL)
-			break;
-
-		sna_crtc_disable_shadow(sna, crtc);
-	}
+	for (i = 0; i < sna->mode.num_real_crtc; i++)
+		sna_crtc_disable_shadow(sna, to_sna_crtc(config->crtc[i]));
 
 	sna_cursors_fini(sna);
 }
@@ -5013,14 +4985,13 @@ void sna_mode_update(struct sna *sna)
 
 	/* Validate CRTC attachments and force consistency upon the kernel */
 	sna->mode.front_active = 0;
-	for (i = 0; i < config->num_crtc; i++) {
+	for (i = 0; i < sna->mode.num_real_crtc; i++) {
 		xf86CrtcPtr crtc = config->crtc[i];
 		struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
 		struct drm_mode_crtc mode;
 		uint32_t expected;
 
-		if (sna_crtc == NULL)
-			break;
+		assert(sna_crtc);
 
 #if XF86_CRTC_VERSION >= 3
 		assert(sna_crtc->bo == NULL || crtc->active);
@@ -5073,11 +5044,10 @@ void sna_mode_reset(struct sna *sna)
 
 	sna_hide_cursors(sna->scrn);
 
-	for (i = 0; i < config->num_crtc; i++) {
+	for (i = 0; i < sna->mode.num_real_crtc; i++) {
 		struct sna_crtc *sna_crtc = to_sna_crtc(config->crtc[i]);
-		if (sna_crtc == NULL)
-			break;
 
+		assert(sna_crtc != NULL);
 		sna_crtc->dpms_mode = -1;
 
 		/* Force the rotation property to be reset on next use */
@@ -5421,14 +5391,12 @@ void sna_mode_redisplay(struct sna *sna)
 		if (!sna_pixmap_move_to_cpu(sna->front, MOVE_READ))
 			return;
 
-		for (i = 0; i < config->num_crtc; i++) {
+		for (i = 0; i < sna->mode.num_real_crtc; i++) {
 			xf86CrtcPtr crtc = config->crtc[i];
 			struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
 			RegionRec damage;
 
-			if (sna_crtc == NULL)
-				break;
-
+			assert(sna_crtc != NULL);
 			if (!sna_crtc->shadow)
 				continue;
 
@@ -5470,14 +5438,12 @@ void sna_mode_redisplay(struct sna *sna)
 		assert(priv->move_to_gpu == NULL);
 	}
 
-	for (i = 0; i < config->num_crtc; i++) {
+	for (i = 0; i < sna->mode.num_real_crtc; i++) {
 		xf86CrtcPtr crtc = config->crtc[i];
 		struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
 		RegionRec damage;
 
-		if (sna_crtc == NULL)
-			break;
-
+		assert(sna_crtc != NULL);
 		DBG(("%s: crtc[%d] shadow? %d, transformed? %d\n",
 		     __FUNCTION__, i,
 		     sna_crtc->shadow,
@@ -5570,13 +5536,11 @@ disable1:
 		DBG(("%s: flipping tear-free outputs\n", __FUNCTION__));
 		kgem_bo_submit(&sna->kgem, new);
 
-		for (i = 0; i < config->num_crtc; i++) {
+		for (i = 0; i < sna->mode.num_real_crtc; i++) {
 			struct sna_crtc *crtc = config->crtc[i]->driver_private;
 			struct drm_mode_crtc_page_flip arg;
 
-			if (crtc == NULL)
-				continue;
-
+			assert(crtc != NULL);
 			DBG(("%s: crtc %d [%d, pipe=%d] active? %d\n",
 			     __FUNCTION__, i, crtc->id, crtc->pipe, crtc && crtc->bo));
 			if (crtc->bo != old)
