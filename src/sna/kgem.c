@@ -244,7 +244,7 @@ static void assert_tiling(struct kgem *kgem, struct kgem_bo *bo)
 
 	VG_CLEAR(tiling);
 	tiling.handle = bo->handle;
-	tiling.tiling_mode = -1;
+	tiling.tiling_mode = bo->tiling;
 	(void)do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_GET_TILING, &tiling);
 	assert(tiling.tiling_mode == bo->tiling);
 }
@@ -3038,6 +3038,7 @@ retry:
 	if (ret == 0)
 		return 0;
 
+	DBG(("%s: failed ret=%d, throttling and discarding cache\n", __FUNCTION__, ret));
 	(void)__kgem_throttle_retire(kgem, 0);
 	if (kgem_expire_cache(kgem))
 		goto retry;
@@ -3394,9 +3395,11 @@ bool kgem_expire_cache(struct kgem *kgem)
 	if (kgem->need_purge)
 		kgem_purge_cache(kgem);
 
-	expire = 0;
+	if (kgem->need_retire)
+		kgem_retire(kgem);
 
-	idle = !kgem->need_retire;
+	expire = 0;
+	idle = true;
 	for (i = 0; i < ARRAY_SIZE(kgem->inactive); i++) {
 		idle &= list_is_empty(&kgem->inactive[i]);
 		list_for_each_entry(bo, &kgem->inactive[i], list) {
@@ -3408,15 +3411,13 @@ bool kgem_expire_cache(struct kgem *kgem)
 			bo->delta = now;
 		}
 	}
-	if (idle) {
-		DBG(("%s: idle\n", __FUNCTION__));
-		kgem->need_expire = false;
+	if (expire == 0) {
+		DBG(("%s: idle? %d\n", __FUNCTION__, idle));
+		kgem->need_expire = !idle;
 		return false;
 	}
-	if (expire == 0)
-		return true;
 
-	idle = !kgem->need_retire;
+	idle = true;
 	for (i = 0; i < ARRAY_SIZE(kgem->inactive); i++) {
 		struct list preserve;
 
@@ -3465,7 +3466,7 @@ bool kgem_expire_cache(struct kgem *kgem)
 	     __FUNCTION__, count, size, idle));
 
 	kgem->need_expire = !idle;
-	return !idle;
+	return count;
 	(void)count;
 	(void)size;
 }

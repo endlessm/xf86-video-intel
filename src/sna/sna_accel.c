@@ -16856,10 +16856,11 @@ static void sna_accel_expire(struct sna *sna)
 {
 	DBG(("%s (time=%ld)\n", __FUNCTION__, (long)TIME));
 
-	if (!kgem_expire_cache(&sna->kgem))
-		sna_accel_disarm_timer(sna, EXPIRE_TIMER);
-
+	kgem_expire_cache(&sna->kgem);
 	sna_pixmap_expire(sna);
+
+	if (!sna->kgem.need_expire)
+		sna_accel_disarm_timer(sna, EXPIRE_TIMER);
 }
 
 #ifdef DEBUG_MEMORY
