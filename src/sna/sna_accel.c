@@ -4491,8 +4491,12 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 	}
 
 	if (priv->gpu_bo && replaces) {
-		DBG(("%s: discarding cached upload proxy\n", __FUNCTION__));
-		sna_pixmap_free_gpu(sna, priv);
+		if (UNDO)
+			kgem_bo_undo(&sna->kgem, priv->gpu_bo);
+		if (__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo)) {
+			DBG(("%s: discarding cached upload proxy\n", __FUNCTION__));
+			sna_pixmap_free_gpu(sna, priv);
+		}
 		replaces = true; /* Mark it all GPU damaged afterwards */
 	}
 	assert(priv->gpu_bo == NULL || priv->gpu_bo->proxy == NULL);
@@ -4501,6 +4505,17 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 	    (!replaces || !sna_pixmap_move_to_gpu(pixmap, MOVE_WRITE))) {
 		DBG(("%s: no, has COW or pending move-to-gpu\n", __FUNCTION__));
 		return false;
+	}
+
+	if (priv->gpu_damage &&
+	    region_subsumes_damage(region, priv->gpu_damage)) {
+		if (UNDO)
+			kgem_bo_undo(&sna->kgem, priv->gpu_bo);
+		if (__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo)) {
+			DBG(("%s: discarding dirty pixmap\n", __FUNCTION__));
+			sna_pixmap_free_gpu(sna, priv);
+		}
+		replaces = true; /* Mark it all GPU damaged afterwards */
 	}
 
 	if (priv->gpu_bo == NULL &&
