@@ -5401,7 +5401,7 @@ void sna_mode_redisplay(struct sna *sna)
 				continue;
 
 			assert(crtc->enabled);
-			assert(crtc->transform_in_use || sna->flags & SNA_TEAR_FREE);
+			assert(sna_crtc->transform || sna->flags & SNA_TEAR_FREE);
 
 			damage.extents = crtc->bounds;
 			damage.data = NULL;
@@ -5453,7 +5453,7 @@ void sna_mode_redisplay(struct sna *sna)
 			continue;
 
 		assert(crtc->enabled);
-		assert(crtc->transform_in_use);
+		assert(sna_crtc->transform);
 
 		damage.extents = crtc->bounds;
 		damage.data = NULL;
