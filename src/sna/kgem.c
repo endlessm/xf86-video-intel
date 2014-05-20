@@ -2486,7 +2486,7 @@ static void kgem_commit(struct kgem *kgem)
 			__kgem_bo_clear_busy(bo);
 		}
 
-		kgem->scanout_busy |= bo->scanout;
+		kgem->scanout_busy |= bo->scanout && bo->needs_flush;
 	}
 
 	if (rq == &kgem->static_request) {
