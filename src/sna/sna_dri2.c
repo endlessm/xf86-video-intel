@@ -1359,7 +1359,7 @@ static void chain_swap(struct sna *sna,
 		DRI2SwapComplete(chain->client, draw,
 				 frame, tv_sec, tv_usec,
 				 DRI2_BLIT_COMPLETE,
-				 chain->client ? chain->event_complete : NULL, chain->event_data);
+				 chain->event_complete, chain->event_data);
 		sna_dri2_frame_event_info_free(sna, draw, chain);
 	} else {
 #if !XORG_CAN_TRIPLE_BUFFER
@@ -1367,7 +1367,7 @@ static void chain_swap(struct sna *sna,
 		DRI2SwapComplete(chain->client, draw,
 				 frame, tv_sec, tv_usec,
 				 DRI2_BLIT_COMPLETE,
-				 chain->client ? chain->event_complete : NULL, chain->event_data);
+				 chain->event_complete, chain->event_data);
 #else
 		DBG(("%s: setting swap limit to 2\n", __FUNCTION__));
 		DRI2SwapLimit(draw, 2);
@@ -1475,8 +1475,7 @@ void sna_dri2_vblank_handler(struct sna *sna, struct drm_event_vblank *event)
 				 draw, event->sequence,
 				 event->tv_sec, event->tv_usec,
 				 DRI2_BLIT_COMPLETE,
-				 info->client ? info->event_complete : NULL,
-				 info->event_data);
+				 info->event_complete, info->event_data);
 		break;
 
 	case SWAP_THROTTLE:
@@ -1494,8 +1493,7 @@ void sna_dri2_vblank_handler(struct sna *sna, struct drm_event_vblank *event)
 				 draw, event->sequence,
 				 event->tv_sec, event->tv_usec,
 				 DRI2_BLIT_COMPLETE,
-				 info->client ? info->event_complete : NULL,
-				 info->event_data);
+				 info->event_complete, info->event_data);
 #endif
 		break;
 
@@ -1690,8 +1688,7 @@ sna_dri2_flip_continue(struct sna *sna, struct sna_dri2_frame_event *info)
 		DBG(("%s: fake triple buffering, unblocking client\n", __FUNCTION__));
 		fake_swap_complete(sna, info->client, info->draw,
 				   DRI2_FLIP_COMPLETE,
-				   info->client ? info->event_complete : NULL,
-				   info->event_data);
+				   info->event_complete, info->event_data);
 #endif
 	}
 
@@ -1743,7 +1740,7 @@ static void chain_flip(struct sna *sna)
 		DBG(("%s: fake triple buffering (or vblank wait failed), unblocking client\n", __FUNCTION__));
 		fake_swap_complete(sna, chain->client, chain->draw,
 				   DRI2_BLIT_COMPLETE,
-				   chain->client ? chain->event_complete : NULL, chain->event_data);
+				   chain->event_complete, chain->event_data);
 		sna_dri2_frame_event_info_free(sna, chain->draw, chain);
 	}
 }
@@ -1810,8 +1807,7 @@ static void sna_dri2_flip_event(struct sna *sna,
 					 flip->fe_tv_sec,
 					 flip->fe_tv_usec,
 					 DRI2_FLIP_COMPLETE,
-					 flip->client ? flip->event_complete : NULL,
-					 flip->event_data);
+					 flip->event_complete, flip->event_data);
 		}
 
 		sna_dri2_frame_event_info_free(sna, flip->draw, flip);
@@ -1829,8 +1825,7 @@ static void sna_dri2_flip_event(struct sna *sna,
 					 flip->fe_tv_sec,
 					 flip->fe_tv_usec,
 					 DRI2_FLIP_COMPLETE,
-					 flip->client ? flip->event_complete : NULL,
-					 flip->event_data);
+					 flip->event_complete, flip->event_data);
 		}
 	case FLIP_COMPLETE:
 		if (sna->dri2.flip_pending) {
