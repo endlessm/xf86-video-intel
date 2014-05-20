@@ -255,6 +255,11 @@ fi
 if test "x$tools" != "xno"; then
 	ivo_requires="xinerama xrandr xdamage xfixes xcursor xtst xrender xext x11 pixman-1"
 	PKG_CHECK_MODULES(IVO, [$ivo_requires], [ivo="yes"], [ivo="no"])
+	PKG_CHECK_MODULES(IVO_DRI3, [xcb-dri3 xcb-sync x11-xcb xshmfence x11], [ivo_dri3="yes"], [ivo_dri3="no"])
+	if test "x$ivo_dri3" = "xyes"; then
+		IVO_CFLAGS="$IVO_CFLAGS $IVO_DRI3_CFLAGS -DDRI3"
+		IVO_LIBS="$IVO_LIBS $IVO_DRI3_LIBS"
+	fi
 	AC_CHECK_HEADER([sys/timerfd.h], [], [ivo="no"])
 	if test "x$ivo" = "xno"; then
 		if test "x$tools" = "xyes"; then

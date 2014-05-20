@@ -85,6 +85,7 @@ struct display {
 	int xfixes_event, xfixes_error;
 	int rr_event, rr_error, rr_active;
 	int xinerama_event, xinerama_error, xinerama_active;
+	int dri3_active;
 	Window root;
 	Visual *visual;
 	Damage damage;
@@ -156,6 +157,11 @@ struct clone {
 	int width, height, depth;
 	struct { int x1, x2, y1, y2; } damaged;
 	int rr_update;
+
+	struct dri3_fence {
+		XID xid;
+		void *addr;
+	} dri3;
 };
 
 struct context {
@@ -304,6 +310,143 @@ can_use_shm(Display *dpy,
 
 	return has_shm;
 }
+
+#ifdef DRI3
+#include <X11/Xlib-xcb.h>
+#include <X11/xshmfence.h>
+#include <xcb/xcb.h>
+#include <xcb/dri3.h>
+#include <xcb/sync.h>
+static Pixmap dri3_create_pixmap(Display *dpy,
+				 Drawable draw,
+				 int width, int height, int depth,
+				 int fd, int bpp, int stride, int size)
+{
+	xcb_connection_t *c = XGetXCBConnection(dpy);
+	xcb_pixmap_t pixmap = xcb_generate_id(c);
+	xcb_dri3_pixmap_from_buffer(c, pixmap, draw, size, width, height, stride, depth, bpp, fd);
+	return pixmap;
+}
+
+static int dri3_create_fd(Display *dpy,
+			  Pixmap pixmap,
+			  int *stride)
+{
+	xcb_connection_t *c = XGetXCBConnection(dpy);
+	xcb_dri3_buffer_from_pixmap_cookie_t cookie;
+	xcb_dri3_buffer_from_pixmap_reply_t *reply;
+
+	cookie = xcb_dri3_buffer_from_pixmap(c, pixmap);
+	reply = xcb_dri3_buffer_from_pixmap_reply(c, cookie, NULL);
+	if (!reply)
+		return -1;
+
+	if (reply->nfd != 1)
+		return -1;
+
+	*stride = reply->stride;
+	return xcb_dri3_buffer_from_pixmap_reply_fds(c, reply)[0];
+}
+
+static int dri3_query_version(Display *dpy, int *major, int *minor)
+{
+	xcb_connection_t *c = XGetXCBConnection(dpy);
+	xcb_dri3_query_version_reply_t *reply;
+
+	*major = *minor = -1;
+
+	reply = xcb_dri3_query_version_reply(c,
+					     xcb_dri3_query_version(c,
+								    XCB_DRI3_MAJOR_VERSION,
+								    XCB_DRI3_MINOR_VERSION),
+					     NULL);
+	if (reply == NULL)
+		return -1;
+
+	*major = reply->major_version;
+	*minor = reply->minor_version;
+	free(reply);
+
+	return 0;
+}
+
+static int dri3_exists(Display *dpy)
+{
+	int major, minor;
+
+	if (dri3_query_version(dpy, &major, &minor) < 0)
+		return 0;
+
+	return major >= 0;
+}
+
+static void dri3_create_fence(Display *dpy, Drawable d, struct dri3_fence *fence)
+{
+	xcb_connection_t *c = XGetXCBConnection(dpy);
+	struct dri3_fence f;
+	int fd;
+
+	fd = xshmfence_alloc_shm();
+	if (fd < 0)
+		return;
+
+	f.addr = xshmfence_map_shm(fd);
+	if (f.addr == NULL) {
+		close(fd);
+		return;
+	}
+
+	f.xid = xcb_generate_id(c);
+	xcb_dri3_fence_from_fd(c, d, f.xid, 0, fd);
+
+	*fence = f;
+}
+
+static void dri3_fence_flush(Display *dpy, struct dri3_fence *fence)
+{
+	xcb_sync_trigger_fence(XGetXCBConnection(dpy), fence->xid);
+}
+
+static void dri3_fence_free(Display *dpy, struct dri3_fence *fence)
+{
+	xshmfence_unmap_shm(fence->addr);
+	xcb_sync_destroy_fence(XGetXCBConnection(dpy), fence->xid);
+}
+
+#else
+
+static int dri3_exists(Display *dpy)
+{
+	return 0;
+}
+
+static void dri3_create_fence(Display *dpy, Drawable d, struct dri3_fence *fence)
+{
+}
+
+static void dri3_fence_flush(Display *dpy, struct dri3_fence *fence)
+{
+}
+
+static void dri3_fence_free(Display *dpy, struct dri3_fence *fence)
+{
+}
+
+static Pixmap dri3_create_pixmap(Display *dpy,
+				 Drawable draw,
+				 int width, int height, int depth,
+				 int fd, int bpp, int stride, int size)
+{
+	return None;
+}
+
+static int dri3_create_fd(Display *dpy,
+			  Pixmap pixmap,
+			  int *stride)
+{
+	return -1;
+}
+#endif
 
 static int timerfd(int hz)
 {
@@ -868,13 +1011,11 @@ static int mode_width(const XRRModeInfo *mode, Rotation rotation)
 
 static void output_init_xfer(struct clone *clone, struct output *output)
 {
-	if (output->use_shm_pixmap) {
+	if (output->pixmap == None && output->use_shm_pixmap) {
 		DBG(("%s-%s: creating shm pixmap\n", DisplayString(output->dpy), output->name));
 		XSync(output->dpy, False);
 		_x_error_occurred = 0;
 
-		if (output->pixmap)
-			XFreePixmap(output->dpy, output->pixmap);
 		output->pixmap = XShmCreatePixmap(output->dpy, output->window,
 						  clone->shm.shmaddr, &output->shm,
 						  clone->width, clone->height, clone->depth);
@@ -913,34 +1054,33 @@ static void output_init_xfer(struct clone *clone, struct output *output)
 	}
 }
 
+static int bpp_for_depth(int depth)
+{
+	switch (depth) {
+	case 1: return 1;
+	case 8: return 8;
+	case 15: return 16;
+	case 16: return 16;
+	case 24: return 24;
+	case 32: return 32;
+	default: return 0;
+	}
+}
+
 static int clone_init_xfer(struct clone *clone)
 {
 	int width, height;
 
-	if (clone->src.mode.id == 0) {
-		if (clone->width == 0 && clone->height == 0)
-			return 0;
-
+	if (clone->dst.mode.id == 0) {
 		clone->width = 0;
 		clone->height = 0;
-
-		if (clone->src.use_shm)
-			XShmDetach(clone->src.dpy, &clone->src.shm);
-		if (clone->dst.use_shm)
-			XShmDetach(clone->dst.dpy, &clone->dst.shm);
-
-		if (clone->shm.shmaddr) {
-			shmdt(clone->shm.shmaddr);
-			clone->shm.shmaddr = 0;
-		}
-
-		clone->damaged.x2 = clone->damaged.y2 = INT_MIN;
-		clone->damaged.x1 = clone->damaged.y1 = INT_MAX;
-		return 0;
+	} else if (clone->dri3.xid) {
+		width = clone->dst.display->width;
+		height = clone->dst.display->height;
+	} else {
+		width = mode_width(&clone->src.mode, clone->src.rotation);
+		height = mode_height(&clone->src.mode, clone->src.rotation);
 	}
-
-	width = mode_width(&clone->src.mode, clone->src.rotation);
-	height = mode_height(&clone->src.mode, clone->src.rotation);
 
 	if (width == clone->width && height == clone->height)
 		return 0;
@@ -949,40 +1089,93 @@ static int clone_init_xfer(struct clone *clone)
 	     DisplayString(clone->dst.dpy), clone->dst.name,
 	     width, height));
 
-	clone->width = width;
-	clone->height = height;
+	if (clone->src.use_shm)
+		XShmDetach(clone->src.dpy, &clone->src.shm);
+	if (clone->dst.use_shm)
+		XShmDetach(clone->dst.dpy, &clone->dst.shm);
 
-	if (clone->shm.shmaddr)
+	if (clone->shm.shmaddr) {
 		shmdt(clone->shm.shmaddr);
-
-	clone->shm.shmid = shmget(IPC_PRIVATE,
-				  height * stride_for_depth(width, clone->depth),
-				  IPC_CREAT | 0666);
-	if (clone->shm.shmid == -1)
-		return errno;
-
-	clone->shm.shmaddr = shmat(clone->shm.shmid, 0, 0);
-	if (clone->shm.shmaddr == (char *) -1) {
-		shmctl(clone->shm.shmid, IPC_RMID, NULL);
-		return ENOMEM;
+		clone->shm.shmaddr = NULL;
 	}
 
-	init_image(clone);
+	if (clone->src.pixmap) {
+		XFreePixmap(clone->src.dpy, clone->src.pixmap);
+		clone->src.pixmap = 0;
+	}
 
-	if (clone->src.use_shm) {
-		clone->src.shm = clone->shm;
-		clone->src.shm.readOnly = False;
-		XShmAttach(clone->src.dpy, &clone->src.shm);
+	if (clone->dst.pixmap) {
+		XFreePixmap(clone->dst.dpy, clone->dst.pixmap);
+		clone->dst.pixmap = 0;
+	}
+
+	if ((width | height) == 0) {
+		clone->damaged.x2 = clone->damaged.y2 = INT_MIN;
+		clone->damaged.x1 = clone->damaged.y1 = INT_MAX;
+		return 0;
+	}
+
+	if (clone->dri3.xid) {
+		int fd, stride;
+		Pixmap src;
+
+		_x_error_occurred = 0;
+
+		fd = dri3_create_fd(clone->dst.dpy, clone->dst.window, &stride);
+		src = dri3_create_pixmap(clone->src.dpy, clone->src.window,
+					 width, height, clone->depth,
+					 fd, bpp_for_depth(clone->depth),
+					 stride, lseek(fd, 0, SEEK_END));
+
 		XSync(clone->src.dpy, False);
-	}
-	if (clone->dst.use_shm) {
-		clone->dst.shm = clone->shm;
-		clone->dst.shm.readOnly = !clone->dst.use_shm_pixmap;
-		XShmAttach(clone->dst.dpy, &clone->dst.shm);
-		XSync(clone->dst.dpy, False);
+		if (!_x_error_occurred) {
+			clone->src.pixmap = src;
+			clone->width = width;
+			clone->height = height;
+		} else {
+			XFreePixmap(clone->src.dpy, src);
+			close(fd);
+			dri3_fence_free(clone->src.dpy, &clone->dri3);
+			clone->dri3.xid = 0;
+		}
 	}
 
-	shmctl(clone->shm.shmid, IPC_RMID, NULL);
+	width = mode_width(&clone->src.mode, clone->src.rotation);
+	height = mode_height(&clone->src.mode, clone->src.rotation);
+
+	if (!clone->dri3.xid) {
+		clone->shm.shmid = shmget(IPC_PRIVATE,
+					  height * stride_for_depth(width, clone->depth),
+					  IPC_CREAT | 0666);
+		if (clone->shm.shmid == -1)
+			return errno;
+
+		clone->shm.shmaddr = shmat(clone->shm.shmid, 0, 0);
+		if (clone->shm.shmaddr == (char *) -1) {
+			shmctl(clone->shm.shmid, IPC_RMID, NULL);
+			return ENOMEM;
+		}
+
+		init_image(clone);
+
+		if (clone->src.use_shm) {
+			clone->src.shm = clone->shm;
+			clone->src.shm.readOnly = False;
+			XShmAttach(clone->src.dpy, &clone->src.shm);
+			XSync(clone->src.dpy, False);
+		}
+		if (clone->dst.use_shm) {
+			clone->dst.shm = clone->shm;
+			clone->dst.shm.readOnly = !clone->dst.use_shm_pixmap;
+			XShmAttach(clone->dst.dpy, &clone->dst.shm);
+			XSync(clone->dst.dpy, False);
+		}
+
+		shmctl(clone->shm.shmid, IPC_RMID, NULL);
+
+		clone->width = width;
+		clone->height = height;
+	}
 
 	output_init_xfer(clone, &clone->src);
 	output_init_xfer(clone, &clone->dst);
@@ -1095,8 +1288,6 @@ static int context_update(struct context *ctx)
 		DBG(("%s-%s output changed? %d\n",
 		     DisplayString(ctx->clones[n].dst.display->dpy), ctx->clones[n].dst.name, changed));
 
-		if (changed)
-			clone_init_xfer(&ctx->clones[n]);
 		context_changed |= changed;
 	}
 	XRRFreeScreenResources(res);
@@ -1358,6 +1549,8 @@ ungrab:
 	ctx->active = NULL;
 	for (n = 0; n < ctx->nclone; n++) {
 		struct clone *clone = &ctx->clones[n];
+
+		clone_init_xfer(clone);
 
 		if (clone->dst.rr_crtc == 0)
 			continue;
@@ -1647,8 +1840,6 @@ static void put_dst(struct clone *c, const XRectangle *clip)
 			  clip->width, clip->height);
 		c->dst.serial = 0;
 	}
-
-	display_mark_flush(c->dst.display);
 }
 
 static int clone_paint(struct clone *c)
@@ -1703,15 +1894,37 @@ static int clone_paint(struct clone *c)
 		c->damaged.y2 = c->src.y + c->height;
 	}
 
-	clip.x = c->damaged.x1;
-	clip.y = c->damaged.y1;
-	clip.width  = c->damaged.x2 - c->damaged.x1;
-	clip.height = c->damaged.y2 - c->damaged.y1;
-	get_src(c, &clip);
+	if (c->dri3.xid) {
+		if (c->src.use_render) {
+			XRenderComposite(c->src.dpy, PictOpSrc,
+					 c->src.win_picture, 0, c->src.pix_picture,
+					 c->damaged.x1, c->damaged.y1,
+					 0, 0,
+					 c->damaged.x1 + c->dst.x - c->src.x,
+					 c->damaged.y1 + c->dst.y - c->src.y,
+					 c->damaged.x2 - c->damaged.x1,
+					 c->damaged.y2 - c->damaged.y1);
+		} else {
+			XCopyArea(c->src.dpy, c->src.window, c->src.pixmap, c->src.gc,
+				  c->damaged.x1, c->damaged.y1,
+				  c->damaged.x2 - c->damaged.x1,
+				  c->damaged.y2 - c->damaged.y1,
+				  c->damaged.x1 + c->dst.x - c->src.x,
+				  c->damaged.y1 + c->dst.y - c->src.y);
+		}
+		dri3_fence_flush(c->src.dpy, &c->dri3);
+	} else {
+		clip.x = c->damaged.x1;
+		clip.y = c->damaged.y1;
+		clip.width  = c->damaged.x2 - c->damaged.x1;
+		clip.height = c->damaged.y2 - c->damaged.y1;
+		get_src(c, &clip);
 
-	clip.x += c->dst.x - c->src.x;
-	clip.y += c->dst.y - c->src.y;
-	put_dst(c, &clip);
+		clip.x += c->dst.x - c->src.x;
+		clip.y += c->dst.y - c->src.y;
+		put_dst(c, &clip);
+	}
+	display_mark_flush(c->dst.display);
 
 done:
 	c->damaged.x2 = c->damaged.y2 = INT_MIN;
@@ -2010,6 +2223,11 @@ static int clone_init_depth(struct clone *clone)
 	     clone->src.use_render != NULL,
 	     clone->dst.use_render != NULL));
 
+	if (!clone->dst.use_render &&
+	    clone->src.display->dri3_active &&
+	    clone->dst.display->dri3_active)
+		dri3_create_fence(clone->src.dpy, clone->src.window, &clone->dri3);
+
 	return 0;
 }
 
@@ -2072,6 +2290,11 @@ static int add_display(struct context *ctx, Display *dpy)
 	     display->xinerama_active,
 	     display->xinerama_event,
 	     display->xinerama_error));
+
+	display->dri3_active = dri3_exists(dpy);
+	DBG(("%s: dri3_active?=%d\n",
+	     DisplayString(dpy),
+	     display->dri3_active));
 
 	/* first display (source) is slightly special */
 	if (!first_display) {
