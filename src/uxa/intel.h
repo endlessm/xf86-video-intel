@@ -87,6 +87,8 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define INTEL_PIXMAP_SHARING 1
 #endif
 
+#define MAX_PIPES 4 /* consider making all users dynamic */
+
 struct intel_pixmap {
 	dri_bo *bo;
 
@@ -334,7 +336,7 @@ typedef struct intel_screen_private {
 	Bool has_kernel_flush;
 	Bool needs_flush;
 
-	struct _DRI2FrameEvent *pending_flip[2];
+	struct _DRI2FrameEvent *pending_flip[MAX_PIPES];
 
 	/* Broken-out options. */
 	OptionInfoPtr Options;
