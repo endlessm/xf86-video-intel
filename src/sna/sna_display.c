@@ -222,6 +222,12 @@ uint32_t sna_crtc_to_sprite(xf86CrtcPtr crtc)
 	return to_sna_crtc(crtc)->sprite;
 }
 
+int sna_crtc_is_on(xf86CrtcPtr crtc)
+{
+	assert(to_sna_crtc(crtc));
+	return to_sna_crtc(crtc)->bo != NULL;
+}
+
 #ifndef NDEBUG
 static void gem_close(int fd, uint32_t handle);
 static void assert_scanout(struct kgem *kgem, struct kgem_bo *bo,
@@ -4009,7 +4015,7 @@ sna_cursors_fini(struct sna *sna)
 }
 
 static int do_page_flip(struct sna *sna, struct kgem_bo *bo,
-			void *data, int ref_crtc_hw_id)
+			void *data, int pipe)
 {
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
 	int width = sna->scrn->virtualX;
@@ -4032,8 +4038,10 @@ static int do_page_flip(struct sna *sna, struct kgem_bo *bo,
 
 		DBG(("%s: crtc %d id=%d, pipe=%d active? %d\n",
 		     __FUNCTION__, i, crtc->id, crtc->pipe, crtc->bo != NULL));
-		if (crtc->bo == NULL)
+		if (crtc->bo == NULL) {
+			assert(crtc->pipe != pipe);
 			continue;
+		}
 
 		arg.crtc_id = crtc->id;
 		arg.fb_id = get_fb(sna, bo, width, height);
@@ -4044,16 +4052,16 @@ static int do_page_flip(struct sna *sna, struct kgem_bo *bo,
 		 * completion event. All other crtc's events will be discarded.
 		 */
 		arg.user_data = (uintptr_t)data;
-		arg.user_data |= crtc->pipe == ref_crtc_hw_id;
+		arg.user_data |= crtc->pipe == pipe;
 		arg.flags = DRM_MODE_PAGE_FLIP_EVENT;
 		arg.reserved = 0;
 
 		DBG(("%s: crtc %d id=%d, pipe=%d, [ref? %d] --> fb %d\n",
 		     __FUNCTION__, i, crtc->id, crtc->pipe,
-		     crtc->pipe == ref_crtc_hw_id, arg.fb_id));
+		     crtc->pipe == pipe, arg.fb_id));
 		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_PAGE_FLIP, &arg)) {
 			DBG(("%s: flip [fb=%d] on crtc %d id=%d failed - %d\n",
-			     __FUNCTION__, arg.fb_id, i, crtc->id, crtc->pipe errno));
+			     __FUNCTION__, arg.fb_id, i, crtc->id, crtc->pipe, errno));
 disable:
 			if (count == 0)
 				return 0;
@@ -4080,7 +4088,7 @@ int
 sna_page_flip(struct sna *sna,
 	      struct kgem_bo *bo,
 	      void *data,
-	      int ref_crtc_hw_id)
+	      int pipe)
 {
 	int count;
 
@@ -4099,7 +4107,7 @@ sna_page_flip(struct sna *sna,
 	 * Also, flips queued on disabled or incorrectly configured displays
 	 * may never complete; this is a configuration error.
 	 */
-	count = do_page_flip(sna, bo, data, ref_crtc_hw_id);
+	count = do_page_flip(sna, bo, data, pipe);
 	DBG(("%s: page flipped %d crtcs\n", __FUNCTION__, count));
 
 	return count;

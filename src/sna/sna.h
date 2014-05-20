@@ -483,6 +483,7 @@ extern bool sna_crtc_set_sprite_rotation(xf86CrtcPtr crtc, uint32_t rotation);
 extern int sna_crtc_to_pipe(xf86CrtcPtr crtc);
 extern uint32_t sna_crtc_to_sprite(xf86CrtcPtr crtc);
 extern uint32_t sna_crtc_id(xf86CrtcPtr crtc);
+extern int sna_crtc_is_on(xf86CrtcPtr crtc);
 
 CARD32 sna_format_for_depth(int depth);
 CARD32 sna_render_format_for_depth(int depth);
