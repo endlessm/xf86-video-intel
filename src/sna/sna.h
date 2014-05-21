@@ -289,6 +289,17 @@ struct sna {
 		unsigned serial;
 
 		uint32_t *encoders;
+
+		struct {
+			uint64_t msc;
+			unsigned int tv_sec;
+			unsigned int tv_usec;
+		} last_swap[MAX_PIPES];
+
+		struct {
+			uint32_t last;
+			uint32_t wraps;
+		} msc[MAX_PIPES];
 	} mode;
 
 	struct {
@@ -317,11 +328,6 @@ struct sna {
 
 #if HAVE_DRI2
 		void *flip_pending;
-		struct {
-			uint64_t msc;
-			unsigned int tv_sec;
-			unsigned int tv_usec;
-		} last_swap[MAX_PIPES];
 #endif
 	} dri2;
 
@@ -462,6 +468,44 @@ extern xf86CrtcPtr sna_covering_crtc(struct sna *sna,
 
 extern bool sna_wait_for_scanline(struct sna *sna, PixmapPtr pixmap,
 				  xf86CrtcPtr crtc, const BoxRec *clip);
+
+static inline uint64_t msc64(struct sna *sna, int pipe, uint32_t seq)
+{
+	assert((unsigned)pipe < MAX_PIPES);
+	if (seq < sna->mode.msc[pipe].last)
+		sna->mode.msc[pipe].wraps++;
+	sna->mode.msc[pipe].last = seq;
+	return (uint64_t)sna->mode.msc[pipe].wraps << 32 | seq;
+}
+
+static inline uint64_t sna_mode_record_swap(struct sna *sna, int pipe,
+					    int tv_sec, int tv_usec, unsigned seq)
+{
+	DBG(("%s: recording last swap on pipe=%d, frame %d, time %d.%06d\n",
+	     __FUNCTION__, pipe, seq, tv_sec, tv_usec));
+	assert((unsigned)pipe < MAX_PIPES);
+	sna->mode.last_swap[pipe].tv_sec = tv_sec;
+	sna->mode.last_swap[pipe].tv_usec = tv_usec;
+	return sna->mode.last_swap[pipe].msc = msc64(sna, pipe, seq);
+}
+
+static inline uint64_t sna_mode_record_vblank(struct sna *sna, int pipe,
+					      const union drm_wait_vblank *vbl)
+{
+	return sna_mode_record_swap(sna, pipe,
+				    vbl->reply.tval_sec,
+				    vbl->reply.tval_usec,
+				    vbl->reply.sequence);
+}
+
+static inline uint64_t sna_mode_record_event(struct sna *sna, int pipe,
+					     struct drm_event_vblank *event)
+{
+	return sna_mode_record_swap(sna, pipe,
+				    event->tv_sec,
+				    event->tv_usec,
+				    event->sequence);
+}
 
 static inline uint64_t ust64(int tv_sec, int tv_usec)
 {
