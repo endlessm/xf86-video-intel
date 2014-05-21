@@ -906,6 +906,7 @@ struct sna_dri2_frame_event {
 	xf86CrtcPtr crtc;
 	int pipe;
 	int count;
+	bool queued;
 
 	/* for swaps & flips only */
 	DRI2SwapEventPtr event_complete;
@@ -1074,7 +1075,11 @@ void sna_dri2_destroy_window(WindowPtr win)
 
 	while ((info = chain)) {
 		chain = info->chain;
-		sna_dri2_frame_event_info_free(sna, NULL, info);
+		if (info->queued) {
+			info->draw = NULL;
+			info->chain = NULL;
+		} else
+			sna_dri2_frame_event_info_free(sna, NULL, info);
 	}
 }
 
@@ -1120,6 +1125,7 @@ sna_dri2_page_flip(struct sna *sna, struct sna_dri2_frame_event *info)
 
 	sna->dri2.flip_pending = info;
 
+	info->queued = true;
 	swap_limit(info->draw, 1 + (info->type == FLIP_THROTTLE));
 	return true;
 }
@@ -1336,6 +1342,7 @@ static void chain_swap(struct sna *sna,
 			vbl.request.sequence = 1;
 			vbl.request.signal = (unsigned long)chain;
 
+			chain->queued = true;
 			if (!sna_wait_vblank(sna, &vbl, chain->pipe))
 				return;
 
@@ -1357,6 +1364,7 @@ static void chain_swap(struct sna *sna,
 		DRM_VBLANK_EVENT;
 	vbl.request.sequence = 1;
 	vbl.request.signal = (unsigned long)chain;
+	chain->queued = true;
 	if (sna_wait_vblank(sna, &vbl, chain->pipe)) {
 		DBG(("%s: vblank wait failed, unblocking client\n", __FUNCTION__));
 		DRI2SwapComplete(chain->client, draw,
@@ -1394,7 +1402,7 @@ static inline bool rq_is_busy(struct kgem *kgem, struct kgem_bo *bo)
 }
 
 static bool sna_dri2_blit_complete(struct sna *sna,
-				  struct sna_dri2_frame_event *info)
+				   struct sna_dri2_frame_event *info)
 {
 	if (rq_is_busy(&sna->kgem, info->bo)) {
 		union drm_wait_vblank vbl;
@@ -1408,6 +1416,7 @@ static bool sna_dri2_blit_complete(struct sna *sna,
 			DRM_VBLANK_EVENT;
 		vbl.request.sequence = 1;
 		vbl.request.signal = (unsigned long)info;
+		assert(info->queued);
 		if (!sna_wait_vblank(sna, &vbl, info->pipe))
 			return false;
 	}
@@ -1425,6 +1434,7 @@ void sna_dri2_vblank_handler(struct sna *sna, struct drm_event_vblank *event)
 
 	DBG(("%s(type=%d, sequence=%d)\n", __FUNCTION__, info->type, event->sequence));
 	assert((unsigned)info->pipe < MAX_PIPES);
+	assert(info->queued);
 	msc = sna_mode_record_event(sna, info->pipe, event);
 
 	draw = info->draw;
@@ -1459,6 +1469,7 @@ void sna_dri2_vblank_handler(struct sna *sna, struct drm_event_vblank *event)
 		vbl.request.sequence = 1;
 		vbl.request.signal = (unsigned long)info;
 
+		assert(info->queued);
 		if (!sna_wait_vblank(sna, &vbl, info->pipe))
 			return;
 
@@ -1553,8 +1564,10 @@ sna_dri2_immediate_blit(struct sna *sna,
 				vbl.request.sequence = 1;
 				vbl.request.signal = (unsigned long)info;
 				ret = !sna_wait_vblank(sna, &vbl, info->pipe);
-				if (ret)
+				if (ret) {
+					info->queued = true;
 					event = !swap_limit(draw, 2);
+				}
 			}
 			if (event) {
 				DBG(("%s: fake triple bufferring, unblocking client\n", __FUNCTION__));
@@ -1724,8 +1737,10 @@ static void chain_flip(struct sna *sna)
 			vbl.request.sequence = 1;
 			vbl.request.signal = (unsigned long)chain;
 
-			if (!sna_wait_vblank(sna, &vbl, chain->pipe))
+			if (!sna_wait_vblank(sna, &vbl, chain->pipe)) {
+				chain->queued = true;
 				return;
+			}
 		}
 #endif
 		DBG(("%s: fake triple buffering (or vblank wait failed), unblocking client\n", __FUNCTION__));
@@ -2147,6 +2162,7 @@ out:
 		return false;
 	}
 
+	info->queued = true;
 	swap_limit(draw, 1);
 	return true;
 }
@@ -2324,6 +2340,7 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 	if (sna_wait_vblank(sna, &vbl, info->pipe))
 		goto blit;
 
+	info->queued = true;
 	swap_limit(draw, 1 + (info->type == SWAP_WAIT));
 	return TRUE;
 
@@ -2484,6 +2501,7 @@ sna_dri2_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc
 	if (sna_wait_vblank(sna, &vbl, pipe))
 		goto out_free_info;
 
+	info->queued = true;
 	DRI2BlockClient(client, draw);
 	return TRUE;
 
