@@ -119,6 +119,9 @@ struct sna_crtc {
 	uint32_t rotation;
 	struct rotation primary_rotation;
 	struct rotation sprite_rotation;
+
+	uint32_t last_seq, wrap_seq;
+	struct ust_msc swap;
 };
 
 struct sna_property {
@@ -226,6 +229,52 @@ int sna_crtc_is_on(xf86CrtcPtr crtc)
 {
 	assert(to_sna_crtc(crtc));
 	return to_sna_crtc(crtc)->bo != NULL;
+}
+
+static inline uint64_t msc64(struct sna_crtc *sna_crtc, uint32_t seq)
+{
+	if ((int32_t)(seq - sna_crtc->last_seq) < -0x40000000) {
+		sna_crtc->wrap_seq++;
+		DBG(("%s: pipe=%d wrapped was %u, now %u, wraps=%u\n",
+		     __FUNCTION__, sna_crtc->pipe,
+		     sna_crtc->last_seq, seq, sna_crtc->wrap_seq));
+	}
+	sna_crtc->last_seq = seq;
+	return (uint64_t)sna_crtc->wrap_seq << 32 | seq;
+}
+
+uint64_t sna_crtc_record_swap(xf86CrtcPtr crtc,
+			      int tv_sec, int tv_usec, unsigned seq)
+{
+	struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
+	assert(sna_crtc);
+	DBG(("%s: recording last swap on pipe=%d, frame %d, time %d.%06d\n",
+	     __FUNCTION__, sna_crtc->pipe, seq, tv_sec, tv_usec));
+	sna_crtc->swap.tv_sec = tv_sec;
+	sna_crtc->swap.tv_usec = tv_usec;
+	return sna_crtc->swap.msc = msc64(sna_crtc, seq);
+}
+
+const struct ust_msc *sna_crtc_last_swap(xf86CrtcPtr crtc)
+{
+	static struct ust_msc zero;
+
+	if (crtc == NULL) {
+		return &zero;
+	} else {
+		struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
+		assert(sna_crtc);
+		return &sna_crtc->swap;
+	}
+}
+
+xf86CrtcPtr sna_mode_first_crtc(struct sna *sna)
+{
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	if (sna->mode.num_real_crtc)
+		return config->crtc[0];
+	else
+		return NULL;
 }
 
 #ifndef NDEBUG

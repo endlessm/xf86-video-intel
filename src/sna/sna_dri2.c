@@ -1305,18 +1305,19 @@ sna_dri2_exchange_buffers(DrawablePtr draw,
 	back->name = tmp;
 }
 
-static void fake_swap_complete(struct sna *sna,
-			       ClientPtr client, DrawablePtr draw, int type,
-			       DRI2SwapEventPtr func, void *data)
+static void fake_swap_complete(struct sna *sna, ClientPtr client,
+			       DrawablePtr draw, xf86CrtcPtr crtc,
+			       int type, DRI2SwapEventPtr func, void *data)
 {
-	DBG(("%s: frame=%lld, tv=%d.%06d\n", __FUNCTION__,
-	     (long long)sna->mode.last_swap[0].msc,
-	     sna->mode.last_swap[0].tv_sec,
-	     sna->mode.last_swap[0].tv_usec));
+	const struct ust_msc *swap;
+
+	swap = sna_crtc_last_swap(crtc);
+	DBG(("%s: pipe=%d, frame=%lld, tv=%d.%06d\n",
+	     __FUNCTION__, crtc ? sna_crtc_to_pipe(crtc) : -1,
+	     (long long)swap->msc, swap->tv_sec, swap->tv_usec));
+
 	DRI2SwapComplete(client, draw,
-			 sna->mode.last_swap[0].msc,
-			 sna->mode.last_swap[0].tv_sec,
-			 sna->mode.last_swap[0].tv_usec,
+			 swap->msc, swap->tv_sec, swap->tv_usec,
 			 type, func, data);
 }
 
@@ -1433,9 +1434,8 @@ void sna_dri2_vblank_handler(struct sna *sna, struct drm_event_vblank *event)
 	uint64_t msc;
 
 	DBG(("%s(type=%d, sequence=%d)\n", __FUNCTION__, info->type, event->sequence));
-	assert((unsigned)info->pipe < MAX_PIPES);
 	assert(info->queued);
-	msc = sna_mode_record_event(sna, info->pipe, event);
+	msc = sna_crtc_record_event(info->crtc, event);
 
 	draw = info->draw;
 	if (draw == NULL) {
@@ -1571,7 +1571,8 @@ sna_dri2_immediate_blit(struct sna *sna,
 			}
 			if (event) {
 				DBG(("%s: fake triple bufferring, unblocking client\n", __FUNCTION__));
-				fake_swap_complete(sna, info->client, draw,
+				fake_swap_complete(sna, info->client,
+						   draw, info->crtc,
 						   DRI2_BLIT_COMPLETE,
 						   info->event_complete,
 						   info->event_data);
@@ -1690,7 +1691,7 @@ sna_dri2_flip_continue(struct sna *sna, struct sna_dri2_frame_event *info)
 		sna_dri2_flip_get_back(sna, info);
 #if !XORG_CAN_TRIPLE_BUFFER
 		DBG(("%s: fake triple buffering, unblocking client\n", __FUNCTION__));
-		fake_swap_complete(sna, info->client, info->draw,
+		fake_swap_complete(sna, info->client, info->draw, info->crtc,
 				   DRI2_FLIP_COMPLETE,
 				   info->event_complete, info->event_data);
 #endif
@@ -1745,7 +1746,7 @@ static void chain_flip(struct sna *sna)
 #endif
 		DBG(("%s: fake triple buffering (or vblank wait failed), unblocking client\n", __FUNCTION__));
 		fake_swap_complete(sna, chain->client, chain->draw,
-				   DRI2_BLIT_COMPLETE,
+				   chain->crtc, DRI2_BLIT_COMPLETE,
 				   chain->event_complete, chain->event_data);
 		sna_dri2_frame_event_info_free(sna, chain->draw, chain);
 	}
@@ -1880,7 +1881,7 @@ sna_dri2_page_flip_handler(struct sna *sna,
 
 	/* Is this the event whose info shall be delivered to higher level? */
 	if (event->user_data & 1) {
-		info->fe_frame = sna_mode_record_event(sna, info->pipe, event);
+		info->fe_frame = sna_crtc_record_event(info->crtc, event);
 		info->fe_tv_sec = event->tv_sec;
 		info->fe_tv_usec = event->tv_usec;
 	}
@@ -1893,16 +1894,16 @@ sna_dri2_page_flip_handler(struct sna *sna,
 }
 
 static CARD64
-get_current_msc(struct sna *sna, int pipe)
+get_current_msc(struct sna *sna, xf86CrtcPtr crtc)
 {
 	union drm_wait_vblank vbl;
 	CARD64 ret = -1;
 
 	VG_CLEAR(vbl);
-	vbl.request.type = DRM_VBLANK_RELATIVE | pipe_select(pipe);
+	vbl.request.type = DRM_VBLANK_RELATIVE;
 	vbl.request.sequence = 0;
-	if (sna_wait_vblank(sna, &vbl, pipe) == 0)
-		ret = sna_mode_record_vblank(sna, pipe, &vbl);
+	if (sna_wait_vblank(sna, &vbl, sna_crtc_to_pipe(crtc)) == 0)
+		ret = sna_crtc_record_vblank(crtc, &vbl);
 
 	return ret;
 }
@@ -1952,7 +1953,7 @@ static int use_triple_buffer(struct sna *sna, ClientPtr client, bool async)
 static bool immediate_swap(struct sna *sna,
 			   uint64_t target_msc,
 			   uint64_t divisor,
-			   int pipe,
+			   xf86CrtcPtr crtc,
 			   uint64_t *current_msc)
 {
 	if (divisor == 0) {
@@ -1964,7 +1965,7 @@ static bool immediate_swap(struct sna *sna,
 		}
 
 		if (target_msc)
-			*current_msc = get_current_msc(sna, pipe);
+			*current_msc = get_current_msc(sna, crtc);
 
 		DBG(("%s: current_msc=%ld, target_msc=%ld -- %s\n",
 		     __FUNCTION__, (long)*current_msc, (long)target_msc,
@@ -1974,7 +1975,7 @@ static bool immediate_swap(struct sna *sna,
 
 	DBG(("%s: explicit waits requests, divisor=%ld\n",
 	     __FUNCTION__, (long)divisor));
-	*current_msc = get_current_msc(sna, pipe);
+	*current_msc = get_current_msc(sna, crtc);
 	return false;
 }
 
@@ -1990,7 +1991,7 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 	union drm_wait_vblank vbl;
 	CARD64 current_msc;
 
-	if (immediate_swap(sna, *target_msc, divisor, pipe, &current_msc)) {
+	if (immediate_swap(sna, *target_msc, divisor, crtc, &current_msc)) {
 		int type;
 
 		info = sna->dri2.flip_pending;
@@ -2067,7 +2068,8 @@ new_back:
 			sna_dri2_flip_get_back(sna, info);
 			if (type == FLIP_COMPLETE) {
 				DBG(("%s: fake triple bufferring, unblocking client\n", __FUNCTION__));
-				fake_swap_complete(sna, client, draw, DRI2_EXCHANGE_COMPLETE, func, data);
+				fake_swap_complete(sna, client, draw, info->crtc,
+						   DRI2_EXCHANGE_COMPLETE, func, data);
 			}
 		}
 out:
@@ -2194,7 +2196,7 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 {
 	struct sna *sna = to_sna_from_drawable(draw);
 	union drm_wait_vblank vbl;
-	xf86CrtcPtr crtc;
+	xf86CrtcPtr crtc = NULL;
 	struct sna_dri2_frame_event *info = NULL;
 	CARD64 current_msc;
 
@@ -2231,7 +2233,6 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 	assert(sna_pixmap_from_drawable(draw)->flush);
 
 	/* Drawable not displayed... just complete the swap */
-	crtc = NULL;
 	if ((sna->flags & SNA_NO_WAIT) == 0)
 		crtc = sna_dri2_get_crtc(draw);
 	if (crtc == NULL) {
@@ -2267,7 +2268,7 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 
 	info->type = SWAP;
 
-	if (immediate_swap(sna, *target_msc, divisor, info->pipe, &current_msc)) {
+	if (immediate_swap(sna, *target_msc, divisor, info->crtc, &current_msc)) {
 		bool sync = current_msc < *target_msc;
 		if (!sna_dri2_immediate_blit(sna, info, sync, true))
 			sna_dri2_frame_event_info_free(sna, draw, info);
@@ -2353,18 +2354,11 @@ blit:
 		sna_dri2_frame_event_info_free(sna, draw, info);
 skip:
 	DBG(("%s: unable to show frame, unblocking client\n", __FUNCTION__));
-	fake_swap_complete(sna, client, draw, DRI2_BLIT_COMPLETE, func, data);
+	if (crtc == NULL)
+		crtc = sna_mode_first_crtc(sna);
+	fake_swap_complete(sna, client, draw, crtc, DRI2_BLIT_COMPLETE, func, data);
 	*target_msc = 0; /* offscreen, so zero out target vblank count */
 	return TRUE;
-}
-
-static int sna_dri2_get_pipe(DrawablePtr draw)
-{
-	int pipe = -1;
-	xf86CrtcPtr crtc = sna_dri2_get_crtc(draw);
-	if (crtc)
-		pipe = sna_crtc_to_pipe(crtc);
-	return pipe;
 }
 
 /*
@@ -2376,28 +2370,27 @@ sna_dri2_get_msc(DrawablePtr draw, CARD64 *ust, CARD64 *msc)
 {
 	struct sna *sna = to_sna_from_drawable(draw);
 	union drm_wait_vblank vbl;
-	int pipe;
+	xf86CrtcPtr crtc = sna_dri2_get_crtc(draw);
 
-	pipe = sna_dri2_get_pipe(draw);
-	DBG(("%s(pipe=%d)\n", __FUNCTION__, pipe));
-	if (pipe == -1) {
+	DBG(("%s(pipe=%d)\n", __FUNCTION__, crtc ? sna_crtc_to_pipe(crtc) : -1));
+	if (crtc == NULL) {
+		const struct ust_msc *swap;
+
+		crtc = sna_mode_first_crtc(sna);
 fail:
 		/* Drawable not displayed, make up a *monotonic* value */
-		assert(pipe < MAX_PIPES);
-		if (pipe < 0)
-			pipe = 0;
-		*msc = sna->mode.last_swap[pipe].msc;
-		*ust = ust64(sna->mode.last_swap[pipe].tv_sec,
-			     sna->mode.last_swap[pipe].tv_usec);
+		swap = sna_crtc_last_swap(crtc);
+		*msc = swap->msc;
+		*ust = ust64(swap->tv_sec, swap->tv_usec);
 		return TRUE;
 	}
 
 	VG_CLEAR(vbl);
 	vbl.request.type = DRM_VBLANK_RELATIVE;
 	vbl.request.sequence = 0;
-	if (sna_wait_vblank(sna, &vbl, pipe) == 0) {
+	if (sna_wait_vblank(sna, &vbl, sna_crtc_to_pipe(crtc)) == 0) {
 		*ust = ust64(vbl.reply.tval_sec, vbl.reply.tval_usec);
-		*msc = sna_mode_record_vblank(sna, pipe, &vbl);
+		*msc = sna_crtc_record_vblank(crtc, &vbl);
 		DBG(("%s: msc=%llu, ust=%llu\n", __FUNCTION__,
 		     (long long)*msc, (long long)*ust));
 	} else {
@@ -2424,6 +2417,7 @@ sna_dri2_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc
 	xf86CrtcPtr crtc;
 	CARD64 current_msc;
 	union drm_wait_vblank vbl;
+	const struct ust_msc *swap;
 	int pipe = 0;
 
 	crtc = sna_dri2_get_crtc(draw);
@@ -2447,7 +2441,7 @@ sna_dri2_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc
 	if (sna_wait_vblank(sna, &vbl, pipe))
 		goto out_complete;
 
-	current_msc = sna_mode_record_vblank(sna, pipe, &vbl);
+	current_msc = sna_crtc_record_vblank(crtc, &vbl);
 
 	/* If target_msc already reached or passed, set it to
 	 * current_msc to ensure we return a reasonable value back
@@ -2497,10 +2491,11 @@ sna_dri2_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc
 out_free_info:
 	sna_dri2_frame_event_info_free(sna, draw, info);
 out_complete:
+	if (crtc == NULL)
+		crtc = sna_mode_first_crtc(sna);
+	swap = sna_crtc_last_swap(crtc);
 	DRI2WaitMSCComplete(client, draw,
-			    sna->mode.last_swap[pipe].msc,
-			    sna->mode.last_swap[pipe].tv_sec,
-			    sna->mode.last_swap[pipe].tv_usec);
+			    swap->msc, swap->tv_sec, swap->tv_usec);
 	return TRUE;
 }
 #else

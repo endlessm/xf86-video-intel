@@ -72,8 +72,6 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <signal.h>
 #include <setjmp.h>
 
-#define MAX_PIPES 4
-
 #include "compiler.h"
 
 #if HAS_DEBUG_FULL
@@ -289,17 +287,6 @@ struct sna {
 		unsigned serial;
 
 		uint32_t *encoders;
-
-		struct {
-			uint64_t msc;
-			unsigned int tv_sec;
-			unsigned int tv_usec;
-		} last_swap[MAX_PIPES];
-
-		struct {
-			uint32_t last;
-			uint32_t wraps;
-		} msc[MAX_PIPES];
 	} mode;
 
 	struct {
@@ -469,43 +456,30 @@ extern xf86CrtcPtr sna_covering_crtc(struct sna *sna,
 extern bool sna_wait_for_scanline(struct sna *sna, PixmapPtr pixmap,
 				  xf86CrtcPtr crtc, const BoxRec *clip);
 
-static inline uint64_t msc64(struct sna *sna, int pipe, uint32_t seq)
-{
-	assert((unsigned)pipe < MAX_PIPES);
-	if ((int32_t)(seq - sna->mode.msc[pipe].last) < -0x40000000) {
-		sna->mode.msc[pipe].wraps++;
-		DBG(("%s: pipe=%d wrapped was %u, now %u, wraps=%u\n",
-		     __FUNCTION__, pipe, sna->mode.msc[pipe].last, seq,
-		     sna->mode.msc[pipe].wraps));
-	}
-	sna->mode.msc[pipe].last = seq;
-	return (uint64_t)sna->mode.msc[pipe].wraps << 32 | seq;
-}
+xf86CrtcPtr sna_mode_first_crtc(struct sna *sna);
 
-static inline uint64_t sna_mode_record_swap(struct sna *sna, int pipe,
-					    int tv_sec, int tv_usec, unsigned seq)
-{
-	DBG(("%s: recording last swap on pipe=%d, frame %d, time %d.%06d\n",
-	     __FUNCTION__, pipe, seq, tv_sec, tv_usec));
-	assert((unsigned)pipe < MAX_PIPES);
-	sna->mode.last_swap[pipe].tv_sec = tv_sec;
-	sna->mode.last_swap[pipe].tv_usec = tv_usec;
-	return sna->mode.last_swap[pipe].msc = msc64(sna, pipe, seq);
-}
+const struct ust_msc {
+	uint64_t msc;
+	int tv_sec;
+	int tv_usec;
+} *sna_crtc_last_swap(xf86CrtcPtr crtc);
 
-static inline uint64_t sna_mode_record_vblank(struct sna *sna, int pipe,
+uint64_t sna_crtc_record_swap(xf86CrtcPtr crtc,
+			      int tv_sec, int tv_usec, unsigned seq);
+
+static inline uint64_t sna_crtc_record_vblank(xf86CrtcPtr crtc,
 					      const union drm_wait_vblank *vbl)
 {
-	return sna_mode_record_swap(sna, pipe,
+	return sna_crtc_record_swap(crtc,
 				    vbl->reply.tval_sec,
 				    vbl->reply.tval_usec,
 				    vbl->reply.sequence);
 }
 
-static inline uint64_t sna_mode_record_event(struct sna *sna, int pipe,
+static inline uint64_t sna_crtc_record_event(xf86CrtcPtr crtc,
 					     struct drm_event_vblank *event)
 {
-	return sna_mode_record_swap(sna, pipe,
+	return sna_crtc_record_swap(crtc,
 				    event->tv_sec,
 				    event->tv_usec,
 				    event->sequence);
