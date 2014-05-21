@@ -2926,8 +2926,8 @@ sna_output_add(struct sna *sna, int id, int serial)
 	output->name = (char *)(output + 1);
 	memcpy(output->name, name, len + 1);
 
-	output->use_screen_monitor = config->num_output;
-	xf86OutputUseScreenMonitor(output, !config->num_output);
+	output->use_screen_monitor = config->num_output != 1;
+	xf86OutputUseScreenMonitor(output, !output->use_screen_monitor);
 
 	sna_output->id = compat_conn.conn.connector_id;
 	sna_output->is_panel = is_panel(compat_conn.conn.connector_type);
