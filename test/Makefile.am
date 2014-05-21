@@ -33,6 +33,7 @@ endif
 if X11_DRI3
 stress_TESTS += \
 	dri3-test \
+	present-test \
 	$(NULL)
 endif
 check_PROGRAMS = $(stress_TESTS)

@@ -38,9 +38,12 @@ Pixmap dri3_create_pixmap(Display *dpy,
 			  int fd, int bpp, int stride, int size)
 {
 	xcb_connection_t *c = XGetXCBConnection(dpy);
-	xcb_pixmap_t pixmap = xcb_generate_id(c);
-	xcb_dri3_pixmap_from_buffer(c, pixmap, draw, size, width, height, stride, depth, bpp, fd);
-	return pixmap;
+	if (fd >= 0) {
+		xcb_pixmap_t pixmap = xcb_generate_id(c);
+		xcb_dri3_pixmap_from_buffer(c, pixmap, draw, size, width, height, stride, depth, bpp, fd);
+		return pixmap;
+	}
+	return NullPixmap;
 }
 
 int dri3_create_fd(Display *dpy,
