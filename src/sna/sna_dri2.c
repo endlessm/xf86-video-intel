@@ -57,12 +57,20 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #if DRI2INFOREC_VERSION < 6
 #define XORG_CAN_TRIPLE_BUFFER 0
+#define swap_limit(d, l) false
 #else
 #define XORG_CAN_TRIPLE_BUFFER 1
 static Bool
 sna_dri2_swap_limit_validate(DrawablePtr draw, int swap_limit)
 {
 	return swap_limit >= 1;
+}
+
+static bool swap_limit(DrawablePtr draw, int limit)
+{
+	DBG(("%s: setting swap limit to %d\n", __FUNCTION__, limit));
+	DRI2SwapLimit(draw, limit);
+	return true;
 }
 #endif
 
@@ -226,8 +234,8 @@ sna_dri2_pixmap_update_bo(struct sna *sna, PixmapPtr pixmap)
 
 static DRI2Buffer2Ptr
 sna_dri2_create_buffer(DrawablePtr draw,
-		      unsigned int attachment,
-		      unsigned int format)
+		       unsigned int attachment,
+		       unsigned int format)
 {
 	struct sna *sna = to_sna_from_drawable(draw);
 	DRI2Buffer2Ptr buffer;
@@ -604,9 +612,9 @@ static void sna_dri2_select_mode(struct sna *sna, struct kgem_bo *dst, struct kg
 
 static void
 sna_dri2_copy_fallback(struct sna *sna, int bpp,
-		      struct kgem_bo *src_bo, int sx, int sy,
-		      struct kgem_bo *dst_bo, int dx, int dy,
-		      const BoxRec *box, int n)
+		       struct kgem_bo *src_bo, int sx, int sy,
+		       struct kgem_bo *dst_bo, int dx, int dy,
+		       const BoxRec *box, int n)
 {
 	void *dst = kgem_bo_map__gtt(&sna->kgem, dst_bo);
 	void *src = kgem_bo_map__gtt(&sna->kgem, src_bo);
@@ -818,9 +826,9 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 
 static void
 sna_dri2_copy_region(DrawablePtr draw,
-		    RegionPtr region,
-		    DRI2BufferPtr dst,
-		    DRI2BufferPtr src)
+		     RegionPtr region,
+		     DRI2BufferPtr dst,
+		     DRI2BufferPtr src)
 {
 	PixmapPtr pixmap = get_drawable_pixmap(draw);
 	struct sna *sna = to_sna_from_pixmap(pixmap);
@@ -1014,8 +1022,8 @@ sna_dri2_add_frame_event(DrawablePtr draw, struct sna_dri2_frame_event *info)
 
 static void
 sna_dri2_frame_event_info_free(struct sna *sna,
-			      DrawablePtr draw,
-			      struct sna_dri2_frame_event *info)
+			       DrawablePtr draw,
+			       struct sna_dri2_frame_event *info)
 {
 	if (draw && draw->type == DRAWABLE_WINDOW)
 		sna_dri2_remove_frame_event((WindowPtr)draw, info);
@@ -1112,12 +1120,7 @@ sna_dri2_page_flip(struct sna *sna, struct sna_dri2_frame_event *info)
 
 	sna->dri2.flip_pending = info;
 
-#if XORG_CAN_TRIPLE_BUFFER
-	DBG(("%s: setting swap limit to %d\n", __FUNCTION__,
-	     1 + (info->type == FLIP_THROTTLE)));
-	DRI2SwapLimit(info->draw, 1 + (info->type == FLIP_THROTTLE));
-#endif
-
+	swap_limit(info->draw, 1 + (info->type == FLIP_THROTTLE));
 	return true;
 }
 
@@ -1255,8 +1258,8 @@ can_flip(struct sna * sna,
 
 static void
 sna_dri2_exchange_buffers(DrawablePtr draw,
-			 DRI2BufferPtr front,
-			 DRI2BufferPtr back)
+			  DRI2BufferPtr front,
+			  DRI2BufferPtr back)
 {
 	struct kgem_bo *back_bo, *front_bo;
 	PixmapPtr pixmap;
@@ -1362,16 +1365,13 @@ static void chain_swap(struct sna *sna,
 				 chain->event_complete, chain->event_data);
 		sna_dri2_frame_event_info_free(sna, draw, chain);
 	} else {
-#if !XORG_CAN_TRIPLE_BUFFER
-		DBG(("%s: fake triple buffering, unblocking client\n", __FUNCTION__));
-		DRI2SwapComplete(chain->client, draw,
-				 frame, tv_sec, tv_usec,
-				 DRI2_BLIT_COMPLETE,
-				 chain->event_complete, chain->event_data);
-#else
-		DBG(("%s: setting swap limit to 2\n", __FUNCTION__));
-		DRI2SwapLimit(draw, 2);
-#endif
+		if (!swap_limit(draw, 2)) {
+			DBG(("%s: fake triple buffering, unblocking client\n", __FUNCTION__));
+			DRI2SwapComplete(chain->client, draw,
+					 frame, tv_sec, tv_usec,
+					 DRI2_BLIT_COMPLETE,
+					 chain->event_complete, chain->event_data);
+		}
 	}
 }
 
@@ -1520,8 +1520,8 @@ done:
 
 static bool
 sna_dri2_immediate_blit(struct sna *sna,
-		       struct sna_dri2_frame_event *info,
-		       bool sync, bool event)
+			struct sna_dri2_frame_event *info,
+			bool sync, bool event)
 {
 	DrawablePtr draw = info->draw;
 	bool ret = false;
@@ -1553,14 +1553,10 @@ sna_dri2_immediate_blit(struct sna *sna,
 				vbl.request.sequence = 1;
 				vbl.request.signal = (unsigned long)info;
 				ret = !sna_wait_vblank(sna, &vbl, info->pipe);
-#if XORG_CAN_TRIPLE_BUFFER
-				if (ret) {
-					DBG(("%s: setting swap limit to 2\n", __FUNCTION__));
-					DRI2SwapLimit(draw, 2);
-				}
-#endif
+				if (ret)
+					event = !swap_limit(draw, 2);
 			}
-			if (!XORG_CAN_TRIPLE_BUFFER || !ret) {
+			if (event) {
 				DBG(("%s: fake triple bufferring, unblocking client\n", __FUNCTION__));
 				fake_swap_complete(sna, info->client, draw,
 						   DRI2_BLIT_COMPLETE,
@@ -1969,9 +1965,9 @@ static bool immediate_swap(struct sna *sna,
 
 static bool
 sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
-		      DRI2BufferPtr front, DRI2BufferPtr back,
-		      CARD64 *target_msc, CARD64 divisor, CARD64 remainder,
-		      DRI2SwapEventPtr func, void *data)
+		       DRI2BufferPtr front, DRI2BufferPtr back,
+		       CARD64 *target_msc, CARD64 divisor, CARD64 remainder,
+		       DRI2SwapEventPtr func, void *data)
 {
 	struct sna *sna = to_sna_from_drawable(draw);
 	struct sna_dri2_frame_event *info;
@@ -2041,10 +2037,7 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 			     __FUNCTION__));
 			info->type = type = FLIP;
 			sna->dri2.flip_pending = info;
-#if XORG_CAN_TRIPLE_BUFFER
-			DBG(("%s: setting swap limit to 1\n", __FUNCTION__));
-			DRI2SwapLimit(draw, 1);
-#endif
+			swap_limit(draw, 1);
 		} else {
 			info->type = type = use_triple_buffer(sna, client, *target_msc == 0);
 			if (!sna_dri2_page_flip(sna, info)) {
@@ -2154,11 +2147,7 @@ out:
 		return false;
 	}
 
-#if XORG_CAN_TRIPLE_BUFFER
-	DBG(("%s: setting swap limit to 1\n", __FUNCTION__));
-	DRI2SwapLimit(draw, 1);
-#endif
-
+	swap_limit(draw, 1);
 	return true;
 }
 
@@ -2184,8 +2173,8 @@ out:
  */
 static int
 sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
-		      DRI2BufferPtr back, CARD64 *target_msc, CARD64 divisor,
-		      CARD64 remainder, DRI2SwapEventPtr func, void *data)
+		       DRI2BufferPtr back, CARD64 *target_msc, CARD64 divisor,
+		       CARD64 remainder, DRI2SwapEventPtr func, void *data)
 {
 	struct sna *sna = to_sna_from_drawable(draw);
 	union drm_wait_vblank vbl;
@@ -2408,7 +2397,7 @@ fail:
  */
 static int
 sna_dri2_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc,
-			  CARD64 divisor, CARD64 remainder)
+			   CARD64 divisor, CARD64 remainder)
 {
 	struct sna *sna = to_sna_from_drawable(draw);
 	struct sna_dri2_frame_event *info = NULL;
