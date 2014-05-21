@@ -1365,7 +1365,7 @@ static void chain_swap(struct sna *sna,
 				 chain->event_complete, chain->event_data);
 		sna_dri2_frame_event_info_free(sna, draw, chain);
 	} else {
-		if (!swap_limit(draw, 2)) {
+		if (chain->type == SWAP_THROTTLE && !swap_limit(draw, 2)) {
 			DBG(("%s: fake triple buffering, unblocking client\n", __FUNCTION__));
 			DRI2SwapComplete(chain->client, draw,
 					 frame, tv_sec, tv_usec,
@@ -2324,6 +2324,7 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 	if (sna_wait_vblank(sna, &vbl, info->pipe))
 		goto blit;
 
+	swap_limit(draw, 1 + (info->type == SWAP_WAIT));
 	return TRUE;
 
 blit:
