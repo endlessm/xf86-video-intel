@@ -2419,25 +2419,23 @@ sna_dri2_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc
 {
 	struct sna *sna = to_sna_from_drawable(draw);
 	struct sna_dri2_frame_event *info = NULL;
-	int pipe = sna_dri2_get_pipe(draw);
+	xf86CrtcPtr crtc;
 	CARD64 current_msc;
 	union drm_wait_vblank vbl;
+	int pipe = 0;
 
+	crtc = sna_dri2_get_crtc(draw);
 	DBG(("%s(pipe=%d, target_msc=%llu, divisor=%llu, rem=%llu)\n",
-	     __FUNCTION__, pipe,
+	     __FUNCTION__, crtc ? sna_crtc_to_pipe(crtc) : -1,
 	     (long long)target_msc,
 	     (long long)divisor,
 	     (long long)remainder));
 
-	/* Truncate to match kernel interfaces; means occasional overflow
-	 * misses, but that's generally not a big deal */
-	target_msc &= 0xffffffff;
-	divisor &= 0xffffffff;
-	remainder &= 0xffffffff;
-
 	/* Drawable not visible, return immediately */
-	if (pipe == -1)
+	if (crtc == NULL)
 		goto out_complete;
+
+	pipe = sna_crtc_to_pipe(crtc);
 
 	VG_CLEAR(vbl);
 
@@ -2447,7 +2445,7 @@ sna_dri2_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc
 	if (sna_wait_vblank(sna, &vbl, pipe))
 		goto out_complete;
 
-	current_msc = vbl.reply.sequence;
+	current_msc = sna_mode_record_vblank(sna, pipe, &vbl);
 
 	/* If target_msc already reached or passed, set it to
 	 * current_msc to ensure we return a reasonable value back
@@ -2455,10 +2453,8 @@ sna_dri2_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc
 	 * sending us MSC targets from the past by forcibly updating
 	 * their count on this call.
 	 */
-	if (divisor == 0 && current_msc >= target_msc) {
-		target_msc = current_msc;
+	if (divisor == 0 && current_msc >= target_msc)
 		goto out_complete;
-	}
 
 	info = calloc(1, sizeof(struct sna_dri2_frame_event));
 	if (!info)
@@ -2468,6 +2464,8 @@ sna_dri2_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc
 	info->draw = draw;
 	info->client = client;
 	info->type = WAITMSC;
+	info->crtc = crtc;
+	info->pipe = pipe;
 	sna_dri2_add_frame_event(draw, info);
 
 	vbl.request.signal = (unsigned long)info;
@@ -2475,26 +2473,15 @@ sna_dri2_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc
 	/*
 	 * If divisor is zero, or current_msc is smaller than target_msc,
 	 * we just need to make sure target_msc passes before waking up the
-	 * client.
+	 * client. Otherwise, compute the next msc to match divisor/remainder.
 	 */
 	if (divisor == 0 || current_msc < target_msc) {
 		vbl.request.sequence = target_msc;
 	} else {
-		/*
-		 * If we get here, target_msc has already passed or we don't have one,
-		 * so we queue an event that will satisfy the divisor/remainder
-		 * equation.
-		 */
-		vbl.request.sequence = current_msc - current_msc % divisor + remainder;
-
-		/*
-		 * If calculated remainder is larger than requested remainder,
-		 * it means we've passed the last point where
-		 * seq % divisor == remainder, so we need to wait for the next time
-		 * that will happen.
-		 */
-		if ((current_msc % divisor) >= remainder)
-			vbl.request.sequence += divisor;
+		target_msc = current_msc + remainder - current_msc % divisor;
+		if (target_msc <= current_msc)
+			target_msc += divisor;
+		vbl.request.sequence = target_msc;
 	}
 
 	DBG(("%s: waiting until MSC=%llu\n", __FUNCTION__, (long long)vbl.request.sequence));
@@ -2508,7 +2495,10 @@ sna_dri2_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc
 out_free_info:
 	sna_dri2_frame_event_info_free(sna, draw, info);
 out_complete:
-	DRI2WaitMSCComplete(client, draw, target_msc, 0, 0);
+	DRI2WaitMSCComplete(client, draw,
+			    sna->mode.last_swap[pipe].msc,
+			    sna->mode.last_swap[pipe].tv_sec,
+			    sna->mode.last_swap[pipe].tv_usec);
 	return TRUE;
 }
 #else
