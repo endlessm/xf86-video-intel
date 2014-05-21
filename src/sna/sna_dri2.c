@@ -2402,8 +2402,8 @@ fail:
 		if (pipe < 0)
 			pipe = 0;
 		*msc = sna->dri2.last_swap[pipe].msc;
-		*ust = ((uint64_t)sna->dri2.last_swap[pipe].tv_sec * 100000 +
-			sna->dri2.last_swap[pipe].tv_usec);
+		*ust = ust64(sna->dri2.last_swap[pipe].tv_sec,
+			     sna->dri2.last_swap[pipe].tv_usec);
 		return TRUE;
 	}
 
@@ -2420,7 +2420,7 @@ fail:
 		sna->dri2.last_swap[pipe].tv_usec = vbl.reply.tval_usec;
 		sna->dri2.last_swap[pipe].msc = vbl.reply.sequence;
 
-		*ust = ((CARD64)vbl.reply.tval_sec * 1000000) + vbl.reply.tval_usec;
+		*ust = ust64(vbl.reply.tval_sec, vbl.reply.tval_usec);
 		*msc = vbl.reply.sequence;
 		DBG(("%s: msc=%llu, ust=%llu\n", __FUNCTION__,
 		     (long long)*msc, (long long)*ust));

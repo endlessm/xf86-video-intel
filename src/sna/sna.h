@@ -463,6 +463,11 @@ extern xf86CrtcPtr sna_covering_crtc(struct sna *sna,
 extern bool sna_wait_for_scanline(struct sna *sna, PixmapPtr pixmap,
 				  xf86CrtcPtr crtc, const BoxRec *clip);
 
+static inline uint64_t ust64(int tv_sec, int tv_usec)
+{
+	return (uint64_t)tv_sec * 1000000 + tv_usec;
+}
+
 #if HAVE_DRI2_H
 bool sna_dri2_open(struct sna *sna, ScreenPtr pScreen);
 void sna_dri2_page_flip_handler(struct sna *sna, struct drm_event_vblank *event);
