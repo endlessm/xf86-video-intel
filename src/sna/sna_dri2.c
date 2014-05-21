@@ -2128,11 +2128,12 @@ out:
 		     (int)divisor,
 		     (int)remainder));
 
-		vbl.request.sequence = current_msc;
+		*target_msc = current_msc;
 		if (divisor)
-			vbl.request.sequence += remainder - current_msc % divisor;
+			*target_msc += remainder - current_msc % divisor;
 
-		DBG(("%s: initial sequence = %d\n", __FUNCTION__, vbl.request.sequence));
+		DBG(("%s: initial sequence = %lld\n", __FUNCTION__,
+		     (long long)*target_msc));
 
 		/*
 		 * If the calculated deadline vbl.request.sequence is
@@ -2145,14 +2146,13 @@ out:
 		 * This comparison takes the 1 frame swap delay
 		 * in pageflipping mode into account.
 		 */
-		vbl.request.sequence -= 1;
-		if (vbl.request.sequence <= current_msc)
-			vbl.request.sequence += divisor;
+		*target_msc -= 1;
+		if (*target_msc <= current_msc)
+			*target_msc += divisor;
 
-		DBG(("%s: flip adjusted sequence = %d\n", __FUNCTION__, vbl.request.sequence));
-
-		/* Adjust returned value for 1 frame pageflip offset */
-		*target_msc = vbl.reply.sequence;
+		vbl.reply.sequence = *target_msc;
+		DBG(("%s: flip adjusted sequence = %d\n",
+		     __FUNCTION__, vbl.request.sequence));
 	}
 
 	/* Account for 1 frame extra pageflip delay */
@@ -2308,9 +2308,9 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 		     (int)*target_msc,
 		     (int)divisor));
 
-		vbl.request.sequence = current_msc;
+		*target_msc = current_msc;
 		if (divisor)
-			vbl.request.sequence += remainder - current_msc % divisor;
+			*target_msc += remainder - current_msc % divisor;
 		/*
 		 * If the calculated deadline vbl.request.sequence is smaller than
 		 * or equal to current_msc, it means we've passed the last point
@@ -2318,12 +2318,14 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 		 * seq % divisor == remainder, so we need to wait for the next time
 		 * this will happen.
 		 */
-		vbl.request.sequence -= 1;
-		if (vbl.request.sequence < current_msc)
-			vbl.request.sequence += divisor;
-		*target_msc = vbl.reply.sequence;
-		DBG(("%s: queueing target_msc = %d\n", __FUNCTION__, vbl.reply.sequence));
-		if (vbl.request.sequence == current_msc) {
+		*target_msc -= 1;
+		if (*target_msc < current_msc)
+			*target_msc += divisor;
+		vbl.reply.sequence = *target_msc;
+		DBG(("%s: queueing target_msc = %d\n", __FUNCTION__,
+		     vbl.reply.sequence));
+
+		if (*target_msc == current_msc) {
 			DBG(("%s: performing blit before queueing\n", __FUNCTION__));
 			info->bo = __sna_dri2_copy_region(sna, draw, NULL,
 							  info->back, info->front,
