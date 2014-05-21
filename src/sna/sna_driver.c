@@ -646,6 +646,13 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 
 	setup_dri(sna);
 
+	sna->present.available = false;
+	if (xf86ReturnOptValBool(sna->Options, OPTION_PRESENT, TRUE)) {
+#if HAVE_PRESENT
+		sna->present.available = !!xf86LoadSubModule(scrn, "present");
+#endif
+	}
+
 	sna_acpi_init(sna);
 
 	return TRUE;
@@ -866,6 +873,11 @@ static Bool sna_early_close_screen(CLOSE_SCREEN_ARGS_DECL)
 
 	sna_uevent_fini(scrn);
 	sna_mode_close(sna);
+
+	if (sna->present.open) {
+		sna_present_close(sna, screen);
+		sna->present.open = false;
+	}
 
 	if (sna->dri3.open) {
 		sna_dri3_close(sna, screen);
@@ -1097,6 +1109,12 @@ sna_screen_init(SCREEN_INIT_ARGS_DECL)
 
 	sna_video_init(sna, screen);
 	sna_dri_init(sna, screen);
+
+	if (sna->present.available)
+		sna->present.open = sna_present_open(sna, screen);
+	if (sna->present.open)
+		xf86DrvMsg(sna->scrn->scrnIndex, X_INFO,
+			   "hardware support for Present enabled\n");
 
 	if (serverGeneration == 1)
 		xf86ShowUnusedOptions(scrn->scrnIndex, scrn->options);

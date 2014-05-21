@@ -4602,6 +4602,8 @@ sna_crtc_config_notify(ScreenPtr screen)
 
 	sna_mode_update(sna);
 	sna_cursors_reload(sna);
+
+	sna_present_update(sna);
 }
 
 #if HAS_PIXMAP_SHARING
@@ -5778,11 +5780,17 @@ void sna_mode_wakeup(struct sna *sna)
 		struct drm_event *e = (struct drm_event *)&buffer[i];
 		switch (e->type) {
 		case DRM_EVENT_VBLANK:
-			sna_dri2_vblank_handler(sna, (struct drm_event_vblank *)e);
+			if (((uintptr_t)((struct drm_event_vblank *)e)->user_data) & 2)
+				sna_present_vblank_handler(sna, (struct drm_event_vblank *)e);
+			else
+				sna_dri2_vblank_handler(sna, (struct drm_event_vblank *)e);
 			break;
 		case DRM_EVENT_FLIP_COMPLETE:
 			if (((struct drm_event_vblank *)e)->user_data) {
-				sna_dri2_page_flip_handler(sna, (struct drm_event_vblank *)e);
+				if (((uintptr_t)((struct drm_event_vblank *)e)->user_data) & 2)
+					sna_present_flip_handler(sna, (struct drm_event_vblank *)e);
+				else
+					sna_dri2_page_flip_handler(sna, (struct drm_event_vblank *)e);
 			} else {
 				if (!--sna->mode.shadow_flip)
 					sna_mode_redisplay(sna);

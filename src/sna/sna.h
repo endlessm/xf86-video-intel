@@ -340,6 +340,13 @@ struct sna {
 #endif
 	} dri3;
 
+	struct sna_present {
+		bool available;
+		bool open;
+#if HAVE_PRESENT
+#endif
+	} present;
+
 	struct sna_xv {
 		XvAdaptorPtr adaptors;
 		int num_adaptors;
@@ -536,6 +543,22 @@ void sna_dri3_close(struct sna *sna, ScreenPtr pScreen);
 #else
 static inline bool sna_dri3_open(struct sna *sna, ScreenPtr pScreen) { return false; }
 static inline void sna_dri3_close(struct sna *sna, ScreenPtr pScreen) { }
+#endif
+
+#if HAVE_PRESENT
+bool sna_present_open(struct sna *sna, ScreenPtr pScreen);
+void sna_present_update(struct sna *sna);
+void sna_present_close(struct sna *sna, ScreenPtr pScreen);
+void sna_present_flip_handler(struct sna *sna,
+			      struct drm_event_vblank *event);
+void sna_present_vblank_handler(struct sna *sna,
+				struct drm_event_vblank *event);
+#else
+static inline bool sna_present_open(struct sna *sna, ScreenPtr pScreen) { return false; }
+static inline void sna_present_update(struct sna *sna) { }
+static inline void sna_present_close(struct sna *sna, ScreenPtr pScreen) { }
+static inline void sna_present_flip_handler(struct sna *sna, struct drm_event_vblank *event) { }
+static inline void sna_present_vblank_handler(struct sna *sna, struct drm_event_vblank *event) { }
 #endif
 
 extern bool sna_crtc_set_sprite_rotation(xf86CrtcPtr crtc, uint32_t rotation);

@@ -43,7 +43,7 @@ Pixmap dri3_create_pixmap(Display *dpy,
 		xcb_dri3_pixmap_from_buffer(c, pixmap, draw, size, width, height, stride, depth, bpp, fd);
 		return pixmap;
 	}
-	return NullPixmap;
+	return 0;
 }
 
 int dri3_create_fd(Display *dpy,
