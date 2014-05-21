@@ -1356,6 +1356,7 @@ I830DRI2GetMSC(DrawablePtr draw, CARD64 *ust, CARD64 *msc)
 
 	/* Drawable not displayed, make up a *monotonic* value */
 	if (pipe == -1) {
+fail:
 		*ust = gettime_us();
 		*msc = 0;
 		return TRUE;
@@ -1374,7 +1375,7 @@ I830DRI2GetMSC(DrawablePtr draw, CARD64 *ust, CARD64 *msc)
 				   strerror(errno));
 			limit--;
 		}
-		return FALSE;
+		goto fail;
 	}
 
 	*ust = ((CARD64)vbl.reply.tval_sec * 1000000) + vbl.reply.tval_usec;
