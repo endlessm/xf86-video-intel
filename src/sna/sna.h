@@ -472,8 +472,12 @@ extern bool sna_wait_for_scanline(struct sna *sna, PixmapPtr pixmap,
 static inline uint64_t msc64(struct sna *sna, int pipe, uint32_t seq)
 {
 	assert((unsigned)pipe < MAX_PIPES);
-	if (seq < sna->mode.msc[pipe].last)
+	if ((int32_t)(seq - sna->mode.msc[pipe].last) < -0x40000000) {
 		sna->mode.msc[pipe].wraps++;
+		DBG(("%s: pipe=%d wrapped was %u, now %u, wraps=%u\n",
+		     __FUNCTION__, pipe, sna->mode.msc[pipe].last, seq,
+		     sna->mode.msc[pipe].wraps));
+	}
 	sna->mode.msc[pipe].last = seq;
 	return (uint64_t)sna->mode.msc[pipe].wraps << 32 | seq;
 }
