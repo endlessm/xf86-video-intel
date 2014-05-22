@@ -1755,9 +1755,9 @@ static void chain_flip(struct sna *sna)
 static void sna_dri2_flip_event(struct sna *sna,
 				struct sna_dri2_frame_event *flip)
 {
-	DBG(("%s(frame=%d, tv=%d.%06d, type=%d)\n",
+	DBG(("%s(frame=%lld, tv=%d.%06d, type=%d)\n",
 	     __FUNCTION__,
-	     flip->fe_frame,
+	     (long long)flip->fe_frame,
 	     flip->fe_tv_sec,
 	     flip->fe_tv_usec,
 	     flip->type));
@@ -2395,7 +2395,7 @@ fail:
 		     (long long)*msc, (long long)*ust));
 	} else {
 		DBG(("%s: query failed on pipe %d, ret=%d\n",
-		     __FUNCTION__, pipe, errno));
+		     __FUNCTION__, sna_crtc_to_pipe(crtc), errno));
 		goto fail;
 	}
 
