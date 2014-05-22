@@ -1855,7 +1855,7 @@ static void sna_dri2_flip_event(struct sna *sna,
 			sna_dri2_frame_event_info_free(sna, flip->draw, flip);
 		} else if (!sna_dri2_flip_continue(sna, flip)) {
 			DBG(("%s: no longer able to flip\n", __FUNCTION__));
-			if (flip->draw == NULL || !sna_dri2_immediate_blit(sna, flip, false, flip->mode == 1))
+			if (flip->draw == NULL || !sna_dri2_immediate_blit(sna, flip, false, flip->mode < 0))
 				sna_dri2_frame_event_info_free(sna, flip->draw, flip);
 		}
 		break;
@@ -2009,15 +2009,14 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 			if (current_msc >= *target_msc) {
 				DBG(("%s: executing xchg of pending flip\n",
 				     __FUNCTION__));
+				assert(info->mode == 0 || info->mode == FLIP_COMPLETE);
 				sna_dri2_exchange_buffers(draw, front, back);
 				info->mode = type = FLIP_COMPLETE;
-				current_msc = *target_msc;
 				goto new_back;
 			} else {
 				DBG(("%s: chaining flip\n", __FUNCTION__));
 				type = FLIP_THROTTLE;
 				info->mode = -type;
-				current_msc++;
 				goto out;
 			}
 		}
@@ -2062,7 +2061,6 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 			}
 		}
 
-		current_msc++;
 		if (info->type != FLIP) {
 new_back:
 			sna_dri2_flip_get_back(sna, info);
@@ -2073,8 +2071,8 @@ new_back:
 			}
 		}
 out:
-		DBG(("%s: target_msc=%lu\n", __FUNCTION__, (unsigned long)current_msc));
-		*target_msc = current_msc;
+		DBG(("%s: target_msc=%llu\n", __FUNCTION__, current_msc + 1));
+		*target_msc = current_msc + 1;
 		return true;
 	}
 
