@@ -2057,9 +2057,6 @@ out:
 	sna_dri2_reference_buffer(front);
 	sna_dri2_reference_buffer(back);
 
-	*target_msc &= 0xffffffff;
-	remainder &= 0xffffffff;
-
 	VG_CLEAR(vbl);
 
 	vbl.request.type =
@@ -2071,49 +2068,24 @@ out:
 	 * we just need to make sure target_msc passes before initiating
 	 * the swap.
 	 */
-	if (current_msc < *target_msc) {
-		DBG(("%s: waiting for swap: current=%d, target=%d, divisor=%d\n",
+	if (divisor && current_msc >= *target_msc) {
+		DBG(("%s: missed target, queueing event for next: current=%lld, target=%lld, divisor=%lld, remainder=%lld\n",
 		     __FUNCTION__,
-		     (int)current_msc,
-		     (int)*target_msc,
-		     (int)divisor));
-		vbl.request.sequence = *target_msc - 1;
-	} else {
-		DBG(("%s: missed target, queueing event for next: current=%d, target=%d, divisor=%d, remainder=%d\n",
-		     __FUNCTION__,
-		     (int)current_msc,
-		     (int)*target_msc,
-		     (int)divisor,
-		     (int)remainder));
+		     (long long)current_msc,
+		     (long long)*target_msc,
+		     (long long)divisor,
+		     (long long)remainder));
 
-		*target_msc = current_msc;
-		if (divisor)
-			*target_msc += remainder - current_msc % divisor;
-
-		DBG(("%s: initial sequence = %lld\n", __FUNCTION__,
-		     (long long)*target_msc));
-
-		/*
-		 * If the calculated deadline vbl.request.sequence is
-		 * smaller than or equal to current_msc, it means
-		 * we've passed the last point when effective onset
-		 * frame seq could satisfy *seq % divisor == remainder,
-		 * so we need to wait for the next time this will
-		 * happen.
-		 *
-		 * This comparison takes the 1 frame swap delay
-		 * in pageflipping mode into account.
-		 */
-		*target_msc -= 1;
+		*target_msc = current_msc + remainder - current_msc % divisor;
 		if (*target_msc <= current_msc)
 			*target_msc += divisor;
-
-		vbl.reply.sequence = *target_msc;
-		DBG(("%s: flip adjusted sequence = %d\n",
-		     __FUNCTION__, vbl.request.sequence));
 	}
 
 	/* Account for 1 frame extra pageflip delay */
+	vbl.reply.sequence = *target_msc - 1;
+	DBG(("%s: flip adjusted sequence = %d\n",
+	     __FUNCTION__, vbl.request.sequence));
+
 	vbl.request.signal = (unsigned long)info;
 	if (sna_wait_vblank(sna, &vbl, pipe)) {
 		sna_dri2_frame_event_info_free(sna, draw, info);
@@ -2243,57 +2215,32 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 	 * we just need to make sure target_msc passes before initiating
 	 * the swap.
 	 */
-	if (current_msc < *target_msc) {
-		DBG(("%s: waiting for swap: current=%d, target=%d, divisor=%d\n",
+	info->type = SWAP;
+	if (divisor && current_msc >= *target_msc) {
+		DBG(("%s: missed target, queueing event for next: current=%lld, target=%lld, divisor=%lld, remainder=%lld\n",
 		     __FUNCTION__,
-		     (int)current_msc,
-		     (int)*target_msc,
-		     (int)divisor));
+		     (long long)current_msc,
+		     (long long)*target_msc,
+		     (long long)divisor,
+		     (long long)remainder));
 
-		info->type = SWAP;
-
-		vbl.request.sequence = *target_msc - 1;
-	} else {
-		/*
-		 * If we get here, target_msc has already passed or we don't have one,
-		 * and we need to queue an event that will satisfy the divisor/remainder
-		 * equation.
-		 */
-		DBG(("%s: missed target, queueing event for next: current=%d, target=%d,  divisor=%d\n",
-		     __FUNCTION__,
-		     (int)current_msc,
-		     (int)*target_msc,
-		     (int)divisor));
-
-		*target_msc = current_msc;
-		if (divisor)
-			*target_msc += remainder - current_msc % divisor;
-		/*
-		 * If the calculated deadline vbl.request.sequence is smaller than
-		 * or equal to current_msc, it means we've passed the last point
-		 * when effective onset frame seq could satisfy
-		 * seq % divisor == remainder, so we need to wait for the next time
-		 * this will happen.
-		 */
-		*target_msc -= 1;
-		if (*target_msc < current_msc)
+		*target_msc = current_msc + remainder - current_msc % divisor;
+		if (*target_msc <= current_msc)
 			*target_msc += divisor;
-		vbl.reply.sequence = *target_msc;
-		DBG(("%s: queueing target_msc = %d\n", __FUNCTION__,
-		     vbl.reply.sequence));
+	}
+	vbl.request.sequence = *target_msc - 1;
+	if (*target_msc <= current_msc + 1) {
+		DBG(("%s: performing blit before queueing\n", __FUNCTION__));
+		info->bo = __sna_dri2_copy_region(sna, draw, NULL,
+						  info->back, info->front,
+						  true);
+		info->type = SWAP_WAIT;
 
-		if (*target_msc == current_msc) {
-			DBG(("%s: performing blit before queueing\n", __FUNCTION__));
-			info->bo = __sna_dri2_copy_region(sna, draw, NULL,
-							  info->back, info->front,
-							  true);
-			info->type = SWAP_WAIT;
-
-			vbl.request.type =
-				DRM_VBLANK_RELATIVE |
-				DRM_VBLANK_EVENT;
-			vbl.request.sequence = 1;
-		}
+		vbl.request.type =
+			DRM_VBLANK_RELATIVE |
+			DRM_VBLANK_EVENT;
+		vbl.request.sequence = 1;
+		*target_msc = current_msc + 1;
 	}
 
 	if (sna_wait_vblank(sna, &vbl, info->pipe))
@@ -2374,7 +2321,7 @@ sna_dri2_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc
 	CARD64 current_msc;
 	union drm_wait_vblank vbl;
 	const struct ust_msc *swap;
-	int pipe = 0;
+	int pipe;
 
 	crtc = sna_dri2_get_crtc(draw);
 	DBG(("%s(pipe=%d, target_msc=%llu, divisor=%llu, rem=%llu)\n",
@@ -2427,14 +2374,18 @@ sna_dri2_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc
 	 * we just need to make sure target_msc passes before waking up the
 	 * client. Otherwise, compute the next msc to match divisor/remainder.
 	 */
-	if (divisor == 0 || current_msc < target_msc) {
-		vbl.request.sequence = target_msc;
-	} else {
+	if (divisor && current_msc >= target_msc) {
+		DBG(("%s: missed target, queueing event for next: current=%lld, target=%lld, divisor=%lld, remainder=%lld\n",
+		     __FUNCTION__,
+		     (long long)current_msc,
+		     (long long)target_msc,
+		     (long long)divisor,
+		     (long long)remainder));
 		target_msc = current_msc + remainder - current_msc % divisor;
 		if (target_msc <= current_msc)
 			target_msc += divisor;
-		vbl.request.sequence = target_msc;
 	}
+	vbl.request.sequence = target_msc;
 
 	DBG(("%s: waiting until MSC=%llu\n", __FUNCTION__, (long long)vbl.request.sequence));
 	if (sna_wait_vblank(sna, &vbl, pipe))
