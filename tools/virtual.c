@@ -784,6 +784,10 @@ static RROutput claim_virtual(struct display *display, char *output_name, int nc
 	XRRDeleteOutputMode(dpy, rr_output, id);
 	XRRDestroyMode(dpy, id);
 
+	/* And hide it again */
+	res = XRRGetScreenResources(dpy, display->root);
+	if (res != NULL)
+		XRRFreeScreenResources(res);
 out:
 	XUngrabServer(dpy);
 
@@ -2852,9 +2856,14 @@ static void context_cleanup(struct context *ctx)
 			continue;
 		}
 	}
+	XRRFreeScreenResources(res);
+
+	/* And hide them again */
+	res = XRRGetScreenResources(dpy, ctx->display->root);
+	if (res != NULL)
+		XRRFreeScreenResources(res);
 
 	XUngrabServer(dpy);
-	XRRFreeScreenResources(res);
 
 	if (ctx->singleton)
 		XDeleteProperty(dpy, ctx->display->root, ctx->singleton);
