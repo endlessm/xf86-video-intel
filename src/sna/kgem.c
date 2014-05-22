@@ -1584,16 +1584,16 @@ static uint32_t kgem_surface_size(struct kgem *kgem,
 		if (tiling) {
 			if (kgem->gen < 030) {
 				tile_width = 128;
-				tile_height = 32;
+				tile_height = 16;
 			} else {
 				tile_width = 512;
-				tile_height = 16;
+				tile_height = 8;
 			}
 		} else {
 			tile_width = 2 * bpp >> 3;
 			tile_width = ALIGN(tile_width,
 					   kgem_pitch_alignment(kgem, flags));
-			tile_height = 2;
+			tile_height = 1;
 		}
 	} else switch (tiling) {
 	default:
@@ -1601,19 +1601,21 @@ static uint32_t kgem_surface_size(struct kgem *kgem,
 		tile_width = 2 * bpp >> 3;
 		tile_width = ALIGN(tile_width,
 				   kgem_pitch_alignment(kgem, flags));
-		tile_height = 2;
+		tile_height = 1;
 		break;
 
-		/* XXX align to an even tile row */
 	case I915_TILING_X:
 		tile_width = 512;
-		tile_height = 16;
+		tile_height = 8;
 		break;
 	case I915_TILING_Y:
 		tile_width = 128;
-		tile_height = 64;
+		tile_height = 32;
 		break;
 	}
+	/* XXX align to an even tile row */
+	if (!kgem->has_relaxed_fencing)
+		tile_height *= 2;
 
 	*pitch = ALIGN(width * bpp / 8, tile_width);
 	height = ALIGN(height, tile_height);
@@ -1653,7 +1655,7 @@ static uint32_t kgem_aligned_height(struct kgem *kgem,
 	uint32_t tile_height;
 
 	if (kgem->gen <= 030) {
-		tile_height = tiling ? kgem->gen < 030 ? 32 : 16 : 1;
+		tile_height = tiling ? kgem->gen < 030 ? 16 : 8 : 1;
 	} else switch (tiling) {
 		/* XXX align to an even tile row */
 	default:
@@ -1661,12 +1663,16 @@ static uint32_t kgem_aligned_height(struct kgem *kgem,
 		tile_height = 1;
 		break;
 	case I915_TILING_X:
-		tile_height = 16;
+		tile_height = 8;
 		break;
 	case I915_TILING_Y:
-		tile_height = 64;
+		tile_height = 32;
 		break;
 	}
+
+	/* XXX align to an even tile row */
+	if (!kgem->has_relaxed_fencing)
+		tile_height *= 2;
 
 	return ALIGN(height, tile_height);
 }
