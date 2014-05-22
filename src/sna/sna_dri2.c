@@ -917,10 +917,6 @@ struct sna_dri2_frame_event {
 
 	struct sna_dri2_frame_event *chain;
 
-	uint64_t fe_frame;
-	unsigned int fe_tv_sec;
-	unsigned int fe_tv_usec;
-
 	struct {
 		struct kgem_bo *bo;
 		uint32_t name;
@@ -1305,6 +1301,25 @@ sna_dri2_exchange_buffers(DrawablePtr draw,
 	back->name = tmp;
 }
 
+static void frame_swap_complete(struct sna *sna,
+				struct sna_dri2_frame_event *frame,
+				int type)
+{
+	const struct ust_msc *swap;
+
+	if (frame->draw == NULL)
+		return;
+
+	swap = sna_crtc_last_swap(frame->crtc);
+	DBG(("%s: pipe=%d, frame=%lld, tv=%d.%06d\n",
+	     __FUNCTION__, frame->pipe,
+	     (long long)swap->msc, swap->tv_sec, swap->tv_usec));
+
+	DRI2SwapComplete(frame->client, frame->draw,
+			 swap->msc, swap->tv_sec, swap->tv_usec,
+			 type, frame->event_complete, frame->event_data);
+}
+
 static void fake_swap_complete(struct sna *sna, ClientPtr client,
 			       DrawablePtr draw, xf86CrtcPtr crtc,
 			       int type, DRI2SwapEventPtr func, void *data)
@@ -1321,10 +1336,7 @@ static void fake_swap_complete(struct sna *sna, ClientPtr client,
 			 type, func, data);
 }
 
-static void chain_swap(struct sna *sna,
-		       DrawablePtr draw,
-		       int frame, unsigned int tv_sec, unsigned int tv_usec,
-		       struct sna_dri2_frame_event *chain)
+static void chain_swap(struct sna *sna, DrawablePtr draw, struct sna_dri2_frame_event *chain)
 {
 	union drm_wait_vblank vbl;
 
@@ -1368,18 +1380,12 @@ static void chain_swap(struct sna *sna,
 	chain->queued = true;
 	if (sna_wait_vblank(sna, &vbl, chain->pipe)) {
 		DBG(("%s: vblank wait failed, unblocking client\n", __FUNCTION__));
-		DRI2SwapComplete(chain->client, draw,
-				 frame, tv_sec, tv_usec,
-				 DRI2_BLIT_COMPLETE,
-				 chain->event_complete, chain->event_data);
+		frame_swap_complete(sna, chain, DRI2_BLIT_COMPLETE);
 		sna_dri2_frame_event_info_free(sna, draw, chain);
 	} else {
 		if (chain->type == SWAP_THROTTLE && !swap_limit(draw, 2)) {
 			DBG(("%s: fake triple buffering, unblocking client\n", __FUNCTION__));
-			DRI2SwapComplete(chain->client, draw,
-					 frame, tv_sec, tv_usec,
-					 DRI2_BLIT_COMPLETE,
-					 chain->event_complete, chain->event_data);
+			frame_swap_complete(sna, chain, DRI2_BLIT_COMPLETE);
 		}
 	}
 }
@@ -1481,10 +1487,7 @@ void sna_dri2_vblank_handler(struct sna *sna, struct drm_event_vblank *event)
 
 		DBG(("%s: swap complete, unblocking client (frame=%d, tv=%d.%06d)\n", __FUNCTION__,
 		     event->sequence, event->tv_sec, event->tv_usec));
-		DRI2SwapComplete(info->client, draw, msc,
-				 event->tv_sec, event->tv_usec,
-				 DRI2_BLIT_COMPLETE,
-				 info->event_complete, info->event_data);
+		frame_swap_complete(sna, info, DRI2_BLIT_COMPLETE);
 		break;
 
 	case SWAP_THROTTLE:
@@ -1498,10 +1501,7 @@ void sna_dri2_vblank_handler(struct sna *sna, struct drm_event_vblank *event)
 
 		DBG(("%s: triple buffer swap complete, unblocking client (frame=%d, tv=%d.%06d)\n", __FUNCTION__,
 		     event->sequence, event->tv_sec, event->tv_usec));
-		DRI2SwapComplete(info->client, draw, msc,
-				 event->tv_sec, event->tv_usec,
-				 DRI2_BLIT_COMPLETE,
-				 info->event_complete, info->event_data);
+		frame_swap_complete(sna, info, DRI2_BLIT_COMPLETE);
 #endif
 		break;
 
@@ -1519,9 +1519,7 @@ void sna_dri2_vblank_handler(struct sna *sna, struct drm_event_vblank *event)
 	if (info->chain) {
 		assert(info->chain != info);
 		sna_dri2_remove_frame_event((WindowPtr)draw, info);
-		chain_swap(sna, draw,
-			   event->sequence, event->tv_sec, event->tv_usec,
-			   info->chain);
+		chain_swap(sna, draw, info->chain);
 		draw = NULL;
 	}
 
@@ -1571,11 +1569,7 @@ sna_dri2_immediate_blit(struct sna *sna,
 			}
 			if (event) {
 				DBG(("%s: fake triple bufferring, unblocking client\n", __FUNCTION__));
-				fake_swap_complete(sna, info->client,
-						   draw, info->crtc,
-						   DRI2_BLIT_COMPLETE,
-						   info->event_complete,
-						   info->event_data);
+				frame_swap_complete(sna, info, DRI2_BLIT_COMPLETE);
 			}
 		}
 	} else {
@@ -1691,9 +1685,7 @@ sna_dri2_flip_continue(struct sna *sna, struct sna_dri2_frame_event *info)
 		sna_dri2_flip_get_back(sna, info);
 #if !XORG_CAN_TRIPLE_BUFFER
 		DBG(("%s: fake triple buffering, unblocking client\n", __FUNCTION__));
-		fake_swap_complete(sna, info->client, info->draw, info->crtc,
-				   DRI2_FLIP_COMPLETE,
-				   info->event_complete, info->event_data);
+		frame_swap_complete(sna, info, DRI2_FLIP_COMPLETE);
 #endif
 	}
 
@@ -1745,9 +1737,7 @@ static void chain_flip(struct sna *sna)
 		}
 #endif
 		DBG(("%s: fake triple buffering (or vblank wait failed), unblocking client\n", __FUNCTION__));
-		fake_swap_complete(sna, chain->client, chain->draw,
-				   chain->crtc, DRI2_BLIT_COMPLETE,
-				   chain->event_complete, chain->event_data);
+		frame_swap_complete(sna, chain, DRI2_BLIT_COMPLETE);
 		sna_dri2_frame_event_info_free(sna, chain->draw, chain);
 	}
 }
@@ -1755,12 +1745,7 @@ static void chain_flip(struct sna *sna)
 static void sna_dri2_flip_event(struct sna *sna,
 				struct sna_dri2_frame_event *flip)
 {
-	DBG(("%s(frame=%lld, tv=%d.%06d, type=%d)\n",
-	     __FUNCTION__,
-	     (long long)flip->fe_frame,
-	     flip->fe_tv_sec,
-	     flip->fe_tv_usec,
-	     flip->type));
+	DBG(("%s(pipe=%d)\n", __FUNCTION__, flip->pipe));
 
 	assert(!sna->mode.shadow_flip);
 
@@ -1804,19 +1789,8 @@ static void sna_dri2_flip_event(struct sna *sna,
 	/* We assume our flips arrive in order, so we don't check the frame */
 	switch (flip->type) {
 	case FLIP:
-		DBG(("%s: flip complete (drawable gone? %d), msc=%lld\n",
-		     __FUNCTION__, flip->draw == NULL, (long long)flip->fe_frame));
-		if (flip->draw) {
-			DBG(("%s: swap complete, unblocking client (frame=%lld, tv=%d.%06d)\n", __FUNCTION__,
-			     (long long)flip->fe_frame, flip->fe_tv_sec, flip->fe_tv_usec));
-			DRI2SwapComplete(flip->client, flip->draw,
-					 flip->fe_frame,
-					 flip->fe_tv_sec,
-					 flip->fe_tv_usec,
-					 DRI2_FLIP_COMPLETE,
-					 flip->event_complete, flip->event_data);
-		}
-
+		DBG(("%s: swap complete, unblocking client\n", __FUNCTION__));
+		frame_swap_complete(sna, flip, DRI2_FLIP_COMPLETE);
 		sna_dri2_frame_event_info_free(sna, flip->draw, flip);
 
 		if (sna->dri2.flip_pending)
@@ -1824,16 +1798,8 @@ static void sna_dri2_flip_event(struct sna *sna,
 		break;
 
 	case FLIP_THROTTLE:
-		if (flip->draw) {
-			DBG(("%s: triple buffer swap complete, unblocking client (frame=%lld, tv=%d.%06d)\n", __FUNCTION__,
-			     (long long)flip->fe_frame, flip->fe_tv_sec, flip->fe_tv_usec));
-			DRI2SwapComplete(flip->client, flip->draw,
-					 flip->fe_frame,
-					 flip->fe_tv_sec,
-					 flip->fe_tv_usec,
-					 DRI2_FLIP_COMPLETE,
-					 flip->event_complete, flip->event_data);
-		}
+		DBG(("%s: triple buffer swap complete, unblocking client\n", __FUNCTION__));
+		frame_swap_complete(sna, flip, DRI2_FLIP_COMPLETE);
 	case FLIP_COMPLETE:
 		if (sna->dri2.flip_pending) {
 			sna_dri2_frame_event_info_free(sna, flip->draw, flip);
@@ -1844,11 +1810,7 @@ static void sna_dri2_flip_event(struct sna *sna,
 			if (flip->chain) {
 				sna_dri2_remove_frame_event((WindowPtr)flip->draw,
 							   flip);
-				chain_swap(sna, flip->draw,
-					   flip->fe_frame,
-					   flip->fe_tv_sec,
-					   flip->fe_tv_usec,
-					   flip->chain);
+				chain_swap(sna, flip->draw, flip->chain);
 				flip->draw = NULL;
 			}
 
@@ -1880,11 +1842,8 @@ sna_dri2_page_flip_handler(struct sna *sna,
 	assert(info->count > 0);
 
 	/* Is this the event whose info shall be delivered to higher level? */
-	if (event->user_data & 1) {
-		info->fe_frame = sna_crtc_record_event(info->crtc, event);
-		info->fe_tv_sec = event->tv_sec;
-		info->fe_tv_usec = event->tv_usec;
-	}
+	if (event->user_data & 1)
+		sna_crtc_record_event(info->crtc, event);
 
 	if (--info->count)
 		return;
@@ -2066,8 +2025,7 @@ new_back:
 			sna_dri2_flip_get_back(sna, info);
 			if (type == FLIP_COMPLETE) {
 				DBG(("%s: fake triple bufferring, unblocking client\n", __FUNCTION__));
-				fake_swap_complete(sna, client, draw, info->crtc,
-						   DRI2_EXCHANGE_COMPLETE, func, data);
+				frame_swap_complete(sna, info, DRI2_EXCHANGE_COMPLETE);
 			}
 		}
 out:
