@@ -1947,7 +1947,6 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 	struct sna *sna = to_sna_from_drawable(draw);
 	struct sna_dri2_frame_event *info;
 	int pipe = sna_crtc_to_pipe(crtc);
-	union drm_wait_vblank vbl;
 	CARD64 current_msc;
 
 	if (immediate_swap(sna, *target_msc, divisor, crtc, &current_msc)) {
@@ -2057,12 +2056,6 @@ out:
 	sna_dri2_reference_buffer(front);
 	sna_dri2_reference_buffer(back);
 
-	VG_CLEAR(vbl);
-
-	vbl.request.type =
-		DRM_VBLANK_ABSOLUTE |
-		DRM_VBLANK_EVENT;
-
 	/*
 	 * If divisor is zero, or current_msc is smaller than target_msc
 	 * we just need to make sure target_msc passes before initiating
@@ -2081,15 +2074,31 @@ out:
 			*target_msc += divisor;
 	}
 
-	/* Account for 1 frame extra pageflip delay */
-	vbl.reply.sequence = *target_msc - 1;
-	DBG(("%s: flip adjusted sequence = %d\n",
-	     __FUNCTION__, vbl.request.sequence));
+	if (*target_msc <= current_msc + 1) {
+		if (!sna_dri2_page_flip(sna, info)) {
+			sna_dri2_frame_event_info_free(sna, draw, info);
+			return false;
+		}
+		*target_msc = current_msc + 1;
+	} else {
+		union drm_wait_vblank vbl;
 
-	vbl.request.signal = (unsigned long)info;
-	if (sna_wait_vblank(sna, &vbl, pipe)) {
-		sna_dri2_frame_event_info_free(sna, draw, info);
-		return false;
+		VG_CLEAR(vbl);
+
+		vbl.request.type =
+			DRM_VBLANK_ABSOLUTE |
+			DRM_VBLANK_EVENT;
+
+		/* Account for 1 frame extra pageflip delay */
+		vbl.reply.sequence = *target_msc - 1;
+		DBG(("%s: flip adjusted sequence = %d\n",
+		     __FUNCTION__, vbl.request.sequence));
+
+		vbl.request.signal = (unsigned long)info;
+		if (sna_wait_vblank(sna, &vbl, pipe)) {
+			sna_dri2_frame_event_info_free(sna, draw, info);
+			return false;
+		}
 	}
 
 	info->queued = true;
