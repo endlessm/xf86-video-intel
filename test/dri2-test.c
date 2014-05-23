@@ -177,6 +177,7 @@ int main(void)
 		DRI2BufferFrontLeft,
 	};
 	XRRScreenResources *res;
+	XRRCrtcInfo **original_crtc;
 	Window root;
 	uint64_t last_msc;
 
@@ -197,6 +198,10 @@ int main(void)
 	res = _XRRGetScreenResourcesCurrent(dpy, root);
 	if (res == NULL)
 		return 1;
+
+	original_crtc = malloc(sizeof(XRRCrtcInfo *)*res->ncrtc);
+	for (i = 0; i < res->ncrtc; i++)
+		original_crtc[i] = XRRGetCrtcInfo(dpy, res, res->crtcs[i]);
 
 	printf("noutput=%d, ncrtc=%d\n", res->noutput, res->ncrtc);
 	last_msc = check_msc(dpy, root, 0);
@@ -244,5 +249,13 @@ int main(void)
 		XRRFreeOutputInfo(output);
 	}
 
+	for (i = 0; i < res->ncrtc; i++)
+		XRRSetCrtcConfig(dpy, res, res->crtcs[i], CurrentTime,
+				 original_crtc[i]->x,
+				 original_crtc[i]->y,
+				 original_crtc[i]->mode,
+				 original_crtc[i]->rotation,
+				 original_crtc[i]->outputs,
+				 original_crtc[i]->noutput);
 	return 0;
 }
