@@ -474,9 +474,10 @@ static void sna_dri2_destroy_buffer(DrawablePtr draw, DRI2Buffer2Ptr buffer)
 	_sna_dri2_destroy_buffer(to_sna_from_drawable(draw), buffer);
 }
 
-static void sna_dri2_reference_buffer(DRI2BufferPtr buffer)
+static DRI2BufferPtr sna_dri2_reference_buffer(DRI2BufferPtr buffer)
 {
 	get_private(buffer)->refcnt++;
+	return buffer;
 }
 
 static inline void damage(PixmapPtr pixmap, struct sna_pixmap *priv, RegionPtr region)
@@ -943,12 +944,12 @@ struct dri2_window {
 
 static struct dri2_window *dri2_window(WindowPtr win)
 {
-	assert(win->drawable.type == DRAWABLE_WINDOW);
 	return ((void **)__get_private(win, sna_window_key))[1];
 }
 
 static void dri2_window_attach(WindowPtr win, struct dri2_window *priv)
 {
+	assert(win->drawable.type == DRAWABLE_WINDOW);
 	assert(dri2_window(win) == NULL);
 	((void **)__get_private(win, sna_window_key))[1] = priv;
 	assert(dri2_window(win) == priv);
@@ -1053,25 +1054,35 @@ sna_dri2_remove_frame_event(WindowPtr win,
 	chain->chain = info->chain;
 }
 
-static void
-sna_dri2_add_frame_event(DrawablePtr draw, struct sna_dri2_frame_event *info)
+static struct sna_dri2_frame_event *
+sna_dri2_add_frame_event(DrawablePtr draw, ClientPtr client)
 {
 	struct dri2_window *priv;
-	struct sna_dri2_frame_event *chain;
+	struct sna_dri2_frame_event *info, *chain;
 
-	if (draw->type != DRAWABLE_WINDOW)
-		return;
-
+	assert(draw->type == DRAWABLE_WINDOW);
 	DBG(("%s: add[%p] to window %ld)\n",
 	     __FUNCTION__, info, (long)draw->id));
 
 	priv = dri2_window((WindowPtr)draw);
-	assert(priv);
+	if (priv == NULL)
+		return NULL;
+
+	info = calloc(1, sizeof(struct sna_dri2_frame_event));
+	if (info == NULL)
+		return NULL;
+
+	list_init(&info->cache);
+	info->draw = draw;
+	info->client = client;
+	info->crtc = priv->crtc;
+	info->pipe = sna_crtc_to_pipe(priv->crtc);
+
 	assert(priv->chain != info);
 
 	if (priv->chain == NULL) {
 		priv->chain = info;
-		return;
+		return info;
 	}
 
 	chain = priv->chain;
@@ -1080,6 +1091,7 @@ sna_dri2_add_frame_event(DrawablePtr draw, struct sna_dri2_frame_event *info)
 
 	assert(chain != info);
 	chain->chain = info;
+	return info;
 }
 
 static void
@@ -1121,15 +1133,16 @@ sna_dri2_frame_event_info_free(struct sna *sna,
 
 void sna_dri2_destroy_window(WindowPtr win)
 {
-	struct sna *sna = to_sna_from_drawable(&win->drawable);
-	struct dri2_window *priv = dri2_window(win);
+	struct dri2_window *priv;
 
+	priv = dri2_window(win);
 	if (priv == NULL)
 		return;
 
 	DBG(("%s: window=%ld\n", __FUNCTION__, win->drawable.serialNumber));
 
 	if (priv->chain) {
+		struct sna *sna = to_sna_from_drawable(&win->drawable);
 		struct sna_dri2_frame_event *info, *chain;
 
 		DBG(("%s: freeing chain\n", __FUNCTION__));
@@ -2028,7 +2041,6 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 {
 	struct sna *sna = to_sna_from_drawable(draw);
 	struct sna_dri2_frame_event *info;
-	int pipe = sna_crtc_to_pipe(crtc);
 	uint64_t current_msc;
 
 	if (immediate_swap(sna, *target_msc, divisor, draw, crtc, &current_msc)) {
@@ -2036,15 +2048,14 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 
 		info = sna->dri2.flip_pending;
 		DBG(("%s: performing immediate swap on pipe %d, pending? %d, mode: %d\n",
-		     __FUNCTION__, pipe, info != NULL, info ? info->mode : 0));
+		     __FUNCTION__, sna_crtc_to_pipe(crtc), info != NULL, info ? info->mode : 0));
 
 		if (info && info->draw == draw) {
 			assert(info->type != FLIP);
 			assert(info->front == front);
 			if (info->back != back) {
 				_sna_dri2_destroy_buffer(sna, info->back);
-				info->back = back;
-				sna_dri2_reference_buffer(back);
+				info->back = sna_dri2_reference_buffer(back);
 			}
 			if (current_msc >= *target_msc) {
 				DBG(("%s: executing xchg of pending flip\n",
@@ -2061,27 +2072,20 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 			}
 		}
 
-		info = calloc(1, sizeof(struct sna_dri2_frame_event));
+		info = sna_dri2_add_frame_event(draw, client);
 		if (info == NULL)
 			return false;
 
-		list_init(&info->cache);
-		info->draw = draw;
-		info->client = client;
+		assert(info->crtc == crtc);
 		info->event_complete = func;
 		info->event_data = data;
-		info->front = front;
-		info->back = back;
-		info->crtc = crtc;
-		info->pipe = pipe;
+
+		info->front = sna_dri2_reference_buffer(front);
+		info->back = sna_dri2_reference_buffer(back);
 
 		info->scanout[0].bo = ref(get_private(front)->bo);
 		info->scanout[0].name = info->front->name;
 		assert(info->scanout[0].bo->scanout);
-
-		sna_dri2_add_frame_event(draw, info);
-		sna_dri2_reference_buffer(front);
-		sna_dri2_reference_buffer(back);
 
 		if (sna->dri2.flip_pending) {
 			/* We need to first wait (one vblank) for the
@@ -2115,28 +2119,21 @@ out:
 		return true;
 	}
 
-	info = calloc(1, sizeof(struct sna_dri2_frame_event));
+	info = sna_dri2_add_frame_event(draw, client);
 	if (info == NULL)
 		return false;
 
-	list_init(&info->cache);
-	info->draw = draw;
-	info->client = client;
+	assert(info->crtc == crtc);
 	info->event_complete = func;
 	info->event_data = data;
-	info->front = front;
-	info->back = back;
-	info->crtc = crtc;
-	info->pipe = pipe;
 	info->type = FLIP;
+
+	info->front = sna_dri2_reference_buffer(front);
+	info->back = sna_dri2_reference_buffer(back);
 
 	info->scanout[0].bo = ref(get_private(front)->bo);
 	info->scanout[0].name = info->front->name;
 	assert(info->scanout[0].bo->scanout);
-
-	sna_dri2_add_frame_event(draw, info);
-	sna_dri2_reference_buffer(front);
-	sna_dri2_reference_buffer(back);
 
 	/*
 	 * If divisor is zero, or current_msc is smaller than target_msc
@@ -2175,7 +2172,7 @@ out:
 		vbl.reply.sequence = draw_target_seq(draw, *target_msc - 1);
 		vbl.request.signal = (unsigned long)info;
 
-		if (sna_wait_vblank(sna, &vbl, pipe)) {
+		if (sna_wait_vblank(sna, &vbl, info->pipe)) {
 			sna_dri2_frame_event_info_free(sna, draw, info);
 			return false;
 		}
@@ -2266,23 +2263,16 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 
 	VG_CLEAR(vbl);
 
-	info = calloc(1, sizeof(struct sna_dri2_frame_event));
+	info = sna_dri2_add_frame_event(draw, client);
 	if (!info)
 		goto blit;
 
-	list_init(&info->cache);
-	info->draw = draw;
-	info->client = client;
+	assert(info->crtc == crtc);
 	info->event_complete = func;
 	info->event_data = data;
-	info->front = front;
-	info->back = back;
-	info->crtc = crtc;
-	info->pipe = sna_crtc_to_pipe(crtc);
 
-	sna_dri2_add_frame_event(draw, info);
-	sna_dri2_reference_buffer(front);
-	sna_dri2_reference_buffer(back);
+	info->front = sna_dri2_reference_buffer(front);
+	info->back = sna_dri2_reference_buffer(back);
 
 	info->type = SWAP;
 
@@ -2446,17 +2436,12 @@ sna_dri2_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc
 	if (divisor == 0 && current_msc >= target_msc)
 		goto out_complete;
 
-	info = calloc(1, sizeof(struct sna_dri2_frame_event));
+	info = sna_dri2_add_frame_event(draw, client);
 	if (!info)
 		goto out_complete;
 
-	list_init(&info->cache);
-	info->draw = draw;
-	info->client = client;
+	assert(info->crtc == crtc);
 	info->type = WAITMSC;
-	info->crtc = crtc;
-	info->pipe = pipe;
-	sna_dri2_add_frame_event(draw, info);
 
 	vbl.request.signal = (unsigned long)info;
 	vbl.request.type = DRM_VBLANK_ABSOLUTE | DRM_VBLANK_EVENT;
