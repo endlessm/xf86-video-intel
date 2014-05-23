@@ -446,7 +446,7 @@ __intel_crtc_load_cursor_argb(xf86CrtcPtr crtc, CARD32 *image)
 	return ret;
 }
 
-#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,15,99,902,0)
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,15,99,902,2)
 static Bool
 intel_crtc_load_cursor_argb(xf86CrtcPtr crtc, CARD32 *image)
 {
@@ -656,7 +656,11 @@ static const xf86CrtcFuncsRec intel_crtc_funcs = {
 	.set_cursor_position = intel_crtc_set_cursor_position,
 	.show_cursor = intel_crtc_show_cursor,
 	.hide_cursor = intel_crtc_hide_cursor,
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,15,99,902,2)
+	.load_cursor_argb_check = intel_crtc_load_cursor_argb,
+#else
 	.load_cursor_argb = intel_crtc_load_cursor_argb,
+#endif
 	.shadow_create = intel_crtc_shadow_create,
 	.shadow_allocate = intel_crtc_shadow_allocate,
 	.shadow_destroy = intel_crtc_shadow_destroy,
