@@ -3447,6 +3447,15 @@ static struct sna_cursor *__sna_create_cursor(struct sna *sna, int size)
 	return c;
 }
 
+static uint32_t *get_cursor_argb(CursorPtr c)
+{
+#ifdef ARGB_CURSOR
+	return (uint32_t *)c->bits->argb;
+#else
+	return NULL;
+#endif
+}
+
 static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 {
 	struct sna_cursor *cursor;
@@ -3475,7 +3484,7 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 	       sna->cursor.ref->bits->width,
 	       sna->cursor.ref->bits->height,
 	       sna->cursor.serial,
-	       sna->cursor.ref->bits->argb!=NULL));
+	       get_cursor_argb(c) != NULL));
 
 	rotation = crtc->transform_in_use ? crtc->rotation : RR_Rotate_0;
 
@@ -3506,7 +3515,7 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 	height = sna->cursor.ref->bits->height;
 	source = sna->cursor.ref->bits->source;
 	mask = sna->cursor.ref->bits->mask;
-	argb = (uint32_t *)sna->cursor.ref->bits->argb;
+	argb = get_cursor_argb(sna->cursor.ref);
 	pitch = BitmapBytePad(width);
 
 	image = cursor->image;
@@ -3686,7 +3695,7 @@ sna_set_cursor_colors(ScrnInfoPtr scrn, int _bg, int _fg)
 	if (sna->cursor.ref == NULL)
 		return;
 
-	if (sna->cursor.ref->bits->argb)
+	if (get_cursor_argb(sna->cursor.ref))
 		return;
 
 	sna->cursor.serial++;
@@ -3852,29 +3861,29 @@ disable:
 	sigio_unblock(sigio);
 }
 
-#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,15,99,902,0)
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,15,99,902,2)
 static Bool
-sna_load_cursor_argb(ScrnInfoPtr scrn, CursorPtr cursor)
+sna_load_cursor_argb2(ScrnInfoPtr scrn, CursorPtr cursor)
 {
 	return TRUE;
 }
 
 static Bool
-sna_load_cursor_image(ScrnInfoPtr scrn, unsigned char *src)
+sna_load_cursor_image2(ScrnInfoPtr scrn, unsigned char *src)
 {
 	return TRUE;
-}
-#else
-static void
-sna_load_cursor_argb(ScrnInfoPtr scrn, CursorPtr cursor)
-{
-}
-
-static void
-sna_load_cursor_image(ScrnInfoPtr scrn, unsigned char *src)
-{
 }
 #endif
+
+static void
+sna_load_cursor_argb(ScrnInfoPtr scrn, CursorPtr cursor)
+{
+}
+
+static void
+sna_load_cursor_image(ScrnInfoPtr scrn, unsigned char *src)
+{
+}
 
 static int __cursor_size(CursorPtr cursor)
 {
@@ -3935,7 +3944,7 @@ sna_use_hw_cursor(ScreenPtr screen, CursorPtr cursor)
 	__DBG(("%s(%dx%d): ARGB?=%d, serial->%d, size->%d\n", __FUNCTION__,
 	       cursor->bits->width,
 	       cursor->bits->height,
-	       cursor->bits->argb!=NULL,
+	       get_cursor_argb(cursor) != NULL,
 	       sna->cursor.serial,
 	       sna->cursor.size));
 
@@ -4030,6 +4039,12 @@ sna_cursors_init(ScreenPtr screen, struct sna *sna)
 #ifdef ARGB_CURSOR
 	cursor_info->UseHWCursorARGB = sna_use_hw_cursor;
 	cursor_info->LoadCursorARGB = sna_load_cursor_argb;
+#endif
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,15,99,902,2)
+	cursor_info->LoadCursorImageCheck = sna_load_cursor_image2;
+#ifdef ARGB_CURSOR
+	cursor_info->LoadCursorARGBCheck = sna_load_cursor_argb2;
+#endif
 #endif
 
 	if (!xf86InitCursor(screen, cursor_info)) {
