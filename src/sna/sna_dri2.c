@@ -935,6 +935,24 @@ to_frame_event(uintptr_t  data)
 	 return (struct sna_dri2_frame_event *)(data & ~1);
 }
 
+struct window_crtc {
+	xf86CrtcPtr crtc;
+	int64_t msc_delta;
+};
+
+static struct window_crtc *window_get_crtc(WindowPtr win)
+{
+	return ((void **)__get_private(win, sna_window_key))[3];
+}
+
+static void window_set_crtc(WindowPtr win, struct window_crtc *wc)
+{
+	assert(win->drawable.type == DRAWABLE_WINDOW);
+	assert(window_get_crtc(win) == NULL);
+	((void **)__get_private(win, sna_window_key))[3] = wc;
+	assert(window_get_crtc(win) == wc);
+}
+
 static xf86CrtcPtr
 sna_dri2_get_crtc(DrawablePtr draw)
 {
@@ -1060,6 +1078,8 @@ void sna_dri2_destroy_window(WindowPtr win)
 {
 	struct sna *sna = to_sna_from_drawable(&win->drawable);
 	struct sna_dri2_frame_event *info, *chain;
+
+	free(window_get_crtc(win));
 
 	info = sna_dri2_window_get_chain(win);
 	if (info == NULL)
@@ -1853,24 +1873,6 @@ sna_dri2_page_flip_handler(struct sna *sna,
 
 	DBG(("%s: sequence=%d\n", __FUNCTION__, event->sequence));
 	sna_dri2_flip_event(sna, info);
-}
-
-struct window_crtc {
-	xf86CrtcPtr crtc;
-	int64_t msc_delta;
-};
-
-static struct window_crtc *window_get_crtc(WindowPtr win)
-{
-	return ((void **)__get_private(win, sna_window_key))[3];
-}
-
-static void window_set_crtc(WindowPtr win, struct window_crtc *wc)
-{
-	assert(win->drawable.type == DRAWABLE_WINDOW);
-	assert(window_get_crtc(win) == NULL);
-	((void **)__get_private(win, sna_window_key))[3] = wc;
-	assert(window_get_crtc(win) == wc);
 }
 
 static uint64_t
