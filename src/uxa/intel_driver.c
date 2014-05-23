@@ -1048,7 +1048,6 @@ static void I830FreeScreen(FREE_SCREEN_ARGS_DECL)
 static void I830LeaveVT(VT_FUNC_ARGS_DECL)
 {
 	SCRN_INFO_PTR(arg);
-	intel_screen_private *intel = intel_get_screen_private(scrn);
 
 	xf86RotateFreeShadow(scrn);
 
@@ -1065,7 +1064,6 @@ static void I830LeaveVT(VT_FUNC_ARGS_DECL)
 static Bool I830EnterVT(VT_FUNC_ARGS_DECL)
 {
 	SCRN_INFO_PTR(arg);
-	intel_screen_private *intel = intel_get_screen_private(scrn);
 
 	if (intel_get_master(scrn)) {
 		xf86DrvMsg(scrn->scrnIndex, X_WARNING,
