@@ -1026,34 +1026,26 @@ sna_dri2_window_get_chain(WindowPtr win)
 }
 
 static void
-sna_dri2_window_set_chain(WindowPtr win,
-			  struct sna_dri2_frame_event *chain)
-{
-	struct dri2_window *priv = dri2_window(win);
-	DBG(("%s: head now %p\n", __FUNCTION__, chain));
-	assert(priv != NULL);
-	assert(sna_dri2_window_get_chain(win) != chain);
-	priv->chain = chain;
-}
-
-static void
 sna_dri2_remove_frame_event(WindowPtr win,
 			    struct sna_dri2_frame_event *info)
 {
+	struct dri2_window *priv;
 	struct sna_dri2_frame_event *chain;
 
+	assert(win->drawable.type == DRAWABLE_WINDOW);
 	DBG(("%s: remove[%p] from window %ld)\n",
 	     __FUNCTION__, info, (long)win->drawable.id));
 
-	chain = sna_dri2_window_get_chain(win);
-	if (chain == NULL)
-		return;
+	priv = dri2_window(win);
+	assert(priv);
+	assert(priv->chain != NULL);
 
-	if (chain == info) {
-		sna_dri2_window_set_chain(win, info->chain);
+	if (priv->chain == info) {
+		priv->chain = info->chain;
 		return;
 	}
 
+	chain = priv->chain;
 	while (chain->chain != info)
 		chain = chain->chain;
 	assert(chain != info);
@@ -1064,6 +1056,7 @@ sna_dri2_remove_frame_event(WindowPtr win,
 static void
 sna_dri2_add_frame_event(DrawablePtr draw, struct sna_dri2_frame_event *info)
 {
+	struct dri2_window *priv;
 	struct sna_dri2_frame_event *chain;
 
 	if (draw->type != DRAWABLE_WINDOW)
@@ -1072,13 +1065,16 @@ sna_dri2_add_frame_event(DrawablePtr draw, struct sna_dri2_frame_event *info)
 	DBG(("%s: add[%p] to window %ld)\n",
 	     __FUNCTION__, info, (long)draw->id));
 
-	chain = sna_dri2_window_get_chain((WindowPtr)draw);
-	if (chain == NULL) {
-		sna_dri2_window_set_chain((WindowPtr)draw, info);
+	priv = dri2_window((WindowPtr)draw);
+	assert(priv);
+	assert(priv->chain != info);
+
+	if (priv->chain == NULL) {
+		priv->chain = info;
 		return;
 	}
 
-	assert(chain != info);
+	chain = priv->chain;
 	while (chain->chain != NULL)
 		chain = chain->chain;
 
