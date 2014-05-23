@@ -1061,8 +1061,8 @@ sna_dri2_add_frame_event(DrawablePtr draw, ClientPtr client)
 	struct sna_dri2_frame_event *info, *chain;
 
 	assert(draw->type == DRAWABLE_WINDOW);
-	DBG(("%s: add[%p] to window %ld)\n",
-	     __FUNCTION__, info, (long)draw->id));
+	DBG(("%s: adding event to window %ld)\n",
+	     __FUNCTION__, (long)draw->id));
 
 	priv = dri2_window((WindowPtr)draw);
 	if (priv == NULL)
@@ -1209,7 +1209,6 @@ sna_dri2_page_flip(struct sna *sna, struct sna_dri2_frame_event *info)
 	sna->dri2.flip_pending = info;
 
 	info->queued = true;
-	swap_limit(info->draw, 1 + (info->type == FLIP_THROTTLE));
 	return true;
 }
 
@@ -2096,7 +2095,6 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 			     __FUNCTION__));
 			info->type = type = FLIP;
 			sna->dri2.flip_pending = info;
-			swap_limit(draw, 1);
 		} else {
 			info->type = type = use_triple_buffer(sna, client, *target_msc == 0);
 			if (!sna_dri2_page_flip(sna, info)) {
@@ -2105,7 +2103,8 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 			}
 		}
 
-		if (info->type != FLIP) {
+		swap_limit(draw, 1 + (type == FLIP_THROTTLE));
+		if (type != FLIP) {
 new_back:
 			sna_dri2_flip_get_back(sna, info);
 			if (type == FLIP_COMPLETE) {
