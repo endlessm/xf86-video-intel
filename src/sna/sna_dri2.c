@@ -935,22 +935,23 @@ to_frame_event(uintptr_t  data)
 	 return (struct sna_dri2_frame_event *)(data & ~1);
 }
 
-struct window_crtc {
+struct dri2_window {
+	struct sna_dri2_frame_event *chain;
 	xf86CrtcPtr crtc;
 	int64_t msc_delta;
 };
 
-static struct window_crtc *window_get_crtc(WindowPtr win)
-{
-	return ((void **)__get_private(win, sna_window_key))[3];
-}
-
-static void window_set_crtc(WindowPtr win, struct window_crtc *wc)
+static struct dri2_window *dri2_window(WindowPtr win)
 {
 	assert(win->drawable.type == DRAWABLE_WINDOW);
-	assert(window_get_crtc(win) == NULL);
-	((void **)__get_private(win, sna_window_key))[3] = wc;
-	assert(window_get_crtc(win) == wc);
+	return ((void **)__get_private(win, sna_window_key))[1];
+}
+
+static void dri2_window_attach(WindowPtr win, struct dri2_window *priv)
+{
+	assert(dri2_window(win) == NULL);
+	((void **)__get_private(win, sna_window_key))[1] = priv;
+	assert(dri2_window(win) == priv);
 }
 
 static xf86CrtcPtr
@@ -974,17 +975,20 @@ sna_dri2_get_crtc(DrawablePtr draw)
 static struct sna_dri2_frame_event *
 sna_dri2_window_get_chain(WindowPtr win)
 {
-	return ((void **)__get_private(win, sna_window_key))[1];
+	struct dri2_window *priv = dri2_window(win);
+	assert(priv != NULL);
+	return priv->chain;
 }
 
 static void
 sna_dri2_window_set_chain(WindowPtr win,
-			 struct sna_dri2_frame_event *chain)
+			  struct sna_dri2_frame_event *chain)
 {
+	struct dri2_window *priv = dri2_window(win);
 	DBG(("%s: head now %p\n", __FUNCTION__, chain));
-	assert(win->drawable.type == DRAWABLE_WINDOW);
+	assert(priv != NULL);
 	assert(sna_dri2_window_get_chain(win) != chain);
-	((void **)__get_private(win, sna_window_key))[1] = chain;
+	priv->chain = chain;
 }
 
 static void
@@ -1077,28 +1081,35 @@ sna_dri2_frame_event_info_free(struct sna *sna,
 void sna_dri2_destroy_window(WindowPtr win)
 {
 	struct sna *sna = to_sna_from_drawable(&win->drawable);
-	struct sna_dri2_frame_event *info, *chain;
+	struct dri2_window *priv = dri2_window(win);
 
-	free(window_get_crtc(win));
-
-	info = sna_dri2_window_get_chain(win);
-	if (info == NULL)
+	if (priv == NULL)
 		return;
 
 	DBG(("%s: window=%ld\n", __FUNCTION__, win->drawable.serialNumber));
-	info->draw = NULL;
 
-	chain = info->chain;
-	info->chain = NULL;
+	if (priv->chain) {
+		struct sna_dri2_frame_event *info, *chain;
 
-	while ((info = chain)) {
+		DBG(("%s: freeing chain\n", __FUNCTION__));
+
+		info = priv->chain;
+		info->draw = NULL;
+
 		chain = info->chain;
-		if (info->queued) {
-			info->draw = NULL;
-			info->chain = NULL;
-		} else
-			sna_dri2_frame_event_info_free(sna, NULL, info);
+		info->chain = NULL;
+
+		while ((info = chain)) {
+			chain = info->chain;
+			if (info->queued) {
+				info->draw = NULL;
+				info->chain = NULL;
+			} else
+				sna_dri2_frame_event_info_free(sna, NULL, info);
+		}
 	}
+
+	free(priv);
 }
 
 static bool
@@ -1878,27 +1889,28 @@ sna_dri2_page_flip_handler(struct sna *sna,
 static uint64_t
 draw_current_msc(DrawablePtr draw, xf86CrtcPtr crtc, uint64_t msc)
 {
-	struct window_crtc *wc = window_get_crtc((WindowPtr)draw);
-	if (wc == NULL) {
-		wc = malloc(sizeof(*wc));
-		if (wc != NULL) {
-			wc->crtc = crtc;
-			wc->msc_delta = 0;
-			window_set_crtc((WindowPtr)draw, wc);
+	struct dri2_window *priv = dri2_window((WindowPtr)draw);
+	if (priv == NULL) {
+		priv = malloc(sizeof(*priv));
+		if (priv != NULL) {
+			priv->crtc = crtc;
+			priv->msc_delta = 0;
+			priv->chain = NULL;
+			dri2_window_attach((WindowPtr)draw, priv);
 		}
 	} else {
-		if (wc->crtc != crtc) {
-			const struct ust_msc *last = sna_crtc_last_swap(wc->crtc);
+		if (priv->crtc != crtc) {
+			const struct ust_msc *last = sna_crtc_last_swap(priv->crtc);
 			const struct ust_msc *this = sna_crtc_last_swap(crtc);
 			DBG(("%s: Window transferring from pipe=%d [msc=%llu] to pipe=%d [msc=%llu], delta now %lld\n",
 			     __FUNCTION__,
-			     sna_crtc_to_pipe(wc->crtc), (long long)last->msc,
+			     sna_crtc_to_pipe(priv->crtc), (long long)last->msc,
 			     sna_crtc_to_pipe(crtc), (long long)this->msc,
-			     (long long)(wc->msc_delta + this->msc - last->msc)));
-			wc->msc_delta += this->msc - last->msc;
-			wc->crtc = crtc;
+			     (long long)(priv->msc_delta + this->msc - last->msc)));
+			priv->msc_delta += this->msc - last->msc;
+			priv->crtc = crtc;
 		}
-		msc -= wc->msc_delta;
+		msc -= priv->msc_delta;
 	}
 	return  msc;
 }
@@ -1906,12 +1918,12 @@ draw_current_msc(DrawablePtr draw, xf86CrtcPtr crtc, uint64_t msc)
 static uint32_t
 draw_target_seq(DrawablePtr draw, uint64_t msc)
 {
-	struct window_crtc *wc = window_get_crtc((WindowPtr)draw);
-	if (wc == NULL)
+	struct dri2_window *priv = dri2_window((WindowPtr)draw);
+	if (priv == NULL)
 		return msc;
 	DBG(("%s: converting target_msc=%llu to seq %u\n",
-	     __FUNCTION__, (long long)msc, (unsigned)(msc + wc->msc_delta)));
-	return msc + wc->msc_delta;
+	     __FUNCTION__, (long long)msc, (unsigned)(msc + priv->msc_delta)));
+	return msc + priv->msc_delta;
 }
 
 static uint64_t
