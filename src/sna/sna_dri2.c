@@ -954,6 +954,51 @@ static void dri2_window_attach(WindowPtr win, struct dri2_window *priv)
 	assert(dri2_window(win) == priv);
 }
 
+static uint64_t
+draw_current_msc(DrawablePtr draw, xf86CrtcPtr crtc, uint64_t msc)
+{
+	struct dri2_window *priv;
+
+	if (draw->type != DRAWABLE_WINDOW)
+		return msc;
+
+	priv = dri2_window((WindowPtr)draw);
+	if (priv == NULL) {
+		priv = malloc(sizeof(*priv));
+		if (priv != NULL) {
+			priv->crtc = crtc;
+			priv->msc_delta = 0;
+			priv->chain = NULL;
+			dri2_window_attach((WindowPtr)draw, priv);
+		}
+	} else {
+		if (priv->crtc != crtc) {
+			const struct ust_msc *last = sna_crtc_last_swap(priv->crtc);
+			const struct ust_msc *this = sna_crtc_last_swap(crtc);
+			DBG(("%s: Window transferring from pipe=%d [msc=%llu] to pipe=%d [msc=%llu], delta now %lld\n",
+			     __FUNCTION__,
+			     sna_crtc_to_pipe(priv->crtc), (long long)last->msc,
+			     sna_crtc_to_pipe(crtc), (long long)this->msc,
+			     (long long)(priv->msc_delta + this->msc - last->msc)));
+			priv->msc_delta += this->msc - last->msc;
+			priv->crtc = crtc;
+		}
+		msc -= priv->msc_delta;
+	}
+	return  msc;
+}
+
+static uint32_t
+draw_target_seq(DrawablePtr draw, uint64_t msc)
+{
+	struct dri2_window *priv = dri2_window((WindowPtr)draw);
+	if (priv == NULL)
+		return msc;
+	DBG(("%s: converting target_msc=%llu to seq %u\n",
+	     __FUNCTION__, (long long)msc, (unsigned)(msc + priv->msc_delta)));
+	return msc + priv->msc_delta;
+}
+
 static xf86CrtcPtr
 sna_dri2_get_crtc(DrawablePtr draw)
 {
@@ -1344,12 +1389,15 @@ static void frame_swap_complete(struct sna *sna,
 		return;
 
 	swap = sna_crtc_last_swap(frame->crtc);
-	DBG(("%s: pipe=%d, frame=%lld, tv=%d.%06d\n",
+	DBG(("%s: pipe=%d, frame=%lld [msc=%lld], tv=%d.%06d\n",
 	     __FUNCTION__, frame->pipe,
-	     (long long)swap->msc, swap->tv_sec, swap->tv_usec));
+	     (long long)swap->msc,
+	     (long long)draw_current_msc(frame->draw, frame->crtc, swap->msc),
+	     swap->tv_sec, swap->tv_usec));
 
 	DRI2SwapComplete(frame->client, frame->draw,
-			 swap->msc, swap->tv_sec, swap->tv_usec,
+			 draw_current_msc(frame->draw, frame->crtc, swap->msc),
+			 swap->tv_sec, swap->tv_usec,
 			 type, frame->event_complete, frame->event_data);
 }
 
@@ -1360,12 +1408,15 @@ static void fake_swap_complete(struct sna *sna, ClientPtr client,
 	const struct ust_msc *swap;
 
 	swap = sna_crtc_last_swap(crtc);
-	DBG(("%s: pipe=%d, frame=%lld, tv=%d.%06d\n",
+	DBG(("%s: pipe=%d, frame=%lld [msc %lld], tv=%d.%06d\n",
 	     __FUNCTION__, crtc ? sna_crtc_to_pipe(crtc) : -1,
-	     (long long)swap->msc, swap->tv_sec, swap->tv_usec));
+	     (long long)swap->msc,
+	     (long long)draw_current_msc(draw, crtc, swap->msc),
+	     swap->tv_sec, swap->tv_usec));
 
 	DRI2SwapComplete(client, draw,
-			 swap->msc, swap->tv_sec, swap->tv_usec,
+			 draw_current_msc(draw, crtc, swap->msc),
+			 swap->tv_sec, swap->tv_usec,
 			 type, func, data);
 }
 
@@ -1884,46 +1935,6 @@ sna_dri2_page_flip_handler(struct sna *sna,
 
 	DBG(("%s: sequence=%d\n", __FUNCTION__, event->sequence));
 	sna_dri2_flip_event(sna, info);
-}
-
-static uint64_t
-draw_current_msc(DrawablePtr draw, xf86CrtcPtr crtc, uint64_t msc)
-{
-	struct dri2_window *priv = dri2_window((WindowPtr)draw);
-	if (priv == NULL) {
-		priv = malloc(sizeof(*priv));
-		if (priv != NULL) {
-			priv->crtc = crtc;
-			priv->msc_delta = 0;
-			priv->chain = NULL;
-			dri2_window_attach((WindowPtr)draw, priv);
-		}
-	} else {
-		if (priv->crtc != crtc) {
-			const struct ust_msc *last = sna_crtc_last_swap(priv->crtc);
-			const struct ust_msc *this = sna_crtc_last_swap(crtc);
-			DBG(("%s: Window transferring from pipe=%d [msc=%llu] to pipe=%d [msc=%llu], delta now %lld\n",
-			     __FUNCTION__,
-			     sna_crtc_to_pipe(priv->crtc), (long long)last->msc,
-			     sna_crtc_to_pipe(crtc), (long long)this->msc,
-			     (long long)(priv->msc_delta + this->msc - last->msc)));
-			priv->msc_delta += this->msc - last->msc;
-			priv->crtc = crtc;
-		}
-		msc -= priv->msc_delta;
-	}
-	return  msc;
-}
-
-static uint32_t
-draw_target_seq(DrawablePtr draw, uint64_t msc)
-{
-	struct dri2_window *priv = dri2_window((WindowPtr)draw);
-	if (priv == NULL)
-		return msc;
-	DBG(("%s: converting target_msc=%llu to seq %u\n",
-	     __FUNCTION__, (long long)msc, (unsigned)(msc + priv->msc_delta)));
-	return msc + priv->msc_delta;
 }
 
 static uint64_t
@@ -2485,7 +2496,8 @@ out_complete:
 		crtc = sna_mode_first_crtc(sna);
 	swap = sna_crtc_last_swap(crtc);
 	DRI2WaitMSCComplete(client, draw,
-			    swap->msc, swap->tv_sec, swap->tv_usec);
+			    draw_current_msc(draw, crtc, swap->msc),
+			    swap->tv_sec, swap->tv_usec);
 	return TRUE;
 }
 #else
