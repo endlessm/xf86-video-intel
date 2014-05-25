@@ -51,45 +51,18 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <compositeext.h>
 #endif
 
-#if DRI2INFOREC_VERSION < 2
-#error DRI2 version supported by the Xserver is too old
-#endif
-
-#if DRI2INFOREC_VERSION < 6
-#define XORG_CAN_TRIPLE_BUFFER 0
-#define swap_limit(d, l) false
-#else
-#define XORG_CAN_TRIPLE_BUFFER 1
-static Bool
-sna_dri2_swap_limit_validate(DrawablePtr draw, int swap_limit)
+static inline struct kgem_bo *ref(struct kgem_bo *bo)
 {
-	return swap_limit >= 1;
+	assert(bo->refcnt);
+	bo->refcnt++;
+	return bo;
 }
 
-static bool swap_limit(DrawablePtr draw, int limit)
+static inline void unref(struct kgem_bo *bo)
 {
-	DBG(("%s: setting swap limit to %d\n", __FUNCTION__, limit));
-	DRI2SwapLimit(draw, limit);
-	return true;
+	assert(bo->refcnt > 1);
+	bo->refcnt--;
 }
-#endif
-
-#if DRI2INFOREC_VERSION < 10
-#undef USE_ASYNC_SWAP
-#define USE_ASYNC_SWAP 0
-#endif
-
-#define COLOR_PREFER_TILING_Y 0
-
-enum frame_event_type {
-	WAITMSC = 0,
-	SWAP,
-	SWAP_WAIT,
-	SWAP_THROTTLE,
-	FLIP,
-	FLIP_THROTTLE,
-	FLIP_COMPLETE,
-};
 
 struct sna_dri2_private {
 	PixmapPtr pixmap;
@@ -105,18 +78,192 @@ get_private(void *buffer)
 	return (struct sna_dri2_private *)((DRI2Buffer2Ptr)buffer+1);
 }
 
-static inline struct kgem_bo *ref(struct kgem_bo *bo)
+enum frame_event_type {
+	WAITMSC = 0,
+	SWAP,
+	SWAP_WAIT,
+	SWAP_THROTTLE,
+	FLIP,
+	FLIP_THROTTLE,
+	FLIP_COMPLETE,
+};
+
+struct dri_bo {
+	struct list link;
+	struct kgem_bo *bo;
+	uint32_t name;
+};
+
+struct sna_dri2_frame_event {
+	DrawablePtr draw;
+	ClientPtr client;
+	enum frame_event_type type;
+	xf86CrtcPtr crtc;
+	int pipe;
+	int count;
+	bool queued;
+
+	/* for swaps & flips only */
+	DRI2SwapEventPtr event_complete;
+	void *event_data;
+	DRI2BufferPtr front;
+	DRI2BufferPtr back;
+	struct kgem_bo *bo;
+
+	struct sna_dri2_frame_event *chain;
+
+	struct {
+		struct kgem_bo *bo;
+		uint32_t name;
+	} scanout[2];
+
+	struct list cache;
+
+	int mode;
+};
+
+static void
+sna_dri2_get_back(struct sna *sna, struct sna_dri2_frame_event *info)
 {
+	struct kgem_bo *bo;
+	uint32_t name;
+
+	DBG(("%s: scanout=(%d, %d), back=%d, cache?=%d\n",
+	     __FUNCTION__,
+	     info->scanout[0].bo ? info->scanout[0].bo->handle : 0,
+	     info->scanout[1].bo ? info->scanout[1].bo->handle : 0,
+	     get_private(info->back)->bo->handle,
+	     !list_is_empty(&info->cache)));
+
+	bo = get_private(info->back)->bo;
 	assert(bo->refcnt);
-	bo->refcnt++;
-	return bo;
+	assert(bo->flush);
+	if (!(bo == info->scanout[0].bo || bo == info->scanout[1].bo)) {
+		DBG(("%s: reuse unattached back\n", __FUNCTION__));
+		return;
+	}
+
+	bo = NULL;
+	if (!list_is_empty(&info->cache)) {
+		struct dri_bo *c = list_first_entry(&info->cache, struct dri_bo, link);
+		if (c->bo) {
+			bo = c->bo;
+			name = c->name;
+			DBG(("%s: reuse cache handle=%d,name=%d\n", __FUNCTION__,
+			     bo->handle, name));
+			list_move_tail(&c->link, &info->cache);
+			c->bo = NULL;
+		}
+	}
+	if (bo == NULL) {
+		DBG(("%s: allocating new backbuffer\n", __FUNCTION__));
+		bo = kgem_create_2d(&sna->kgem,
+				    info->draw->width,
+				    info->draw->height,
+				    info->draw->bitsPerPixel,
+				    get_private(info->front)->bo->tiling,
+				    CREATE_SCANOUT);
+		if (bo == NULL)
+			return;
+
+		name = kgem_bo_flink(&sna->kgem, bo);
+		if (name == 0) {
+			kgem_bo_destroy(&sna->kgem, bo);
+			return;
+		}
+	}
+
+	assert(!(bo == info->scanout[0].bo || bo == info->scanout[1].bo));
+	assert(name);
+
+	unref(get_private(info->back)->bo);
+	get_private(info->back)->bo = bo;
+	info->back->name = name;
+
+	assert(get_private(info->back)->bo != info->scanout[0].bo);
+	assert(get_private(info->back)->bo != info->scanout[1].bo);
+
+	assert(bo->refcnt == 1);
+	assert(bo->flush);
 }
 
-static inline void unref(struct kgem_bo *bo)
+static inline struct sna_dri2_frame_event *
+to_frame_event(uintptr_t  data)
 {
-	assert(bo->refcnt > 1);
-	bo->refcnt--;
+	 return (struct sna_dri2_frame_event *)(data & ~3);
 }
+
+struct dri2_window {
+	struct sna_dri2_frame_event *chain;
+	xf86CrtcPtr crtc;
+	int64_t msc_delta;
+};
+
+static struct dri2_window *dri2_window(WindowPtr win)
+{
+	return ((void **)__get_private(win, sna_window_key))[1];
+}
+
+static struct sna_dri2_frame_event *
+sna_dri2_window_get_chain(WindowPtr win)
+{
+	struct dri2_window *priv = dri2_window(win);
+	assert(priv != NULL);
+	return priv->chain;
+}
+
+#if DRI2INFOREC_VERSION < 2
+#error DRI2 version supported by the Xserver is too old
+#endif
+
+#if DRI2INFOREC_VERSION < 6
+#define XORG_CAN_TRIPLE_BUFFER 0
+#define swap_limit(d, l) false
+#else
+#define XORG_CAN_TRIPLE_BUFFER 1
+static Bool
+sna_dri2_swap_limit_validate(DrawablePtr draw, int swap_limit)
+{
+	DBG(("%s: swap limit set to %d\n", __FUNCTION__, swap_limit));
+	return swap_limit >= 1;
+}
+
+static void
+sna_dri2_reuse_buffer(DrawablePtr draw, DRI2BufferPtr buffer)
+{
+	DBG(("%s: reusing buffer pixmap=%ld, attachment=%d, handle=%d, name=%d\n",
+	     __FUNCTION__, get_drawable_pixmap(draw)->drawable.serialNumber,
+	     buffer->attachment, get_private(buffer)->bo->handle, buffer->name));
+	assert(get_private(buffer)->refcnt);
+	assert(get_private(buffer)->pixmap == NULL || get_private(buffer)->pixmap == get_drawable_pixmap(draw));
+	assert(get_private(buffer)->bo->refcnt);
+
+	if (buffer->attachment == DRI2BufferBackLeft &&
+	    draw->type != DRAWABLE_PIXMAP) {
+		struct sna_dri2_frame_event *info;
+
+		info = sna_dri2_window_get_chain((WindowPtr)draw);
+		if (info && info->back == buffer) {
+			DBG(("%s: replacing back buffer\n", __FUNCTION__));
+			sna_dri2_get_back(to_sna_from_drawable(draw), info);
+		}
+	}
+}
+
+static bool swap_limit(DrawablePtr draw, int limit)
+{
+	DBG(("%s: draw=%ld setting swap limit to %d\n", __FUNCTION__, (long)draw->id, limit));
+	DRI2SwapLimit(draw, limit);
+	return true;
+}
+#endif
+
+#if DRI2INFOREC_VERSION < 10
+#undef USE_ASYNC_SWAP
+#define USE_ASYNC_SWAP 0
+#endif
+
+#define COLOR_PREFER_TILING_Y 0
 
 /* Prefer to enable TILING_Y if this buffer will never be a
  * candidate for pageflipping
@@ -896,57 +1043,6 @@ static inline int sna_wait_vblank(struct sna *sna, union drm_wait_vblank *vbl, i
 
 #if DRI2INFOREC_VERSION >= 4
 
-struct dri_bo {
-	struct list link;
-	struct kgem_bo *bo;
-	uint32_t name;
-};
-
-struct sna_dri2_frame_event {
-	DrawablePtr draw;
-	ClientPtr client;
-	enum frame_event_type type;
-	xf86CrtcPtr crtc;
-	int pipe;
-	int count;
-	bool queued;
-
-	/* for swaps & flips only */
-	DRI2SwapEventPtr event_complete;
-	void *event_data;
-	DRI2BufferPtr front;
-	DRI2BufferPtr back;
-	struct kgem_bo *bo;
-
-	struct sna_dri2_frame_event *chain;
-
-	struct {
-		struct kgem_bo *bo;
-		uint32_t name;
-	} scanout[2];
-
-	struct list cache;
-
-	int mode;
-};
-
-static inline struct sna_dri2_frame_event *
-to_frame_event(uintptr_t  data)
-{
-	 return (struct sna_dri2_frame_event *)(data & ~1);
-}
-
-struct dri2_window {
-	struct sna_dri2_frame_event *chain;
-	xf86CrtcPtr crtc;
-	int64_t msc_delta;
-};
-
-static struct dri2_window *dri2_window(WindowPtr win)
-{
-	return ((void **)__get_private(win, sna_window_key))[1];
-}
-
 static void dri2_window_attach(WindowPtr win, struct dri2_window *priv)
 {
 	assert(win->drawable.type == DRAWABLE_WINDOW);
@@ -1016,14 +1112,6 @@ sna_dri2_get_crtc(DrawablePtr draw)
 
 	/* Make sure the CRTC is valid and this is the real front buffer */
 	return sna_covering_crtc(sna, &box, NULL);
-}
-
-static struct sna_dri2_frame_event *
-sna_dri2_window_get_chain(WindowPtr win)
-{
-	struct dri2_window *priv = dri2_window(win);
-	assert(priv != NULL);
-	return priv->chain;
 }
 
 static void
@@ -1194,6 +1282,10 @@ sna_dri2_page_flip(struct sna *sna, struct sna_dri2_frame_event *info)
 	info->scanout[0].bo = ref(bo);
 	info->scanout[0].name = info->back->name;
 	assert(info->scanout[0].bo->scanout);
+
+	DBG(("%s: pending scanout handle=%d, active scanout handle=%d\n",
+	     __FUNCTION__, info->scanout[0].bo->handle, info->scanout[1].bo->handle));
+	assert(info->scanout[0].bo->handle != info->scanout[1].bo->handle);
 
 	tmp.bo = get_private(info->front)->bo;
 	tmp.name = info->front->name;
@@ -1397,8 +1489,8 @@ static void frame_swap_complete(struct sna *sna,
 		return;
 
 	swap = sna_crtc_last_swap(frame->crtc);
-	DBG(("%s: pipe=%d, frame=%lld [msc=%lld], tv=%d.%06d\n",
-	     __FUNCTION__, frame->pipe,
+	DBG(("%s: draw=%ld, pipe=%d, frame=%lld [msc=%lld], tv=%d.%06d\n",
+	     __FUNCTION__, (long)frame->draw, frame->pipe,
 	     (long long)swap->msc,
 	     (long long)draw_current_msc(frame->draw, frame->crtc, swap->msc),
 	     swap->tv_sec, swap->tv_usec));
@@ -1416,8 +1508,8 @@ static void fake_swap_complete(struct sna *sna, ClientPtr client,
 	const struct ust_msc *swap;
 
 	swap = sna_crtc_last_swap(crtc);
-	DBG(("%s: pipe=%d, frame=%lld [msc %lld], tv=%d.%06d\n",
-	     __FUNCTION__, crtc ? sna_crtc_to_pipe(crtc) : -1,
+	DBG(("%s: draw=%ld, pipe=%d, frame=%lld [msc %lld], tv=%d.%06d\n",
+	     __FUNCTION__, (long)draw->id, crtc ? sna_crtc_to_pipe(crtc) : -1,
 	     (long long)swap->msc,
 	     (long long)draw_current_msc(draw, crtc, swap->msc),
 	     swap->tv_sec, swap->tv_usec));
@@ -1433,7 +1525,8 @@ static void chain_swap(struct sna *sna, DrawablePtr draw, struct sna_dri2_frame_
 	union drm_wait_vblank vbl;
 
 	assert(chain == sna_dri2_window_get_chain((WindowPtr)draw));
-	DBG(("%s: chaining type=%d\n", __FUNCTION__, chain->type));
+	DBG(("%s: chaining draw=%ld, type=%d\n",
+	     __FUNCTION__, (long)draw->id, chain->type));
 	switch (chain->type) {
 	case SWAP_THROTTLE:
 		DBG(("%s: emitting chained vsync'ed blit\n", __FUNCTION__));
@@ -1661,7 +1754,7 @@ sna_dri2_immediate_blit(struct sna *sna,
 				}
 			}
 			if (event) {
-				DBG(("%s: fake triple bufferring, unblocking client\n", __FUNCTION__));
+				DBG(("%s: fake triple buffering, unblocking client\n", __FUNCTION__));
 				frame_swap_complete(sna, info, DRI2_BLIT_COMPLETE);
 			}
 		}
@@ -1672,71 +1765,6 @@ sna_dri2_immediate_blit(struct sna *sna,
 
 	DBG(("%s: continue? %d\n", __FUNCTION__, ret));
 	return ret;
-}
-
-static void
-sna_dri2_flip_get_back(struct sna *sna, struct sna_dri2_frame_event *info)
-{
-	struct kgem_bo *bo;
-	uint32_t name;
-
-	DBG(("%s: scanout=(%d, %d), back=%d, cache?=%d\n",
-	     __FUNCTION__,
-	     info->scanout[0].bo ? info->scanout[0].bo->handle : 0,
-	     info->scanout[1].bo ? info->scanout[1].bo->handle : 0,
-	     get_private(info->back)->bo->handle,
-	     !list_is_empty(&info->cache)));
-
-	bo = get_private(info->back)->bo;
-	assert(bo->refcnt);
-	assert(bo->flush);
-	if (!(bo == info->scanout[0].bo || bo == info->scanout[1].bo)) {
-		DBG(("%s: reuse unattached back\n", __FUNCTION__));
-		return;
-	}
-
-	bo = NULL;
-	if (!list_is_empty(&info->cache)) {
-		struct dri_bo *c = list_first_entry(&info->cache, struct dri_bo, link);
-		if (c->bo) {
-			bo = c->bo;
-			name = c->name;
-			DBG(("%s: reuse cache handle=%d,name=%d\n", __FUNCTION__,
-			     bo->handle, name));
-			list_move_tail(&c->link, &info->cache);
-			c->bo = NULL;
-		}
-	}
-	if (bo == NULL) {
-		DBG(("%s: allocating new backbuffer\n", __FUNCTION__));
-		bo = kgem_create_2d(&sna->kgem,
-				    info->draw->width,
-				    info->draw->height,
-				    info->draw->bitsPerPixel,
-				    get_private(info->front)->bo->tiling,
-				    CREATE_SCANOUT);
-		if (bo == NULL)
-			return;
-
-		name = kgem_bo_flink(&sna->kgem, bo);
-		if (name == 0) {
-			kgem_bo_destroy(&sna->kgem, bo);
-			return;
-		}
-	}
-
-	assert(!(bo == info->scanout[0].bo || bo == info->scanout[1].bo));
-	assert(name);
-
-	unref(get_private(info->back)->bo);
-	get_private(info->back)->bo = bo;
-	info->back->name = name;
-
-	assert(get_private(info->back)->bo != info->scanout[0].bo);
-	assert(get_private(info->back)->bo != info->scanout[1].bo);
-
-	assert(bo->refcnt == 1);
-	assert(bo->flush);
 }
 
 static bool
@@ -1775,11 +1803,11 @@ sna_dri2_flip_continue(struct sna *sna, struct sna_dri2_frame_event *info)
 		if (!sna_dri2_page_flip(sna, info))
 			return false;
 
-		sna_dri2_flip_get_back(sna, info);
-#if !XORG_CAN_TRIPLE_BUFFER
-		DBG(("%s: fake triple buffering, unblocking client\n", __FUNCTION__));
-		frame_swap_complete(sna, info, DRI2_FLIP_COMPLETE);
-#endif
+		if (!XORG_CAN_TRIPLE_BUFFER) {
+			sna_dri2_get_back(sna, info);
+			DBG(("%s: fake triple buffering, unblocking client\n", __FUNCTION__));
+			frame_swap_complete(sna, info, DRI2_FLIP_COMPLETE);
+		}
 	}
 
 	info->mode = 0;
@@ -1845,14 +1873,16 @@ static void sna_dri2_flip_event(struct sna *sna,
 	if (flip->scanout[1].bo) {
 		struct dri_bo *c = NULL;
 
-		DBG(("%s: retiring previous scanout handle=%d, name=%d, refcnt=%d\n",
+		DBG(("%s: retiring previous scanout handle=%d, name=%d, refcnt=%d (current scanout handle=%d)\n",
 		     __FUNCTION__,
 		     flip->scanout[1].bo->handle,
 		     flip->scanout[1].name,
-		     flip->scanout[1].bo->refcnt));
+		     flip->scanout[1].bo->refcnt,
+		     flip->scanout[0].bo->handle));
 
 		if (flip->scanout[1].bo != flip->scanout[0].bo &&
 		    flip->scanout[1].bo->refcnt == 1) {
+			DBG(("%s: adding old scanout to flip cache\n", __FUNCTION__));
 			if (!list_is_empty(&flip->cache))
 				c = list_last_entry(&flip->cache, struct dri_bo, link);
 			if (c) {
@@ -1870,8 +1900,11 @@ static void sna_dri2_flip_event(struct sna *sna,
 			}
 		}
 
-		if (c == NULL)
+		if (c == NULL) {
+			DBG(("%s: not caching old scanout handle=%d, still busy\n",
+			     __FUNCTION__, flip->scanout[1].bo->handle));
 			kgem_bo_destroy(&sna->kgem, flip->scanout[1].bo);
+		}
 
 		flip->scanout[1].bo = NULL;
 	}
@@ -2056,10 +2089,9 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 				_sna_dri2_destroy_buffer(sna, info->back);
 				info->back = sna_dri2_reference_buffer(back);
 			}
-			if (current_msc >= *target_msc) {
+			if (info->mode || current_msc >= *target_msc) {
 				DBG(("%s: executing xchg of pending flip\n",
 				     __FUNCTION__));
-				assert(info->mode == 0 || info->mode == FLIP_COMPLETE);
 				sna_dri2_exchange_buffers(draw, front, back);
 				info->mode = type = FLIP_COMPLETE;
 				goto new_back;
@@ -2104,13 +2136,12 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 		}
 
 		swap_limit(draw, 1 + (type == FLIP_THROTTLE));
-		if (type != FLIP) {
+		if (type == FLIP_COMPLETE) {
 new_back:
-			sna_dri2_flip_get_back(sna, info);
-			if (type == FLIP_COMPLETE) {
-				DBG(("%s: fake triple bufferring, unblocking client\n", __FUNCTION__));
-				frame_swap_complete(sna, info, DRI2_EXCHANGE_COMPLETE);
-			}
+			if (!XORG_CAN_TRIPLE_BUFFER)
+				sna_dri2_get_back(sna, info);
+			DBG(("%s: fake triple buffering, unblocking client\n", __FUNCTION__));
+			frame_swap_complete(sna, info, DRI2_EXCHANGE_COMPLETE);
 		}
 out:
 		DBG(("%s: target_msc=%llu\n", __FUNCTION__, current_msc + 1));
@@ -2214,9 +2245,9 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 	struct sna_dri2_frame_event *info = NULL;
 	CARD64 current_msc;
 
-	DBG(("%s: pixmap=%ld, back=%u (refs=%d/%d, flush=%d) , fron=%u (refs=%d/%d, flush=%d)\n",
+	DBG(("%s: draw=%ld, pixmap=%ld, back=%u (refs=%d/%d, flush=%d) , fron=%u (refs=%d/%d, flush=%d)\n",
 	     __FUNCTION__,
-	     get_drawable_pixmap(draw)->drawable.serialNumber,
+	     (long)draw->id, get_drawable_pixmap(draw)->drawable.serialNumber,
 	     get_private(back)->bo->handle,
 	     get_private(back)->refcnt,
 	     get_private(back)->bo->refcnt,
@@ -2355,7 +2386,8 @@ sna_dri2_get_msc(DrawablePtr draw, CARD64 *ust, CARD64 *msc)
 	union drm_wait_vblank vbl;
 	xf86CrtcPtr crtc = sna_dri2_get_crtc(draw);
 
-	DBG(("%s(pipe=%d)\n", __FUNCTION__, crtc ? sna_crtc_to_pipe(crtc) : -1));
+	DBG(("%s(draw=%ld, pipe=%d)\n", __FUNCTION__, draw->id,
+	     crtc ? sna_crtc_to_pipe(crtc) : -1));
 	if (crtc == NULL) {
 		const struct ust_msc *swap;
 
@@ -2632,7 +2664,7 @@ bool sna_dri2_open(struct sna *sna, ScreenPtr screen)
 #if XORG_CAN_TRIPLE_BUFFER
 	info.version = 6;
 	info.SwapLimitValidate = sna_dri2_swap_limit_validate;
-	info.ReuseBufferNotify = NULL;
+	info.ReuseBufferNotify = sna_dri2_reuse_buffer;
 #endif
 
 #if USE_ASYNC_SWAP
