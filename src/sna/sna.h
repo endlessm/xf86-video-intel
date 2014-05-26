@@ -315,6 +315,10 @@ struct sna {
 
 #if HAVE_DRI2
 		void *flip_pending;
+		struct {
+			struct kgem_bo *bo;
+			uint32_t name;
+		} scanout[2];
 #endif
 	} dri2;
 
@@ -496,6 +500,7 @@ void sna_dri2_page_flip_handler(struct sna *sna, struct drm_event_vblank *event)
 void sna_dri2_vblank_handler(struct sna *sna, struct drm_event_vblank *event);
 void sna_dri2_pixmap_update_bo(struct sna *sna, PixmapPtr pixmap);
 void sna_dri2_destroy_window(WindowPtr win);
+void sna_dri2_reset_scanout(struct sna *sna);
 void sna_dri2_close(struct sna *sna, ScreenPtr pScreen);
 #else
 static inline bool sna_dri2_open(struct sna *sna, ScreenPtr pScreen) { return false; }
@@ -503,6 +508,7 @@ static inline void sna_dri2_page_flip_handler(struct sna *sna, struct drm_event_
 static inline void sna_dri2_vblank_handler(struct sna *sna, struct drm_event_vblank *event) { }
 static inline void sna_dri2_pixmap_update_bo(struct sna *sna, PixmapPtr pixmap) { }
 static inline void sna_dri2_destroy_window(WindowPtr win) { }
+static inline void sna_dri2_reset_scanout(struct sna *sna) { }
 static inline void sna_dri2_close(struct sna *sna, ScreenPtr pScreen) { }
 #endif
 

@@ -112,11 +112,6 @@ struct sna_dri2_frame_event {
 
 	struct sna_dri2_frame_event *chain;
 
-	struct {
-		struct kgem_bo *bo;
-		uint32_t name;
-	} scanout[2];
-
 	struct list cache;
 
 	int mode;
@@ -130,15 +125,15 @@ sna_dri2_get_back(struct sna *sna, struct sna_dri2_frame_event *info)
 
 	DBG(("%s: scanout=(%d, %d), back=%d, cache?=%d\n",
 	     __FUNCTION__,
-	     info->scanout[0].bo ? info->scanout[0].bo->handle : 0,
-	     info->scanout[1].bo ? info->scanout[1].bo->handle : 0,
+	     sna->dri2.scanout[0].bo ? sna->dri2.scanout[0].bo->handle : 0,
+	     sna->dri2.scanout[1].bo ? sna->dri2.scanout[1].bo->handle : 0,
 	     get_private(info->back)->bo->handle,
 	     !list_is_empty(&info->cache)));
 
 	bo = get_private(info->back)->bo;
 	assert(bo->refcnt);
 	assert(bo->flush);
-	if (!(bo == info->scanout[0].bo || bo == info->scanout[1].bo)) {
+	if (!(bo == sna->dri2.scanout[0].bo || bo == sna->dri2.scanout[1].bo)) {
 		DBG(("%s: reuse unattached back\n", __FUNCTION__));
 		return;
 	}
@@ -173,15 +168,15 @@ sna_dri2_get_back(struct sna *sna, struct sna_dri2_frame_event *info)
 		}
 	}
 
-	assert(!(bo == info->scanout[0].bo || bo == info->scanout[1].bo));
+	assert(!(bo == sna->dri2.scanout[0].bo || bo == sna->dri2.scanout[1].bo));
 	assert(name);
 
 	unref(get_private(info->back)->bo);
 	get_private(info->back)->bo = bo;
 	info->back->name = name;
 
-	assert(get_private(info->back)->bo != info->scanout[0].bo);
-	assert(get_private(info->back)->bo != info->scanout[1].bo);
+	assert(get_private(info->back)->bo != sna->dri2.scanout[0].bo);
+	assert(get_private(info->back)->bo != sna->dri2.scanout[1].bo);
 
 	assert(bo->refcnt == 1);
 	assert(bo->flush);
@@ -247,6 +242,9 @@ sna_dri2_reuse_buffer(DrawablePtr draw, DRI2BufferPtr buffer)
 			DBG(("%s: replacing back buffer\n", __FUNCTION__));
 			sna_dri2_get_back(to_sna_from_drawable(draw), info);
 		}
+
+		assert(get_private(buffer)->bo != to_sna_from_drawable(draw)->dri2.scanout[0].bo);
+		assert(get_private(buffer)->bo != to_sna_from_drawable(draw)->dri2.scanout[1].bo);
 	}
 }
 
@@ -1192,13 +1190,6 @@ sna_dri2_frame_event_info_free(struct sna *sna,
 	_sna_dri2_destroy_buffer(sna, info->front);
 	_sna_dri2_destroy_buffer(sna, info->back);
 
-	assert(info->scanout[1].bo == NULL);
-
-	if (info->scanout[0].bo) {
-		assert(info->scanout[0].bo->scanout);
-		kgem_bo_destroy(&sna->kgem, info->scanout[0].bo);
-	}
-
 	while (!list_is_empty(&info->cache)) {
 		struct dri_bo *c;
 
@@ -1254,6 +1245,25 @@ void sna_dri2_destroy_window(WindowPtr win)
 	free(priv);
 }
 
+static void
+update_scanout(struct sna *sna, struct sna_dri2_frame_event *info, struct kgem_bo *bo, int name)
+{
+	assert(sna->dri2.scanout[1].bo == NULL);
+	assert(sna->dri2.scanout[0].bo->scanout);
+	assert(sna->dri2.scanout[0].bo->refcnt);
+	sna->dri2.scanout[1] = sna->dri2.scanout[0];
+	sna->dri2.scanout[0].bo = ref(bo);
+	sna->dri2.scanout[0].name = name;
+	assert(sna->dri2.scanout[0].bo->scanout);
+
+	DBG(("%s: pending scanout handle=%d, active scanout handle=%d\n",
+	     __FUNCTION__, sna->dri2.scanout[0].bo->handle, sna->dri2.scanout[1].bo->handle));
+	assert(sna->dri2.scanout[0].bo->handle != sna->dri2.scanout[1].bo->handle);
+
+	assert(sna->dri2.flip_pending == NULL || sna->dri2.flip_pending == info);
+	sna->dri2.flip_pending = info;
+}
+
 static bool
 sna_dri2_page_flip(struct sna *sna, struct sna_dri2_frame_event *info)
 {
@@ -1264,28 +1274,21 @@ sna_dri2_page_flip(struct sna *sna, struct sna_dri2_frame_event *info)
 
 	assert(sna_pixmap_get_buffer(sna->front) == info->front);
 	assert(get_drawable_pixmap(info->draw)->drawable.height * bo->pitch <= kgem_bo_size(bo));
-	assert(info->scanout[0].bo);
-	assert(info->scanout[0].bo->scanout);
-	assert(info->scanout[1].bo == NULL);
+	assert(sna->dri2.scanout[0].bo);
+	assert(sna->dri2.scanout[0].bo->scanout);
+	assert(sna->dri2.scanout[1].bo == NULL);
 	assert(bo->refcnt);
 
 	info->count = sna_page_flip(sna, bo, info, info->pipe);
 	if (!info->count)
 		return false;
 
-	DBG(("%s: mark handle=%d as scanout, swap front (handle=%d, name=%d) and back (handle=%d, name=%d)\n",
+	update_scanout(sna, info, bo, info->back->name);
+
+	DBG(("%s: marked handle=%d as scanout, swap front (handle=%d, name=%d) and back (handle=%d, name=%d)\n",
 	     __FUNCTION__, bo->handle,
 	     get_private(info->front)->bo->handle, info->front->name,
 	     get_private(info->back)->bo->handle, info->back->name));
-
-	info->scanout[1] = info->scanout[0];
-	info->scanout[0].bo = ref(bo);
-	info->scanout[0].name = info->back->name;
-	assert(info->scanout[0].bo->scanout);
-
-	DBG(("%s: pending scanout handle=%d, active scanout handle=%d\n",
-	     __FUNCTION__, info->scanout[0].bo->handle, info->scanout[1].bo->handle));
-	assert(info->scanout[0].bo->handle != info->scanout[1].bo->handle);
 
 	tmp.bo = get_private(info->front)->bo;
 	tmp.name = info->front->name;
@@ -1297,8 +1300,6 @@ sna_dri2_page_flip(struct sna *sna, struct sna_dri2_frame_event *info)
 
 	info->back->name = tmp.name;
 	get_private(info->back)->bo = tmp.bo;
-
-	sna->dri2.flip_pending = info;
 
 	info->queued = true;
 	return true;
@@ -1773,23 +1774,18 @@ sna_dri2_flip_continue(struct sna *sna, struct sna_dri2_frame_event *info)
 	DBG(("%s(mode=%d)\n", __FUNCTION__, info->mode));
 
 	if (info->mode > 0){
+		struct kgem_bo *bo =get_private(info->front)->bo;
+
 		info->type = info->mode;
 
-		if (get_private(info->front)->bo != sna_pixmap(sna->front)->gpu_bo)
+		if (bo != sna_pixmap(sna->front)->gpu_bo)
 			return false;
 
-		info->count = sna_page_flip(sna,
-					    get_private(info->front)->bo,
-					    info, info->pipe);
+		info->count = sna_page_flip(sna, bo, info, info->pipe);
 		if (!info->count)
 			return false;
 
-		assert(info->scanout[0].bo->scanout);
-		info->scanout[1] = info->scanout[0];
-		info->scanout[0].bo = ref(get_private(info->front)->bo);
-		info->scanout[0].name = info->front->name;
-		assert(info->scanout[0].bo->scanout);
-		sna->dri2.flip_pending = info;
+		update_scanout(sna, info, bo, info->front->name);
 	} else {
 		info->type = -info->mode;
 
@@ -1870,18 +1866,18 @@ static void sna_dri2_flip_event(struct sna *sna,
 
 	assert(!sna->mode.shadow_flip);
 
-	if (flip->scanout[1].bo) {
+	if (sna->dri2.scanout[1].bo) {
 		struct dri_bo *c = NULL;
 
 		DBG(("%s: retiring previous scanout handle=%d, name=%d, refcnt=%d (current scanout handle=%d)\n",
 		     __FUNCTION__,
-		     flip->scanout[1].bo->handle,
-		     flip->scanout[1].name,
-		     flip->scanout[1].bo->refcnt,
-		     flip->scanout[0].bo->handle));
+		     sna->dri2.scanout[1].bo->handle,
+		     sna->dri2.scanout[1].name,
+		     sna->dri2.scanout[1].bo->refcnt,
+		     sna->dri2.scanout[0].bo->handle));
 
-		if (flip->scanout[1].bo != flip->scanout[0].bo &&
-		    flip->scanout[1].bo->refcnt == 1) {
+		if (sna->dri2.scanout[1].bo != sna->dri2.scanout[0].bo &&
+		    sna->dri2.scanout[1].bo->refcnt == 1) {
 			DBG(("%s: adding old scanout to flip cache\n", __FUNCTION__));
 			if (!list_is_empty(&flip->cache))
 				c = list_last_entry(&flip->cache, struct dri_bo, link);
@@ -1894,19 +1890,19 @@ static void sna_dri2_flip_event(struct sna *sna,
 			if (c == NULL)
 				c = malloc(sizeof(*c));
 			if (c != NULL) {
-				c->bo = flip->scanout[1].bo;
-				c->name = flip->scanout[1].name;
+				c->bo = sna->dri2.scanout[1].bo;
+				c->name = sna->dri2.scanout[1].name;
 				list_add(&c->link, &flip->cache);
 			}
 		}
 
 		if (c == NULL) {
 			DBG(("%s: not caching old scanout handle=%d, still busy\n",
-			     __FUNCTION__, flip->scanout[1].bo->handle));
-			kgem_bo_destroy(&sna->kgem, flip->scanout[1].bo);
+			     __FUNCTION__, sna->dri2.scanout[1].bo->handle));
+			kgem_bo_destroy(&sna->kgem, sna->dri2.scanout[1].bo);
 		}
 
-		flip->scanout[1].bo = NULL;
+		sna->dri2.scanout[1].bo = NULL;
 	}
 
 	if (sna->dri2.flip_pending == flip)
@@ -2114,9 +2110,12 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 		info->front = sna_dri2_reference_buffer(front);
 		info->back = sna_dri2_reference_buffer(back);
 
-		info->scanout[0].bo = ref(get_private(front)->bo);
-		info->scanout[0].name = info->front->name;
-		assert(info->scanout[0].bo->scanout);
+		if (sna->dri2.scanout[0].bo == NULL) {
+			sna->dri2.scanout[0].bo = ref(get_private(front)->bo);
+			sna->dri2.scanout[0].name = info->front->name;
+		}
+		assert(sna->dri2.scanout[0].bo == get_private(front)->bo);
+		assert(sna->dri2.scanout[0].bo->scanout);
 
 		if (sna->dri2.flip_pending) {
 			/* We need to first wait (one vblank) for the
@@ -2161,9 +2160,12 @@ out:
 	info->front = sna_dri2_reference_buffer(front);
 	info->back = sna_dri2_reference_buffer(back);
 
-	info->scanout[0].bo = ref(get_private(front)->bo);
-	info->scanout[0].name = info->front->name;
-	assert(info->scanout[0].bo->scanout);
+	if (sna->dri2.scanout[0].bo == NULL) {
+		sna->dri2.scanout[0].bo = ref(get_private(front)->bo);
+		sna->dri2.scanout[0].name = info->front->name;
+	}
+	assert(sna->dri2.scanout[0].bo == get_private(front)->bo);
+	assert(sna->dri2.scanout[0].bo->scanout);
 
 	/*
 	 * If divisor is zero, or current_msc is smaller than target_msc
@@ -2673,6 +2675,18 @@ bool sna_dri2_open(struct sna *sna, ScreenPtr screen)
 #endif
 
 	return DRI2ScreenInit(screen, &info);
+}
+
+void sna_dri2_reset_scanout(struct sna *sna)
+{
+	if (sna->dri2.scanout[1].bo != NULL) {
+		kgem_bo_destroy(&sna->kgem, sna->dri2.scanout[1].bo);
+		sna->dri2.scanout[1].bo = NULL;
+	}
+	if (sna->dri2.scanout[0].bo != NULL) {
+		kgem_bo_destroy(&sna->kgem, sna->dri2.scanout[0].bo);
+		sna->dri2.scanout[0].bo = NULL;
+	}
 }
 
 void sna_dri2_close(struct sna *sna, ScreenPtr screen)

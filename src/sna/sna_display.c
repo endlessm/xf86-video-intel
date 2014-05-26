@@ -4505,6 +4505,8 @@ sna_crtc_config_notify(ScreenPtr screen)
 
 	DBG(("%s\n", __FUNCTION__));
 
+	sna_dri2_reset_scanout(sna);
+
 	sna_mode_update(sna);
 	sna_cursors_reload(sna);
 }
