@@ -6223,7 +6223,7 @@ struct kgem_bo *kgem_create_buffer(struct kgem *kgem,
 			     __FUNCTION__, size, bo->used, bytes(&bo->base)));
 			gem_write__cachealigned(kgem->fd, bo->base.handle,
 						0, bo->used, bo->mem);
-			kgem_buffer_release(kgem, bo);
+			assert(list_is_empty(&bo->base.vma));
 			bo->need_io = 0;
 			bo->write = 0;
 			offset = 0;
@@ -6280,13 +6280,14 @@ struct kgem_bo *kgem_create_buffer(struct kgem *kgem,
 				goto done;
 			}
 
-			if (size <= bytes(&bo->base) &&
+			if (bo->base.refcnt == 1 &&
+			    size <= bytes(&bo->base) &&
 			    (bo->base.rq == NULL ||
 			     !__kgem_busy(kgem, bo->base.handle))) {
 				DBG(("%s: reusing whole buffer? size=%d, total=%d\n",
 				     __FUNCTION__, size, bytes(&bo->base)));
 				__kgem_bo_clear_busy(&bo->base);
-				kgem_buffer_release(kgem, bo);
+				assert(list_is_empty(&bo->base.vma));
 
 				switch (bo->mmapped) {
 				case MMAPPED_CPU:
