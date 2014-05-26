@@ -2178,25 +2178,6 @@ static void kgem_bo_unref(struct kgem *kgem, struct kgem_bo *bo)
 		__kgem_bo_destroy(kgem, bo);
 }
 
-static void kgem_buffer_release(struct kgem *kgem, struct kgem_buffer *bo)
-{
-	assert(bo->base.io);
-	while (!list_is_empty(&bo->base.vma)) {
-		struct kgem_bo *cached;
-
-		cached = list_first_entry(&bo->base.vma, struct kgem_bo, vma);
-		assert(cached->proxy == &bo->base);
-		assert(cached != &bo->base);
-		list_del(&cached->vma);
-
-		assert(*(struct kgem_bo **)cached->map__gtt == cached);
-		*(struct kgem_bo **)cached->map__gtt = NULL;
-		cached->map__gtt = NULL;
-
-		kgem_bo_destroy(kgem, cached);
-	}
-}
-
 static bool kgem_retire__buffers(struct kgem *kgem)
 {
 	bool retired = false;
@@ -2217,7 +2198,6 @@ static bool kgem_retire__buffers(struct kgem *kgem)
 		DBG(("%s: releasing upload cache for handle=%d? %d\n",
 		     __FUNCTION__, bo->base.handle, !list_is_empty(&bo->base.vma)));
 		list_del(&bo->base.list);
-		kgem_buffer_release(kgem, bo);
 		kgem_bo_unref(kgem, &bo->base);
 		retired = true;
 	}
@@ -6668,17 +6648,6 @@ struct kgem_bo *kgem_upload_source_image(struct kgem *kgem,
 
 	sigtrap_put();
 	return bo;
-}
-
-void kgem_proxy_bo_attach(struct kgem_bo *bo,
-			  struct kgem_bo **ptr)
-{
-	DBG(("%s: handle=%d\n", __FUNCTION__, bo->handle));
-	assert(bo->map__gtt == NULL);
-	assert(bo->proxy);
-	list_add(&bo->vma, &bo->proxy->vma);
-	bo->map__gtt = ptr;
-	*ptr = kgem_bo_reference(bo);
 }
 
 void kgem_buffer_read_sync(struct kgem *kgem, struct kgem_bo *_bo)

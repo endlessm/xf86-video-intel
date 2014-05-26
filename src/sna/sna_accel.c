@@ -1981,7 +1981,8 @@ _sna_pixmap_move_to_cpu(PixmapPtr pixmap, unsigned int flags)
 			sna_pixmap_discard_shadow_damage(priv, NULL);
 	}
 
-	if (flags & MOVE_WRITE && priv->gpu_bo && priv->gpu_bo->proxy) {
+	if ((priv->gpu_bo && priv->gpu_bo->proxy) &&
+	    (flags & MOVE_WRITE || priv->gpu_bo->proxy->rq == NULL)) {
 		DBG(("%s: discarding cached upload buffer\n", __FUNCTION__));
 		assert(DAMAGE_IS_ALL(priv->cpu_damage));
 		assert(!priv->pinned);
@@ -2415,7 +2416,8 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 
 	assert(priv->gpu_damage == NULL || priv->gpu_bo);
 
-	if (flags & MOVE_WRITE && priv->gpu_bo && priv->gpu_bo->proxy) {
+	if ((priv->gpu_bo && priv->gpu_bo->proxy) &&
+	    (flags & MOVE_WRITE || priv->gpu_bo->proxy->rq == NULL)) {
 		DBG(("%s: discarding cached upload buffer\n", __FUNCTION__));
 		assert(DAMAGE_IS_ALL(priv->cpu_damage));
 		assert(priv->gpu_damage == NULL);
@@ -3170,7 +3172,8 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 		goto done;
 	}
 
-	if (flags & MOVE_WRITE && priv->gpu_bo && priv->gpu_bo->proxy) {
+	if ((priv->gpu_bo && priv->gpu_bo->proxy) &&
+	    (flags & MOVE_WRITE || priv->gpu_bo->proxy->rq == NULL)) {
 		DBG(("%s: discarding cached upload buffer\n", __FUNCTION__));
 		assert(priv->gpu_damage == NULL);
 		assert(!priv->pinned);
@@ -3907,7 +3910,8 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 		goto active;
 	}
 
-	if (flags & MOVE_WRITE && priv->gpu_bo && priv->gpu_bo->proxy) {
+	if ((priv->gpu_bo && priv->gpu_bo->proxy) &&
+	    (flags & MOVE_WRITE || priv->gpu_bo->proxy->rq == NULL)) {
 		DBG(("%s: discarding cached upload buffer\n", __FUNCTION__));
 		assert(priv->gpu_damage == NULL);
 		assert(!priv->pinned);
@@ -6241,7 +6245,7 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 				     __FUNCTION__));
 				assert(src_priv->gpu_damage == NULL);
 				assert(src_priv->gpu_bo == NULL);
-				kgem_proxy_bo_attach(src_bo, &src_priv->gpu_bo);
+				src_priv->gpu_bo = kgem_bo_reference(src_bo);
 			}
 
 			if (!sna->render.copy_boxes(sna, alu,
