@@ -5165,37 +5165,33 @@ sna_crtc_redisplay__fallback(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo 
 	PictFormatPtr format;
 	PicturePtr src, dst;
 	PixmapPtr pixmap;
-	int error;
+	int depth, error;
 	void *ptr;
 
 	DBG(("%s: compositing transformed damage boxes\n", __FUNCTION__));
+
+	error = sna_render_format_for_depth(sna->front->drawable.depth);
+	depth = PIXMAN_FORMAT_DEPTH(error);
+	format = PictureMatchFormat(screen, depth, error);
+	if (format == NULL) {
+		DBG(("%s: can't find format for depth=%d [%08x]\n",
+		     __FUNCTION__, depth, error));
+		return;
+	}
 
 	ptr = kgem_bo_map__gtt(&sna->kgem, bo);
 	if (ptr == NULL)
 		return;
 
-	pixmap = sna_pixmap_create_unattached(screen,
-					      0, 0, sna->front->drawable.depth);
+	pixmap = sna_pixmap_create_unattached(screen, 0, 0, depth);
 	if (pixmap == NullPixmap)
 		return;
 
 	if (!screen->ModifyPixmapHeader(pixmap,
-					crtc->mode.HDisplay,
-					crtc->mode.VDisplay,
-					sna->front->drawable.depth,
-					sna->front->drawable.bitsPerPixel,
+					crtc->mode.HDisplay, crtc->mode.VDisplay,
+					depth, sna->front->drawable.bitsPerPixel,
 					bo->pitch, ptr))
 		goto free_pixmap;
-
-	error = sna_render_format_for_depth(sna->front->drawable.depth);
-	format = PictureMatchFormat(screen,
-				    PIXMAN_FORMAT_DEPTH(error), error);
-	if (format == NULL) {
-		DBG(("%s: can't find format for depth=%d [%08x]\n",
-		     __FUNCTION__, sna->front->drawable.depth,
-		     (int)sna_render_format_for_depth(sna->front->drawable.depth)));
-		goto free_pixmap;
-	}
 
 	src = CreatePicture(None, &sna->front->drawable, format,
 			    0, NULL, serverClient, &error);
@@ -5257,35 +5253,31 @@ sna_crtc_redisplay__composite(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo
 	PicturePtr src, dst;
 	PixmapPtr pixmap;
 	BoxPtr b;
-	int n, error;
+	int n, depth, error;
 
 	DBG(("%s: compositing transformed damage boxes\n", __FUNCTION__));
 
-	pixmap = sna_pixmap_create_unattached(screen,
-					      0, 0, sna->front->drawable.depth);
+	error = sna_render_format_for_depth(sna->front->drawable.depth);
+	depth = PIXMAN_FORMAT_DEPTH(error);
+	format = PictureMatchFormat(screen, depth, error);
+	if (format == NULL) {
+		DBG(("%s: can't find format for depth=%d [%08x]\n",
+		     __FUNCTION__, depth, error));
+		return;
+	}
+
+	pixmap = sna_pixmap_create_unattached(screen, 0, 0, depth);
 	if (pixmap == NullPixmap)
 		return;
 
 	if (!screen->ModifyPixmapHeader(pixmap,
-					crtc->mode.HDisplay,
-					crtc->mode.VDisplay,
-					sna->front->drawable.depth,
-					sna->front->drawable.bitsPerPixel,
+					crtc->mode.HDisplay, crtc->mode.VDisplay,
+					depth, sna->front->drawable.bitsPerPixel,
 					bo->pitch, NULL))
 		goto free_pixmap;
 
 	if (!sna_pixmap_attach_to_bo(pixmap, bo))
 		goto free_pixmap;
-
-	error = sna_render_format_for_depth(sna->front->drawable.depth);
-	format = PictureMatchFormat(screen,
-				    PIXMAN_FORMAT_DEPTH(error), error);
-	if (format == NULL) {
-		DBG(("%s: can't find format for depth=%d [%08x]\n",
-		     __FUNCTION__, sna->front->drawable.depth,
-		     (int)sna_render_format_for_depth(sna->front->drawable.depth)));
-		goto free_pixmap;
-	}
 
 	src = CreatePicture(None, &sna->front->drawable, format,
 			    0, NULL, serverClient, &error);
