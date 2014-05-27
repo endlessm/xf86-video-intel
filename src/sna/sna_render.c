@@ -789,6 +789,11 @@ fixup:
 	format = PictureMatchFormat(screen,
 				    pixmap->drawable.depth,
 				    picture->format);
+	if (format == NULL) {
+		DBG(("%s: invalid depth=%d, format=%08x\n",
+		     __FUNCTION__, pixmap->drawable.depth, picture->format));
+		goto fixup;
+	}
 
 	tmp_dst = CreatePicture(0, &tmp->drawable, format, 0, NULL,
 				serverClient, &error);
