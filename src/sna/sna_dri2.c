@@ -51,6 +51,10 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <compositeext.h>
 #endif
 
+#if DRI2INFOREC_VERSION < 2
+#error DRI2 version supported by the Xserver is too old
+#endif
+
 static inline struct kgem_bo *ref(struct kgem_bo *bo)
 {
 	assert(bo->refcnt);
@@ -78,6 +82,7 @@ get_private(void *buffer)
 	return (struct sna_dri2_private *)((DRI2Buffer2Ptr)buffer+1);
 }
 
+#if DRI2INFOREC_VERSION >= 4
 enum frame_event_type {
 	WAITMSC = 0,
 	SWAP,
@@ -206,9 +211,6 @@ sna_dri2_window_get_chain(WindowPtr win)
 	assert(priv != NULL);
 	return priv->chain;
 }
-
-#if DRI2INFOREC_VERSION < 2
-#error DRI2 version supported by the Xserver is too old
 #endif
 
 #if DRI2INFOREC_VERSION < 6
