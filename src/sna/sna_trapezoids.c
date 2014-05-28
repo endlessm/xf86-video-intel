@@ -791,7 +791,8 @@ trap_upload(PicturePtr picture,
 		return true;
 
 	memset(scratch->devPrivate.ptr, 0, scratch->devKind*height);
-	image = pixman_image_create_bits(picture->format, width, height,
+	image = pixman_image_create_bits((pixman_format_code_t)picture->format,
+					 width, height,
 					 scratch->devPrivate.ptr,
 					 scratch->devKind);
 	if (image) {

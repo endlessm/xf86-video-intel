@@ -1984,7 +1984,7 @@ get_current_msc(struct sna *sna, DrawablePtr draw, xf86CrtcPtr crtc)
 	uint64_t ret = -1;
 
 	VG_CLEAR(vbl);
-	vbl.request.type = DRM_VBLANK_RELATIVE;
+	vbl.request.type = _DRM_VBLANK_RELATIVE;
 	vbl.request.sequence = 0;
 	if (sna_wait_vblank(sna, &vbl, sna_crtc_to_pipe(crtc)) == 0)
 		ret = sna_crtc_record_vblank(crtc, &vbl);
@@ -2410,7 +2410,7 @@ fail:
 	}
 
 	VG_CLEAR(vbl);
-	vbl.request.type = DRM_VBLANK_RELATIVE;
+	vbl.request.type = _DRM_VBLANK_RELATIVE;
 	vbl.request.sequence = 0;
 	if (sna_wait_vblank(sna, &vbl, sna_crtc_to_pipe(crtc)) == 0) {
 		*ust = ust64(vbl.reply.tval_sec, vbl.reply.tval_usec);
@@ -2460,7 +2460,7 @@ sna_dri2_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc
 	VG_CLEAR(vbl);
 
 	/* Get current count */
-	vbl.request.type = DRM_VBLANK_RELATIVE;
+	vbl.request.type = _DRM_VBLANK_RELATIVE;
 	vbl.request.sequence = 0;
 	if (sna_wait_vblank(sna, &vbl, pipe))
 		goto out_complete;

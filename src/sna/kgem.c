@@ -810,11 +810,12 @@ cpu_cache_size__cpuid4(void)
 
 	 unsigned int eax, ebx, ecx, edx;
 	 unsigned int llc_size = 0;
-	 int cnt = 0;
+	 int cnt;
 
 	 if (__get_cpuid_max(BASIC_CPUID, NULL) < 4)
 		 return 0;
 
+	 cnt = 0;
 	 do {
 		 unsigned associativity, line_partitions, line_size, sets;
 

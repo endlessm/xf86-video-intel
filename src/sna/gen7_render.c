@@ -126,7 +126,6 @@ static const struct gt_info ivb_gt2_info = {
 
 static const struct gt_info byt_gt_info = {
 	.name = "Baytrail (gen7)",
-	.urb = { 128, 64, 64 },
 	.max_vs_threads = 36,
 	.max_gs_threads = 36,
 	.max_wm_threads = (48-1) << IVB_PS_MAX_THREADS_SHIFT,

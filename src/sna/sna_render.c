@@ -1668,7 +1668,8 @@ do_fixup:
 		dst = pixman_image_create_bits(channel->pict_format,
 					       w, h, ptr, channel->bo->pitch);
 	else
-		dst = pixman_image_create_bits(picture->format, w, h, NULL, 0);
+		dst = pixman_image_create_bits((pixman_format_code_t)picture->format,
+					       w, h, NULL, 0);
 	if (!dst) {
 		kgem_bo_destroy(&sna->kgem, channel->bo);
 		return 0;
@@ -1855,7 +1856,7 @@ sna_render_picture_convert(struct sna *sna,
 		if (!sna_pixmap_move_to_cpu(pixmap, MOVE_READ))
 			return 0;
 
-		src = pixman_image_create_bits(picture->format,
+		src = pixman_image_create_bits((pixman_format_code_t)picture->format,
 					       pixmap->drawable.width,
 					       pixmap->drawable.height,
 					       pixmap->devPrivate.ptr,
