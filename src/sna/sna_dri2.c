@@ -238,11 +238,14 @@ sna_dri2_reuse_buffer(DrawablePtr draw, DRI2BufferPtr buffer)
 		struct sna_dri2_frame_event *info;
 
 		info = sna_dri2_window_get_chain((WindowPtr)draw);
+		DBG(("%s: draw->id=%lu, active? %d, current back? %d\n",
+		     __FUNCTION__, (long)draw->id, info!=NULL, info && info->back == buffer));
 		if (info && info->back == buffer) {
 			DBG(("%s: replacing back buffer\n", __FUNCTION__));
 			sna_dri2_get_back(to_sna_from_drawable(draw), info);
 		}
 
+		assert(kgem_bo_flink(&to_sna_from_drawable(draw)->kgem, get_private(buffer)->bo) == buffer->name);
 		assert(get_private(buffer)->bo != to_sna_from_drawable(draw)->dri2.scanout[0].bo);
 		assert(get_private(buffer)->bo != to_sna_from_drawable(draw)->dri2.scanout[1].bo);
 	}
@@ -1774,7 +1777,7 @@ sna_dri2_flip_continue(struct sna *sna, struct sna_dri2_frame_event *info)
 	DBG(("%s(mode=%d)\n", __FUNCTION__, info->mode));
 
 	if (info->mode > 0){
-		struct kgem_bo *bo =get_private(info->front)->bo;
+		struct kgem_bo *bo = get_private(info->front)->bo;
 
 		info->type = info->mode;
 
@@ -1862,7 +1865,7 @@ static void chain_flip(struct sna *sna)
 static void sna_dri2_flip_event(struct sna *sna,
 				struct sna_dri2_frame_event *flip)
 {
-	DBG(("%s(pipe=%d)\n", __FUNCTION__, flip->pipe));
+	DBG(("%s(pipe=%d, event=%d)\n", __FUNCTION__, flip->pipe, flip->type));
 
 	assert(!sna->mode.shadow_flip);
 
@@ -2094,7 +2097,11 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 			} else {
 				DBG(("%s: chaining flip\n", __FUNCTION__));
 				type = FLIP_THROTTLE;
+#if XORG_CAN_TRIPLE_BUFFER
 				info->mode = -type;
+#else
+				info->mode = -FLIP_COMPLETE;
+#endif
 				goto out;
 			}
 		}
