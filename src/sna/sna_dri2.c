@@ -91,6 +91,7 @@ enum frame_event_type {
 	FLIP,
 	FLIP_THROTTLE,
 	FLIP_COMPLETE,
+	FLIP_ASYNC,
 };
 
 struct dri_bo {
@@ -1251,7 +1252,7 @@ void sna_dri2_destroy_window(WindowPtr win)
 }
 
 static void
-update_scanout(struct sna *sna, struct sna_dri2_frame_event *info, struct kgem_bo *bo, int name)
+update_scanout(struct sna *sna, struct kgem_bo *bo, int name)
 {
 	assert(sna->dri2.scanout[1].bo == NULL);
 	assert(sna->dri2.scanout[0].bo->scanout);
@@ -1264,9 +1265,52 @@ update_scanout(struct sna *sna, struct sna_dri2_frame_event *info, struct kgem_b
 	DBG(("%s: pending scanout handle=%d, active scanout handle=%d\n",
 	     __FUNCTION__, sna->dri2.scanout[0].bo->handle, sna->dri2.scanout[1].bo->handle));
 	assert(sna->dri2.scanout[0].bo->handle != sna->dri2.scanout[1].bo->handle);
+}
 
-	assert(sna->dri2.flip_pending == NULL || sna->dri2.flip_pending == info);
-	sna->dri2.flip_pending = info;
+static void
+retire_scanout(struct sna *sna,
+	       struct sna_dri2_frame_event *flip)
+{
+	struct dri_bo *c = NULL;
+
+	if (sna->dri2.scanout[1].bo == NULL)
+		return;
+
+	DBG(("%s: retiring previous scanout handle=%d, name=%d, refcnt=%d (current scanout handle=%d)\n",
+	     __FUNCTION__,
+	     sna->dri2.scanout[1].bo->handle,
+	     sna->dri2.scanout[1].name,
+	     sna->dri2.scanout[1].bo->refcnt,
+	     sna->dri2.scanout[0].bo->handle));
+
+	if (flip &&
+	    sna->dri2.scanout[1].bo != sna->dri2.scanout[0].bo &&
+	    sna->dri2.scanout[1].bo->refcnt == 1) {
+		DBG(("%s: adding old scanout to flip cache\n", __FUNCTION__));
+		if (!list_is_empty(&flip->cache))
+			c = list_last_entry(&flip->cache, struct dri_bo, link);
+		if (c) {
+			if (c->bo == NULL)
+				_list_del(&c->link);
+			else
+				c = NULL;
+		}
+		if (c == NULL)
+			c = malloc(sizeof(*c));
+		if (c != NULL) {
+			c->bo = sna->dri2.scanout[1].bo;
+			c->name = sna->dri2.scanout[1].name;
+			list_add(&c->link, &flip->cache);
+		}
+	}
+
+	if (c == NULL) {
+		DBG(("%s: not caching old scanout handle=%d, still busy\n",
+		     __FUNCTION__, sna->dri2.scanout[1].bo->handle));
+		kgem_bo_destroy(&sna->kgem, sna->dri2.scanout[1].bo);
+	}
+
+	sna->dri2.scanout[1].bo = NULL;
 }
 
 static bool
@@ -1284,11 +1328,20 @@ sna_dri2_page_flip(struct sna *sna, struct sna_dri2_frame_event *info)
 	assert(sna->dri2.scanout[1].bo == NULL);
 	assert(bo->refcnt);
 
-	info->count = sna_page_flip(sna, bo, info, info->pipe);
+	if (info->type == FLIP_ASYNC)
+		info->count = sna_page_flip(sna, bo, NULL, -1);
+	else
+		info->count = sna_page_flip(sna, bo, info, info->pipe);
 	if (!info->count)
 		return false;
 
-	update_scanout(sna, info, bo, info->back->name);
+	update_scanout(sna, bo, info->back->name);
+
+	assert(sna->dri2.flip_pending == NULL || sna->dri2.flip_pending == info);
+	if (info->type == FLIP_ASYNC)
+		retire_scanout(sna, NULL);
+	else
+		sna->dri2.flip_pending = info;
 
 	DBG(("%s: marked handle=%d as scanout, swap front (handle=%d, name=%d) and back (handle=%d, name=%d)\n",
 	     __FUNCTION__, bo->handle,
@@ -1802,7 +1855,10 @@ sna_dri2_flip_continue(struct sna *sna, struct sna_dri2_frame_event *info)
 			if (!info->count)
 				return false;
 
-			update_scanout(sna, info, bo, info->front->name);
+			update_scanout(sna, bo, info->front->name);
+
+			assert(sna->dri2.flip_pending == NULL || sna->dri2.flip_pending == info);
+			sna->dri2.flip_pending = info;
 		}
 	} else {
 		info->type = -info->mode;
@@ -1884,45 +1940,7 @@ static void sna_dri2_flip_event(struct sna *sna,
 
 	assert(!sna->mode.shadow_flip);
 
-	if (sna->dri2.scanout[1].bo) {
-		struct dri_bo *c = NULL;
-
-		DBG(("%s: retiring previous scanout handle=%d, name=%d, refcnt=%d (current scanout handle=%d)\n",
-		     __FUNCTION__,
-		     sna->dri2.scanout[1].bo->handle,
-		     sna->dri2.scanout[1].name,
-		     sna->dri2.scanout[1].bo->refcnt,
-		     sna->dri2.scanout[0].bo->handle));
-
-		if (sna->dri2.scanout[1].bo != sna->dri2.scanout[0].bo &&
-		    sna->dri2.scanout[1].bo->refcnt == 1) {
-			DBG(("%s: adding old scanout to flip cache\n", __FUNCTION__));
-			if (!list_is_empty(&flip->cache))
-				c = list_last_entry(&flip->cache, struct dri_bo, link);
-			if (c) {
-				if (c->bo == NULL)
-					_list_del(&c->link);
-				else
-					c = NULL;
-			}
-			if (c == NULL)
-				c = malloc(sizeof(*c));
-			if (c != NULL) {
-				c->bo = sna->dri2.scanout[1].bo;
-				c->name = sna->dri2.scanout[1].name;
-				list_add(&c->link, &flip->cache);
-			}
-		}
-
-		if (c == NULL) {
-			DBG(("%s: not caching old scanout handle=%d, still busy\n",
-			     __FUNCTION__, sna->dri2.scanout[1].bo->handle));
-			kgem_bo_destroy(&sna->kgem, sna->dri2.scanout[1].bo);
-		}
-
-		sna->dri2.scanout[1].bo = NULL;
-	}
-
+	retire_scanout(sna, flip);
 	if (sna->dri2.flip_pending == flip)
 		sna->dri2.flip_pending = NULL;
 
@@ -2022,8 +2040,9 @@ static int use_triple_buffer(struct sna *sna, ClientPtr client, bool async)
 	}
 
 	if (async) {
-		DBG(("%s: running async, using FLIP_COMPLETE\n", __FUNCTION__));
-		return FLIP_COMPLETE;
+		DBG(("%s: running async, using %s\n", __FUNCTION__,
+		     sna->flags & SNA_HAS_ASYNC_FLIP ? "FLIP_ASYNC" : "FLIP_COMPLETE"));
+		return sna->flags & SNA_HAS_ASYNC_FLIP ? FLIP_ASYNC : FLIP_COMPLETE;
 	}
 
 #if XORG_CAN_TRIPLE_BUFFER
@@ -2154,18 +2173,21 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 		} else {
 			info->type = type = use_triple_buffer(sna, client, *target_msc == 0);
 			if (!sna_dri2_page_flip(sna, info)) {
+				DBG(("%s: flip failed, falling back\n", __FUNCTION__));
 				sna_dri2_frame_event_info_free(sna, draw, info);
 				return false;
 			}
 		}
 
 		swap_limit(draw, 1 + (type == FLIP_THROTTLE));
-		if (type == FLIP_COMPLETE) {
+		if (type >= FLIP_COMPLETE) {
 new_back:
 			if (!XORG_CAN_TRIPLE_BUFFER)
 				sna_dri2_get_back(sna, info);
 			DBG(("%s: fake triple buffering, unblocking client\n", __FUNCTION__));
 			frame_swap_complete(sna, info, DRI2_EXCHANGE_COMPLETE);
+			if (info->type == FLIP_ASYNC)
+				sna_dri2_frame_event_info_free(sna, draw, info);
 		}
 out:
 		DBG(("%s: target_msc=%llu\n", __FUNCTION__, current_msc + 1));
@@ -2623,7 +2645,6 @@ static const char *dri_driver_name(struct sna *sna)
 
 	return s;
 }
-
 
 bool sna_dri2_open(struct sna *sna, ScreenPtr screen)
 {
