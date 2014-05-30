@@ -4343,34 +4343,34 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 				DBG(("%s: recreate fb %dx%d@%d/%d\n",
 				     __FUNCTION__, width, height, scrn->depth, scrn->bitsPerPixel));
 
-				if (bo->tiling != tiling ||
-				    (tiling != I915_TILING_NONE && bo->pitch != pitch)) {
-					if (gem_set_tiling(kgem->fd, bo->handle,
+				if (first->tiling != tiling ||
+				    (tiling != I915_TILING_NONE && first->pitch != pitch)) {
+					if (gem_set_tiling(kgem->fd, first->handle,
 							   tiling, pitch)) {
-						bo->tiling = tiling;
-						bo->pitch = pitch;
+						first->tiling = tiling;
+						first->pitch = pitch;
 					}
 				}
 
-				if (bo->tiling == tiling && bo->pitch == pitch) {
+				if (first->tiling == tiling && first->pitch == pitch) {
 					struct drm_mode_fb_cmd arg;
 
 					VG_CLEAR(arg);
 					arg.width = width;
 					arg.height = height;
-					arg.pitch = bo->pitch;
+					arg.pitch = first->pitch;
 					arg.bpp = scrn->bitsPerPixel;
 					arg.depth = scrn->depth;
-					arg.handle = bo->handle;
+					arg.handle = first->handle;
 
-					kgem_bo_rmfb(kgem, bo);
+					kgem_bo_rmfb(kgem, first);
 					if (do_ioctl(kgem->fd, DRM_IOCTL_MODE_ADDFB, &arg)) {
-						kgem_bo_free(kgem, bo);
+						kgem_bo_free(kgem, first);
 					} else {
 						DBG(("%s: attached fb=%d to handle=%d\n",
 						     __FUNCTION__, arg.fb_id, arg.handle));
-						bo->delta = arg.fb_id;
-						return bo;
+						first->delta = arg.fb_id;
+						return first;
 					}
 				}
 			}
