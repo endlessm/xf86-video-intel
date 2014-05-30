@@ -1330,7 +1330,7 @@ can_flip(struct sna * sna,
 		return false;
 	}
 
-	if (sna->flags & SNA_NO_FLIP) {
+	if ((sna->flags & (SNA_HAS_FLIP | SNA_HAS_ASYNC_FLIP)) == 0) {
 		DBG(("%s: no, pageflips disabled\n", __FUNCTION__));
 		return false;
 	}

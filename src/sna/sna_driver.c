@@ -294,27 +294,6 @@ static bool has_vsync(struct sna *sna)
 	return true;
 }
 
-static bool has_pageflipping(struct sna *sna)
-{
-	drm_i915_getparam_t gp;
-	int v;
-
-	if (sna->flags & SNA_IS_HOSTED)
-		return false;
-
-	v = 0;
-
-	VG_CLEAR(gp);
-	gp.param = I915_PARAM_HAS_PAGEFLIPPING;
-	gp.value = &v;
-
-	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_I915_GETPARAM, &gp))
-		return false;
-
-	VG(VALGRIND_MAKE_MEM_DEFINED(&v, sizeof(v)));
-	return v > 0;
-}
-
 static void sna_setup_capabilities(ScrnInfoPtr scrn, int fd)
 {
 #if HAS_PIXMAP_SHARING && defined(DRM_CAP_PRIME)
@@ -576,7 +555,7 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 		sna->flags |= SNA_NO_VSYNC;
 	DBG(("%s: vsync? %s\n", __FUNCTION__, sna->flags & SNA_NO_VSYNC ? "disabled" : "enabled"));
 
-	if (!has_pageflipping(sna) ||
+	if (sna->flags & SNA_IS_HOSTED ||
 	    !xf86ReturnOptValBool(sna->Options, OPTION_PAGEFLIP, TRUE))
 		sna->flags |= SNA_NO_FLIP;
 	DBG(("%s: page flips? %s\n", __FUNCTION__, sna->flags & SNA_NO_FLIP ? "disabled" : "enabled"));

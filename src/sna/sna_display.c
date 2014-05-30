@@ -88,6 +88,8 @@ union compat_mode_get_connector{
 #define DEFAULT_DPI 96
 #endif
 
+#define DRM_MODE_PAGE_FLIP_ASYNC 0x02
+
 #if 0
 #define __DBG DBG
 #else
@@ -4096,6 +4098,9 @@ static int do_page_flip(struct sna *sna, struct kgem_bo *bo,
 	int count = 0;
 	int i;
 
+	if ((sna->flags & (data ? SNA_HAS_FLIP : SNA_HAS_ASYNC_FLIP)) == 0)
+		return 0;
+
 	/*
 	 * Queue flips on all enabled CRTCs
 	 * Note that if/when we get per-CRTC buffers, we'll have to update this.
@@ -4118,32 +4123,42 @@ static int do_page_flip(struct sna *sna, struct kgem_bo *bo,
 
 		arg.crtc_id = crtc->id;
 		arg.fb_id = get_fb(sna, bo, width, height);
-		if (arg.fb_id == 0)
-			goto disable;
+		if (arg.fb_id == 0) {
+			assert(count == 0);
+			return 0;
+		}
 
 		/* Only the reference crtc will finally deliver its page flip
 		 * completion event. All other crtc's events will be discarded.
 		 */
-		arg.user_data = (uintptr_t)data;
-		arg.user_data |= crtc->pipe == pipe;
-		arg.flags = DRM_MODE_PAGE_FLIP_EVENT;
+		if (data) {
+			arg.user_data = (uintptr_t)data;
+			arg.user_data |= crtc->pipe == pipe;
+			arg.flags = DRM_MODE_PAGE_FLIP_EVENT;
+		} else {
+			arg.user_data = 0;
+			arg.flags = DRM_MODE_PAGE_FLIP_ASYNC;
+		}
 		arg.reserved = 0;
 
 		DBG(("%s: crtc %d id=%d, pipe=%d, [ref? %d] --> fb %d\n",
 		     __FUNCTION__, i, crtc->id, crtc->pipe,
 		     crtc->pipe == pipe, arg.fb_id));
 		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_PAGE_FLIP, &arg)) {
-			DBG(("%s: flip [fb=%d] on crtc %d id=%d failed - %d\n",
+			DBG(("%s: flip [fb=%d] on crtc %d id=%d pipe=%d failed - %d\n",
 			     __FUNCTION__, arg.fb_id, i, crtc->id, crtc->pipe, errno));
-disable:
-			if (count == 0)
-				return 0;
-
 			xf86DrvMsg(sna->scrn->scrnIndex, X_ERROR,
-				   "%s: page flipping failed, disabling CRTC:%d (pipe=%d)\n",
-				   __FUNCTION__, crtc->id, crtc->pipe);
-			sna_crtc_disable(config->crtc[i]);
-			continue;
+				   "page flipping failed, on CRTC:%d (pipe=%d), disabling %s page flips\n",
+				   crtc->id, crtc->pipe, data ? "synchronous": "asynchronous");
+			if (count && !xf86SetDesiredModes(sna->scrn)) {
+				xf86DrvMsg(sna->scrn->scrnIndex, X_ERROR,
+					   "failed to restore display configuration\n");
+				for (; i < sna->mode.num_real_crtc; i++)
+					sna_crtc_disable(config->crtc[i]);
+			}
+
+			sna->flags &= ~(data ? SNA_HAS_FLIP : SNA_HAS_ASYNC_FLIP);
+			return 0;
 		}
 
 		if (crtc->bo != bo) {
@@ -4522,12 +4537,66 @@ sanitize_outputs(struct sna *sna)
 		config->output[i]->crtc = NULL;
 }
 
+static bool has_flip(struct sna *sna)
+{
+	drm_i915_getparam_t gp;
+	int v;
+
+	if (sna->flags & SNA_NO_FLIP)
+		return false;
+
+	v = 0;
+
+	VG_CLEAR(gp);
+	gp.param = I915_PARAM_HAS_PAGEFLIPPING;
+	gp.value = &v;
+
+	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_I915_GETPARAM, &gp))
+		return false;
+
+	VG(VALGRIND_MAKE_MEM_DEFINED(&v, sizeof(v)));
+	return v > 0;
+}
+
+static bool has_flip__async(struct sna *sna)
+{
+#define LOCAL_IOCTL_GET_CAP	DRM_IOWR(0x0c, struct local_get_cap)
+#define DRM_CAP_ASYNC_PAGE_FLIP 0x7
+	struct local_get_cap {
+		uint64_t name;
+		uint64_t value;
+	} cap = { DRM_CAP_ASYNC_PAGE_FLIP };
+
+	if (sna->flags & SNA_NO_FLIP)
+		return false;
+
+	if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_GET_CAP, &cap) == 0)
+		return cap.value > 0;
+
+	return false;
+}
+
+static void
+probe_capabilities(struct sna *sna)
+{
+	sna->flags &= ~(SNA_HAS_FLIP | SNA_HAS_ASYNC_FLIP);
+	if (has_flip(sna))
+		sna->flags |= SNA_HAS_FLIP;
+	if (has_flip__async(sna))
+		sna->flags |= SNA_HAS_ASYNC_FLIP;
+	DBG(("%s: page flips? %s, async? %s\n", __FUNCTION__,
+	     sna->flags & SNA_HAS_FLIP ? "enabled" : "disabled",
+	     sna->flags & SNA_HAS_ASYNC_FLIP ? "enabled" : "disabled"));
+}
+
 static void
 sna_crtc_config_notify(ScreenPtr screen)
 {
 	struct sna *sna = to_sna_from_screen(screen);
 
 	DBG(("%s\n", __FUNCTION__));
+
+	probe_capabilities(sna);
 
 	sna_dri2_reset_scanout(sna);
 
@@ -4551,6 +4620,8 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 		sna_setup_provider(scrn);
 		return true;
 	}
+
+	probe_capabilities(sna);
 
 	if (!xf86GetOptValInteger(sna->Options, OPTION_VIRTUAL, &num_fake))
 		num_fake = 1;
