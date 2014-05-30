@@ -1830,8 +1830,6 @@ inline static void kgem_bo_move_to_inactive(struct kgem *kgem,
 	assert_tiling(kgem, bo);
 	ASSERT_IDLE(kgem, bo->handle);
 
-	kgem->need_expire = true;
-
 	if (bucket(bo) >= NUM_CACHE_BUCKETS) {
 		if (bo->map__gtt) {
 			munmap(MAP(bo->map__gtt), bytes(bo));
@@ -1857,6 +1855,8 @@ inline static void kgem_bo_move_to_inactive(struct kgem *kgem,
 			kgem->vma[1].count++;
 		}
 	}
+
+	kgem->need_expire = true;
 }
 
 static struct kgem_bo *kgem_bo_replace_io(struct kgem_bo *bo)
@@ -1980,6 +1980,9 @@ static void kgem_bo_move_to_scanout(struct kgem *kgem, struct kgem_bo *bo)
 		list_move_tail(&bo->list, &kgem->scanout);
 	else
 		list_move(&bo->list, &kgem->scanout);
+
+	kgem->need_expire = true;
+
 }
 
 static void kgem_bo_move_to_snoop(struct kgem *kgem, struct kgem_bo *bo)
@@ -2002,6 +2005,7 @@ static void kgem_bo_move_to_snoop(struct kgem *kgem, struct kgem_bo *bo)
 
 	DBG(("%s: moving %d to snoop cachee\n", __FUNCTION__, bo->handle));
 	list_add(&bo->list, &kgem->snoop);
+	kgem->need_expire = true;
 }
 
 static struct kgem_bo *
