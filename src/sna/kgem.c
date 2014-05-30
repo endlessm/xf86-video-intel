@@ -1758,6 +1758,17 @@ static void kgem_bo_binding_free(struct kgem *kgem, struct kgem_bo *bo)
 	}
 }
 
+static void kgem_bo_rmfb(struct kgem *kgem, struct kgem_bo *bo)
+{
+	if (bo->scanout && bo->delta) {
+		DBG(("%s: releasing fb=%d for handle=%d\n",
+		     __FUNCTION__, bo->delta, bo->handle));
+		/* XXX will leak if we are not DRM_MASTER. *shrug* */
+		do_ioctl(kgem->fd, DRM_IOCTL_MODE_RMFB, &bo->delta);
+		bo->delta = 0;
+	}
+}
+
 static void kgem_bo_free(struct kgem *kgem, struct kgem_bo *bo)
 {
 	DBG(("%s: handle=%d, size=%d\n", __FUNCTION__, bo->handle, bytes(bo)));
@@ -1772,6 +1783,7 @@ static void kgem_bo_free(struct kgem *kgem, struct kgem_bo *bo)
 #endif
 
 	kgem_bo_binding_free(kgem, bo);
+	kgem_bo_rmfb(kgem, bo);
 
 	if (IS_USER_MAP(bo->map__cpu)) {
 		assert(bo->rq == NULL);
@@ -1960,7 +1972,6 @@ static void kgem_bo_move_to_scanout(struct kgem *kgem, struct kgem_bo *bo)
 {
 	assert(bo->refcnt == 0);
 	assert(bo->scanout);
-	assert(bo->delta);
 	assert(!bo->flush);
 	assert(!bo->snoop);
 	assert(!bo->io);
@@ -1988,6 +1999,7 @@ static void kgem_bo_move_to_scanout(struct kgem *kgem, struct kgem_bo *bo)
 static void kgem_bo_move_to_snoop(struct kgem *kgem, struct kgem_bo *bo)
 {
 	assert(bo->reusable);
+	assert(!bo->scanout);
 	assert(!bo->flush);
 	assert(!bo->needs_flush);
 	assert(bo->refcnt == 0);
@@ -2006,6 +2018,30 @@ static void kgem_bo_move_to_snoop(struct kgem *kgem, struct kgem_bo *bo)
 	DBG(("%s: moving %d to snoop cachee\n", __FUNCTION__, bo->handle));
 	list_add(&bo->list, &kgem->snoop);
 	kgem->need_expire = true;
+}
+
+static bool kgem_bo_move_to_cache(struct kgem *kgem, struct kgem_bo *bo)
+{
+	bool retired = false;
+
+	DBG(("%s: release handle=%d\n", __FUNCTION__, bo->handle));
+
+	if (bo->prime) {
+		DBG(("%s: discarding imported prime handle=%d\n",
+		     __FUNCTION__, bo->handle));
+		kgem_bo_free(kgem, bo);
+	} else if (bo->snoop) {
+		kgem_bo_move_to_snoop(kgem, bo);
+	} else if (bo->scanout) {
+		kgem_bo_move_to_scanout(kgem, bo);
+	} else if ((bo = kgem_bo_replace_io(bo))->reusable &&
+		   kgem_bo_set_purgeable(kgem, bo)) {
+		kgem_bo_move_to_inactive(kgem, bo);
+		retired = true;
+	} else
+		kgem_bo_free(kgem, bo);
+
+	return retired;
 }
 
 static struct kgem_bo *
@@ -2103,6 +2139,9 @@ static void __kgem_bo_destroy(struct kgem *kgem, struct kgem_bo *bo)
 	if (DBG_NO_CACHE)
 		goto destroy;
 
+	if (bo->prime)
+		goto destroy;
+
 	if (bo->snoop && !bo->flush) {
 		DBG(("%s: handle=%d is snooped\n", __FUNCTION__, bo->handle));
 		assert(bo->reusable);
@@ -2116,7 +2155,7 @@ static void __kgem_bo_destroy(struct kgem *kgem, struct kgem_bo *bo)
 	if (!IS_USER_MAP(bo->map__cpu))
 		bo->flush = false;
 
-	if (bo->scanout && bo->delta) {
+	if (bo->scanout) {
 		kgem_bo_move_to_scanout(kgem, bo);
 		return;
 	}
@@ -2227,16 +2266,7 @@ static bool kgem_retire__flushing(struct kgem *kgem)
 		if (bo->refcnt)
 			continue;
 
-		if (bo->snoop) {
-			kgem_bo_move_to_snoop(kgem, bo);
-		} else if (bo->scanout && bo->delta) {
-			kgem_bo_move_to_scanout(kgem, bo);
-		} else if ((bo = kgem_bo_replace_io(bo))->reusable &&
-			   kgem_bo_set_purgeable(kgem, bo)) {
-			kgem_bo_move_to_inactive(kgem, bo);
-			retired = true;
-		} else
-			kgem_bo_free(kgem, bo);
+		retired |= kgem_bo_move_to_cache(kgem, bo);
 	}
 #if HAS_DEBUG_FULL
 	{
@@ -2289,19 +2319,7 @@ static bool __kgem_retire_rq(struct kgem *kgem, struct kgem_request *rq)
 		if (bo->refcnt)
 			continue;
 
-		if (bo->snoop) {
-			kgem_bo_move_to_snoop(kgem, bo);
-		} else if (bo->scanout && bo->delta) {
-			kgem_bo_move_to_scanout(kgem, bo);
-		} else if ((bo = kgem_bo_replace_io(bo))->reusable &&
-			   kgem_bo_set_purgeable(kgem, bo)) {
-			kgem_bo_move_to_inactive(kgem, bo);
-			retired = true;
-		} else {
-			DBG(("%s: closing %d\n",
-			     __FUNCTION__, bo->handle));
-			kgem_bo_free(kgem, bo);
-		}
+		retired |= kgem_bo_move_to_cache(kgem, bo);
 	}
 
 	assert(rq->bo->rq == NULL);
@@ -2827,18 +2845,7 @@ void kgem_reset(struct kgem *kgem)
 			if (bo->refcnt || bo->rq)
 				continue;
 
-			if (bo->snoop) {
-				kgem_bo_move_to_snoop(kgem, bo);
-			} else if (bo->scanout && bo->delta) {
-				kgem_bo_move_to_scanout(kgem, bo);
-			} else if ((bo = kgem_bo_replace_io(bo))->reusable &&
-				   kgem_bo_set_purgeable(kgem, bo)) {
-				kgem_bo_move_to_inactive(kgem, bo);
-			} else {
-				DBG(("%s: closing %d\n",
-				     __FUNCTION__, bo->handle));
-				kgem_bo_free(kgem, bo);
-			}
+			kgem_bo_move_to_cache(kgem, bo);
 		}
 
 		if (rq != &kgem->static_request) {
@@ -3273,8 +3280,8 @@ void kgem_clean_scanout_cache(struct kgem *kgem)
 		bo = list_first_entry(&kgem->scanout, struct kgem_bo, list);
 
 		assert(bo->scanout);
-		assert(bo->delta);
 		assert(!bo->refcnt);
+		assert(!bo->prime);
 		assert(bo->proxy == NULL);
 
 		if (bo->exec || __kgem_busy(kgem, bo->handle))
@@ -3284,9 +3291,7 @@ void kgem_clean_scanout_cache(struct kgem *kgem)
 		     __FUNCTION__, bo->handle, bo->delta, bo->reusable));
 		list_del(&bo->list);
 
-		/* XXX will leak if we are not DRM_MASTER. *shrug* */
-		do_ioctl(kgem->fd, DRM_IOCTL_MODE_RMFB, &bo->delta);
-		bo->delta = 0;
+		kgem_bo_rmfb(kgem, bo);
 		bo->scanout = false;
 
 		if (!bo->purged) {
@@ -3800,7 +3805,7 @@ struct kgem_bo *kgem_create_for_name(struct kgem *kgem, uint32_t name)
 	bo->unique_id = kgem_get_unique_id(kgem);
 	bo->tiling = tiling.tiling_mode;
 	bo->reusable = false;
-	bo->flush = true;
+	bo->prime = true;
 	bo->purged = true; /* no coherency guarantees */
 
 	debug_alloc__bo(kgem, bo);
@@ -3850,6 +3855,7 @@ struct kgem_bo *kgem_create_for_prime(struct kgem *kgem, int name, uint32_t size
 	bo->unique_id = kgem_get_unique_id(kgem);
 	bo->tiling = tiling.tiling_mode;
 	bo->reusable = false;
+	bo->prime = true;
 	bo->domain = DOMAIN_NONE;
 
 	/* is this a special bo (e.g. scanout or CPU coherent)? */
@@ -4225,10 +4231,8 @@ static void __kgem_bo_make_scanout(struct kgem *kgem,
 	arg.depth = scrn->depth;
 	arg.handle = bo->handle;
 
-	if (gem_set_caching(kgem->fd, bo->handle, DISPLAY) &&
-	    do_ioctl(kgem->fd, DRM_IOCTL_MODE_ADDFB, &arg) == 0) {
+	if (gem_set_caching(kgem->fd, bo->handle, DISPLAY)) {
 		bo->scanout = true;
-		bo->delta = arg.fb_id;
 
 		/* Pre-emptively move the object into the mappable
 		 * portion to avoid rebinding later when busy.
@@ -4239,6 +4243,12 @@ static void __kgem_bo_make_scanout(struct kgem *kgem,
 			*(uint32_t *)bo->map__gtt = 0;
 			bo->domain = DOMAIN_GTT;
 		}
+	}
+
+	if (do_ioctl(kgem->fd, DRM_IOCTL_MODE_ADDFB, &arg) == 0) {
+		DBG(("%s: attached fb=%d to handle=%d\n",
+		     __FUNCTION__, arg.fb_id, arg.handle));
+		bo->delta = arg.fb_id;
 	}
 }
 
@@ -4281,7 +4291,6 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 
 		list_for_each_entry_reverse(bo, &kgem->scanout, list) {
 			assert(bo->scanout);
-			assert(bo->delta);
 			assert(!bo->flush);
 			assert_tiling(kgem, bo);
 
@@ -4292,7 +4301,7 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 				/* No tiling/pitch without recreating fb */
 				continue;
 
-			if (!check_scanout_size(kgem, bo, width, height)) {
+			if (bo->delta && !check_scanout_size(kgem, bo, width, height)) {
 				if (first == NULL)
 					first = bo;
 				continue;
@@ -4354,11 +4363,12 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 					arg.depth = scrn->depth;
 					arg.handle = bo->handle;
 
-					do_ioctl(kgem->fd, DRM_IOCTL_MODE_RMFB, &bo->delta);
+					kgem_bo_rmfb(kgem, bo);
 					if (do_ioctl(kgem->fd, DRM_IOCTL_MODE_ADDFB, &arg)) {
-						bo->scanout = false;
 						kgem_bo_free(kgem, bo);
 					} else {
+						DBG(("%s: attached fb=%d to handle=%d\n",
+						     __FUNCTION__, arg.fb_id, arg.handle));
 						bo->delta = arg.fb_id;
 						return bo;
 					}

@@ -339,6 +339,9 @@ static unsigned get_fb(struct sna *sna, struct kgem_bo *bo,
 	}
 	assert(arg.fb_id != 0);
 
+	DBG(("%s: attached fb=%d to handle=%d\n",
+	     __FUNCTION__, arg.fb_id, arg.handle));
+
 	bo->scanout = true;
 	return bo->delta = arg.fb_id;
 }

@@ -95,6 +95,7 @@ struct kgem_bo {
 	uint32_t io : 1;
 	uint32_t flush : 1;
 	uint32_t scanout : 1;
+	uint32_t prime : 1;
 	uint32_t purged : 1;
 };
 #define DOMAIN_NONE 0
