@@ -52,15 +52,11 @@ int pixel_difference(uint32_t a, uint32_t b);
 
 static inline int pixel_equal(int depth, uint32_t a, uint32_t b)
 {
-	uint32_t mask;
-
-	if (depth == 32)
-		mask = 0xffffffff;
-	else
-		mask = (1 << depth) - 1;
-
-	a &= mask;
-	b &= mask;
+	if (depth != 32) {
+		uint32_t mask = (1 << depth) - 1;
+		a &= mask;
+		b &= mask;
+	}
 
 	if (a == b)
 		return 1;
