@@ -1735,7 +1735,7 @@ sna_dri2_immediate_blit(struct sna *sna,
 	     event));
 
 	info->type = SWAP_THROTTLE;
-	if (sna_dri2_window_get_chain((WindowPtr)draw) == info) {
+	if (!sync || sna_dri2_window_get_chain((WindowPtr)draw) == info) {
 		DBG(("%s: no pending blit, starting chain\n",
 		     __FUNCTION__));
 
