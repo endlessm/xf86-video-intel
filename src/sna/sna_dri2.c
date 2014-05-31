@@ -1275,7 +1275,7 @@ sna_dri2_page_flip(struct sna *sna, struct sna_dri2_frame_event *info)
 	struct kgem_bo *bo = get_private(info->back)->bo;
 	struct dri_bo tmp;
 
-	DBG(("%s()\n", __FUNCTION__));
+	DBG(("%s(type=%d)\n", __FUNCTION__, info->type));
 
 	assert(sna_pixmap_get_buffer(sna->front) == info->front);
 	assert(get_drawable_pixmap(info->draw)->drawable.height * bo->pitch <= kgem_bo_size(bo));
@@ -1820,7 +1820,8 @@ static void chain_flip(struct sna *sna)
 	struct sna_dri2_frame_event *chain = sna->dri2.flip_pending;
 
 	assert(chain->type == FLIP);
-	DBG(("%s: chaining type=%d\n", __FUNCTION__, chain->type));
+	DBG(("%s: chaining type=%d, cancelled?=%d\n",
+	     __FUNCTION__, chain->type, chain->draw == NULL));
 
 	sna->dri2.flip_pending = NULL;
 	if (chain->draw == NULL) {
@@ -1830,8 +1831,7 @@ static void chain_flip(struct sna *sna)
 
 	assert(chain == sna_dri2_window_get_chain((WindowPtr)chain->draw));
 
-	if (chain->type == FLIP &&
-	    can_flip(sna, chain->draw, chain->front, chain->back, chain->crtc) &&
+	if (can_flip(sna, chain->draw, chain->front, chain->back, chain->crtc) &&
 	    sna_dri2_page_flip(sna, chain)) {
 		DBG(("%s: performing chained flip\n", __FUNCTION__));
 	} else {
@@ -1839,8 +1839,8 @@ static void chain_flip(struct sna *sna)
 		chain->bo = __sna_dri2_copy_region(sna, chain->draw, NULL,
 						  chain->back, chain->front,
 						  true);
-#if XORG_CAN_TRIPLE_BUFFER
-		{
+
+		if (XORG_CAN_TRIPLE_BUFFER) {
 			union drm_wait_vblank vbl;
 
 			VG_CLEAR(vbl);
@@ -1857,7 +1857,7 @@ static void chain_flip(struct sna *sna)
 				return;
 			}
 		}
-#endif
+
 		DBG(("%s: fake triple buffering (or vblank wait failed), unblocking client\n", __FUNCTION__));
 		frame_swap_complete(sna, chain, DRI2_BLIT_COMPLETE);
 		sna_dri2_frame_event_info_free(sna, chain->draw, chain);
@@ -2080,8 +2080,10 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 		int type;
 
 		info = sna->dri2.flip_pending;
-		DBG(("%s: performing immediate swap on pipe %d, pending? %d, mode: %d\n",
-		     __FUNCTION__, sna_crtc_to_pipe(crtc), info != NULL, info ? info->mode : 0));
+		DBG(("%s: performing immediate swap on pipe %d, pending? %d, mode: %d, continuation? %d\n",
+		     __FUNCTION__, sna_crtc_to_pipe(crtc),
+		     info != NULL, info ? info->mode : 0,
+		     info && info->draw == draw));
 
 		if (info && info->draw == draw) {
 			assert(info->type != FLIP);
@@ -2135,6 +2137,7 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 			     __FUNCTION__));
 			info->type = type = FLIP;
 			sna->dri2.flip_pending = info;
+			current_msc++;
 		} else {
 			info->type = type = use_triple_buffer(sna, client, *target_msc == 0);
 			if (!sna_dri2_page_flip(sna, info)) {
