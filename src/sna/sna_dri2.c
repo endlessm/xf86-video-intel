@@ -1786,11 +1786,24 @@ sna_dri2_flip_continue(struct sna *sna, struct sna_dri2_frame_event *info)
 		if (bo != sna_pixmap(sna->front)->gpu_bo)
 			return false;
 
-		info->count = sna_page_flip(sna, bo, info, info->pipe);
-		if (!info->count)
-			return false;
+		if (bo == sna->dri2.scanout[0].bo) {
+			DBG(("%s: flip chain already complete\n", __FUNCTION__));
 
-		update_scanout(sna, info, bo, info->front->name);
+			if (info->draw) {
+				sna_dri2_remove_frame_event((WindowPtr)info->draw, info);
+				if (info->chain)
+					chain_swap(sna, info->draw, info->chain);
+			}
+
+			info->draw = NULL;
+			return false;
+		} else {
+			info->count = sna_page_flip(sna, bo, info, info->pipe);
+			if (!info->count)
+				return false;
+
+			update_scanout(sna, info, bo, info->front->name);
+		}
 	} else {
 		info->type = -info->mode;
 
