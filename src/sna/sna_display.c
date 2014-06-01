@@ -233,11 +233,17 @@ int sna_crtc_is_on(xf86CrtcPtr crtc)
 
 static inline uint64_t msc64(struct sna_crtc *sna_crtc, uint32_t seq)
 {
-	if ((int32_t)(seq - sna_crtc->last_seq) < -0x40000000) {
-		sna_crtc->wrap_seq++;
-		DBG(("%s: pipe=%d wrapped was %u, now %u, wraps=%u\n",
-		     __FUNCTION__, sna_crtc->pipe,
-		     sna_crtc->last_seq, seq, sna_crtc->wrap_seq));
+	if (seq < sna_crtc->last_seq) {
+		if (sna_crtc->last_seq - seq > 0x40000000) {
+			sna_crtc->wrap_seq++;
+			DBG(("%s: pipe=%d wrapped; was %u, now %u, wraps=%u\n",
+			     __FUNCTION__, sna_crtc->pipe,
+			     sna_crtc->last_seq, seq, sna_crtc->wrap_seq));
+		} else  {
+			ERR(("%s: pipe=%d msc went backwards; was %u, now %u\n",
+			     __FUNCTION__, sna_crtc->pipe, sna_crtc->last_seq, seq));
+			seq = sna_crtc->last_seq;
+		}
 	}
 	sna_crtc->last_seq = seq;
 	return (uint64_t)sna_crtc->wrap_seq << 32 | seq;

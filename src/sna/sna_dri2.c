@@ -2410,37 +2410,29 @@ static int
 sna_dri2_get_msc(DrawablePtr draw, CARD64 *ust, CARD64 *msc)
 {
 	struct sna *sna = to_sna_from_drawable(draw);
-	union drm_wait_vblank vbl;
 	xf86CrtcPtr crtc = sna_dri2_get_crtc(draw);
+	const struct ust_msc *swap;
 
 	DBG(("%s(draw=%ld, pipe=%d)\n", __FUNCTION__, draw->id,
 	     crtc ? sna_crtc_to_pipe(crtc) : -1));
-	if (crtc == NULL) {
-		const struct ust_msc *swap;
 
-		crtc = sna_mode_first_crtc(sna);
-fail:
+	if (crtc != NULL) {
+		union drm_wait_vblank vbl;
+
+		VG_CLEAR(vbl);
+		vbl.request.type = _DRM_VBLANK_RELATIVE;
+		vbl.request.sequence = 0;
+		if (sna_wait_vblank(sna, &vbl, sna_crtc_to_pipe(crtc)) == 0)
+			sna_crtc_record_vblank(crtc, &vbl);
+	} else
 		/* Drawable not displayed, make up a *monotonic* value */
-		swap = sna_crtc_last_swap(crtc);
-		*msc = draw_current_msc(draw, crtc, swap->msc);
-		*ust = ust64(swap->tv_sec, swap->tv_usec);
-		return TRUE;
-	}
+		crtc = sna_mode_first_crtc(sna);
 
-	VG_CLEAR(vbl);
-	vbl.request.type = _DRM_VBLANK_RELATIVE;
-	vbl.request.sequence = 0;
-	if (sna_wait_vblank(sna, &vbl, sna_crtc_to_pipe(crtc)) == 0) {
-		*ust = ust64(vbl.reply.tval_sec, vbl.reply.tval_usec);
-		*msc = draw_current_msc(draw, crtc, sna_crtc_record_vblank(crtc, &vbl));
-		DBG(("%s: msc=%llu, ust=%llu\n", __FUNCTION__,
-		     (long long)*msc, (long long)*ust));
-	} else {
-		DBG(("%s: query failed on pipe %d, ret=%d\n",
-		     __FUNCTION__, sna_crtc_to_pipe(crtc), errno));
-		goto fail;
-	}
-
+	swap = sna_crtc_last_swap(crtc);
+	*msc = draw_current_msc(draw, crtc, swap->msc);
+	*ust = ust64(swap->tv_sec, swap->tv_usec);
+	DBG(("%s: msc=%llu, ust=%llu\n", __FUNCTION__,
+	     (long long)*msc, (long long)*ust));
 	return TRUE;
 }
 
