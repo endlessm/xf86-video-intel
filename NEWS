@@ -1,3 +1,58 @@
+Snapshot 2.99.912 (2014-06-10)
+==============================
+A final round of features. We have everything from support for variable
+cursor sizes, support for the DRI3 and Present extensions, improved DRI2
+support, support for Xserver 1.16, userptr from kernel 3.16, and
+precursory support for DP multistream transport,
+
+ * Avoid discarding dirty pixels when promoting a migration to cover the
+   whole pixmap.
+   Regression in 2.99.911
+   https://bugs.freedesktop.org/show_bug.cgi?id=77063
+   https://bugs.freedesktop.org/show_bug.cgi?id=77178
+
+ * Avoid overextending degenerate lines (and consequentially accessing
+   pixels outside of our damaged area).
+   https://bugs.freedesktop.org/show_bug.cgi?id=77074
+
+ * Fix subpixel glyph rendering on gen2 devices (830-865 chipsets)
+   Regression in 2.99.911
+   https://bugs.freedesktop.org/show_bug.cgi?id=77201
+
+ * Share the global pixman glyph cache between ZaphodHeads
+   https://bugs.freedesktop.org/show_bug.cgi?id=54707
+
+ * Light up all connected outputs, even if their status is unknown, on
+   takeover from fbcon. This prevents loss of display after a resume
+   on recent kernels, for example.
+   https://bugs.freedesktop.org/show_bug.cgi?id=77768
+
+ * Show the video overlay (when supported by the hardware) across all
+   outputs.
+   https://bugs.freedesktop.org/show_bug.cgi?id=77802
+
+ * Do not discard damage when performing "BLT" spans inplace with the CPU.
+   Regression from 2.20.10
+
+ * Avoid discarding IO buffers too early during their preparation for a
+   new batch
+   https://bugs.freedesktop.org/show_bug.cgi?id=79238
+
+ * Fix fallback handling for displaying large scaled framebuffers (that
+   are too large to be scaled by the GPU in a single pass)
+   https://bugs.freedesktop.org/show_bug.cgi?id=79320
+
+ * Listen to external modifications of backlight value and propagate
+   the notifications to RandR clients. This should make the GUI report
+   ACPI keypresses to change the backlight correctly.
+   https://bugs.freedesktop.org/show_bug.cgi?id=79699
+
+ * UXA: fix pageflips with 3 heads.
+
+ * UXA: do not report a BadMatch error for DRI2GetMsc - as clients are
+   often unprepared and die when they get the unexpected error.
+
+
 Snapshot 2.99.911 (2014-03-19)
 ==============================
 Hans de Geode has been working on making the Xserver work without
