@@ -636,11 +636,16 @@ fallback:
 
 static bool upload_inplace__tiled(struct kgem *kgem, struct kgem_bo *bo)
 {
-	if (!kgem->memcpy_to_tiled_x)
+	DBG(("%s: tiling=%d\n", __FUNCTION__, bo->tiling));
+	switch (bo->tiling) {
+	case I915_TILING_Y:
 		return false;
-
-	if (bo->tiling != I915_TILING_X)
-		return false;
+	case I915_TILING_X:
+		if (!kgem->memcpy_to_tiled_x)
+			return false;
+	default:
+		break;
+	}
 
 	return kgem_bo_can_map__cpu(kgem, bo, true);
 }

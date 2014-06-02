@@ -683,14 +683,22 @@ static inline bool kgem_bo_can_map__cpu(struct kgem *kgem,
 					struct kgem_bo *bo,
 					bool write)
 {
+	DBG(("%s: handle=%d\n", __FUNCTION__, bo->handle));
 	assert(bo->refcnt);
 
-	if (bo->purged || (bo->scanout && write))
+	if (bo->purged || (bo->scanout && write)) {
+		DBG(("%s: no, writing to scanout? %d, or is stolen [inaccessible via CPU]? %d\n",
+		     __FUNCTION__, bo->scanout && write, bo->purged));
 		return false;
+	}
 
-	if (kgem->has_llc)
+	if (kgem->has_llc) {
+		DBG(("%s: yes, has LLC and target is in LLC\n", __FUNCTION__));
 		return true;
+	}
 
+	DBG(("%s: non-LLC - CPU domain? %d, clean? %d\n",
+	     __FUNCTION__, bo->domain == DOMAIN_CPU, !write || bo->exec == NULL));
 	if (bo->domain != DOMAIN_CPU)
 		return false;
 
