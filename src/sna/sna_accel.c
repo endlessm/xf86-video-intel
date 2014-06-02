@@ -1738,22 +1738,18 @@ static inline bool cpu_bo_download(struct sna *sna,
 	if (priv->cpu_bo == NULL || !sna->kgem.can_blt_cpu)
 		return false;
 
-	if (kgem_bo_is_busy(priv->gpu_bo) || kgem_bo_is_busy(priv->cpu_bo)) {
-		DBG(("%s: yes, either bo is busy, so use GPU for readback\n",
-		     __FUNCTION__));
-		return true;
+	if (!kgem_bo_is_busy(priv->gpu_bo) && !kgem_bo_is_busy(priv->cpu_bo)) {
+		/* Is it worth detiling? */
+		assert(box[0].y1 < box[n-1].y2);
+		if (kgem_bo_can_map(&sna->kgem, priv->gpu_bo) &&
+		    (box[n-1].y2 - box[0].y1 - 1) * priv->gpu_bo->pitch < 4096) {
+			DBG(("%s: no, tiny transfer (height=%d, pitch=%d) expect to read inplace\n",
+			     __FUNCTION__, box[n-1].y2-box[0].y1, priv->gpu_bo->pitch));
+			return false;
+		}
 	}
 
-	/* Is it worth detiling? */
-	assert(box[0].y1 < box[n-1].y2);
-	if (kgem_bo_can_map(&sna->kgem, priv->gpu_bo) &&
-	    (box[n-1].y2 - box[0].y1 - 1) * priv->gpu_bo->pitch < 4096) {
-		DBG(("%s: no, tiny transfer (height=%d, pitch=%d) expect to read inplace\n",
-		     __FUNCTION__, box[n-1].y2-box[0].y1, priv->gpu_bo->pitch));
-		return false;
-	}
-
-	DBG(("%s: using CPU bo for download from GPU\n", __FUNCTION__));
+	DBG(("%s: using GPU write to CPU bo for download from GPU\n", __FUNCTION__));
 	return sna->render.copy_boxes(sna, GXcopy,
 				      priv->pixmap, priv->gpu_bo, 0, 0,
 				      priv->pixmap, priv->cpu_bo, 0, 0,
