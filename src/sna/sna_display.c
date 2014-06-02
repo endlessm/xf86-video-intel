@@ -4051,7 +4051,7 @@ sna_cursors_init(ScreenPtr screen, struct sna *sna)
 	cursor_info->UseHWCursorARGB = sna_use_hw_cursor;
 	cursor_info->LoadCursorARGB = sna_load_cursor_argb;
 #endif
-#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,15,99,902,2)
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,15,99,902,3)
 	cursor_info->LoadCursorImageCheck = sna_load_cursor_image2;
 #ifdef ARGB_CURSOR
 	cursor_info->LoadCursorARGBCheck = sna_load_cursor_argb2;
