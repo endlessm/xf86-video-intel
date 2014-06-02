@@ -3190,7 +3190,8 @@ void _kgem_submit(struct kgem *kgem)
 				if (DEBUG_SYNC) {
 					int fd = open("/tmp/batchbuffer", O_WRONLY | O_CREAT | O_APPEND, 0666);
 					if (fd != -1) {
-						write(fd, kgem->batch, batch_end*sizeof(uint32_t));
+						int ignored = write(fd, kgem->batch, batch_end*sizeof(uint32_t));
+						assert(ignored == batch_end*sizeof(uint32_t));
 						close(fd);
 					}
 
