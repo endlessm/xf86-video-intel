@@ -659,7 +659,7 @@ write_boxes_inplace__tiled(struct kgem *kgem,
 	uint8_t *dst;
 
 	assert(kgem_bo_can_map__cpu(kgem, bo, true));
-	assert(bo->tiling == I915_TILING_X);
+	assert(bo->tiling != I915_TILING_Y);
 
 	dst = kgem_bo_map__cpu(kgem, bo);
 	if (dst == NULL)
@@ -670,13 +670,23 @@ write_boxes_inplace__tiled(struct kgem *kgem,
 	if (sigtrap_get())
 		return false;
 
-	do {
-		memcpy_to_tiled_x(kgem, src, dst, bpp, stride, bo->pitch,
-				  box->x1 + src_dx, box->y1 + src_dy,
-				  box->x1 + dst_dx, box->y1 + dst_dy,
-				  box->x2 - box->x1, box->y2 - box->y1);
-		box++;
-	} while (--n);
+	if (bo->tiling) {
+		do {
+			memcpy_to_tiled_x(kgem, src, dst, bpp, stride, bo->pitch,
+					  box->x1 + src_dx, box->y1 + src_dy,
+					  box->x1 + dst_dx, box->y1 + dst_dy,
+					  box->x2 - box->x1, box->y2 - box->y1);
+			box++;
+		} while (--n);
+	} else {
+		do {
+			memcpy_blt(src, dst, bpp, stride, bo->pitch,
+				   box->x1 + src_dx, box->y1 + src_dy,
+				   box->x1 + dst_dx, box->y1 + dst_dy,
+				   box->x2 - box->x1, box->y2 - box->y1);
+			box++;
+		} while (--n);
+	}
 
 	sigtrap_put();
 	return true;
