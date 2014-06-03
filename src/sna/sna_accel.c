@@ -483,12 +483,15 @@ static void sna_pixmap_free_gpu(struct sna *sna, struct sna_pixmap *priv)
 	sna_damage_destroy(&priv->gpu_damage);
 	priv->clear = false;
 
-	if (priv->gpu_bo && !priv->pinned) {
-		assert(!priv->flush);
-		assert(!priv->move_to_gpu);
-		sna_pixmap_unmap(priv->pixmap, priv);
-		kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
-		priv->gpu_bo = NULL;
+	if (priv->gpu_bo) {
+		if (!priv->pinned) {
+			assert(!priv->flush);
+			assert(!priv->move_to_gpu);
+			sna_pixmap_unmap(priv->pixmap, priv);
+			kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
+			priv->gpu_bo = NULL;
+		} else
+			kgem_bo_undo(&sna->kgem, priv->gpu_bo);
 	}
 
 	/* and reset the upload counter */
@@ -1460,6 +1463,7 @@ static Bool sna_destroy_pixmap(PixmapPtr pixmap)
 	sna_damage_destroy(&priv->gpu_damage);
 	sna_damage_destroy(&priv->cpu_damage);
 
+	list_del(&priv->cow_list);
 	if (priv->cow) {
 		struct sna_cow *cow = COW(priv->cow);
 		DBG(("%s: pixmap=%ld discarding cow, refcnt=%d\n",
@@ -1468,8 +1472,8 @@ static Bool sna_destroy_pixmap(PixmapPtr pixmap)
 		if (!--cow->refcnt)
 			free(cow);
 		priv->cow = NULL;
-	}
-	list_del(&priv->cow_list);
+	} else
+		kgem_bo_pair_undo(&sna->kgem, priv->gpu_bo, priv->cpu_bo);
 
 	if (priv->move_to_gpu)
 		(void)priv->move_to_gpu(sna, priv, 0);
@@ -2075,10 +2079,7 @@ _sna_pixmap_move_to_cpu(PixmapPtr pixmap, unsigned int flags)
 	assert(priv->gpu_damage == NULL || priv->gpu_bo);
 
 	if ((flags & MOVE_READ) == 0 && UNDO) {
-		if (priv->gpu_bo)
-			kgem_bo_undo(&sna->kgem, priv->gpu_bo);
-		if (priv->cpu_bo)
-			kgem_bo_undo(&sna->kgem, priv->cpu_bo);
+		kgem_bo_pair_undo(&sna->kgem, priv->gpu_bo, priv->cpu_bo);
 		if (priv->move_to_gpu)
 			sna_pixmap_discard_shadow_damage(priv, NULL);
 	}
@@ -3929,12 +3930,8 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 		return NULL;
 	}
 
-	if ((flags & MOVE_READ) == 0 && UNDO) {
-		if (priv->gpu_bo)
-			kgem_bo_undo(&sna->kgem, priv->gpu_bo);
-		if (priv->cpu_bo)
-			kgem_bo_undo(&sna->kgem, priv->cpu_bo);
-	}
+	if ((flags & MOVE_READ) == 0 && UNDO)
+		kgem_bo_pair_undo(&sna->kgem, priv->gpu_bo, priv->cpu_bo);
 
 	if (priv->cow && (flags & MOVE_WRITE || priv->cpu_damage)) {
 		if (!sna_pixmap_undo_cow(sna, priv, flags & MOVE_READ))
@@ -4542,8 +4539,7 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 	}
 
 	if (priv->gpu_bo && replaces) {
-		if (UNDO)
-			kgem_bo_undo(&sna->kgem, priv->gpu_bo);
+		if (UNDO) kgem_bo_pair_undo(&sna->kgem, priv->gpu_bo, priv->cpu_bo);
 		if (__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo)) {
 			DBG(("%s: discarding cached upload proxy\n", __FUNCTION__));
 			sna_pixmap_free_gpu(sna, priv);
@@ -4560,8 +4556,7 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 
 	if (priv->gpu_damage &&
 	    region_subsumes_damage(region, priv->gpu_damage)) {
-		if (UNDO)
-			kgem_bo_undo(&sna->kgem, priv->gpu_bo);
+		if (UNDO) kgem_bo_undo(&sna->kgem, priv->gpu_bo);
 		if (__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo)) {
 			DBG(("%s: discarding dirty pixmap\n", __FUNCTION__));
 			sna_pixmap_free_gpu(sna, priv);
@@ -6013,7 +6008,7 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 
 			if (n == 1) {
 				if (replaces && UNDO)
-					kgem_bo_undo(&sna->kgem, bo);
+					kgem_bo_pair_undo(&sna->kgem, dst_priv->gpu_bo, dst_priv->cpu_bo);
 
 				if (!sna->render.fill_one(sna,
 							  dst_pixmap, bo, color,
@@ -6066,7 +6061,7 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 			DBG(("%s: move whole src_pixmap to GPU and copy\n",
 			     __FUNCTION__));
 			if (replaces && UNDO)
-				kgem_bo_undo(&sna->kgem, bo);
+				kgem_bo_pair_undo(&sna->kgem, dst_priv->gpu_bo, dst_priv->cpu_bo);
 
 			if (replaces &&
 			    src_pixmap->drawable.width == dst_pixmap->drawable.width &&
@@ -6120,7 +6115,7 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 			}
 
 			if (replaces && UNDO)
-				kgem_bo_undo(&sna->kgem, bo);
+				kgem_bo_pair_undo(&sna->kgem, dst_priv->gpu_bo, dst_priv->cpu_bo);
 
 			if (!sna->render.copy_boxes(sna, alu,
 						    src_pixmap, src_priv->gpu_bo, src_dx, src_dy,
@@ -6158,7 +6153,7 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 			}
 
 			if (replaces && UNDO)
-				kgem_bo_undo(&sna->kgem, bo);
+				kgem_bo_pair_undo(&sna->kgem, dst_priv->gpu_bo, dst_priv->cpu_bo);
 
 			if (src_priv->shm) {
 				assert(!src_priv->flush);
@@ -14321,7 +14316,7 @@ sna_poly_fill_rect(DrawablePtr draw, GCPtr gc, int n, xRectangle *rect)
 		goto fallback;
 	}
 	if (hint & REPLACES && (flags & 2) == 0 && UNDO)
-		kgem_bo_undo(&sna->kgem, bo);
+		kgem_bo_pair_undo(&sna->kgem, priv->gpu_bo, priv->cpu_bo);
 
 	if (gc_is_solid(gc, &color)) {
 		DBG(("%s: solid fill [%08x], testing for blt\n",

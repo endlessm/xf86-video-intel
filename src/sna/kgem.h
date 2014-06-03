@@ -548,6 +548,7 @@ static inline bool kgem_bo_is_snoop(struct kgem_bo *bo)
 }
 
 void kgem_bo_undo(struct kgem *kgem, struct kgem_bo *bo);
+void kgem_bo_pair_undo(struct kgem *kgem, struct kgem_bo *a, struct kgem_bo *b);
 
 bool __kgem_busy(struct kgem *kgem, int handle);
 

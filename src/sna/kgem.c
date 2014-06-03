@@ -2175,6 +2175,46 @@ void kgem_bo_undo(struct kgem *kgem, struct kgem_bo *bo)
 	assert(bo->exec == NULL);
 }
 
+void kgem_bo_pair_undo(struct kgem *kgem, struct kgem_bo *a, struct kgem_bo *b)
+{
+	if (kgem->nexec > 2)
+		return;
+
+	if (kgem->nexec == 1) {
+		if (a)
+			kgem_bo_undo(kgem, a);
+		if (b)
+			kgem_bo_undo(kgem, b);
+		return;
+	}
+
+	if (a == NULL || b == NULL)
+		return;
+	if (a->exec == NULL || b->exec == NULL)
+		return;
+
+	DBG(("%s: only handles in batch, discarding last operations for handle=%d and handle=%d\n",
+	     __FUNCTION__, a->handle, b->handle));
+
+	assert(a->exec == &kgem->exec[0] || a->exec == &kgem->exec[1]);
+	assert(a->handle == kgem->exec[0].handle || a->handle == kgem->exec[1].handle);
+	assert(RQ(a->rq) == kgem->next_request);
+	assert(b->exec == &kgem->exec[0] || b->exec == &kgem->exec[1]);
+	assert(b->handle == kgem->exec[0].handle || b->handle == kgem->exec[1].handle);
+	assert(RQ(b->rq) == kgem->next_request);
+
+	a->refcnt++;
+	b->refcnt++;
+	kgem_reset(kgem);
+	b->refcnt--;
+	a->refcnt--;
+
+	assert(kgem->nreloc == 0);
+	assert(kgem->nexec == 0);
+	assert(a->exec == NULL);
+	assert(b->exec == NULL);
+}
+
 static void __kgem_bo_destroy(struct kgem *kgem, struct kgem_bo *bo)
 {
 	DBG(("%s: handle=%d, size=%d\n", __FUNCTION__, bo->handle, bytes(bo)));
