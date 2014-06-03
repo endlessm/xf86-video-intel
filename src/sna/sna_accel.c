@@ -2630,18 +2630,6 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 		}
 	}
 
-	if (flags & MOVE_WHOLE_HINT) {
-		DBG(("%s: region (%d, %d), (%d, %d) marked with WHOLE hint, pixmap %dx%d\n",
-		       __FUNCTION__,
-		       region->extents.x1,
-		       region->extents.y1,
-		       region->extents.x2,
-		       region->extents.y2,
-		       pixmap->drawable.width,
-		       pixmap->drawable.height));
-		return _sna_pixmap_move_to_cpu(pixmap, flags | MOVE_READ);
-	}
-
 	if (get_drawable_deltas(drawable, pixmap, &dx, &dy)) {
 		DBG(("%s: delta=(%d, %d)\n", __FUNCTION__, dx, dy));
 		RegionTranslate(region, dx, dy);
@@ -2696,9 +2684,25 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 
 	if (priv->clear && flags & MOVE_WRITE) {
 		DBG(("%s: pending clear, moving whole pixmap for partial write\n", __FUNCTION__));
+demote_to_cpu:
 		if (dx | dy)
 			RegionTranslate(region, -dx, -dy);
 		return _sna_pixmap_move_to_cpu(pixmap, flags | MOVE_READ);
+	}
+
+	if (flags & MOVE_WHOLE_HINT) {
+		DBG(("%s: region (%d, %d), (%d, %d) marked with WHOLE hint, pixmap %dx%d\n",
+		       __FUNCTION__,
+		       region->extents.x1,
+		       region->extents.y1,
+		       region->extents.x2,
+		       region->extents.y2,
+		       pixmap->drawable.width,
+		       pixmap->drawable.height));
+move_to_cpu:
+		if ((flags & MOVE_READ) == 0)
+			sna_damage_subtract(&priv->gpu_damage, region);
+		goto demote_to_cpu;
 	}
 
 	sna_pixmap_unmap(pixmap, priv);
@@ -2776,10 +2780,8 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 	if (pixmap->devPrivate.ptr == NULL &&
 	    !sna_pixmap_alloc_cpu(sna, pixmap, priv,
 				  flags & MOVE_READ ? priv->gpu_damage && !priv->clear : 0)) {
-		if (dx | dy)
-			RegionTranslate(region, -dx, -dy);
 		DBG(("%s: CPU bo allocation failed, trying full move-to-cpu\n", __FUNCTION__));
-		return _sna_pixmap_move_to_cpu(pixmap, flags | MOVE_READ);
+		goto move_to_cpu;
 	}
 	assert(priv->mapped == MAPPED_NONE);
 	assert(pixmap->devPrivate.ptr == PTR(priv->ptr));
