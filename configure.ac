@@ -513,7 +513,7 @@ if test "x$DRI" != "xno"; then
 
 	XORG_DRIVER_CHECK_EXT(DRI3, dri3proto)
 	if test "x$_EXT_CHECK" != "xno"; then
-		DRI3=$DRI
+		PKG_CHECK_MODULES(DRI3, [dri3proto], [DRI3=$DRI], [])
 	fi
 	if test "x$DRI3" != "xno"; then
 		save_CFLAGS=$CFLAGS
@@ -557,21 +557,24 @@ fi
 
 AC_CHECK_HEADERS([X11/extensions/dpmsconst.h])
 
-has_present="no"
+PRESENT="no"
 XORG_DRIVER_CHECK_EXT(PRESENT, presentproto)
 if test "x$_EXT_CHECK" != "xno"; then
+	PKG_CHECK_MODULES(PRESENT, [presentproto], [PRESENT="yes"], [])
+fi
+if test "x$PRESENT" != "xno"; then
 	save_CFLAGS=$CFLAGS
-	CFLAGS=$XORG_CFLAGS
-	AC_CHECK_HEADERS([present.h], [has_present="yes"], [], [
+	CFLAGS="$XORG_CFLAGS $PRESENT_CFLAGS"
+	AC_CHECK_HEADERS([present.h], [], [PRESENT="no"], [
 #include <xorg-server.h>
 #include <xf86str.h>
 ])
 	CFLAGS=$save_CFLAGS
 fi
 AC_MSG_CHECKING([whether to include PRESENT support])
-AM_CONDITIONAL(PRESENT, test "x$has_present" != "xno")
-AC_MSG_RESULT([$has_present])
-if test "x$has_present" != "xno"; then
+AM_CONDITIONAL(PRESENT, test "x$PRESENT" != "xno")
+AC_MSG_RESULT([$PRESENT])
+if test "x$PRESENT" != "xno"; then
         AC_DEFINE(HAVE_PRESENT,1,[Enable PRESENT driver support])
 	dri_msg="$dri_msg Present"
 fi
