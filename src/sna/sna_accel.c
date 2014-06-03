@@ -4371,12 +4371,12 @@ static inline void box32_add_rect(Box32Rec *box, const xRectangle *r)
 }
 
 static bool
-create_upload_tiled_x(struct kgem *kgem,
-		      PixmapPtr pixmap,
-		      struct sna_pixmap *priv,
-		      bool replaces)
+can_create_upload_tiled_x(struct kgem *kgem,
+			  PixmapPtr pixmap,
+			  struct sna_pixmap *priv,
+			  bool replaces)
 {
-	unsigned create, tiling;
+	unsigned tiling;
 
 	if (priv->shm || (priv->cpu && !replaces))
 		return false;
@@ -4384,10 +4384,26 @@ create_upload_tiled_x(struct kgem *kgem,
 	if ((priv->create & KGEM_CAN_CREATE_GPU) == 0)
 		return false;
 
+	if (kgem->has_llc)
+		return true;
+
 	tiling = sna_pixmap_choose_tiling(pixmap, I915_TILING_X);
 	assert(tiling != I915_TILING_Y && tiling != -I915_TILING_Y);
+	if (tiling != I915_TILING_NONE)
+		return false;
 
-	if (!kgem->has_llc && tiling != I915_TILING_NONE)
+	return true;
+}
+
+static bool
+create_upload_tiled_x(struct kgem *kgem,
+		      PixmapPtr pixmap,
+		      struct sna_pixmap *priv,
+		      bool replaces)
+{
+	unsigned create;
+
+	if (!can_create_upload_tiled_x(kgem, pixmap, priv, replaces))
 		return false;
 
 	assert(priv->gpu_bo == NULL);
@@ -4404,7 +4420,8 @@ create_upload_tiled_x(struct kgem *kgem,
 			       pixmap->drawable.width,
 			       pixmap->drawable.height,
 			       pixmap->drawable.bitsPerPixel,
-			       tiling, create);
+			       sna_pixmap_choose_tiling(pixmap, I915_TILING_X),
+			       create);
 	return priv->gpu_bo != NULL;
 }
 
@@ -4518,6 +4535,7 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 {
 	struct sna *sna = to_sna_from_pixmap(pixmap);
 	struct sna_pixmap *priv = sna_pixmap(pixmap);
+	bool ignore_cpu = false;
 	bool replaces;
 	BoxRec *box;
 	uint8_t *dst;
@@ -4540,11 +4558,15 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 
 	if (priv->gpu_bo && replaces) {
 		if (UNDO) kgem_bo_pair_undo(&sna->kgem, priv->gpu_bo, priv->cpu_bo);
-		if (__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo)) {
-			DBG(("%s: discarding cached upload proxy\n", __FUNCTION__));
+		if (can_create_upload_tiled_x(&sna->kgem, pixmap, priv, true) &&
+		    (__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo) ||
+		     !kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, true))) {
+			DBG(("%s: discarding unusable target bo (busy? %d, mappable? %d)\n", __FUNCTION__,
+			     kgem_bo_is_busy(priv->gpu_bo),
+			     kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, true)));
 			sna_pixmap_free_gpu(sna, priv);
+			ignore_cpu = true;
 		}
-		replaces = true; /* Mark it all GPU damaged afterwards */
 	}
 	assert(priv->gpu_bo == NULL || priv->gpu_bo->proxy == NULL);
 
@@ -4557,15 +4579,19 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 	if (priv->gpu_damage &&
 	    region_subsumes_damage(region, priv->gpu_damage)) {
 		if (UNDO) kgem_bo_undo(&sna->kgem, priv->gpu_bo);
-		if (__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo)) {
-			DBG(("%s: discarding dirty pixmap\n", __FUNCTION__));
+		if (can_create_upload_tiled_x(&sna->kgem, pixmap, priv, priv->cpu_damage == NULL) &&
+		    (__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo) ||
+		     !kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, true))) {
+			DBG(("%s: discarding unusable partial target bo (busy? %d, mappable? %d)\n", __FUNCTION__,
+			     kgem_bo_is_busy(priv->gpu_bo),
+			     kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, true)));
 			sna_pixmap_free_gpu(sna, priv);
+			ignore_cpu = priv->cpu_damage == NULL;
 		}
-		replaces = true; /* Mark it all GPU damaged afterwards */
 	}
 
 	if (priv->gpu_bo == NULL &&
-	    !create_upload_tiled_x(&sna->kgem, pixmap, priv, replaces))
+	    !create_upload_tiled_x(&sna->kgem, pixmap, priv, ignore_cpu))
 		return false;
 
 	DBG(("%s: tiling=%d\n", __FUNCTION__, priv->gpu_bo->tiling));
@@ -4692,6 +4718,7 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 		if (priv->cpu_damage == NULL) {
 			list_del(&priv->flush_list);
 			sna_pixmap_free_cpu(sna, priv, priv->cpu);
+			priv->cpu = false;
 		}
 	}
 
