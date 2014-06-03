@@ -330,7 +330,6 @@ fi
 # Store the list of server defined optional extensions in REQUIRED_MODULES
 XORG_DRIVER_CHECK_EXT(RANDR, randrproto)
 XORG_DRIVER_CHECK_EXT(RENDER, renderproto)
-XORG_DRIVER_CHECK_EXT(XF86DRI, xf86driproto)
 XORG_DRIVER_CHECK_EXT(DPMSExtension, xextproto)
 
 # Obtain compiler/linker options for the driver dependencies
@@ -453,9 +452,9 @@ if test "x$UMS" = "xyes"; then
 	AC_DEFINE(UMS,1,[Assume UMS support])
 fi
 
-
 DRI1=no
-if test "x$DRI" != "xno" -a "x$UMS" = "xyes"; then
+XORG_DRIVER_CHECK_EXT(XF86DRI, xf86driproto)
+if test "x$_EXT_CHECK" != "xno" -a "x$DRI" != "xno" -a "x$UMS" = "xyes"; then
 	PKG_CHECK_MODULES(DRI1, [xf86driproto], [DRI1=$DRI], [DRI1=no])
         save_CFLAGS="$CFLAGS"
         save_CPPFLAGS="$CPPFLAGS"
