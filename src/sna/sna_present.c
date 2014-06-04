@@ -39,10 +39,7 @@ static present_screen_info_rec present_info;
 
 struct sna_present_event {
 	uint64_t event_id;
-	unsigned int count;
 	xf86CrtcPtr crtc;
-	uint64_t msc;
-	uint64_t ust;
 };
 
 static inline struct sna_present_event *
@@ -287,7 +284,7 @@ page_flip__async(RRCrtcPtr crtc,
 	     (long long)event_id,
 	     bo->handle));
 
-	if (!sna_page_flip(to_sna_from_screen(crtc->pScreen), bo, NULL, -1)) {
+	if (!sna_page_flip(to_sna_from_screen(crtc->pScreen), bo, NULL, NULL)) {
 		DBG(("%s: async pageflip failed\n", __FUNCTION__));
 		present_info.capabilities &= ~PresentCapabilityAsync;
 		return FALSE;
@@ -297,28 +294,27 @@ page_flip__async(RRCrtcPtr crtc,
 	return TRUE;
 }
 
-void
-sna_present_flip_handler(struct sna *sna, struct drm_event_vblank *event)
+static void
+present_flip_handler(struct sna *sna,
+		     struct drm_event_vblank *event,
+		     void *data)
 {
-	struct sna_present_event *info = to_present_event(event->user_data);
+	struct sna_present_event *info = data;
+	struct ust_msc swap;
 
-	DBG(("%s(count=%d, ref-pipe?=%d)\n", __FUNCTION__,
-	     info->count, event->user_data & 1));
+	DBG(("%s(sequence=%d)\n", __FUNCTION__, event->sequence));
 
-	if (event->user_data & 1) {
-		info->msc = sna_crtc_record_event(info->crtc, event);
-		info->ust = ust64(event->tv_sec, event->tv_usec);
-	}
-
-	if (--info->count)
-		return;
+	if (info->crtc == NULL) {
+		swap.tv_sec = event->tv_sec;
+		swap.tv_usec = event->tv_usec;
+		swap.msc = event->sequence;
+	} else
+		swap = *sna_crtc_last_swap(info->crtc);
 
 	DBG(("%s: pipe=%d, tv=%d.%06d msc %lld, complete\n", __FUNCTION__,
 	     info->crtc ? sna_crtc_to_pipe(info->crtc) : -1,
-	     info->crtc ? (int)(info->ust / 1000000) : event->tv_sec,
-	     info->crtc ? (int)(info->ust % 1000000) : event->tv_usec,
-	     info->crtc ? (long long)info->msc : (long long)event->sequence));
-	present_event_notify(info->event_id, info->ust, info->msc);
+	     swap.tv_sec, swap.tv_usec, (long long)swap.msc));
+	present_event_notify(info->event_id, ust64(swap.tv_sec, swap.tv_usec), swap.msc);
 	free(info);
 }
 
@@ -343,10 +339,7 @@ page_flip(ScreenPtr screen,
 
 	event->event_id = event_id;
 	event->crtc = crtc ? crtc->devPrivate : NULL;
-	event->count = sna_page_flip(sna, bo,
-				     MARK_PRESENT(event),
-				     crtc ? sna_crtc_to_pipe(event->crtc) : -1);
-	if (event->count == 0) {
+	if (!sna_page_flip(sna, bo, present_flip_handler, event)) {
 		DBG(("%s: pageflip failed\n", __FUNCTION__));
 		free(event);
 		return FALSE;

@@ -111,6 +111,7 @@ void LogF(const char *f, ...);
 #include "fb/fb.h"
 
 struct sna_cursor;
+struct sna_crtc;
 
 struct sna_client {
 	int is_compositor; /* only 4 bits used */
@@ -283,9 +284,10 @@ struct sna {
 	struct sna_mode {
 		DamagePtr shadow_damage;
 		struct kgem_bo *shadow;
-		int shadow_active;
-		int shadow_flip;
-		int front_active;
+		unsigned front_active;
+		unsigned shadow_active;
+		unsigned flip_active;
+		bool dirty;
 
 		int max_crtc_width, max_crtc_height;
 
@@ -324,10 +326,6 @@ struct sna {
 
 #if HAVE_DRI2
 		void *flip_pending;
-		struct {
-			struct kgem_bo *bo;
-			uint32_t name;
-		} scanout[2];
 #endif
 	} dri2;
 
@@ -416,7 +414,7 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna);
 bool sna_mode_fake_init(struct sna *sna, int num_fake);
 void sna_mode_adjust_frame(struct sna *sna, int x, int y);
 extern void sna_mode_discover(struct sna *sna);
-extern void sna_mode_update(struct sna *sna);
+extern void sna_mode_check(struct sna *sna);
 extern void sna_mode_reset(struct sna *sna);
 extern void sna_mode_wakeup(struct sna *sna);
 extern void sna_mode_redisplay(struct sna *sna);
@@ -425,12 +423,18 @@ extern void sna_pixmap_discard_shadow_damage(struct sna_pixmap *priv,
 extern void sna_mode_close(struct sna *sna);
 extern void sna_mode_fini(struct sna *sna);
 
+extern void sna_crtc_config_notify(ScreenPtr screen);
+
 extern bool sna_cursors_init(ScreenPtr screen, struct sna *sna);
+
+typedef void (*sna_flip_handler_t)(struct sna *sna,
+				   struct drm_event_vblank *e,
+				   void *data);
 
 extern int sna_page_flip(struct sna *sna,
 			 struct kgem_bo *bo,
-			 void *data,
-			 int ref_crtc_hw_id);
+			 sna_flip_handler_t handler,
+			 void *data);
 
 pure static inline struct sna *
 to_sna(ScrnInfoPtr scrn)
@@ -523,17 +527,15 @@ static inline uint64_t ust64(int tv_sec, int tv_usec)
 bool sna_dri2_open(struct sna *sna, ScreenPtr pScreen);
 void sna_dri2_page_flip_handler(struct sna *sna, struct drm_event_vblank *event);
 void sna_dri2_vblank_handler(struct sna *sna, struct drm_event_vblank *event);
-void sna_dri2_pixmap_update_bo(struct sna *sna, PixmapPtr pixmap);
+void sna_dri2_pixmap_update_bo(struct sna *sna, PixmapPtr pixmap, struct kgem_bo *bo);
 void sna_dri2_destroy_window(WindowPtr win);
-void sna_dri2_reset_scanout(struct sna *sna);
 void sna_dri2_close(struct sna *sna, ScreenPtr pScreen);
 #else
 static inline bool sna_dri2_open(struct sna *sna, ScreenPtr pScreen) { return false; }
 static inline void sna_dri2_page_flip_handler(struct sna *sna, struct drm_event_vblank *event) { }
 static inline void sna_dri2_vblank_handler(struct sna *sna, struct drm_event_vblank *event) { }
-static inline void sna_dri2_pixmap_update_bo(struct sna *sna, PixmapPtr pixmap) { }
+static inline void sna_dri2_pixmap_update_bo(struct sna *sna, PixmapPtr pixmap, struct kgem_bo *bo) { }
 static inline void sna_dri2_destroy_window(WindowPtr win) { }
-static inline void sna_dri2_reset_scanout(struct sna *sna) { }
 static inline void sna_dri2_close(struct sna *sna, ScreenPtr pScreen) { }
 #endif
 
@@ -549,15 +551,12 @@ static inline void sna_dri3_close(struct sna *sna, ScreenPtr pScreen) { }
 bool sna_present_open(struct sna *sna, ScreenPtr pScreen);
 void sna_present_update(struct sna *sna);
 void sna_present_close(struct sna *sna, ScreenPtr pScreen);
-void sna_present_flip_handler(struct sna *sna,
-			      struct drm_event_vblank *event);
 void sna_present_vblank_handler(struct sna *sna,
 				struct drm_event_vblank *event);
 #else
 static inline bool sna_present_open(struct sna *sna, ScreenPtr pScreen) { return false; }
 static inline void sna_present_update(struct sna *sna) { }
 static inline void sna_present_close(struct sna *sna, ScreenPtr pScreen) { }
-static inline void sna_present_flip_handler(struct sna *sna, struct drm_event_vblank *event) { }
 static inline void sna_present_vblank_handler(struct sna *sna, struct drm_event_vblank *event) { }
 #endif
 
@@ -832,7 +831,6 @@ region_subsumes_damage(const RegionRec *region, struct sna_damage *damage)
 						(BoxPtr)de) == PIXMAN_REGION_IN;
 }
 
-
 static inline bool
 sna_drawable_is_clear(DrawablePtr d)
 {
@@ -855,7 +853,7 @@ static inline struct kgem_bo *sna_pixmap_pin(PixmapPtr pixmap, unsigned flags)
 {
 	struct sna_pixmap *priv;
 
-	priv = sna_pixmap_force_to_gpu(pixmap, MOVE_READ | MOVE_WRITE);
+	priv = sna_pixmap_force_to_gpu(pixmap, MOVE_READ);
 	if (!priv)
 		return NULL;
 

@@ -2222,6 +2222,7 @@ static void __kgem_bo_destroy(struct kgem *kgem, struct kgem_bo *bo)
 	assert(list_is_empty(&bo->list));
 	assert(bo->refcnt == 0);
 	assert(bo->proxy == NULL);
+	assert(bo->active_scanout == 0);
 	assert_tiling(kgem, bo);
 
 	bo->binding.offset = 0;
@@ -5831,13 +5832,6 @@ uint32_t kgem_bo_flink(struct kgem *kgem, struct kgem_bo *bo)
 	bo->reusable = false;
 
 	kgem_bo_unclean(kgem, bo);
-
-	/* Henceforth, we need to broadcast all updates to clients and
-	 * flush our rendering before doing so.
-	 */
-	bo->flush = true;
-	if (bo->exec)
-		kgem->flush = 1;
 
 	return flink.name;
 }

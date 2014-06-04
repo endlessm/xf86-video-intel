@@ -74,6 +74,7 @@ struct kgem_bo {
 	uint32_t handle;
 	uint32_t target_handle;
 	uint32_t delta;
+	uint32_t active_scanout;
 	union {
 		struct {
 			uint32_t count:27;

@@ -777,7 +777,7 @@ static int sna_render_picture_downsample(struct sna *sna,
 		goto fixup;
 	}
 
-	if (!sna_pixmap_force_to_gpu(pixmap, MOVE_SOURCE_HINT | MOVE_READ)) {
+	if (!sna_pixmap_move_to_gpu(pixmap, MOVE_SOURCE_HINT | MOVE_READ)) {
 fixup:
 		DBG(("%s: unable to create GPU bo for target or temporary pixmaps\n",
 		     __FUNCTION__));

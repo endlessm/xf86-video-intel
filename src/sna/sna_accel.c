@@ -1825,6 +1825,9 @@ sna_pixmap_undo_cow(struct sna *sna, struct sna_pixmap *priv, unsigned flags)
 	assert(priv->gpu_bo == cow->bo);
 	assert(cow->refcnt);
 
+	if (flags && (flags & MOVE_WRITE) == 0 && IS_COW_OWNER(priv->cow))
+		return true;
+
 	if (!IS_COW_OWNER(priv->cow))
 		list_del(&priv->cow_list);
 
@@ -3189,25 +3192,32 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 		}
 	}
 
-	if (priv->cow && (flags & MOVE_WRITE || priv->cpu_damage)) {
-		unsigned cow = MOVE_READ;
+	if (priv->cow) {
+		unsigned cow = flags & (MOVE_READ | MOVE_WRITE | __MOVE_FORCE);
 
 		if ((flags & MOVE_READ) == 0) {
 			if (priv->gpu_damage) {
 				r.extents = *box;
 				r.data = NULL;
-				if (region_subsumes_damage(&r,
-							   priv->gpu_damage))
-					cow = 0;
-			} else
-				cow = 0;
+				if (!region_subsumes_damage(&r, priv->gpu_damage))
+					cow |= MOVE_READ;
+			}
+		} else {
+			if (priv->cpu_damage) {
+				r.extents = *box;
+				r.data = NULL;
+				if (region_overlaps_damage(&r, priv->cpu_damage, 0, 0))
+					cow |= MOVE_WRITE;
+			}
 		}
 
-		if (!sna_pixmap_undo_cow(sna, priv, cow))
-			return NULL;
+		if (cow) {
+			if (!sna_pixmap_undo_cow(sna, priv, cow))
+				return NULL;
 
-		if (priv->gpu_bo == NULL)
-			sna_damage_destroy(&priv->gpu_damage);
+			if (priv->gpu_bo == NULL)
+				sna_damage_destroy(&priv->gpu_damage);
+		}
 	}
 
 	if (sna_damage_is_all(&priv->gpu_damage,
@@ -3221,7 +3231,7 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 	}
 
 	if ((priv->gpu_bo && priv->gpu_bo->proxy) &&
-	    (flags & MOVE_WRITE || priv->gpu_bo->proxy->rq == NULL)) {
+	    (flags & (MOVE_WRITE | __MOVE_FORCE) || priv->gpu_bo->proxy->rq == NULL)) {
 		DBG(("%s: discarding cached upload buffer\n", __FUNCTION__));
 		assert(priv->gpu_damage == NULL);
 		assert(!priv->pinned);
@@ -3437,7 +3447,7 @@ sna_drawable_use_bo(DrawablePtr drawable, unsigned flags, const BoxRec *box,
 	}
 
 	if (priv->cow) {
-		unsigned cow = MOVE_READ;
+		unsigned cow = MOVE_WRITE | MOVE_READ;
 
 		if (flags & IGNORE_CPU) {
 			if (priv->gpu_damage) {
@@ -3451,9 +3461,9 @@ sna_drawable_use_bo(DrawablePtr drawable, unsigned flags, const BoxRec *box,
 				region.data = NULL;
 				if (region_subsumes_damage(&region,
 							   priv->gpu_damage))
-					cow = 0;
+					cow &= ~MOVE_READ;
 			} else
-				cow = 0;
+				cow &= ~MOVE_READ;
 		}
 
 		if (!sna_pixmap_undo_cow(to_sna_from_pixmap(pixmap), priv, cow))
@@ -3933,12 +3943,17 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 	if ((flags & MOVE_READ) == 0 && UNDO)
 		kgem_bo_pair_undo(&sna->kgem, priv->gpu_bo, priv->cpu_bo);
 
-	if (priv->cow && (flags & MOVE_WRITE || priv->cpu_damage)) {
-		if (!sna_pixmap_undo_cow(sna, priv, flags & MOVE_READ))
-			return NULL;
+	if (priv->cow) {
+		unsigned cow = flags & (MOVE_READ | MOVE_WRITE | __MOVE_FORCE);
+		if (flags & MOVE_READ && priv->cpu_damage)
+			cow |= MOVE_WRITE;
+		if (cow) {
+			if (!sna_pixmap_undo_cow(sna, priv, cow))
+				return NULL;
 
-		if (priv->gpu_bo == NULL)
-			sna_damage_destroy(&priv->gpu_damage);
+			if (priv->gpu_bo == NULL)
+				sna_damage_destroy(&priv->gpu_damage);
+		}
 	}
 
 	if (sna_damage_is_all(&priv->gpu_damage,
@@ -3955,7 +3970,7 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 	}
 
 	if ((priv->gpu_bo && priv->gpu_bo->proxy) &&
-	    (flags & MOVE_WRITE || priv->gpu_bo->proxy->rq == NULL)) {
+	    (flags & (MOVE_WRITE | __MOVE_FORCE) || priv->gpu_bo->proxy->rq == NULL)) {
 		DBG(("%s: discarding cached upload buffer\n", __FUNCTION__));
 		assert(priv->gpu_damage == NULL);
 		assert(!priv->pinned);
@@ -11716,7 +11731,7 @@ sna_pixmap_get_source_bo(PixmapPtr pixmap)
 	if (priv->cpu_damage && priv->cpu_bo)
 		return kgem_bo_reference(priv->cpu_bo);
 
-	if (!sna_pixmap_force_to_gpu(pixmap, MOVE_READ | MOVE_ASYNC_HINT))
+	if (!sna_pixmap_move_to_gpu(pixmap, MOVE_READ | MOVE_ASYNC_HINT))
 		return NULL;
 
 	return kgem_bo_reference(priv->gpu_bo);
@@ -16643,7 +16658,7 @@ static bool has_shadow(struct sna *sna)
 	DBG(("%s: has pending damage? %d, outstanding flips: %d\n",
 	     __FUNCTION__,
 	     RegionNotEmpty(DamageRegion(damage)),
-	     sna->mode.shadow_flip));
+	     sna->mode.flip_active));
 
 	return RegionNotEmpty(DamageRegion(damage));
 }

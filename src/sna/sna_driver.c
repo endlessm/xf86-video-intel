@@ -196,7 +196,7 @@ static Bool sna_set_desired_mode(struct sna *sna)
 		sna_set_fallback_mode(scrn);
 	}
 
-	sna_mode_update(sna);
+	sna_mode_check(sna);
 	return TRUE;
 }
 
@@ -278,6 +278,19 @@ static Bool sna_create_screen_resources(ScreenPtr screen)
 		return FALSE;
 	}
 
+	return TRUE;
+}
+
+static Bool sna_save_screen(ScreenPtr screen, int mode)
+{
+	ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
+
+	DBG(("%s(mode=%d)\n", __FUNCTION__, mode));
+	if (!scrn->vtSema)
+		return FALSE;
+
+	xf86SaveScreen(screen, mode);
+	sna_crtc_config_notify(screen);
 	return TRUE;
 }
 
@@ -671,7 +684,7 @@ static bool has_shadow(struct sna *sna)
 	if (RegionNil(DamageRegion(sna->mode.shadow_damage)))
 		return false;
 
-	return sna->mode.shadow_flip == 0;
+	return sna->mode.flip_active == 0;
 }
 
 static void
@@ -756,7 +769,7 @@ sna_handle_uevents(int fd, void *closure)
 		DBG(("%s: hotplug event (vtSema?=%d)\n",
 		     __FUNCTION__, sna->scrn->vtSema));
 		if (sna->scrn->vtSema) {
-			sna_mode_update(sna);
+			sna_mode_check(sna);
 			RRGetInfo(xf86ScrnToScreen(scrn), TRUE);
 		} else
 			sna->flags |= SNA_REPROBE;
@@ -1084,7 +1097,7 @@ sna_screen_init(SCREEN_INIT_ARGS_DECL)
 	sna->WakeupHandler = screen->WakeupHandler;
 	screen->WakeupHandler = sna_wakeup_handler;
 
-	screen->SaveScreen = xf86SaveScreen;
+	screen->SaveScreen = sna_save_screen;
 	screen->CreateScreenResources = sna_create_screen_resources;
 
 	sna->CloseScreen = screen->CloseScreen;
