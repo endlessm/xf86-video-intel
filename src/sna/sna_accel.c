@@ -4602,6 +4602,10 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 			     kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, true)));
 			sna_pixmap_free_gpu(sna, priv);
 			ignore_cpu = priv->cpu_damage == NULL;
+			if (priv->ptr)
+				sna_damage_all(&priv->cpu_damage,
+						pixmap->drawable.width,
+						pixmap->drawable.height);
 		}
 	}
 
