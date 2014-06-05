@@ -2023,13 +2023,6 @@ find_property(struct sna *sna, struct sna_output *output, const char *name)
 	return -1;
 }
 
-static int
-find_property_id(struct sna *sna, struct sna_output *output, const char *name)
-{
-	int idx = find_property(sna, output, name);
-	return idx != -1 ? output->prop_ids[idx] : 0;
-}
-
 static xf86OutputStatus
 sna_output_detect(xf86OutputPtr output)
 {
@@ -2913,7 +2906,7 @@ sna_output_add(struct sna *sna, int id, int serial)
 	char name[32];
 	int len, i;
 
-	DBG(("%s(%d)\n", __FUNCTION__, id));
+	DBG(("%s(%d): serial=%d\n", __FUNCTION__, id, serial));
 
 	COMPILE_TIME_ASSERT(sizeof(struct drm_mode_get_connector) <= sizeof(compat_conn.pad));
 
@@ -3007,7 +3000,6 @@ sna_output_add(struct sna *sna, int id, int serial)
 	sna_output->num_props = compat_conn.conn.count_props;
 	sna_output->prop_ids = malloc(sizeof(uint32_t)*compat_conn.conn.count_props);
 	sna_output->prop_values = malloc(sizeof(uint64_t)*compat_conn.conn.count_props);
-	sna_output->dpms_mode = DPMSModeOff;
 
 	compat_conn.conn.count_encoders = 0;
 
@@ -3059,7 +3051,16 @@ sna_output_add(struct sna *sna, int id, int serial)
 	sna_output->id = compat_conn.conn.connector_id;
 	sna_output->is_panel = is_panel(compat_conn.conn.connector_type);
 	sna_output->edid_idx = find_property(sna, sna_output, "EDID");
-	sna_output->dpms_id = find_property_id(sna, sna_output, "DPMS");
+	i = find_property(sna, sna_output, "DPMS");
+	if (i != -1) {
+		sna_output->dpms_id = sna_output->prop_ids[i];
+		sna_output->dpms_mode = sna_output->prop_values[i];
+		DBG(("%s: found 'DPMS' (idx=%d, id=%d), initial value=%d\n",
+		     __FUNCTION__, i, sna_output->dpms_id, sna_output->dpms_mode));
+	} else {
+		sna_output->dpms_id = -1;
+		sna_output->dpms_mode = DPMSModeOff;
+	}
 
 	sna_output->possible_encoders = possible_encoders;
 	sna_output->attached_encoders = attached_encoders;
