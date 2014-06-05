@@ -475,6 +475,8 @@ done:
 	     output->name, best_iface ?: "none"));
 	sna_output->backlight_active_level =
 		backlight_open(&sna_output->backlight, best_iface);
+	DBG(("%s(%s): initial backlight value %d\n",
+	     __FUNCTION__, output->name, sna_output->backlight_active_level));
 	if (sna_output->backlight_active_level < 0)
 		return;
 
@@ -2368,29 +2370,6 @@ sna_output_destroy(xf86OutputPtr output)
 }
 
 static void
-sna_output_dpms_backlight(xf86OutputPtr output, int oldmode, int mode)
-{
-	struct sna_output *sna_output = output->driver_private;
-
-	if (!sna_output->backlight.iface)
-		return;
-
-	DBG(("%s(%s:%d) -- %d -> %d\n", __FUNCTION__, output->name, sna_output->id, oldmode, mode));
-
-	if (mode == DPMSModeOn) {
-		/* If we're going from off->on we may need to turn on the backlight. */
-		if (oldmode != DPMSModeOn)
-			sna_output_backlight_set(output,
-						   sna_output->backlight_active_level);
-	} else {
-		/* Only save the current backlight value if we're going from on to off. */
-		if (oldmode == DPMSModeOn)
-			sna_output->backlight_active_level = sna_output_backlight_get(output);
-		sna_output_backlight_set(output, 0);
-	}
-}
-
-static void
 sna_output_dpms(xf86OutputPtr output, int dpms)
 {
 	struct sna *sna = to_sna(output->scrn);
@@ -2414,10 +2393,14 @@ sna_output_dpms(xf86OutputPtr output, int dpms)
 	 * record the value before the kernel modifies it
 	 * and reapply it afterwards.
 	 */
-	if (dpms != DPMSModeOn)
-		sna_output_dpms_backlight(output,
-					  sna_output->dpms_mode,
-					  dpms);
+	if (sna_output->backlight.iface && dpms != DPMSModeOn) {
+		if (sna_output->dpms_mode == DPMSModeOn) {
+			sna_output->backlight_active_level = sna_output_backlight_get(output);
+			DBG(("%s: saving current backlight %d\n",
+			     __FUNCTION__, sna_output->backlight_active_level));
+		}
+		sna_output_backlight_set(output, 0);
+	}
 
 	if (output->crtc &&
 	    drmModeConnectorSetProperty(sna->kgem.fd,
@@ -2426,10 +2409,12 @@ sna_output_dpms(xf86OutputPtr output, int dpms)
 					dpms))
 		dpms = sna_output->dpms_mode;
 
-	if (dpms == DPMSModeOn)
-		sna_output_dpms_backlight(output,
-					  sna_output->dpms_mode,
-					  dpms);
+	if (sna_output->backlight.iface && dpms == DPMSModeOn) {
+		DBG(("%s: restoring previous backlight %d\n",
+		     __FUNCTION__, sna_output->backlight_active_level));
+		sna_output_backlight_set(output,
+					 sna_output->backlight_active_level);
+	}
 
 	sna_output->dpms_mode = dpms;
 }
