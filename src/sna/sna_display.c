@@ -1785,10 +1785,8 @@ sna_crtc_dpms(xf86CrtcPtr crtc, int mode)
 	} else
 		sna_crtc_disable(crtc);
 
-	if (priv->bo != NULL) {
+	if (priv->bo != NULL)
 		priv->dpms_mode = mode;
-		update_flush_interval(to_sna(crtc->scrn));
-	}
 }
 
 void sna_mode_adjust_frame(struct sna *sna, int x, int y)
@@ -4670,6 +4668,7 @@ sna_crtc_config_notify(ScreenPtr screen)
 		return;
 
 	probe_capabilities(sna);
+	update_flush_interval(sna);
 
 	sna_cursors_reload(sna);
 
