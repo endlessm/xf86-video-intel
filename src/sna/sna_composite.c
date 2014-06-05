@@ -418,9 +418,12 @@ static void apply_damage(struct sna_composite_op *op, RegionPtr region)
 	assert_pixmap_contains_box(op->dst.pixmap, RegionExtents(region));
 	if (region->data == NULL &&
 	    region->extents.x2 - region->extents.x1 == op->dst.width &&
-	    region->extents.y2 - region->extents.y1 == op->dst.height)
-		sna_damage_all(op->damage, op->dst.width, op->dst.height);
-	else
+	    region->extents.y2 - region->extents.y1 == op->dst.height) {
+		*op->damage = _sna_damage_all(*op->damage,
+					      op->dst.width,
+					      op->dst.height);
+		op->damage = NULL;
+	} else
 		sna_damage_add(op->damage, region);
 }
 
@@ -964,9 +967,7 @@ sna_composite_rectangles(CARD8		 op,
 				if (priv->gpu_bo && priv->cpu_damage == NULL) {
 					DBG(("%s: promoting to full GPU\n", __FUNCTION__));
 					assert(priv->gpu_bo->proxy == NULL);
-					sna_damage_all(&priv->gpu_damage,
-						       pixmap->drawable.width,
-						       pixmap->drawable.height);
+					sna_damage_all(&priv->gpu_damage, pixmap);
 				}
 			}
 		}
@@ -1037,9 +1038,7 @@ sna_composite_rectangles(CARD8		 op,
 	 */
 	if (region_subsumes_drawable(&region, &pixmap->drawable)) {
 		if (damage) {
-			sna_damage_all(damage,
-				       pixmap->drawable.width,
-				       pixmap->drawable.height);
+			sna_damage_all(damage, pixmap);
 			sna_damage_destroy(damage == &priv->gpu_damage ?
 					   &priv->cpu_damage : &priv->gpu_damage);
 		}

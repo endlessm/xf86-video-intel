@@ -3306,10 +3306,7 @@ static void copy_front(struct sna *sna, PixmapPtr old, PixmapPtr new)
 		}
 	}
 
-	if (!DAMAGE_IS_ALL(new_priv->gpu_damage))
-		sna_damage_all(&new_priv->gpu_damage,
-			       new->drawable.width,
-			       new->drawable.height);
+	sna_damage_all(&new_priv->gpu_damage, new);
 }
 
 static Bool

@@ -3395,9 +3395,7 @@ static void mark_damaged(PixmapPtr pixmap, struct sna_pixmap *priv,
 	    box->x2 >= pixmap->drawable.width &&
 	    box->y2 >= pixmap->drawable.height) {
 		sna_damage_destroy(&priv->cpu_damage);
-		sna_damage_all(&priv->gpu_damage,
-			       pixmap->drawable.width,
-			       pixmap->drawable.height);
+		sna_damage_all(&priv->gpu_damage, pixmap);
 		list_del(&priv->flush_list);
 	} else {
 		sna_damage_add_box(&priv->gpu_damage, box);

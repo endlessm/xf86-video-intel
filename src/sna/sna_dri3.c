@@ -61,9 +61,7 @@ static void sna_sync_flush(struct sna *sna, struct sna_pixmap *priv)
 		assert(priv->pinned & PIN_DRI3);
 		DBG(("%s: flushing prime GPU bo, handle=%ld\n", __FUNCTION__, priv->gpu_bo->handle));
 		if (sna_pixmap_move_to_gpu(priv->pixmap, MOVE_READ | MOVE_WRITE | MOVE_ASYNC_HINT | __MOVE_FORCE)) {
-			sna_damage_all(&priv->gpu_damage,
-				       priv->pixmap->drawable.width,
-				       priv->pixmap->drawable.height);
+			sna_damage_all(&priv->gpu_damage, priv->pixmap);
 			bo = priv->gpu_bo;
 		}
 	} else {
@@ -313,9 +311,7 @@ static int sna_dri3_fd_from_pixmap(ScreenPtr screen,
 	} else {
 		priv = sna_pixmap_move_to_gpu(pixmap, MOVE_READ | MOVE_WRITE | MOVE_ASYNC_HINT | __MOVE_FORCE | __MOVE_DRI);
 		if (priv != NULL) {
-			sna_damage_all(&priv->gpu_damage,
-					pixmap->drawable.width,
-					pixmap->drawable.height);
+			sna_damage_all(&priv->gpu_damage, pixmap);
 			bo = priv->gpu_bo;
 		}
 	}
