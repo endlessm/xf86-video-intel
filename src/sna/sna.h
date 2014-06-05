@@ -298,6 +298,11 @@ struct sna {
 		unsigned serial;
 
 		uint32_t *encoders;
+
+#if HAVE_UDEV
+		struct udev_monitor *backlight_monitor;
+		pointer backlight_handler;
+#endif
 	} mode;
 
 	struct {

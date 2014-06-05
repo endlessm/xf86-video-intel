@@ -399,6 +399,129 @@ static void gem_close(int fd, uint32_t handle)
 #define BACKLIGHT_DEPRECATED_NAME  "BACKLIGHT"
 static Atom backlight_atom, backlight_deprecated_atom;
 
+#if HAVE_UDEV
+static void
+sna_backlight_uevent(int fd, void *closure)
+{
+	struct sna *sna = closure;
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	int i;
+
+	DBG(("%s()\n", __FUNCTION__));
+
+	/* Drain the event queue */
+	do {
+		struct udev_device *dev;
+
+		dev = udev_monitor_receive_device(sna->mode.backlight_monitor);
+		if (dev == NULL)
+			break;
+
+		udev_device_unref(dev);
+	} while (1);
+
+	/* Query all backlights for any changes */
+	for (i = 0; i < sna->mode.num_real_output; i++) {
+		xf86OutputPtr output = config->output[i];
+		struct sna_output *sna_output = to_sna_output(output);
+		int val;
+
+		if (sna_output->dpms_mode != DPMSModeOn)
+			continue;
+
+		assert(output->randr_output);
+
+		val = backlight_get(&sna_output->backlight);
+		if (val < 0)
+			continue;
+		DBG(("%s(%s): backlight '%s' was %d, now %d\n",
+		     __FUNCTION__, output->name, sna_output->backlight.iface,
+		     sna_output->backlight_active_level, val));
+
+		if (val == sna_output->backlight_active_level)
+			continue;
+
+		sna_output->backlight_active_level = val;
+
+		DBG(("%s(%s): sending change notification\n", __FUNCTION__, output->name));
+		RRChangeOutputProperty(output->randr_output,
+				       backlight_atom, XA_INTEGER,
+				       32, PropModeReplace, 1, &val,
+				       TRUE, FALSE);
+		RRChangeOutputProperty(output->randr_output,
+				       backlight_deprecated_atom, XA_INTEGER,
+				       32, PropModeReplace, 1, &val,
+				       TRUE, FALSE);
+	}
+}
+
+static void sna_backlight_pre_init(struct sna *sna)
+{
+	struct udev *u;
+	struct udev_monitor *mon;
+
+	u = udev_new();
+	if (!u)
+		return;
+
+	mon = udev_monitor_new_from_netlink(u, "udev");
+	if (!mon)
+		goto free_udev;
+
+	if (udev_monitor_filter_add_match_subsystem_devtype(mon, "backlight", NULL))
+		goto free_monitor;
+
+	if (udev_monitor_enable_receiving(mon))
+		goto free_monitor;
+
+	sna->mode.backlight_handler =
+		xf86AddGeneralHandler(udev_monitor_get_fd(mon),
+				      sna_backlight_uevent, sna);
+	if (!sna->mode.backlight_handler)
+		goto free_monitor;
+
+	DBG(("%s: installed backlight monitor\n", __FUNCTION__));
+	sna->mode.backlight_monitor = mon;
+
+	return;
+
+free_monitor:
+	udev_monitor_unref(mon);
+free_udev:
+	udev_unref(u);
+}
+
+static void sna_backlight_drain_uevents(struct sna *sna)
+{
+	if (sna->mode.backlight_monitor == NULL)
+		return;
+
+	sna_backlight_uevent(udev_monitor_get_fd(sna->mode.backlight_monitor),
+			     sna);
+}
+
+static void sna_backlight_close(struct sna *sna)
+{
+	struct udev *u;
+
+	if (sna->mode.backlight_handler == NULL)
+		return;
+
+	xf86RemoveGeneralHandler(sna->mode.backlight_handler);
+
+	u = udev_monitor_get_udev(sna->mode.backlight_monitor);
+	udev_monitor_unref(sna->mode.backlight_monitor);
+	udev_unref(u);
+
+	sna->mode.backlight_handler = NULL;
+	sna->mode.backlight_monitor = NULL;
+}
+#else
+static void sna_backlight_pre_init(struct sna *sna) { }
+static void sna_backlight_drain_uevents(struct sna *sna) { }
+static void sna_backlight_close(struct sna *sna) { }
+#endif
+
 static void
 sna_output_backlight_set(xf86OutputPtr output, int level)
 {
@@ -417,6 +540,12 @@ sna_output_backlight_set(xf86OutputPtr output, int level)
 			RRDeleteOutputProperty(output->randr_output, backlight_deprecated_atom);
 		}
 	}
+
+	/* Consume the uevent notification now so that we don't misconstrue
+	 * the change latter when we wake up and the output is in a different
+	 * state.
+	 */
+	sna_backlight_drain_uevents(to_sna(output->scrn));
 }
 
 static int
@@ -819,6 +948,14 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 
 	for (i = 0; i < config->num_output; i++) {
 		xf86OutputPtr output = config->output[i];
+
+		/* Make sure we mark the output as off (and save the backlight)
+		 * before the kernel turns it off due to changing the pipe.
+		 * This is necessary as the kernel may turn off the backlight
+		 * and we lose track of the user settings.
+		 */
+		if (output->crtc == NULL)
+			output->funcs->dpms(output, DPMSModeOff);
 
 		if (output->crtc != crtc)
 			continue;
@@ -2374,6 +2511,7 @@ sna_output_dpms(xf86OutputPtr output, int dpms)
 {
 	struct sna *sna = to_sna(output->scrn);
 	struct sna_output *sna_output = output->driver_private;
+	int old_dpms = sna_output->dpms_mode;
 
 	DBG(("%s(%s:%d): dpms=%d (current: %d), active? %d\n",
 	     __FUNCTION__, output->name, sna_output->id,
@@ -2383,7 +2521,7 @@ sna_output_dpms(xf86OutputPtr output, int dpms)
 	if (!sna_output->id)
 		return;
 
-	if (sna_output->dpms_mode == dpms)
+	if (old_dpms == dpms)
 		return;
 
 	/* Record the value of the backlight before turning
@@ -2394,11 +2532,12 @@ sna_output_dpms(xf86OutputPtr output, int dpms)
 	 * and reapply it afterwards.
 	 */
 	if (sna_output->backlight.iface && dpms != DPMSModeOn) {
-		if (sna_output->dpms_mode == DPMSModeOn) {
+		if (old_dpms == DPMSModeOn) {
 			sna_output->backlight_active_level = sna_output_backlight_get(output);
 			DBG(("%s: saving current backlight %d\n",
 			     __FUNCTION__, sna_output->backlight_active_level));
 		}
+		sna_output->dpms_mode = dpms;
 		sna_output_backlight_set(output, 0);
 	}
 
@@ -2407,7 +2546,7 @@ sna_output_dpms(xf86OutputPtr output, int dpms)
 					sna_output->id,
 					sna_output->dpms_id,
 					dpms))
-		dpms = sna_output->dpms_mode;
+		dpms = old_dpms;
 
 	if (sna_output->backlight.iface && dpms == DPMSModeOn) {
 		DBG(("%s: restoring previous backlight %d\n",
@@ -2577,9 +2716,9 @@ sna_output_set_property(xf86OutputPtr output, Atom property,
 		if (val < 0 || val > sna_output->backlight.max)
 			return FALSE;
 
+		sna_output->backlight_active_level = val;
 		if (sna_output->dpms_mode == DPMSModeOn)
 			sna_output_backlight_set(output, val);
-		sna_output->backlight_active_level = val;
 		return TRUE;
 	}
 
@@ -4736,6 +4875,7 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 		drmModeFreeResources(res);
 
 		sna_cursor_pre_init(sna);
+		sna_backlight_pre_init(sna);
 	} else {
 		if (num_fake == 0)
 			num_fake = 1;
@@ -4772,6 +4912,7 @@ sna_mode_close(struct sna *sna)
 	if (sna->flags & SNA_IS_HOSTED)
 		return;
 
+	sna_backlight_close(sna);
 	sna_cursor_close(sna);
 
 	for (i = 0; i < sna->mode.num_real_crtc; i++)
