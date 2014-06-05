@@ -2646,9 +2646,17 @@ sna_output_get_property(xf86OutputPtr output, Atom property)
 		if (!sna_output->backlight.iface)
 			return FALSE;
 
-		val = sna_output_backlight_get(output);
-		if (val < 0)
-			return FALSE;
+		if (sna_output->dpms_mode == DPMSModeOn) {
+			val = sna_output_backlight_get(output);
+			if (val < 0)
+				return FALSE;
+			DBG(("%s(%s): output on, reporting actual backlight value [%d]\n",
+			     __FUNCTION__, output->name, val));
+		} else {
+			val = sna_output->backlight_active_level;
+			DBG(("%s(%s): output off, reporting cached backlight value [%d]\n",
+			     __FUNCTION__, output->name, val));
+		}
 
 		err = RRChangeOutputProperty(output->randr_output, property,
 					     XA_INTEGER, 32, PropModeReplace, 1, &val,
