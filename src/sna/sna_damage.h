@@ -268,10 +268,10 @@ static inline void sna_damage_reduce_all(struct sna_damage **_damage,
 {
 	struct sna_damage *damage = *_damage;
 
-	DBG(("%s(width=%d, height=%d)\n", __FUNCTION__, width, height));
-
 	if (damage == NULL || DAMAGE_IS_ALL(damage))
 		return;
+
+	DBG(("%s(width=%d, height=%d)\n", __FUNCTION__, pixmap->drawable.width, pixmap->drawable.height));
 
 	if (damage->mode == DAMAGE_ADD) {
 		if (damage->extents.x1 <= 0 &&
