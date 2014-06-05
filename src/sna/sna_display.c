@@ -1756,7 +1756,7 @@ retry: /* Attach per-crtc pixmap or direct */
 	}
 
 	sna_crtc_randr(crtc);
-	if (sna_crtc->shadow)
+	if (sna_crtc->transform)
 		sna_crtc_damage(crtc);
 	sna->mode.front_active += saved_bo == NULL;
 	sna->mode.dirty = true;
