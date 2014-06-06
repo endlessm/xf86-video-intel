@@ -759,21 +759,12 @@ sna_handle_uevents(int fd, void *closure)
 		return;
 	}
 
-	str = udev_device_get_property_value(dev, "DISCOVER");
-	if (str && atoi(str) == 1) {
-		DBG(("%s: discover event (vtSema?=%d)\n",
-		     __FUNCTION__, sna->scrn->vtSema));
-		if (sna->scrn->vtSema)
-			sna_mode_discover(sna);
-		else
-			sna->flags |= SNA_REDISCOVER;
-	}
-
 	str = udev_device_get_property_value(dev, "HOTPLUG");
 	if (str && atoi(str) == 1) {
 		DBG(("%s: hotplug event (vtSema?=%d)\n",
 		     __FUNCTION__, sna->scrn->vtSema));
 		if (sna->scrn->vtSema) {
+			sna_mode_discover(sna);
 			sna_mode_check(sna);
 			RRGetInfo(xf86ScrnToScreen(scrn), TRUE);
 		} else
@@ -1178,16 +1169,10 @@ static Bool sna_enter_vt(VT_FUNC_ARGS_DECL)
 	if (intel_get_master(scrn))
 		return FALSE;
 
-	if (sna->flags & SNA_REDISCOVER) {
-		DBG(("%s: reporting deferred discover event\n",
-		     __FUNCTION__));
-		sna_mode_discover(sna);
-		sna->flags &= ~SNA_REDISCOVER;
-	}
-
 	if (sna->flags & SNA_REPROBE) {
 		DBG(("%s: reporting deferred hotplug event\n",
 		     __FUNCTION__));
+		sna_mode_discover(sna);
 		RRGetInfo(xf86ScrnToScreen(scrn), TRUE);
 		sna->flags &= ~SNA_REPROBE;
 	}

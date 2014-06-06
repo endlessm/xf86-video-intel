@@ -253,7 +253,6 @@ struct sna {
 #define SNA_REMOVE_OUTPUTS	0x400
 #define SNA_HAS_FLIP		0x10000
 #define SNA_HAS_ASYNC_FLIP	0x20000
-#define SNA_REDISCOVER		0x40000000
 #define SNA_REPROBE		0x80000000
 
 	unsigned cpu_features;
