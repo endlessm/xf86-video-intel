@@ -260,6 +260,7 @@ struct kgem_bo *kgem_upload_source_image(struct kgem *kgem,
 					 const void *data,
 					 const BoxRec *box,
 					 int stride, int bpp);
+void kgem_proxy_bo_attach(struct kgem_bo *bo, struct kgem_bo **ptr);
 
 int kgem_choose_tiling(struct kgem *kgem,
 		       int tiling, int width, int height, int bpp);
@@ -316,6 +317,21 @@ uint32_t kgem_bo_get_binding(struct kgem_bo *bo, uint32_t format);
 void kgem_bo_set_binding(struct kgem_bo *bo, uint32_t format, uint16_t offset);
 
 bool kgem_retire(struct kgem *kgem);
+void kgem_retire__buffers(struct kgem *kgem);
+
+static inline bool kgem_bo_discard_cache(struct kgem_bo *bo, bool force)
+{
+	if (bo == NULL || bo->proxy == NULL)
+		return false;
+
+	if (force)
+		return true;
+
+	if (bo->proxy->rq)
+		return false;
+
+	return bo->snoop;
+}
 
 bool __kgem_ring_is_idle(struct kgem *kgem, int ring);
 static inline bool kgem_ring_is_idle(struct kgem *kgem, int ring)
