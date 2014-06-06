@@ -150,9 +150,11 @@ the screen is then performed synchronously with the vertical refresh of the
 display so that the entire update is completed before the display starts its
 refresh. That is only one frame is ever visible, preventing an unsightly tear
 between two visible and differing frames. Note that this replicates what the
-compositing manager should be doing, so it is not advisable to enable both.
-However, some compositing managers do cause tearing, and if the outputs are
-rotated, there may will still be tearing without TearFree enabled.
+compositing manager should be doing, however TearFree will redirect the
+compositor updates (and those of fullscreen games) directly on to the scanout
+thus incurring no additional overhead in the composited case. Also note that
+not all compositing managers prevent tearing, and if the outputs are
+rotated, there will still be tearing without TearFree enabled.
 .IP
 Default: TearFree is disabled.
 .TP
