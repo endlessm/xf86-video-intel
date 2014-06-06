@@ -125,6 +125,7 @@ void intel_detect_chipset(ScrnInfoPtr scrn, EntityInfoPtr ent);
 int intel_open_device(int entity_num,
 		      const struct pci_device *pci,
 		      struct xf86_platform_device *dev);
+int __intel_peek_fd(ScrnInfoPtr scrn);
 int intel_get_device(ScrnInfoPtr scrn);
 const char *intel_get_client_name(ScrnInfoPtr scrn);
 int intel_get_client_fd(ScrnInfoPtr scrn);

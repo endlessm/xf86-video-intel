@@ -1276,9 +1276,31 @@ static void sna_leave_vt__hosted(VT_FUNC_ARGS_DECL)
 {
 }
 
-Bool sna_init_scrn(ScrnInfoPtr scrn, int entity_num)
+static void describe_kms(ScrnInfoPtr scrn)
 {
-	DBG(("%s: entity_num=%d\n", __FUNCTION__, entity_num));
+	int fd = __intel_peek_fd(scrn);
+	drm_version_t version;
+	char name[128] = "";
+	char date[128] = "";
+
+	memset(&version, 0, sizeof(version));
+	version.name_len = sizeof(name) - 1;
+	version.name = name;
+	version.date_len = sizeof(date) - 1;
+	version.date = date;
+
+	if (drmIoctl(fd, DRM_IOCTL_VERSION, &version))
+		return;
+
+	xf86DrvMsg(scrn->scrnIndex, X_INFO,
+		   "Using Kernel Mode Setting driver: %s, version %d.%d.%d %s\n",
+		   version.name,
+		   version.version_major, version.version_minor, version.version_patchlevel,
+		   version.date);
+}
+
+static void describe_sna(ScrnInfoPtr scrn)
+{
 #if defined(USE_GIT_DESCRIBE)
 	xf86DrvMsg(scrn->scrnIndex, X_INFO,
 		   "SNA compiled from %s\n", git_version);
@@ -1303,6 +1325,13 @@ Bool sna_init_scrn(ScrnInfoPtr scrn, int entity_num)
 		   "SNA compiled with extra pixmap/damage validation\n");
 #endif
 	DBG(("pixman version: %s\n", pixman_version_string()));
+}
+
+Bool sna_init_scrn(ScrnInfoPtr scrn, int entity_num)
+{
+	DBG(("%s: entity_num=%d\n", __FUNCTION__, entity_num));
+	describe_kms(scrn);
+	describe_sna(scrn);
 
 	scrn->PreInit = sna_pre_init;
 	scrn->ScreenInit = sna_screen_init;

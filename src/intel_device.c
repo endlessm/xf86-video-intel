@@ -376,6 +376,16 @@ err_path:
 	return -1;
 }
 
+int __intel_peek_fd(ScrnInfoPtr scrn)
+{
+	struct intel_device *dev;
+
+	dev = intel_device(scrn);
+	assert(dev && dev->fd != -1);
+
+	return dev->fd;
+}
+
 int intel_get_device(ScrnInfoPtr scrn)
 {
 	struct intel_device *dev;
