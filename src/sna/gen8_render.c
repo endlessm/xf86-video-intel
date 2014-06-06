@@ -214,6 +214,35 @@ static inline bool too_large(int width, int height)
 	return width > GEN8_MAX_SIZE || height > GEN8_MAX_SIZE;
 }
 
+static bool unaligned(struct kgem_bo *bo, int bpp)
+{
+	int x, y;
+
+	if (bo->proxy == NULL)
+		return false;
+
+	/* Assume that all tiled proxies are constructed correctly. */
+	if (bo->tiling)
+		return true;
+
+	DBG(("%s: checking alignment of a linear proxy, offset=%d, pitch=%d, bpp=%d: => (%d, %d)\n",
+	     __FUNCTION__, bo->delta, bo->pitch, bpp,
+	     8 * (bo->delta % bo->pitch) / bpp, bo->delta / bo->pitch));
+
+	/* This may be a random userptr map, check that it meets the
+	 * render alignment of SURFACE_VALIGN_4 | SURFACE_HALIGN_4.
+	 */
+	y = bo->delta / bo->pitch;
+	if (y & 3)
+		return false;
+
+	x = 8 * (bo->delta - y * bo->pitch);
+	if (x & (4*bpp - 1))
+	    return false;
+
+	return true;
+}
+
 static uint32_t gen8_get_blend(int op,
 			       bool has_component_alpha,
 			       uint32_t dst_format)
@@ -1855,13 +1884,18 @@ gen8_composite_picture(struct sna *sna,
 				    x, y, w, h, dst_x, dst_y);
 }
 
-static void gen8_composite_channel_convert(struct sna_composite_channel *channel)
+static bool gen8_composite_channel_convert(struct sna_composite_channel *channel)
 {
+	if (unaligned(channel->bo, PICT_FORMAT_BPP(channel->pict_format)))
+		return false;
+
 	channel->repeat = gen8_repeat(channel->repeat);
 	channel->filter = gen8_filter(channel->filter);
 	if (channel->card_format == (unsigned)-1)
 		channel->card_format = gen8_get_card_format(channel->pict_format);
 	assert(channel->card_format != (unsigned)-1);
+
+	return true;
 }
 
 static void gen8_render_composite_done(struct sna *sna,
@@ -1915,6 +1949,9 @@ gen8_composite_set_target(struct sna *sna,
 
 	op->dst.bo = sna_drawable_use_bo(dst->pDrawable, hint, &box, &op->damage);
 	if (op->dst.bo == NULL)
+		return false;
+
+	if (unaligned(op->dst.bo, dst->pDrawable->bitsPerPixel))
 		return false;
 
 	get_drawable_deltas(dst->pDrawable, op->dst.pixmap,
@@ -2247,13 +2284,16 @@ gen8_render_composite(struct sna *sna,
 	case 1:
 		/* Did we just switch rings to prepare the source? */
 		if (mask == NULL &&
-		    prefer_blt_composite(sna, tmp) &&
+		    (prefer_blt_composite(sna, tmp) ||
+		     unaligned(tmp->src.bo, PICT_FORMAT_BPP(tmp->src.pict_format))) &&
 		    sna_blt_composite__convert(sna,
 					       dst_x, dst_y, width, height,
 					       tmp))
 			return true;
 
-		gen8_composite_channel_convert(&tmp->src);
+		if (!gen8_composite_channel_convert(&tmp->src))
+			goto cleanup_dst;
+
 		break;
 	}
 
@@ -2298,7 +2338,8 @@ gen8_render_composite(struct sna *sna,
 					goto cleanup_src;
 				/* fall through to fixup */
 			case 1:
-				gen8_composite_channel_convert(&tmp->mask);
+				if (!gen8_composite_channel_convert(&tmp->mask))
+					goto cleanup_src;
 				break;
 			}
 		}
@@ -2532,7 +2573,8 @@ gen8_render_composite_spans(struct sna *sna,
 			goto cleanup_dst;
 		/* fall through to fixup */
 	case 1:
-		gen8_composite_channel_convert(&tmp->base.src);
+		if (!gen8_composite_channel_convert(&tmp->base.src))
+			goto cleanup_dst;
 		break;
 	}
 	tmp->base.mask.bo = NULL;
@@ -2712,7 +2754,9 @@ gen8_render_copy_boxes(struct sna *sna, uint8_t alu,
 			       box, n))
 		return true;
 
-	if (!(alu == GXcopy || alu == GXclear)) {
+	if (!(alu == GXcopy || alu == GXclear) ||
+	    unaligned(src_bo, src->drawable.bitsPerPixel) ||
+	    unaligned(dst_bo, dst->drawable.bitsPerPixel)) {
 fallback_blt:
 		DBG(("%s: fallback blt\n", __FUNCTION__));
 		if (!sna_blt_compare_depth(&src->drawable, &dst->drawable))
@@ -2955,7 +2999,9 @@ gen8_render_copy(struct sna *sna, uint8_t alu,
 
 	if (!(alu == GXcopy || alu == GXclear) || src_bo == dst_bo ||
 	    too_large(src->drawable.width, src->drawable.height) ||
-	    too_large(dst->drawable.width, dst->drawable.height)) {
+	    too_large(dst->drawable.width, dst->drawable.height) ||
+	    unaligned(src_bo, src->drawable.bitsPerPixel) ||
+	    unaligned(dst_bo, dst->drawable.bitsPerPixel)) {
 fallback:
 		if (!sna_blt_compare_depth(&src->drawable, &dst->drawable))
 			return false;
@@ -3072,7 +3118,8 @@ gen8_render_fill_boxes(struct sna *sna,
 	}
 
 	if (prefer_blt_fill(sna, dst_bo, FILL_BOXES) ||
-	    !gen8_check_dst_format(format)) {
+	    !gen8_check_dst_format(format) ||
+	    unaligned(dst_bo, PICT_FORMAT_BPP(format))) {
 		uint8_t alu = GXinvalid;
 
 		if (op <= PictOpSrc) {
@@ -3301,7 +3348,8 @@ gen8_render_fill(struct sna *sna, uint8_t alu,
 		return true;
 
 	if (!(alu == GXcopy || alu == GXclear) ||
-	    too_large(dst->drawable.width, dst->drawable.height))
+	    too_large(dst->drawable.width, dst->drawable.height) ||
+	    unaligned(dst_bo, dst->drawable.bitsPerPixel))
 		return sna_blt_fill(sna, alu,
 				    dst_bo, dst->drawable.bitsPerPixel,
 				    color,
@@ -3387,7 +3435,8 @@ gen8_render_fill_one(struct sna *sna, PixmapPtr dst, struct kgem_bo *bo,
 
 	/* Must use the BLT if we can't RENDER... */
 	if (!(alu == GXcopy || alu == GXclear) ||
-	    too_large(dst->drawable.width, dst->drawable.height))
+	    too_large(dst->drawable.width, dst->drawable.height) ||
+	    unaligned(bo, dst->drawable.bitsPerPixel))
 		return gen8_render_fill_one_try_blt(sna, dst, bo, color,
 						    x1, y1, x2, y2, alu);
 
@@ -3479,7 +3528,8 @@ gen8_render_clear(struct sna *sna, PixmapPtr dst, struct kgem_bo *bo)
 		return true;
 
 	/* Must use the BLT if we can't RENDER... */
-	if (too_large(dst->drawable.width, dst->drawable.height))
+	if (too_large(dst->drawable.width, dst->drawable.height) ||
+	    unaligned(bo, dst->drawable.bitsPerPixel))
 		return gen8_render_clear_try_blt(sna, dst, bo);
 
 	tmp.dst.pixmap = dst;
@@ -3673,6 +3723,9 @@ gen8_render_video(struct sna *sna,
 	     REGION_EXTENTS(NULL, dstRegion)->y2));
 
 	assert(priv->gpu_bo);
+	assert(!too_large(pixmap->drawable.width, pixmap->drawable.height));
+	assert(!unaligned(priv->gpu_bo, pixmap->drawable.bitsPerPixel));
+
 	memset(&tmp, 0, sizeof(tmp));
 
 	tmp.dst.pixmap = pixmap;
