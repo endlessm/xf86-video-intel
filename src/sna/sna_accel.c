@@ -5624,7 +5624,8 @@ static bool
 sna_copy_boxes__inplace(struct sna *sna, RegionPtr region, int alu,
 			PixmapPtr src_pixmap, struct sna_pixmap *src_priv,
 			int dx, int dy,
-			PixmapPtr dst_pixmap, struct sna_pixmap *dst_priv)
+			PixmapPtr dst_pixmap, struct sna_pixmap *dst_priv,
+			bool replaces)
 {
 	const BoxRec *box;
 	char *ptr;
@@ -5765,18 +5766,14 @@ upload_inplace:
 		return false;
 	}
 
-	if (!kgem_bo_can_map__cpu(&sna->kgem, dst_priv->gpu_bo, true)) {
-		DBG(("%s - no, cannot map dst for reads into the CPU\n", __FUNCTION__));
-		return false;
-	}
-
-	if (__kgem_bo_is_busy(&sna->kgem, dst_priv->gpu_bo)) {
-		if (!dst_priv->pinned) {
+	if (!kgem_bo_can_map__cpu(&sna->kgem, dst_priv->gpu_bo, true) ||
+	    __kgem_bo_is_busy(&sna->kgem, dst_priv->gpu_bo)) {
+		if (replaces && !dst_priv->pinned) {
 			unsigned create;
 			struct kgem_bo *bo;
 
 			create = CREATE_CPU_MAP | CREATE_INACTIVE;
-			if (dst_pixmap->usage_hint == SNA_CREATE_FB)
+			if (dst_priv->gpu_bo->scanout)
 				create |= CREATE_SCANOUT;
 
 			bo = kgem_create_2d(&sna->kgem,
@@ -5793,6 +5790,11 @@ upload_inplace:
 			dst_priv->gpu_bo = bo;
 		} else {
 			DBG(("%s - no, dst is busy\n", __FUNCTION__));
+			return false;
+		}
+
+		if (!kgem_bo_can_map__cpu(&sna->kgem, dst_priv->gpu_bo, true)) {
+			DBG(("%s - no, cannot map dst for reads into the CPU\n", __FUNCTION__));
 			return false;
 		}
 	}
@@ -6373,7 +6375,8 @@ fallback:
 	} else if (!sna_copy_boxes__inplace(sna, region, alu,
 					    src_pixmap, src_priv,
 					    src_dx, src_dy,
-					    dst_pixmap, dst_priv)) {
+					    dst_pixmap, dst_priv,
+					    replaces)) {
 		FbBits *dst_bits, *src_bits;
 		int dst_stride, src_stride;
 
