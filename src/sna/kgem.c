@@ -2981,7 +2981,7 @@ static int compact_batch_surface(struct kgem *kgem)
 	int size, shrink, n;
 
 	if (!kgem->has_relaxed_delta)
-		return kgem->batch_size;
+		return kgem->batch_size * sizeof(uint32_t);
 
 	/* See if we can pack the contents into one or two pages */
 	n = ALIGN(kgem->batch_size, 1024);
