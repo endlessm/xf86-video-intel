@@ -327,13 +327,6 @@ static struct kgem_bo *sna_pixmap_set_dri(struct sna *sna,
 	assert(priv->gpu_bo->proxy == NULL);
 	assert(priv->gpu_bo->flush == false);
 
-	/* Henceforth, we need to broadcast all updates to clients and
-	 * flush our rendering before doing so.
-	 */
-	priv->gpu_bo->flush = true;
-	if (priv->gpu_bo->exec)
-		sna->kgem.flush = 1;
-
 	tiling = color_tiling(sna, &pixmap->drawable);
 	if (tiling < 0)
 		tiling = -tiling;
@@ -377,12 +370,14 @@ sna_dri2_pixmap_update_bo(struct sna *sna, PixmapPtr pixmap, struct kgem_bo *bo)
 	if (private->bo == bo)
 		return;
 
+	DBG(("%s: dropping flush hint from handle=%d\n", __FUNCTION__, private->bo->handle));
 	private->bo->flush = false;
 	kgem_bo_destroy(&sna->kgem, private->bo);
 
 	buffer->name = kgem_bo_flink(&sna->kgem, bo);
 	private->bo = ref(bo);
 
+	DBG(("%s: adding flush hint to handle=%d\n", __FUNCTION__, bo->handle));
 	bo->flush = true;
 	assert(sna_pixmap(pixmap)->flush);
 
@@ -422,6 +417,7 @@ sna_dri2_create_buffer(DrawablePtr draw,
 			     private->bo->handle, buffer->name));
 
 			assert(private->pixmap == pixmap);
+			assert(private->bo->flush);
 			assert(sna_pixmap(pixmap)->flush);
 			assert(sna_pixmap(pixmap)->gpu_bo == private->bo);
 			assert(sna_pixmap(pixmap)->pinned & PIN_DRI2);
@@ -564,6 +560,11 @@ sna_dri2_create_buffer(DrawablePtr draw,
 		 *
 		 * As we don't track which Client, we flush for all.
 		 */
+		DBG(("%s: adding flush hint to handle=%d\n", __FUNCTION__, priv->gpu_bo->handle));
+		priv->gpu_bo->flush = true;
+		if (priv->gpu_bo->exec)
+			sna->kgem.flush = 1;
+
 		priv->flush = true;
 		sna_accel_watch_flush(sna, 1);
 	}
@@ -609,6 +610,7 @@ static void _sna_dri2_destroy_buffer(struct sna *sna, DRI2Buffer2Ptr buffer)
 
 		list_del(&priv->flush_list);
 
+		DBG(("%s: dropping flush hint from handle=%d\n", __FUNCTION__, private->bo->handle));
 		priv->gpu_bo->flush = false;
 		priv->pinned &= ~PIN_DRI2;
 
@@ -617,8 +619,8 @@ static void _sna_dri2_destroy_buffer(struct sna *sna, DRI2Buffer2Ptr buffer)
 
 		sna_pixmap_set_buffer(pixmap, NULL);
 		pixmap->drawable.pScreen->DestroyPixmap(pixmap);
-	} else
-		private->bo->flush = false;
+	}
+	assert(private->bo->flush == false);
 
 	kgem_bo_destroy(&sna->kgem, private->bo);
 	free(buffer);
@@ -691,6 +693,7 @@ static void set_bo(PixmapPtr pixmap, struct kgem_bo *bo)
 	if (priv->move_to_gpu)
 		priv->move_to_gpu(sna, priv, 0);
 	if (priv->gpu_bo != bo) {
+		DBG(("%s: dropping flush hint from handle=%d\n", __FUNCTION__, priv->gpu_bo->handle));
 		priv->gpu_bo->flush = false;
 		if (priv->cow)
 			sna_pixmap_undo_cow(sna, priv, 0);
@@ -698,6 +701,7 @@ static void set_bo(PixmapPtr pixmap, struct kgem_bo *bo)
 			sna_pixmap_unmap(pixmap, priv);
 			kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
 		}
+		DBG(("%s: adding flush hint to handle=%d\n", __FUNCTION__, bo->handle));
 		bo->flush = true;
 		if (bo->exec)
 			sna->kgem.flush = 1;
@@ -705,6 +709,7 @@ static void set_bo(PixmapPtr pixmap, struct kgem_bo *bo)
 	}
 	if (bo->domain != DOMAIN_GPU)
 		bo->domain = DOMAIN_NONE;
+	assert(bo->flush);
 
 	DamageRegionProcessPending(&pixmap->drawable);
 }
