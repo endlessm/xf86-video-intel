@@ -16565,7 +16565,8 @@ static struct sna_pixmap *sna_accel_scanout(struct sna *sna)
 	assert(sna->front);
 
 	priv = sna_pixmap(sna->front);
-	assert(priv->gpu_bo);
+	if (priv->gpu_bo == NULL)
+		return NULL;
 
 	return priv;
 }
@@ -16607,21 +16608,21 @@ static bool has_shadow(struct sna *sna)
 	return RegionNotEmpty(DamageRegion(damage));
 }
 
-static bool start_flush(struct sna *sna, struct sna_pixmap *scanout)
+static bool start_flush(struct sna *sna)
 {
-	DBG(("%s: scanout=%d shadow?=%d, slaves?=%d, (cpu?=%d || gpu?=%d))\n",
-	     __FUNCTION__,
-	     scanout && scanout->gpu_bo ? scanout->gpu_bo->handle : 0,
-	     has_shadow(sna), has_offload_slaves(sna),
-	     scanout && scanout->cpu_damage != NULL,
-	     scanout && scanout->gpu_bo && scanout->gpu_bo->exec != NULL));
+	struct sna_pixmap *scanout;
 
-	if (has_offload_slaves(sna))
+	if (has_offload_slaves(sna)) {
+		DBG(("%s: has offload slaves\n", __FUNCTION__));
 		return true;
+	}
 
-	if (has_shadow(sna))
+	if (has_shadow(sna)) {
+		DBG(("%s: has dirty shadow\n", __FUNCTION__));
 		return true;
+	}
 
+	scanout = sna_accel_scanout(sna);
 	if (!scanout)
 		return false;
 
@@ -16630,7 +16631,11 @@ static bool start_flush(struct sna *sna, struct sna_pixmap *scanout)
 		return true;
 	}
 
-	return scanout->cpu_damage || scanout->gpu_bo->exec;
+	if (scanout->cpu_damage || scanout->gpu_bo->exec)
+		return true;
+
+	kgem_scanout_flush(&sna->kgem, scanout->gpu_bo);
+	return false;
 }
 
 static bool stop_flush(struct sna *sna, struct sna_pixmap *scanout)
@@ -16670,17 +16675,7 @@ static void timer_enable(struct sna *sna, int whom, int interval)
 
 static bool sna_scanout_do_flush(struct sna *sna)
 {
-	struct sna_pixmap *priv;
-	int interval;
-
-	priv = sna_accel_scanout(sna);
-	if (priv == NULL && !sna->mode.shadow_damage && !has_offload_slaves(sna)) {
-		DBG(("%s -- no scanout attached\n", __FUNCTION__));
-		sna_accel_disarm_timer(sna, FLUSH_TIMER);
-		return false;
-	}
-
-	interval = sna->vblank_interval ?: 20;
+	int interval = sna->vblank_interval ?: 20;
 	if (sna->timer_active & (1<<(FLUSH_TIMER))) {
 		int32_t delta = sna->timer_expire[FLUSH_TIMER] - TIME;
 		DBG(("%s: flush timer active: delta=%d\n",
@@ -16690,12 +16685,10 @@ static bool sna_scanout_do_flush(struct sna *sna)
 			sna->timer_expire[FLUSH_TIMER] = TIME + interval;
 			return true;
 		}
-	} else if (!start_flush(sna, priv)) {
-		DBG(("%s -- no pending write to scanout\n", __FUNCTION__));
-		if (priv)
-			kgem_scanout_flush(&sna->kgem, priv->gpu_bo);
-	} else
-		timer_enable(sna, FLUSH_TIMER, interval/2);
+	} else {
+		if (start_flush(sna))
+			timer_enable(sna, FLUSH_TIMER, interval/2);
+	}
 
 	return false;
 }
