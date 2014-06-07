@@ -1264,6 +1264,7 @@ sna_crtc_disable(xf86CrtcPtr crtc)
 		kgem_bo_destroy(&sna->kgem, sna_crtc->bo);
 		sna_crtc->bo = NULL;
 
+		assert(sna->mode.front_active);
 		sna->mode.front_active--;
 		sna->mode.dirty = true;
 	}
@@ -1284,6 +1285,7 @@ static void update_flush_interval(struct sna *sna)
 		if (!crtc->enabled) {
 			DBG(("%s: CRTC:%d (pipe %d) disabled\n",
 			     __FUNCTION__,i, to_sna_crtc(crtc)->pipe));
+			assert(to_sna_crtc(crtc)->bo == NULL);
 			continue;
 		}
 
@@ -1299,9 +1301,10 @@ static void update_flush_interval(struct sna *sna)
 		max_vrefresh = max(max_vrefresh, xf86ModeVRefresh(&crtc->mode));
 	}
 
-	if (max_vrefresh == 0)
+	if (max_vrefresh == 0) {
+		assert(sna->mode.front_active == 0);
 		sna->vblank_interval = 0;
-	else
+	} else
 		sna->vblank_interval = 1000 / max_vrefresh; /* Hz -> ms */
 
 	DBG(("max_vrefresh=%d, vblank_interval=%d ms\n",
@@ -5391,6 +5394,9 @@ void sna_mode_reset(struct sna *sna)
 	DBG(("%s\n", __FUNCTION__));
 
 	sna_hide_cursors(sna->scrn);
+	for (i = 0; i < sna->mode.num_real_crtc; i++)
+		sna_crtc_disable(config->crtc[i]);
+	assert(sna->mode.front_active == 0);
 
 	for (i = 0; i < sna->mode.num_real_crtc; i++) {
 		struct sna_crtc *sna_crtc = to_sna_crtc(config->crtc[i]);
@@ -5401,14 +5407,6 @@ void sna_mode_reset(struct sna *sna)
 		/* Force the rotation property to be reset on next use */
 		rotation_reset(&sna_crtc->primary_rotation);
 		rotation_reset(&sna_crtc->sprite_rotation);
-	}
-
-	for (i = 0; i < config->num_output; i++) {
-		struct sna_output *sna_output = to_sna_output(config->output[i]);
-		if (sna_output == NULL)
-			continue;
-
-		sna_output->dpms_mode = -1;
 	}
 }
 
