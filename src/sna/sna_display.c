@@ -1007,24 +1007,19 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 	return true;
 }
 
-struct wait_for_shadow {
-	RegionRec region;
-	struct kgem_bo *bo;
-};
-
 static bool wait_for_shadow(struct sna *sna, struct sna_pixmap *priv, unsigned flags)
 {
-	struct wait_for_shadow *wait = priv->move_to_gpu_data;
-	struct kgem_bo *bo = wait->bo;
 	PixmapPtr pixmap = priv->pixmap;
 	DamagePtr damage;
+	struct kgem_bo *bo, *tmp;
 	bool ret = true;
 
-	DBG(("%s: flags=%x, flips=%d, handle=%d, wait=%d, old=%d\n",
+	DBG(("%s: flags=%x, flips=%d, handle=%d, shadow=%d\n",
 	     __FUNCTION__, flags, sna->mode.flip_active,
-	     priv->gpu_bo->handle, wait->bo->handle, sna->mode.shadow->handle));
+	     priv->gpu_bo->handle, sna->mode.shadow->handle));
 
-	assert(wait->bo != priv->gpu_bo);
+	assert(priv->move_to_gpu_data == sna);
+	assert(sna->mode.shadow != priv->gpu_bo);
 
 	if (flags == 0 || pixmap != sna->front || !sna->mode.shadow_damage)
 		goto done;
@@ -1040,6 +1035,7 @@ static bool wait_for_shadow(struct sna *sna, struct sna_pixmap *priv, unsigned f
 	while (sna->mode.flip_active && sna_mode_has_pending_events(sna))
 		sna_mode_wakeup(sna);
 
+	bo = sna->mode.shadow;
 	if (sna->mode.flip_active) {
 		bo = kgem_create_2d(&sna->kgem,
 				    pixmap->drawable.width,
@@ -1051,18 +1047,18 @@ static bool wait_for_shadow(struct sna *sna, struct sna_pixmap *priv, unsigned f
 			DBG(("%s: replacing still-attached GPU bo\n",
 			     __FUNCTION__));
 
-			RegionUninit(&wait->region);
-			wait->region.extents.x1 = 0;
-			wait->region.extents.y1 = 0;
-			wait->region.extents.x2 = pixmap->drawable.width;
-			wait->region.extents.y2 = pixmap->drawable.height;
-			wait->region.data = NULL;
+			RegionUninit(&sna->mode.shadow_region);
+			sna->mode.shadow_region.extents.x1 = 0;
+			sna->mode.shadow_region.extents.y1 = 0;
+			sna->mode.shadow_region.extents.x2 = pixmap->drawable.width;
+			sna->mode.shadow_region.extents.y2 = pixmap->drawable.height;
+			sna->mode.shadow_region.data = NULL;
 		} else {
 			while (sna->mode.flip_active &&
 			       sna_mode_wait_for_event(sna))
 				sna_mode_wakeup(sna);
 
-			bo = wait->bo;
+			bo = sna->mode.shadow;
 		}
 	}
 
@@ -1077,28 +1073,30 @@ static bool wait_for_shadow(struct sna *sna, struct sna_pixmap *priv, unsigned f
 			DBG(("%s: replacing exported GPU bo\n",
 			     __FUNCTION__));
 
-			RegionUninit(&wait->region);
-			wait->region.extents.x1 = 0;
-			wait->region.extents.y1 = 0;
-			wait->region.extents.x2 = pixmap->drawable.width;
-			wait->region.extents.y2 = pixmap->drawable.height;
-			wait->region.data = NULL;
+			RegionUninit(&sna->mode.shadow_region);
+			sna->mode.shadow_region.extents.x1 = 0;
+			sna->mode.shadow_region.extents.y1 = 0;
+			sna->mode.shadow_region.extents.x2 = pixmap->drawable.width;
+			sna->mode.shadow_region.extents.y2 = pixmap->drawable.height;
+			sna->mode.shadow_region.data = NULL;
 		} else
-			bo = wait->bo;
+			bo = sna->mode.shadow;
 	}
 
 	sna->mode.shadow_damage = damage;
 
-	if (flags & MOVE_READ && RegionNotEmpty(&wait->region)) {
+	if (flags & MOVE_READ && RegionNotEmpty(&sna->mode.shadow_region)) {
 		DBG(("%s: copying existing GPU damage: %ldx(%d, %d), (%d, %d)\n",
-		     __FUNCTION__, (long)REGION_NUM_RECTS(&wait->region),
-		     wait->region.extents.x1, wait->region.extents.y1,
-		     wait->region.extents.x2, wait->region.extents.y2));
+		     __FUNCTION__, (long)REGION_NUM_RECTS(&sna->mode.shadow_region),
+		     sna->mode.shadow_region.extents.x1,
+		     sna->mode.shadow_region.extents.y1,
+		     sna->mode.shadow_region.extents.x2,
+		     sna->mode.shadow_region.extents.y2));
 		ret = sna->render.copy_boxes(sna, GXcopy,
 					     pixmap, priv->gpu_bo, 0, 0,
 					     pixmap, bo, 0, 0,
-					     REGION_RECTS(&wait->region),
-					     REGION_NUM_RECTS(&wait->region),
+					     REGION_RECTS(&sna->mode.shadow_region),
+					     REGION_NUM_RECTS(&sna->mode.shadow_region),
 					     0);
 	}
 
@@ -1108,15 +1106,16 @@ static bool wait_for_shadow(struct sna *sna, struct sna_pixmap *priv, unsigned f
 	sna_pixmap_unmap(pixmap, priv);
 
 	DBG(("%s: setting front pixmap to handle=%d\n", __FUNCTION__, bo->handle));
-	kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
-	priv->gpu_bo = bo == wait->bo ? kgem_bo_reference(bo) : bo;
+	tmp = priv->gpu_bo;
+	priv->gpu_bo = bo;
+	if (bo != sna->mode.shadow)
+		kgem_bo_destroy(&sna->kgem, sna->mode.shadow);
+	sna->mode.shadow = tmp;
 
 	sna_dri2_pixmap_update_bo(sna, pixmap, bo);
 
 done:
-	kgem_bo_destroy(&sna->kgem, wait->bo);
-	RegionUninit(&wait->region);
-	free(wait);
+	RegionUninit(&sna->mode.shadow_region);
 
 	priv->move_to_gpu_data = NULL;
 	priv->move_to_gpu = NULL;
@@ -1127,25 +1126,27 @@ done:
 void sna_pixmap_discard_shadow_damage(struct sna_pixmap *priv,
 				      RegionPtr region)
 {
-	struct wait_for_shadow *wait = priv->move_to_gpu_data;
+	struct sna *sna;
 
 	if (priv->move_to_gpu != wait_for_shadow)
 		return;
 
+	sna = priv->move_to_gpu_data;
 	DBG(("%s: discarding region %dx[(%d, %d), (%d, %d)] from damage %dx[(%d, %d], (%d, %d)]\n",
 	     __FUNCTION__,
 	     RegionNumRects(region),
 	     region->extents.x1, region->extents.y1,
 	     region->extents.x2, region->extents.y2,
-	     RegionNumRects(&wait->region),
-	     wait->region.extents.x1, wait->region.extents.y1,
-	     wait->region.extents.x2, wait->region.extents.y2));
+	     RegionNumRects(&sna->mode.shadow_region),
+	     sna->mode.shadow_region.extents.x1, sna->mode.shadow_region.extents.y1,
+	     sna->mode.shadow_region.extents.x2, sna->mode.shadow_region.extents.y2));
 
-	assert(wait);
 	if (region)
-		RegionSubtract(&wait->region, &wait->region, region);
+		RegionSubtract(&sna->mode.shadow_region,
+			       &sna->mode.shadow_region,
+			       region);
 	else
-		RegionEmpty(&wait->region);
+		RegionEmpty(&sna->mode.shadow_region);
 }
 
 static bool sna_mode_enable_shadow(struct sna *sna)
@@ -1526,43 +1527,31 @@ static bool use_shadow(struct sna *sna, xf86CrtcPtr crtc)
 	return false;
 }
 
-static void set_shadow(PixmapPtr pixmap, struct kgem_bo *bo, RegionPtr region)
+static void set_shadow(struct sna *sna, RegionPtr region)
 {
-	struct sna_pixmap *priv = sna_pixmap(pixmap);
-	struct wait_for_shadow *wait;
+	struct sna_pixmap *priv = sna_pixmap(sna->front);
 
-	DBG(("%s: waiting for region %dx[(%d, %d), (%d, %d)] on handle=%d\n",
+	assert(priv->gpu_bo);
+	assert(sna->mode.shadow);
+
+	DBG(("%s: waiting for region %dx[(%d, %d), (%d, %d)], front handle=%d, shadow handle=%d\n",
 	     __FUNCTION__,
 	     RegionNumRects(region),
 	     region->extents.x1, region->extents.y1,
 	     region->extents.x2, region->extents.y2,
-	     bo->handle));
+	     priv->gpu_bo->handle, sna->mode.shadow->handle));
 
+	assert(priv->pinned & PIN_SCANOUT);
 	assert((priv->pinned & PIN_PRIME) == 0);
-	assert(bo != priv->gpu_bo);
-	assert(priv->gpu_bo);
-
-	wait = priv->move_to_gpu_data;
-	if (wait != NULL) {
-		assert(priv->move_to_gpu = wait_for_shadow);
-		assert(priv->pinned & PIN_SCANOUT);
-		assert(wait->bo == bo);
-		RegionUnion(&wait->region, &wait->region, region);
-		return;
-	}
+	assert(sna->mode.shadow != priv->gpu_bo);
 
 	assert(priv->move_to_gpu == NULL);
-	wait = malloc(sizeof(*wait));
-	if (wait != NULL) {
-		wait->bo = kgem_bo_reference(bo);
-		RegionNull(&wait->region);
-		RegionCopy(&wait->region, region);
 
-		priv->move_to_gpu = wait_for_shadow;
-		priv->move_to_gpu_data = wait;
-	}
+	RegionNull(&sna->mode.shadow_region);
+	RegionCopy(&sna->mode.shadow_region, region);
 
-	priv->pinned |= PIN_SCANOUT;
+	priv->move_to_gpu = wait_for_shadow;
+	priv->move_to_gpu_data = sna;
 }
 
 static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
@@ -1666,7 +1655,7 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 				}
 
 				sna->mode.shadow = shadow;
-				set_shadow(sna->front, shadow, &region);
+				set_shadow(sna, &region);
 			}
 		} else
 			sna_crtc_disable_shadow(sna, sna_crtc);
@@ -5943,11 +5932,7 @@ fixup_shadow:
 		if (sna->mode.flip_active) {
 			assert(old == sna->mode.shadow);
 			assert(old->refcnt >= 1);
-			set_shadow(sna->front, old, region);
-
-			assert(new->refcnt >= 1);
-			kgem_bo_destroy(&sna->kgem, old);
-			sna->mode.shadow = kgem_bo_reference(new);
+			set_shadow(sna, region);
 		}
 	} else
 		kgem_submit(&sna->kgem);

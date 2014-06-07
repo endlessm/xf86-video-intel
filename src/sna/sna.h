@@ -290,6 +290,7 @@ struct sna {
 		bool dirty;
 
 		int max_crtc_width, max_crtc_height;
+		RegionRec shadow_region;
 
 		unsigned num_real_crtc;
 		unsigned num_real_output;
