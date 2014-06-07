@@ -668,6 +668,16 @@ AC_MSG_RESULT($accel)
 
 xp_msg=""
 
+AC_ARG_ENABLE(tear-free,
+	      AS_HELP_STRING([--enable-tear-free],
+			     [Enable use of TearFree by default [default=no]]),
+	      [TEARFREE="$enableval"],
+	      [TEARFREE="no"])
+if test "x$TEARFREE" = "xyes"; then
+	AC_DEFINE(TEARFREE,1,[Enable "TearFree" by default])
+	xp_msg="$xp_msg TearFree"
+fi
+
 AC_ARG_ENABLE(rendernode,
 	      AS_HELP_STRING([--enable-rendernode],
 			     [Enable use of render nodes (experimental) [default=no]]),
