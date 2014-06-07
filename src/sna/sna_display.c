@@ -134,6 +134,7 @@ struct sna_property {
 };
 
 struct sna_output {
+	xf86OutputPtr base;
 	int id;
 	int serial;
 
@@ -523,9 +524,9 @@ static void sna_backlight_close(struct sna *sna) { }
 #endif
 
 static void
-sna_output_backlight_set(xf86OutputPtr output, int level)
+sna_output_backlight_set(struct sna_output *sna_output, int level)
 {
-	struct sna_output *sna_output = output->driver_private;
+	xf86OutputPtr output = sna_output->base;
 
 	DBG(("%s(%s) level=%d, max=%d\n", __FUNCTION__,
 	     output->name, level, sna_output->backlight.max));
@@ -2530,7 +2531,7 @@ sna_output_dpms(xf86OutputPtr output, int dpms)
 			     __FUNCTION__, sna_output->backlight_active_level));
 		}
 		sna_output->dpms_mode = dpms;
-		sna_output_backlight_set(output, 0);
+		sna_output_backlight_set(sna_output, 0);
 	}
 
 	if (output->crtc &&
@@ -2543,7 +2544,7 @@ sna_output_dpms(xf86OutputPtr output, int dpms)
 	if (sna_output->backlight.iface && dpms == DPMSModeOn) {
 		DBG(("%s: restoring previous backlight %d\n",
 		     __FUNCTION__, sna_output->backlight_active_level));
-		sna_output_backlight_set(output,
+		sna_output_backlight_set(sna_output,
 					 sna_output->backlight_active_level);
 	}
 
@@ -2710,7 +2711,7 @@ sna_output_set_property(xf86OutputPtr output, Atom property,
 
 		sna_output->backlight_active_level = val;
 		if (sna_output->dpms_mode == DPMSModeOn)
-			sna_output_backlight_set(output, val);
+			sna_output_backlight_set(sna_output, val);
 		return TRUE;
 	}
 
@@ -3196,6 +3197,7 @@ sna_output_add(struct sna *sna, int id, int serial)
 		compat_conn.conn.subpixel = 0;
 	output->subpixel_order = subpixel_conv_table[compat_conn.conn.subpixel];
 	output->driver_private = sna_output;
+	sna_output->base = output;
 
 	if (sna_output->is_panel)
 		sna_output_backlight_init(output);
@@ -5407,6 +5409,20 @@ void sna_mode_reset(struct sna *sna)
 		/* Force the rotation property to be reset on next use */
 		rotation_reset(&sna_crtc->primary_rotation);
 		rotation_reset(&sna_crtc->sprite_rotation);
+	}
+
+	/* VT switching, likely to fbcon so make the backlight usable */
+	for (i = 0; i < sna->mode.num_real_output; i++) {
+		struct sna_output *sna_output = to_sna_output(config->output[i]);
+
+		assert(sna_output != NULL);
+		assert(sna_output->dpms_mode == DPMSModeOff);
+
+		if (!sna_output->backlight.iface)
+			continue;
+
+		sna_output_backlight_set(sna_output,
+					 sna_output->backlight.max);
 	}
 }
 
