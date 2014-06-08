@@ -1612,9 +1612,14 @@ static void chain_swap(struct sna *sna, struct sna_dri2_event *chain)
 		return;
 	}
 
+	if (chain->queued) /* too early! */
+		return;
+
 	assert(chain == sna_dri2_window_get_chain((WindowPtr)chain->draw));
 	DBG(("%s: chaining draw=%ld, type=%d\n",
 	     __FUNCTION__, (long)chain->draw->id, chain->type));
+	chain->queued = true;
+
 	switch (chain->type) {
 	case SWAP_THROTTLE:
 		DBG(("%s: emitting chained vsync'ed blit\n", __FUNCTION__));
@@ -1628,10 +1633,8 @@ static void chain_swap(struct sna *sna, struct sna_dri2_event *chain)
 			vbl.request.sequence = 1;
 			vbl.request.signal = (uintptr_t)chain;
 
-			if (!sna_wait_vblank(sna, &vbl, chain->pipe)) {
-				chain->queued = true;
+			if (!sna_wait_vblank(sna, &vbl, chain->pipe))
 				return;
-			}
 
 			DBG(("%s -- requeue failed, errno=%d\n", __FUNCTION__, errno));
 		}
@@ -1639,6 +1642,7 @@ static void chain_swap(struct sna *sna, struct sna_dri2_event *chain)
 		if (can_xchg(sna, chain->draw, chain->front, chain->back)) {
 			sna_dri2_exchange_buffers(chain->draw, chain->front, chain->back);
 		} else {
+			assert(chain->queued);
 			chain->bo = __sna_dri2_copy_region(sna, chain->draw, NULL,
 							   chain->back, chain->front,
 							   true);
@@ -1655,7 +1659,6 @@ static void chain_swap(struct sna *sna, struct sna_dri2_event *chain)
 		DRM_VBLANK_EVENT;
 	vbl.request.sequence = 1;
 	vbl.request.signal = (uintptr_t)chain;
-	chain->queued = true;
 	if (sna_wait_vblank(sna, &vbl, chain->pipe)) {
 		DBG(("%s: vblank wait failed, unblocking client\n", __FUNCTION__));
 		frame_swap_complete(sna, chain, DRI2_BLIT_COMPLETE);
@@ -1736,6 +1739,7 @@ void sna_dri2_vblank_handler(struct sna *sna, struct drm_event_vblank *event)
 
 		/* else fall through to blit */
 	case SWAP:
+		assert(info->queued);
 		if (sna->mode.shadow && !sna->mode.shadow_damage) {
 			/* recursed from wait_for_shadow(), simply requeue */
 			DBG(("%s -- recursed from wait_for_shadow(), requeuing\n", __FUNCTION__));
@@ -1744,6 +1748,7 @@ void sna_dri2_vblank_handler(struct sna *sna, struct drm_event_vblank *event)
 			sna_dri2_exchange_buffers(draw, info->front, info->back);
 			info->type = SWAP_WAIT;
 		}  else {
+			assert(info->queued);
 			info->bo = __sna_dri2_copy_region(sna, draw, NULL,
 							  info->back, info->front, true);
 			info->type = SWAP_WAIT;
@@ -1829,6 +1834,7 @@ sna_dri2_immediate_blit(struct sna *sna,
 		DBG(("%s: no pending blit, starting chain\n",
 		     __FUNCTION__));
 
+		info->queued = true;
 		info->bo = __sna_dri2_copy_region(sna, draw, NULL,
 						  info->back,
 						  info->front,
@@ -1844,10 +1850,8 @@ sna_dri2_immediate_blit(struct sna *sna,
 				vbl.request.sequence = 1;
 				vbl.request.signal = (uintptr_t)info;
 				ret = !sna_wait_vblank(sna, &vbl, info->pipe);
-				if (ret) {
-					info->queued = true;
+				if (ret)
 					event = !swap_limit(draw, 2);
-				}
 			}
 			if (event) {
 				DBG(("%s: fake triple buffering, unblocking client\n", __FUNCTION__));
@@ -1920,12 +1924,14 @@ static void chain_flip(struct sna *sna)
 	}
 
 	assert(chain == sna_dri2_window_get_chain((WindowPtr)chain->draw));
+	chain->queued = true;
 
 	if (can_flip(sna, chain->draw, chain->front, chain->back, chain->crtc) &&
 	    sna_dri2_flip(sna, chain)) {
 		DBG(("%s: performing chained flip\n", __FUNCTION__));
 	} else {
 		DBG(("%s: emitting chained vsync'ed blit\n", __FUNCTION__));
+		assert(chain->queued);
 		chain->bo = __sna_dri2_copy_region(sna, chain->draw, NULL,
 						  chain->back, chain->front,
 						  true);
@@ -1942,10 +1948,9 @@ static void chain_flip(struct sna *sna)
 			vbl.request.sequence = 1;
 			vbl.request.signal = (uintptr_t)chain;
 
-			if (!sna_wait_vblank(sna, &vbl, chain->pipe)) {
-				chain->queued = true;
+			assert(chain->queued);
+			if (!sna_wait_vblank(sna, &vbl, chain->pipe))
 				return;
-			}
 		}
 
 		DBG(("%s: fake triple buffering (or vblank wait failed), unblocking client\n", __FUNCTION__));
@@ -2235,6 +2240,7 @@ out:
 		vbl.reply.sequence = draw_target_seq(draw, *target_msc - 1);
 		vbl.request.signal = (uintptr_t)info;
 
+		info->queued = true;
 		if (sna_wait_vblank(sna, &vbl, info->pipe)) {
 			sna_dri2_event_free(sna, draw, info);
 			return false;
@@ -2242,7 +2248,6 @@ out:
 	}
 
 	DBG(("%s: reported target_msc=%llu\n", __FUNCTION__, *target_msc));
-	info->queued = true;
 	swap_limit(draw, 1);
 	return true;
 }
@@ -2291,12 +2296,12 @@ sna_dri2_schedule_xchg(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 			vbl.request.sequence = 1;
 			vbl.request.signal = (uintptr_t)info;
 
+			info->queued = true;
 			if (sna_wait_vblank(sna, &vbl, info->pipe)) {
 				sna_dri2_event_free(sna, draw, info);
 				goto complete;
 			}
 
-			info->queued = true;
 			swap_limit(draw, 2);
 		}
 	} else {
@@ -2425,6 +2430,7 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 	 * the swap.
 	 */
 	info->type = SWAP;
+	info->queued = true;
 	if (divisor && current_msc >= *target_msc) {
 		DBG(("%s: missed target, queueing event for next: current=%lld, target=%lld, divisor=%lld, remainder=%lld\n",
 		     __FUNCTION__,
@@ -2440,6 +2446,7 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 	vbl.request.sequence = draw_target_seq(draw, *target_msc - 1);
 	if (*target_msc <= current_msc + 1) {
 		DBG(("%s: performing blit before queueing\n", __FUNCTION__));
+		assert(info->queued);
 		info->bo = __sna_dri2_copy_region(sna, draw, NULL,
 						  back, front,
 						  true);
@@ -2452,11 +2459,11 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 		*target_msc = current_msc + 1;
 	}
 
+	assert(info->queued);
 	if (sna_wait_vblank(sna, &vbl, info->pipe))
 		goto blit;
 
 	DBG(("%s: reported target_msc=%llu\n", __FUNCTION__, *target_msc));
-	info->queued = true;
 	swap_limit(draw, 1 + (info->type == SWAP_WAIT));
 	return TRUE;
 
@@ -2585,10 +2592,10 @@ sna_dri2_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc
 	}
 	vbl.request.sequence = draw_target_seq(draw, target_msc);
 
+	info->queued = true;
 	if (sna_wait_vblank(sna, &vbl, pipe))
 		goto out_free_info;
 
-	info->queued = true;
 	DRI2BlockClient(client, draw);
 	return TRUE;
 
