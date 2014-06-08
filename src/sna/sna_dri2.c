@@ -1497,7 +1497,7 @@ can_xchg(struct sna * sna,
 		return false;
 	}
 
-	if (pixmap == sna->front && !(sna->flags & SNA_TEAR_FREE)) {
+	if (pixmap == sna->front && !(sna->flags & SNA_TEAR_FREE) && sna->mode.front_active) {
 		DBG(("%s: no, front buffer, requires flipping\n",
 		     __FUNCTION__));
 		return false;
