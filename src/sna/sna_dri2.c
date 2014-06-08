@@ -40,6 +40,7 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <time.h>
 #include <string.h>
 #include <unistd.h>
+#include <poll.h>
 
 #include "sna.h"
 #include "intel_options.h"
@@ -209,13 +210,14 @@ struct dri2_window {
 
 static struct dri2_window *dri2_window(WindowPtr win)
 {
+	assert(win->drawable.type != DRAWABLE_PIXMAP);
 	return ((void **)__get_private(win, sna_window_key))[1];
 }
 
 static struct sna_dri2_event *
-sna_dri2_window_get_chain(WindowPtr win)
+dri2_chain(DrawablePtr d)
 {
-	struct dri2_window *priv = dri2_window(win);
+	struct dri2_window *priv = dri2_window((WindowPtr)d);
 	assert(priv != NULL);
 	return priv->chain;
 }
@@ -246,8 +248,7 @@ sna_dri2_reuse_buffer(DrawablePtr draw, DRI2BufferPtr buffer)
 	if (buffer->attachment == DRI2BufferBackLeft &&
 	    draw->type != DRAWABLE_PIXMAP) {
 		DBG(("%s: replacing back buffer\n", __FUNCTION__));
-		sna_dri2_get_back(to_sna_from_drawable(draw), buffer,
-				  sna_dri2_window_get_chain((WindowPtr)draw));
+		sna_dri2_get_back(to_sna_from_drawable(draw), buffer, dri2_chain(draw));
 
 		assert(kgem_bo_flink(&to_sna_from_drawable(draw)->kgem, get_private(buffer)->bo) == buffer->name);
 		assert(get_private(buffer)->bo->active_scanout == 0);
@@ -1615,7 +1616,7 @@ static void chain_swap(struct sna *sna, struct sna_dri2_event *chain)
 	if (chain->queued) /* too early! */
 		return;
 
-	assert(chain == sna_dri2_window_get_chain((WindowPtr)chain->draw));
+	assert(chain == dri2_chain((WindowPtr)chain->draw));
 	DBG(("%s: chaining draw=%ld, type=%d\n",
 	     __FUNCTION__, (long)chain->draw->id, chain->type));
 	chain->queued = true;
@@ -1826,11 +1827,11 @@ sna_dri2_immediate_blit(struct sna *sna,
 		sync = false;
 
 	DBG(("%s: emitting immediate blit, throttling client, synced? %d, chained? %d, send-event? %d\n",
-	     __FUNCTION__, sync, sna_dri2_window_get_chain((WindowPtr)draw) != info,
+	     __FUNCTION__, sync, dri2_chain(draw) != info,
 	     event));
 
 	info->type = SWAP_THROTTLE;
-	if (!sync || sna_dri2_window_get_chain((WindowPtr)draw) == info) {
+	if (!sync || dri2_chain(draw) == info) {
 		DBG(("%s: no pending blit, starting chain\n",
 		     __FUNCTION__));
 
@@ -1923,7 +1924,7 @@ static void chain_flip(struct sna *sna)
 		return;
 	}
 
-	assert(chain == sna_dri2_window_get_chain((WindowPtr)chain->draw));
+	assert(chain == dri2_chain(chain->draw));
 	chain->queued = true;
 
 	if (can_flip(sna, chain->draw, chain->front, chain->back, chain->crtc) &&
@@ -2266,7 +2267,7 @@ sna_dri2_schedule_xchg(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 		return false;
 
 	sync = current_msc < *target_msc;
-	event = sna_dri2_window_get_chain((WindowPtr)draw) == NULL;
+	event = dri2_chain(draw) == NULL;
 	if (!sync || event) {
 		DBG(("%s: performing immediate xchg on pipe %d\n",
 		     __FUNCTION__, sna_crtc_to_pipe(crtc)));
@@ -2311,6 +2312,14 @@ complete:
 
 	*target_msc = current_msc + 1;
 	return true;
+}
+
+static bool has_pending_events(struct sna *sna)
+{
+	struct pollfd pfd;
+	pfd.fd = sna->kgem.fd;
+	pfd.events = POLLIN;
+	return poll(&pfd, 1, 0) == 1;
 }
 
 /*
@@ -2384,6 +2393,13 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 	if (crtc == NULL) {
 		DBG(("%s: off-screen, immediate update\n", __FUNCTION__));
 		goto blit;
+	}
+
+	assert(draw->type != DRAWABLE_PIXMAP);
+
+	while (dri2_chain(draw) && has_pending_events(sna)) {
+		DBG(("%s: flushing pending events\n", __FUNCTIONS__));
+		sna_mode_wakeup(sna);
 	}
 
 	if (can_xchg(sna, draw, front, back) &&
