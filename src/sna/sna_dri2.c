@@ -1616,7 +1616,7 @@ static void chain_swap(struct sna *sna, struct sna_dri2_event *chain)
 	if (chain->queued) /* too early! */
 		return;
 
-	assert(chain == dri2_chain((WindowPtr)chain->draw));
+	assert(chain == dri2_chain(chain->draw));
 	DBG(("%s: chaining draw=%ld, type=%d\n",
 	     __FUNCTION__, (long)chain->draw->id, chain->type));
 	chain->queued = true;
@@ -2398,7 +2398,7 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 	assert(draw->type != DRAWABLE_PIXMAP);
 
 	while (dri2_chain(draw) && has_pending_events(sna)) {
-		DBG(("%s: flushing pending events\n", __FUNCTIONS__));
+		DBG(("%s: flushing pending events\n", __FUNCTION__));
 		sna_mode_wakeup(sna);
 	}
 
