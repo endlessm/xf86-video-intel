@@ -1467,13 +1467,17 @@ can_xchg(struct sna * sna,
 		return false;
 	}
 
-	DBG(("%s: window size: %dx%d, clip=(%d, %d), (%d, %d) x %d\n",
+	pixmap = get_window_pixmap(win);
+
+	DBG(("%s: window size: %dx%d, clip=(%d, %d), (%d, %d) x %d, pixmap size=%dx%d\n",
 	     __FUNCTION__,
 	     win->drawable.width, win->drawable.height,
 	     win->clipList.extents.x1, win->clipList.extents.y1,
 	     win->clipList.extents.x2, win->clipList.extents.y2,
-	     RegionNumRects(&win->clipList)));
-	if (is_clipped(&win->clipList, draw)) {
+	     RegionNumRects(&win->clipList),
+	     pixmap->drawable.width,
+	     pixmap->drawable.height));
+	if (is_clipped(&win->clipList, &pixmap->drawable)) {
 		DBG(("%s: no, %dx%d window is clipped: clip region=(%d, %d), (%d, %d)\n",
 		     __FUNCTION__,
 		     draw->width, draw->height,
@@ -1492,7 +1496,6 @@ can_xchg(struct sna * sna,
 		return false;
 	}
 
-	pixmap = get_window_pixmap(win);
 	if (pixmap == sna->front && !(sna->flags & SNA_TEAR_FREE)) {
 		DBG(("%s: no, front buffer, requires flipping\n",
 		     __FUNCTION__));
