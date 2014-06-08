@@ -2485,9 +2485,12 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 
 blit:
 	DBG(("%s -- blit\n", __FUNCTION__));
-	__sna_dri2_copy_region(sna, draw, NULL, back, front, false);
 	if (info)
 		sna_dri2_event_free(sna, draw, info);
+	if (can_xchg(sna, draw, front, back))
+		sna_dri2_exchange_buffers(draw, front, back);
+	else
+		__sna_dri2_copy_region(sna, draw, NULL, back, front, false);
 skip:
 	DBG(("%s: unable to show frame, unblocking client\n", __FUNCTION__));
 	if (crtc == NULL)
