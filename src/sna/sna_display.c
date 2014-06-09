@@ -4462,7 +4462,7 @@ static int do_page_flip(struct sna *sna, struct kgem_bo *bo,
 		if (bo->pitch != crtc->bo->pitch || crtc_offset != crtc->offset) {
 			DBG(("%s: changing pitch (%d == %d) or offset (%x == %x)\n",
 			     __FUNCTION__,
-			     flip_bo->pitch, crtc->bo->pitch,
+			     bo->pitch, crtc->bo->pitch,
 			     crtc_offset, crtc->offset));
 fixup_flip:
 			if (sna_crtc_flip(sna, crtc)) {
