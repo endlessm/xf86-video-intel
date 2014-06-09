@@ -291,6 +291,8 @@ struct sna {
 
 		int max_crtc_width, max_crtc_height;
 		RegionRec shadow_region;
+		struct list shadow_crtc;
+		bool shadow_dirty;
 
 		unsigned num_real_crtc;
 		unsigned num_real_output;
@@ -424,6 +426,8 @@ extern void sna_mode_check(struct sna *sna);
 extern void sna_mode_reset(struct sna *sna);
 extern void sna_mode_wakeup(struct sna *sna);
 extern void sna_mode_redisplay(struct sna *sna);
+extern void sna_shadow_set_crtc(struct sna *sna, xf86CrtcPtr crtc, struct kgem_bo *bo);
+extern void sna_shadow_unset_crtc(struct sna *sna, xf86CrtcPtr crtc);
 extern void sna_pixmap_discard_shadow_damage(struct sna_pixmap *priv,
 					     RegionPtr region);
 extern void sna_mode_close(struct sna *sna);
@@ -570,7 +574,8 @@ extern bool sna_crtc_set_sprite_rotation(xf86CrtcPtr crtc, uint32_t rotation);
 extern int sna_crtc_to_pipe(xf86CrtcPtr crtc);
 extern uint32_t sna_crtc_to_sprite(xf86CrtcPtr crtc);
 extern uint32_t sna_crtc_id(xf86CrtcPtr crtc);
-extern int sna_crtc_is_on(xf86CrtcPtr crtc);
+extern bool sna_crtc_is_on(xf86CrtcPtr crtc);
+extern bool sna_crtc_is_transformed(xf86CrtcPtr crtc);
 
 CARD32 sna_format_for_depth(int depth);
 CARD32 sna_render_format_for_depth(int depth);
@@ -688,6 +693,7 @@ sna_pixmap_undo_cow(struct sna *sna, struct sna_pixmap *priv, unsigned flags);
 #define MOVE_WHOLE_HINT 0x20
 #define __MOVE_FORCE 0x40
 #define __MOVE_DRI 0x80
+#define __MOVE_SCANOUT 0x100
 
 struct sna_pixmap *
 sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int flags);

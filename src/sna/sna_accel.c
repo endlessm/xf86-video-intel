@@ -16868,7 +16868,7 @@ static void sna_scanout_flush(struct sna *sna)
 
 	if (priv &&
 	    sna_pixmap_force_to_gpu(priv->pixmap,
-				    MOVE_READ | MOVE_ASYNC_HINT))
+				    MOVE_READ | MOVE_ASYNC_HINT | __MOVE_SCANOUT))
 		kgem_scanout_flush(&sna->kgem, priv->gpu_bo);
 
 	sna_mode_redisplay(sna);
