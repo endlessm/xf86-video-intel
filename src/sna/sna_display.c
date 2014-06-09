@@ -1044,36 +1044,32 @@ static bool wait_for_shadow(struct sna *sna, struct sna_pixmap *priv, unsigned f
 	if (flags == 0 || pixmap != sna->front || !sna->mode.shadow_damage)
 		goto done;
 
-	if ((flags & __MOVE_SCANOUT) == 0) {
-		while (!list_is_empty(&sna->mode.shadow_crtc)) {
-			struct sna_crtc *crtc =
-				list_first_entry(&sna->mode.shadow_crtc, struct sna_crtc, shadow_link);
-			RegionRec region;
+	if ((flags & MOVE_WRITE) == 0) {
+		if ((flags & __MOVE_SCANOUT) == 0) {
+			while (!list_is_empty(&sna->mode.shadow_crtc)) {
+				struct sna_crtc *crtc =
+					list_first_entry(&sna->mode.shadow_crtc, struct sna_crtc, shadow_link);
 
-			DBG(("%s: copying replaced CRTC: (%d, %d), (%d, %d)\n",
-			     __FUNCTION__,
-			     crtc->base->bounds.x1,
-			     crtc->base->bounds.y1,
-			     crtc->base->bounds.x2,
-			     crtc->base->bounds.y2));
-			ret = sna->render.copy_boxes(sna, GXcopy,
-						     pixmap, crtc->shadow_bo, -crtc->base->bounds.x1, -crtc->base->bounds.y1,
-						     pixmap, priv->gpu_bo, 0, 0,
-						     &crtc->base->bounds, 1,
-						     0);
+				DBG(("%s: copying replaced CRTC: (%d, %d), (%d, %d)\n",
+				     __FUNCTION__,
+				     crtc->base->bounds.x1,
+				     crtc->base->bounds.y1,
+				     crtc->base->bounds.x2,
+				     crtc->base->bounds.y2));
+				ret &= sna->render.copy_boxes(sna, GXcopy,
+							      pixmap, crtc->shadow_bo, -crtc->base->bounds.x1, -crtc->base->bounds.y1,
+							      pixmap, priv->gpu_bo, 0, 0,
+							      &crtc->base->bounds, 1,
+							      0);
 
-			kgem_bo_destroy(&sna->kgem, crtc->shadow_bo);
-			crtc->shadow_bo = NULL;
-			list_del(&crtc->shadow_link);
-
-			region.extents = crtc->base->bounds;
-			region.data = NULL;
-			RegionSubtract(&sna->mode.shadow_region, &sna->mode.shadow_region, &region);
+				kgem_bo_destroy(&sna->kgem, crtc->shadow_bo);
+				crtc->shadow_bo = NULL;
+				list_del(&crtc->shadow_link);
+			}
 		}
-	}
 
-	if ((flags & MOVE_WRITE) == 0)
-		return true;
+		return ret;
+	}
 
 	assert(sna->mode.shadow_active);
 
@@ -1132,6 +1128,32 @@ static bool wait_for_shadow(struct sna *sna, struct sna_pixmap *priv, unsigned f
 	}
 
 	sna->mode.shadow_damage = damage;
+
+	while (!list_is_empty(&sna->mode.shadow_crtc)) {
+		struct sna_crtc *crtc =
+			list_first_entry(&sna->mode.shadow_crtc, struct sna_crtc, shadow_link);
+		RegionRec region;
+
+		DBG(("%s: copying replaced CRTC: (%d, %d), (%d, %d)\n",
+		     __FUNCTION__,
+		     crtc->base->bounds.x1,
+		     crtc->base->bounds.y1,
+		     crtc->base->bounds.x2,
+		     crtc->base->bounds.y2));
+		ret = sna->render.copy_boxes(sna, GXcopy,
+					     pixmap, crtc->shadow_bo, -crtc->base->bounds.x1, -crtc->base->bounds.y1,
+					     pixmap, bo, 0, 0,
+					     &crtc->base->bounds, 1,
+					     0);
+
+		kgem_bo_destroy(&sna->kgem, crtc->shadow_bo);
+		crtc->shadow_bo = NULL;
+		list_del(&crtc->shadow_link);
+
+		region.extents = crtc->base->bounds;
+		region.data = NULL;
+		RegionSubtract(&sna->mode.shadow_region, &sna->mode.shadow_region, &region);
+	}
 
 	if (flags & MOVE_READ && RegionNotEmpty(&sna->mode.shadow_region)) {
 		DBG(("%s: copying existing GPU damage: %ldx(%d, %d), (%d, %d)\n",
