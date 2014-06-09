@@ -2001,18 +2001,17 @@ sna_crtc_dpms(xf86CrtcPtr crtc, int mode)
 		return;
 
 	assert(priv);
+	priv->dpms_mode = mode;
 
-	if (mode == DPMSModeOn) {
-		if (priv->bo == NULL &&
-		    !sna_crtc_set_mode_major(crtc,
-					     &crtc->mode, crtc->rotation,
-					     crtc->x, crtc->y))
-			sna_crtc_disable(crtc);
-	} else
+	if (mode == DPMSModeOn &&
+	    priv->bo == NULL &&
+	    !sna_crtc_set_mode_major(crtc,
+				     &crtc->mode, crtc->rotation,
+				     crtc->x, crtc->y))
+		mode = DPMSModeOff;
+
+	if (mode != DPMSModeOn)
 		sna_crtc_disable(crtc);
-
-	if (priv->bo != NULL)
-		priv->dpms_mode = mode;
 }
 
 void sna_mode_adjust_frame(struct sna *sna, int x, int y)
@@ -5553,8 +5552,12 @@ void sna_mode_check(struct sna *sna)
 		     mode.crtc_id, mode.mode_valid,
 		     mode.fb_id, expected[0], expected[1]));
 
-		if (mode.fb_id != expected[0] && mode.fb_id != expected[1])
+		if (mode.fb_id != expected[0] && mode.fb_id != expected[1]) {
+			xf86DrvMsg(crtc->scrn->scrnIndex, X_ERROR,
+				   "%s: invalid state found on pipe %d, disabling CRTC:%d\n",
+				   __FUNCTION__, sna_ctrtc->pipe, sna_crtc->id);
 			sna_crtc_disable(crtc);
+		}
 	}
 
 	for (i = 0; i < config->num_output; i++) {
