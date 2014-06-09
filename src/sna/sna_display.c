@@ -4347,6 +4347,71 @@ sna_cursors_fini(struct sna *sna)
 	}
 }
 
+static bool
+sna_crtc_flip(struct sna *sna, struct sna_crtc *crtc)
+{
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	struct kgem_bo *bo = crtc->shadow_bo ? crtc->shadow_bo : crtc->bo;
+	struct drm_mode_crtc arg;
+	uint32_t output_ids[32];
+	int output_count = 0;
+	int i;
+
+	DBG(("%s CRTC:%d [pipe=%d], handle=%d\n", __FUNCTION__, crtc->id, crtc->pipe, bo->handle));
+
+	assert(config->num_output < ARRAY_SIZE(output_ids));
+
+	for (i = 0; i < config->num_output; i++) {
+		xf86OutputPtr output = config->output[i];
+
+		if (output->crtc != crtc->base)
+			continue;
+
+		DBG(("%s: attaching output '%s' %d [%d] to crtc:%d (pipe %d) (possible crtc:%x, possible clones:%x)\n",
+		     __FUNCTION__, output->name, i, to_connector_id(output),
+		     crtc->id, crtc->pipe,
+		     (uint32_t)output->possible_crtcs,
+		     (uint32_t)output->possible_clones));
+
+		assert(output->possible_crtcs & (1 << crtc->pipe) ||
+		       xf86IsEntityShared(sna->scrn->entityList[0]));
+
+		output_ids[output_count] = to_connector_id(output);
+		if (++output_count == ARRAY_SIZE(output_ids))
+			return false;
+	}
+
+	VG_CLEAR(arg);
+	arg.crtc_id = crtc->id;
+	arg.fb_id = fb_id(bo);
+	assert(arg.fb_id);
+	if (bo != crtc->bo) {
+		arg.x = 0;
+		arg.y = 0;
+		crtc->offset = 0;
+	} else {
+		arg.x = crtc->base->x;
+		arg.y = crtc->base->y;
+		crtc->offset = arg.y << 16 | arg.x;
+	}
+	arg.set_connectors_ptr = (uintptr_t)output_ids;
+	arg.count_connectors = output_count;
+	arg.mode = crtc->kmode;
+	arg.mode_valid = 1;
+
+	DBG(("%s: applying crtc [%d, pipe=%d] mode=%dx%d+%d+%d@%d, fb=%d%s update to %d outputs [%d...]\n",
+	     __FUNCTION__, crtc->id, crtc->pipe,
+	     arg.mode.hdisplay,
+	     arg.mode.vdisplay,
+	     arg.x, arg.y,
+	     arg.mode.clock,
+	     arg.fb_id,
+	     bo != crtc->bo ? " [shadow]" : "",
+	     output_count, output_count ? output_ids[0] : 0));
+
+	return drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_SETCRTC, &arg) == 0;
+}
+
 static int do_page_flip(struct sna *sna, struct kgem_bo *bo,
 			sna_flip_handler_t handler, void *data)
 {
@@ -4374,19 +4439,52 @@ static int do_page_flip(struct sna *sna, struct kgem_bo *bo,
 	for (i = 0; i < sna->mode.num_real_crtc; i++) {
 		struct sna_crtc *crtc = config->crtc[i]->driver_private;
 		struct drm_mode_crtc_page_flip arg;
+		uint32_t crtc_offset;
 
 		DBG(("%s: crtc %d id=%d, pipe=%d active? %d\n",
 		     __FUNCTION__, i, crtc->id, crtc->pipe, crtc->bo != NULL));
 		if (crtc->bo == NULL)
 			continue;
+		assert(!crtc->transform);
 		assert(crtc->bo->active_scanout);
 		assert(crtc->bo->refcnt >= crtc->bo->active_scanout);
+		assert(crtc->flip_bo == NULL);
 
 		arg.crtc_id = crtc->id;
 		arg.fb_id = get_fb(sna, bo, width, height);
 		if (arg.fb_id == 0) {
 			assert(count == 0);
 			return 0;
+		}
+
+		crtc_offset = crtc->base->y << 16 | crtc->base->x;
+
+		if (bo->pitch != crtc->bo->pitch || crtc_offset != crtc->offset) {
+			DBG(("%s: changing pitch (%d == %d) or offset (%x == %x)\n",
+			     __FUNCTION__,
+			     flip_bo->pitch, crtc->bo->pitch,
+			     crtc_offset, crtc->offset));
+fixup_flip:
+			if (sna_crtc_flip(sna, crtc)) {
+				assert(crtc->bo->active_scanout);
+				assert(crtc->bo->refcnt >= crtc->bo->active_scanout);
+				crtc->bo->active_scanout--;
+				kgem_bo_destroy(&sna->kgem, crtc->bo);
+
+				crtc->bo = kgem_bo_reference(bo);
+				crtc->bo->active_scanout++;
+
+				count++;
+				continue;
+			} else {
+				if (count && !xf86SetDesiredModes(sna->scrn)) {
+					xf86DrvMsg(sna->scrn->scrnIndex, X_ERROR,
+						   "failed to restore display configuration\n");
+					for (; i < sna->mode.num_real_crtc; i++)
+						sna_crtc_disable(config->crtc[i]);
+				}
+				return 0;
+			}
 		}
 
 		/* Only the reference crtc will finally deliver its page flip
@@ -4404,20 +4502,11 @@ static int do_page_flip(struct sna *sna, struct kgem_bo *bo,
 		DBG(("%s: crtc %d id=%d, pipe=%d  --> fb %d\n",
 		     __FUNCTION__, i, crtc->id, crtc->pipe, arg.fb_id));
 		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_PAGE_FLIP, &arg)) {
-			DBG(("%s: flip [fb=%d] on crtc %d id=%d pipe=%d failed - %d\n",
-			     __FUNCTION__, arg.fb_id, i, crtc->id, crtc->pipe, errno));
 			xf86DrvMsg(sna->scrn->scrnIndex, X_ERROR,
 				   "page flipping failed, on CRTC:%d (pipe=%d), disabling %s page flips\n",
 				   crtc->id, crtc->pipe, data ? "synchronous": "asynchronous");
-			if (count && !xf86SetDesiredModes(sna->scrn)) {
-				xf86DrvMsg(sna->scrn->scrnIndex, X_ERROR,
-					   "failed to restore display configuration\n");
-				for (; i < sna->mode.num_real_crtc; i++)
-					sna_crtc_disable(config->crtc[i]);
-			}
-
 			sna->flags &= ~(data ? SNA_HAS_FLIP : SNA_HAS_ASYNC_FLIP);
-			return 0;
+			goto fixup_flip;
 		}
 
 		if (data) {
@@ -5800,71 +5889,6 @@ void sna_shadow_unset_crtc(struct sna *sna,
 	sna->mode.shadow_dirty = true;
 
 	sna_crtc_damage(crtc);
-}
-
-static bool
-sna_crtc_flip(struct sna *sna, struct sna_crtc *crtc)
-{
-	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
-	struct kgem_bo *bo = crtc->shadow_bo ? crtc->shadow_bo : crtc->bo;
-	struct drm_mode_crtc arg;
-	uint32_t output_ids[32];
-	int output_count = 0;
-	int i;
-
-	DBG(("%s CRTC:%d [pipe=%d], handle=%d\n", __FUNCTION__, crtc->id, crtc->pipe, bo->handle));
-
-	assert(config->num_output < ARRAY_SIZE(output_ids));
-
-	for (i = 0; i < config->num_output; i++) {
-		xf86OutputPtr output = config->output[i];
-
-		if (output->crtc != crtc->base)
-			continue;
-
-		DBG(("%s: attaching output '%s' %d [%d] to crtc:%d (pipe %d) (possible crtc:%x, possible clones:%x)\n",
-		     __FUNCTION__, output->name, i, to_connector_id(output),
-		     crtc->id, crtc->pipe,
-		     (uint32_t)output->possible_crtcs,
-		     (uint32_t)output->possible_clones));
-
-		assert(output->possible_crtcs & (1 << crtc->pipe) ||
-		       xf86IsEntityShared(sna->scrn->entityList[0]));
-
-		output_ids[output_count] = to_connector_id(output);
-		if (++output_count == ARRAY_SIZE(output_ids))
-			return false;
-	}
-
-	VG_CLEAR(arg);
-	arg.crtc_id = crtc->id;
-	arg.fb_id = fb_id(bo);
-	assert(arg.fb_id);
-	if (bo != crtc->bo) {
-		arg.x = 0;
-		arg.y = 0;
-		crtc->offset = 0;
-	} else {
-		arg.x = crtc->base->x;
-		arg.y = crtc->base->y;
-		crtc->offset = arg.y << 16 | arg.x;
-	}
-	arg.set_connectors_ptr = (uintptr_t)output_ids;
-	arg.count_connectors = output_count;
-	arg.mode = crtc->kmode;
-	arg.mode_valid = 1;
-
-	DBG(("%s: applying crtc [%d, pipe=%d] mode=%dx%d+%d+%d@%d, fb=%d%s update to %d outputs [%d...]\n",
-	     __FUNCTION__, crtc->id, crtc->pipe,
-	     arg.mode.hdisplay,
-	     arg.mode.vdisplay,
-	     arg.x, arg.y,
-	     arg.mode.clock,
-	     arg.fb_id,
-	     bo != crtc->bo ? " [shadow]" : "",
-	     output_count, output_count ? output_ids[0] : 0));
-
-	return drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_SETCRTC, &arg) == 0;
 }
 
 void sna_mode_redisplay(struct sna *sna)
