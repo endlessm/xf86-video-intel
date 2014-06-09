@@ -1459,6 +1459,14 @@ can_flip(struct sna * sna,
 		return false;
 	}
 
+	if (get_private(front)->bo->pitch != get_private(back)->bo->pitch) {
+		DBG(("%s -- no, pitch mismatch: front %d, back=%d\n",
+		     __FUNCTION__,
+		     get_private(front)->bo->pitch,
+		     get_private(back)->bo->pitch));
+		return false;
+	}
+
 	if (sna_pixmap(pixmap)->pinned & ~(PIN_DRI2 | PIN_SCANOUT)) {
 		DBG(("%s -- no, pinned: front %x\n",
 		     __FUNCTION__, sna_pixmap(pixmap)->pinned));
