@@ -478,6 +478,10 @@ static void sna_backlight_pre_init(struct sna *sna)
 	struct udev *u;
 	struct udev_monitor *mon;
 
+#if !USE_BACKLIGHT
+	return;
+#endif
+
 	u = udev_new();
 	if (!u)
 		return;
@@ -605,6 +609,10 @@ sna_output_backlight_init(xf86OutputPtr output)
 	struct pci_device *pci;
 	MessageType from;
 	char *best_iface;
+
+#if !USE_BACKLIGHT
+	return;
+#endif
 
 	from = X_CONFIG;
 	best_iface = has_user_backlight_override(output);

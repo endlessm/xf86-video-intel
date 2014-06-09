@@ -186,6 +186,10 @@ intel_output_backlight_init(xf86OutputPtr output)
 	intel_screen_private *intel = intel_get_screen_private(output->scrn);
 	char *str;
 
+#if !USE_BACKLIGHT
+	return;
+#endif
+
 	str = xf86GetOptValString(intel->Options, OPTION_BACKLIGHT);
 	if (str != NULL) {
 		if (backlight_exists(str) != BL_NONE) {
