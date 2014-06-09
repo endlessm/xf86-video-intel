@@ -5555,7 +5555,7 @@ void sna_mode_check(struct sna *sna)
 		if (mode.fb_id != expected[0] && mode.fb_id != expected[1]) {
 			xf86DrvMsg(crtc->scrn->scrnIndex, X_ERROR,
 				   "%s: invalid state found on pipe %d, disabling CRTC:%d\n",
-				   __FUNCTION__, sna_ctrtc->pipe, sna_crtc->id);
+				   __FUNCTION__, sna_crtc->pipe, sna_crtc->id);
 			sna_crtc_disable(crtc);
 		}
 	}
