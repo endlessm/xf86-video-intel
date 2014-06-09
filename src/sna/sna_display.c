@@ -189,12 +189,17 @@ static inline struct sna_crtc *to_sna_crtc(xf86CrtcPtr crtc)
 	return crtc->driver_private;
 }
 
-static bool sna_mode_has_pending_events(struct sna *sna)
+static inline bool event_pending(int fd)
 {
 	struct pollfd pfd;
-	pfd.fd = sna->kgem.fd;
+	pfd.fd = fd;
 	pfd.events = POLLIN;
 	return poll(&pfd, 1, 0) == 1;
+}
+
+static bool sna_mode_has_pending_events(struct sna *sna)
+{
+	return event_pending(sna->kgem.fd);
 }
 
 static bool sna_mode_wait_for_event(struct sna *sna)
@@ -411,17 +416,19 @@ sna_backlight_uevent(int fd, void *closure)
 	DBG(("%s()\n", __FUNCTION__));
 
 	/* Drain the event queue */
-	do {
+	while (event_pending(fd)) {
 		struct udev_device *dev;
 
+		DBG(("%s: waiting for uevent\n", __FUNCTION__));
 		dev = udev_monitor_receive_device(sna->mode.backlight_monitor);
 		if (dev == NULL)
 			break;
 
 		udev_device_unref(dev);
-	} while (1);
+	}
 
 	/* Query all backlights for any changes */
+	DBG(("%s: probing backlights for changes\n", __FUNCTION__));
 	for (i = 0; i < sna->mode.num_real_output; i++) {
 		xf86OutputPtr output = config->output[i];
 		struct sna_output *sna_output = to_sna_output(output);
