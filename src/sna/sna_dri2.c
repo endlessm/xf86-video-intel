@@ -1605,6 +1605,16 @@ can_xchg_one(struct sna *sna,
 		return false;
 	}
 
+	if (memcmp(&win->clipList.extents, &crtc->bounds, sizeof(crtc->bounds))) {
+		DBG(("%s: no, window [(%d, %d), (%d, %d)] does not cover CRTC [(%d, %d), (%d, %d)]\n",
+		     __FUNCTION__,
+		     win->clipList.extents.x1, win->clipList.extents.y1,
+		     win->clipList.extents.x2, win->clipList.extents.y2,
+		     crtc->bounds.x1, crtc->bounds.y1,
+		     crtc->bounds.x2, crtc->bounds.y2));
+		return false;
+	}
+
 	if (sna_crtc_is_transformed(crtc)) {
 		DBG(("%s: no, CRTC is rotated\n", __FUNCTION__));
 		return false;

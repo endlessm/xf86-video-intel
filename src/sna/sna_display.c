@@ -332,6 +332,7 @@ static unsigned get_fb(struct sna *sna, struct kgem_bo *bo,
 	assert(bo->refcnt);
 	assert(bo->proxy == NULL);
 	assert(!bo->snoop);
+	assert(8*bo->pitch >= width * scrn->bitsPerPixel);
 	assert(height * bo->pitch <= kgem_bo_size(bo)); /* XXX crtc offset */
 	if (bo->delta) {
 		DBG(("%s: reusing fb=%d for handle=%d\n",
