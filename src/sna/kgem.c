@@ -90,7 +90,8 @@ search_snoop_cache(struct kgem *kgem, unsigned int num_pages, unsigned flags);
 #define DEBUG_SYNC 0
 #endif
 
-#define SHOW_BATCH 0
+#define SHOW_BATCH_BEFORE 0
+#define SHOW_BATCH_AFTER 0
 
 #if 0
 #define ASSERT_IDLE(kgem__, handle__) assert(!__kgem_busy(kgem__, handle__))
@@ -1793,7 +1794,6 @@ static void kgem_fixup_self_relocs(struct kgem *kgem, struct kgem_bo *bo)
 		}
 
 	}
-
 }
 
 static void kgem_bo_binding_free(struct kgem *kgem, struct kgem_bo *bo)
@@ -2544,6 +2544,29 @@ bool __kgem_ring_is_idle(struct kgem *kgem, int ring)
 	return true;
 }
 
+#if 0
+static void kgem_commit__check_reloc(struct kgem *kgem)
+{
+	struct kgem_request *rq = kgem->next_request;
+	struct kgem_bo *bo;
+	bool has_64bit = kgem->gen >= 0100;
+	int i;
+
+	for (i = 0; i < kgem->nreloc; i++) {
+		list_for_each_entry(bo, &rq->buffers, request) {
+			if (bo->target_handle == kgem->reloc[i].target_handle) {
+				uint64_t value = 0;
+				gem_read(kgem->fd, rq->bo->handle, &value, kgem->reloc[i].offset, has_64bit ? 8 : 4);
+				assert(bo->exec->offset == -1 || value == bo->exec->offset + (int)kgem->reloc[i].delta);
+				break;
+			}
+		}
+	}
+}
+#else
+#define kgem_commit__check_reloc(kgem)
+#endif
+
 #ifndef NDEBUG
 static void kgem_commit__check_buffers(struct kgem *kgem)
 {
@@ -2560,6 +2583,8 @@ static void kgem_commit(struct kgem *kgem)
 {
 	struct kgem_request *rq = kgem->next_request;
 	struct kgem_bo *bo, *next;
+
+	kgem_commit__check_reloc(kgem);
 
 	list_for_each_entry_safe(bo, next, &rq->buffers, request) {
 		assert(next->request.prev == &bo->request);
@@ -3170,7 +3195,7 @@ void _kgem_submit(struct kgem *kgem)
 
 	kgem_finish_buffers(kgem);
 
-#if SHOW_BATCH
+#if SHOW_BATCH_BEFORE
 	__kgem_batch_debug(kgem, batch_end);
 #endif
 
@@ -3305,6 +3330,10 @@ void _kgem_submit(struct kgem *kgem)
 			}
 		}
 	}
+#if SHOW_BATCH_AFTER
+	if (gem_read(kgem->fd, rq->bo->handle, kgem->batch, 0, batch_end*sizeof(uint32_t)))
+		__kgem_batch_debug(kgem, batch_end);
+#endif
 	kgem_commit(kgem);
 	if (kgem->wedged)
 		kgem_cleanup(kgem);
@@ -5574,6 +5603,8 @@ uint64_t kgem_add_reloc64(struct kgem *kgem,
 		assert(bo->rq == MAKE_REQUEST(kgem->next_request, kgem->ring));
 		assert(RQ_RING(bo->rq) == kgem->ring);
 
+		DBG(("%s[%d] = (delta=%d, target handle=%d, presumed=%llx)\n",
+					__FUNCTION__, index, delta, bo->target_handle, (long long)bo->presumed_offset));
 		kgem->reloc[index].delta = delta;
 		kgem->reloc[index].target_handle = bo->target_handle;
 		kgem->reloc[index].presumed_offset = bo->presumed_offset;
@@ -5585,6 +5616,8 @@ uint64_t kgem_add_reloc64(struct kgem *kgem,
 
 		delta += bo->presumed_offset;
 	} else {
+		DBG(("%s[%d] = (delta=%d, target handle=batch)\n",
+					__FUNCTION__, index, delta));
 		kgem->reloc[index].delta = delta;
 		kgem->reloc[index].target_handle = ~0U;
 		kgem->reloc[index].presumed_offset = 0;
