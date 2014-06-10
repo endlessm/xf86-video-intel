@@ -6276,19 +6276,19 @@ void sna_mode_wakeup(struct sna *sna)
 				crtc->swap.tv_usec = vbl->tv_usec;
 				crtc->swap.msc = msc64(crtc, vbl->sequence);
 
+				assert(crtc->flip_bo);
+				assert(crtc->flip_bo->active_scanout);
+				assert(crtc->flip_bo->refcnt >= crtc->flip_bo->active_scanout);
+
 				if (crtc->bo) {
 					assert(crtc->bo->active_scanout);
 					assert(crtc->bo->refcnt >= crtc->bo->active_scanout);
 					crtc->bo->active_scanout--;
 					kgem_bo_destroy(&sna->kgem, crtc->bo);
 
-					assert(crtc->flip_bo->active_scanout >= 1);
-					assert(crtc->flip_bo->refcnt >= crtc->flip_bo->active_scanout);
 					crtc->bo = crtc->flip_bo;
 					crtc->flip_bo = NULL;
 				} else {
-					assert(crtc->flip_bo->active_scanout);
-					assert(crtc->flip_bo->refcnt >= crtc->flip_bo->active_scanout);
 					crtc->flip_bo->active_scanout--;
 					kgem_bo_destroy(&sna->kgem, crtc->flip_bo);
 					crtc->flip_bo = NULL;
