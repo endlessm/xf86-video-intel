@@ -6065,7 +6065,7 @@ void sna_mode_redisplay(struct sna *sna)
 				if (arg.fb_id == 0)
 					goto disable1;
 
-				arg.user_data = (uintptr_t)crtc;
+				arg.user_data = (uintptr_t)sna_crtc;
 				arg.flags = DRM_MODE_PAGE_FLIP_EVENT;
 				arg.reserved = 0;
 
@@ -6090,6 +6090,8 @@ disable1:
 						sna_crtc_disable(crtc);
 					}
 
+					kgem_bo_destroy(&sna->kgem, bo);
+					sna_crtc->shadow_bo = NULL;
 					continue;
 				}
 				sna->mode.flip_active++;
@@ -6099,7 +6101,7 @@ disable1:
 				sna_crtc->flip_bo = bo;
 				sna_crtc->flip_bo->active_scanout++;
 
-				sna_crtc->shadow_bo = sna_crtc->bo;
+				sna_crtc->shadow_bo = kgem_bo_reference(sna_crtc->bo);
 			} else {
 				sna_crtc_redisplay(crtc, &damage);
 				kgem_scanout_flush(&sna->kgem, sna_crtc->bo);
