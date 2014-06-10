@@ -4494,7 +4494,7 @@ static int do_page_flip(struct sna *sna, struct kgem_bo *bo,
 			     bo->pitch, crtc->bo->pitch,
 			     crtc_offset, crtc->offset));
 fixup_flip:
-			if (sna_crtc_flip(sna, crtc)) {
+			if (crtc->bo != bo && sna_crtc_flip(sna, crtc)) {
 				assert(crtc->bo->active_scanout);
 				assert(crtc->bo->refcnt >= crtc->bo->active_scanout);
 				crtc->bo->active_scanout--;
@@ -4502,9 +4502,6 @@ fixup_flip:
 
 				crtc->bo = kgem_bo_reference(bo);
 				crtc->bo->active_scanout++;
-
-				count++;
-				continue;
 			} else {
 				if (count && !xf86SetDesiredModes(sna->scrn)) {
 					xf86DrvMsg(sna->scrn->scrnIndex, X_ERROR,
