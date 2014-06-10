@@ -592,7 +592,7 @@ has_user_backlight_override(xf86OutputPtr output)
 
 	DBG(("%s(%s) requested %s\n", __FUNCTION__, output->name, str));
 	if (*str == '\0')
-		return str;
+		return (char *)str;
 
 	if (backlight_exists(str) == BL_NONE) {
 		xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
