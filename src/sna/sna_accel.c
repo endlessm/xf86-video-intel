@@ -943,6 +943,7 @@ create_pixmap_hdr(struct sna *sna, ScreenPtr screen,
 	pixmap->drawable.height = height;
 	pixmap->usage_hint = usage;
 
+	(*priv)->header = true;
 	return pixmap;
 }
 
@@ -984,7 +985,6 @@ fallback:
 	priv->cpu_bo = kgem_create_map(&sna->kgem, addr, pitch*height, false);
 	if (priv->cpu_bo == NULL) {
 		DBG(("%s: mapping SHM segment failed\n", __FUNCTION__));
-		priv->header = true;
 		sna_pixmap_destroy(pixmap);
 		goto fallback;
 	}
@@ -997,6 +997,7 @@ fallback:
 #endif
 
 	/* Be wary as we cannot cache SHM Pixmap in our freed cache */
+	priv->header = false;
 	priv->cpu = true;
 	priv->shm = true;
 	priv->stride = pitch;
@@ -1055,7 +1056,6 @@ sna_pixmap_create_scratch(ScreenPtr screen,
 		return NullPixmap;
 
 	priv->stride = PixmapBytePad(width, depth);
-	priv->header = true;
 
 	priv->gpu_bo = kgem_create_2d(&sna->kgem,
 				      width, height, bpp, tiling,
@@ -1226,28 +1226,20 @@ sna_create_pixmap_shared(struct sna *sna, ScreenPtr screen,
 	DBG(("%s: depth=%d\n", __FUNCTION__, depth));
 
 	/* Create a stub to be attached later */
-	pixmap = create_pixmap(sna, screen, 0, 0, depth, 0);
+	pixmap = create_pixmap_hdr(sna, screen,
+				   width, height, depth, 0,
+				   &priv);
 	if (pixmap == NullPixmap)
 		return NullPixmap;
 
-	pixmap->devKind = 0;
-	pixmap->devPrivate.ptr = NULL;
-
-	priv = sna_pixmap_attach(pixmap);
-	if (priv == NULL) {
-		free(pixmap);
-		return NullPixmap;
-	}
-
+	assert(!priv->mapped);
 	priv->stride = 0;
 	priv->create = 0;
 
 	if (width|height) {
-		int bpp = bits_per_pixel(depth);
-
-		assert(!priv->mapped);
 		priv->gpu_bo = kgem_create_2d(&sna->kgem,
-					      width, height, bpp,
+					      width, height,
+					      pixmap->drawable.bitsPerPixel,
 					      I915_TILING_NONE,
 					      CREATE_GTT_MAP | CREATE_PRIME);
 		if (priv->gpu_bo == NULL) {
@@ -1270,8 +1262,6 @@ sna_create_pixmap_shared(struct sna *sna, ScreenPtr screen,
 		}
 
 		pixmap->devKind = priv->gpu_bo->pitch;
-		pixmap->drawable.width = width;
-		pixmap->drawable.height = height;
 
 		priv->stride = priv->gpu_bo->pitch;
 		priv->mapped = MAPPED_GTT;
@@ -1372,7 +1362,6 @@ static PixmapPtr sna_create_pixmap(ScreenPtr screen,
 		if (pixmap == NullPixmap)
 			return NullPixmap;
 
-		priv->header = true;
 		ptr = NULL;
 	}
 
@@ -1426,8 +1415,9 @@ static void __sna_free_pixmap(struct sna *sna,
 	__sna_pixmap_free_cpu(sna, priv);
 
 	if (priv->header) {
-		assert(!priv->shm);
 		assert(pixmap->drawable.pScreen == sna->scrn->pScreen);
+		assert(!priv->shm);
+		assert(priv->ptr == NULL);
 		pixmap->devPrivate.ptr = sna->freed_pixmap;
 		sna->freed_pixmap = pixmap;
 #if DEBUG_MEMORY
@@ -3884,7 +3874,7 @@ sna_pixmap_create_upload(ScreenPtr screen,
 	pixmap->devPrivate.ptr = ptr;
 	priv->ptr = MAKE_STATIC_PTR(ptr);
 	priv->stride = priv->gpu_bo->pitch;
-	priv->header = true;
+	priv->create = 0;
 
 	pixmap->usage_hint = 0;
 	if (!kgem_buffer_is_inplace(priv->gpu_bo))
