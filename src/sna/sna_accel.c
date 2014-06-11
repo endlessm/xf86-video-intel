@@ -1593,6 +1593,11 @@ static inline bool pixmap_inplace(struct sna *sna,
 		return has_coherent_map(sna, priv->gpu_bo, flags);
 	}
 
+	if (priv->cpu_bo && kgem_bo_is_busy(priv->cpu_bo)) {
+		DBG(("%s: yes, has CPU bo and is active on CPU\n", __FUNCTION__));
+		return true;
+	}
+
 	if (priv->cpu_bo && priv->cpu) {
 		DBG(("%s: no, has CPU bo and was last active on CPU, presume future CPU activity\n", __FUNCTION__));
 		return false;
