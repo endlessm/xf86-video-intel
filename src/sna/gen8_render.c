@@ -436,22 +436,29 @@ gen8_choose_composite_kernel(int op, bool has_mask, bool is_ca, bool is_affine)
 }
 
 static void
-gen8_emit_urb(struct sna *sna)
+gen8_emit_push_constants(struct sna *sna)
 {
 #if SIM
 	OUT_BATCH(GEN8_3DSTATE_PUSH_CONSTANT_ALLOC_VS | (2 - 2));
-	OUT_BATCH(0 << PUSH_CONSTANT_BUFFER_OFFSET_SHIFT |
-		  0 << PUSH_CONSTANT_BUFFER_SIZE_SHIFT);
+	OUT_BATCH(0);
+
+	OUT_BATCH(GEN8_3DSTATE_PUSH_CONSTANT_ALLOC_HS | (2 - 2));
+	OUT_BATCH(0);
+
+	OUT_BATCH(GEN8_3DSTATE_PUSH_CONSTANT_ALLOC_DS | (2 - 2));
+	OUT_BATCH(0);
 
 	OUT_BATCH(GEN8_3DSTATE_PUSH_CONSTANT_ALLOC_GS | (2 - 2));
-	OUT_BATCH(0 << PUSH_CONSTANT_BUFFER_OFFSET_SHIFT |
-		  0 << PUSH_CONSTANT_BUFFER_SIZE_SHIFT);
+	OUT_BATCH(0);
 
 	OUT_BATCH(GEN8_3DSTATE_PUSH_CONSTANT_ALLOC_PS | (2 - 2));
-	OUT_BATCH(0 << PUSH_CONSTANT_BUFFER_OFFSET_SHIFT |
-		  0 << PUSH_CONSTANT_BUFFER_SIZE_SHIFT);
+	OUT_BATCH(0);
 #endif
+}
 
+static void
+gen8_emit_urb(struct sna *sna)
+{
 	/* num of VS entries must be divisible by 8 if size < 9 */
 	OUT_BATCH(GEN8_3DSTATE_URB_VS | (2 - 2));
 	OUT_BATCH(1024 << URB_ENTRY_NUMBER_SHIFT |
@@ -803,6 +810,12 @@ gen8_emit_invariant(struct sna *sna)
 {
 	OUT_BATCH(GEN8_PIPELINE_SELECT | PIPELINE_SELECT_3D);
 
+#if SIM
+	OUT_BATCH(GEN8_STATE_SIP | (3 - 2));
+	OUT_BATCH64(0);
+
+#endif
+
 	OUT_BATCH(GEN8_3DSTATE_MULTISAMPLE | (2 - 2));
 	OUT_BATCH(MULTISAMPLE_PIXEL_LOCATION_CENTER |
 		  MULTISAMPLE_NUMSAMPLES_1); /* 1 sample/pixel */
@@ -819,6 +832,7 @@ gen8_emit_invariant(struct sna *sna)
 	OUT_BATCH(0);
 #endif
 
+	gen8_emit_push_constants(sna);
 	gen8_emit_urb(sna);
 
 	gen8_emit_state_base_address(sna);
