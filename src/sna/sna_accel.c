@@ -5407,7 +5407,7 @@ sna_self_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	BoxPtr box = region_rects(region);
 	int n = region_num_rects(region);
 	int alu = gc ? gc->alu : GXcopy;
-	int16_t tx, ty;
+	int16_t tx, ty, sx, sy;
 
 	assert(pixmap == get_drawable_pixmap(dst));
 
@@ -5428,10 +5428,10 @@ sna_self_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	     dx, dy, alu,
 	     pixmap->drawable.width, pixmap->drawable.height));
 
-	if (get_drawable_deltas(src, pixmap, &tx, &ty))
-		dx += tx, dy += ty;
-	if (dst != src)
-		get_drawable_deltas(dst, pixmap, &tx, &ty);
+	get_drawable_deltas(dst, pixmap, &tx, &ty);
+	get_drawable_deltas(src, pixmap, &sx, &sy);
+	sx += dx;
+	sy += dy;
 
 	if (priv == NULL || DAMAGE_IS_ALL(priv->cpu_damage)) {
 		DBG(("%s: unattached, or all damaged on CPU\n", __FUNCTION__));
@@ -5453,7 +5453,7 @@ sna_self_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 		assert(priv->cpu_damage == NULL);
 
 		if (!sna->render.copy_boxes(sna, alu,
-					    pixmap, priv->gpu_bo, dx, dy,
+					    pixmap, priv->gpu_bo, sx, sy,
 					    pixmap, priv->gpu_bo, tx, ty,
 					    box, n, 0)) {
 			DBG(("%s: fallback - accelerated copy boxes failed\n",
@@ -5490,7 +5490,7 @@ fallback:
 					 ty * stride + tx * bpp / 8);
 				src_bits = (FbBits *)
 					((char *)pixmap->devPrivate.ptr +
-					 dy * stride + dx * bpp / 8);
+					 sy * stride + sx * bpp / 8);
 
 				for (i = 0; i < n; i++)
 					memmove_box(src_bits, dst_bits,
@@ -5503,9 +5503,8 @@ fallback:
 				goto out;
 
 			if (sigtrap_get() == 0) {
-				get_drawable_deltas(src, pixmap, &tx, &ty);
 				miCopyRegion(src, dst, gc,
-					     region, dx - tx, dy - ty,
+					     region, dx, dy,
 					     fbCopyNtoN, 0, NULL);
 				sigtrap_put();
 			}
