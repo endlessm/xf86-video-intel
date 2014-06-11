@@ -5443,8 +5443,10 @@ sna_self_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	if (dst != src)
 		get_drawable_deltas(dst, pixmap, &tx, &ty);
 
-	if (priv == NULL || DAMAGE_IS_ALL(priv->cpu_damage) || priv->shm)
+	if (priv == NULL || DAMAGE_IS_ALL(priv->cpu_damage)) {
+		DBG(("%s: unattached, or all damaged on CPU\n", __FUNCTION__));
 		goto fallback;
+	}
 
 	if (priv->gpu_damage || (priv->cpu_damage == NULL && priv->gpu_bo)) {
 		assert(priv->gpu_bo);
@@ -5458,6 +5460,7 @@ sna_self_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 			     __FUNCTION__));
 			goto fallback;
 		}
+		assert(priv->cpu_damage == NULL);
 
 		if (!sna->render.copy_boxes(sna, alu,
 					    pixmap, priv->gpu_bo, dx, dy,
@@ -5470,7 +5473,7 @@ sna_self_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 
 		if (!DAMAGE_IS_ALL(priv->gpu_damage)) {
 			assert(!priv->clear);
-			if (priv->cpu_bo == NULL) {
+			if (sna_pixmap_free_cpu(sna, priv, false)) {
 				sna_damage_all(&priv->gpu_damage, pixmap);
 			} else {
 				RegionTranslate(region, tx, ty);
@@ -5480,7 +5483,7 @@ sna_self_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 		assert_pixmap_damage(pixmap);
 	} else {
 fallback:
-		DBG(("%s: fallback", __FUNCTION__));
+		DBG(("%s: fallback\n", __FUNCTION__));
 		if (!sna_pixmap_move_to_cpu(pixmap, MOVE_READ | MOVE_WRITE))
 			goto free_boxes;
 
