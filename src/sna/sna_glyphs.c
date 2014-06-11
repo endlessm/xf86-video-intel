@@ -1602,13 +1602,13 @@ glyphs_fallback(CARD8 op,
 	int x, y, n;
 
 	glyph_extents(nlist, list, glyphs, &region.extents);
-	if (region.extents.x2 <= region.extents.x1 ||
-	    region.extents.y2 <= region.extents.y1)
-		return;
-
 	DBG(("%s: (%d, %d), (%d, %d)\n", __FUNCTION__,
 	     region.extents.x1, region.extents.y1,
 	     region.extents.x2, region.extents.y2));
+
+	if (region.extents.x2 <= region.extents.x1 ||
+	    region.extents.y2 <= region.extents.y1)
+		return;
 
 	region.data = NULL;
 	RegionTranslate(&region, dst->pDrawable->x, dst->pDrawable->y);
