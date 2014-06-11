@@ -5448,7 +5448,6 @@ sna_self_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 		goto fallback;
 	}
 
-		goto fallback;
 	if (priv->gpu_damage || (priv->cpu_damage == NULL && priv->gpu_bo)) {
 		assert(priv->gpu_bo);
 
