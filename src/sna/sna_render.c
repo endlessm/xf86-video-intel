@@ -346,7 +346,7 @@ use_cpu_bo(struct sna *sna, PixmapPtr pixmap, const BoxRec *box, bool blt)
 	}
 
 	if (priv->gpu_bo) {
-		switch (sna_damage_contains_box(priv->cpu_damage, box)) {
+		switch (sna_damage_contains_box(&priv->cpu_damage, box)) {
 		case PIXMAN_REGION_OUT:
 			DBG(("%s: has GPU bo and no damage to upload\n",
 			     __FUNCTION__));
@@ -362,7 +362,7 @@ use_cpu_bo(struct sna *sna, PixmapPtr pixmap, const BoxRec *box, bool blt)
 				     __FUNCTION__));
 				return NULL;
 			}
-			if (sna_damage_contains_box(priv->gpu_damage,
+			if (sna_damage_contains_box(&priv->gpu_damage,
 						    box) != PIXMAN_REGION_OUT) {
 				DBG(("%s: box is damaged on the GPU\n",
 				     __FUNCTION__));
@@ -440,7 +440,7 @@ move_to_gpu(PixmapPtr pixmap, const BoxRec *box, bool blt)
 
 	if (priv->gpu_bo) {
 		if (priv->cpu_damage &&
-		    sna_damage_contains_box(priv->cpu_damage,
+		    sna_damage_contains_box(&priv->cpu_damage,
 					    box) != PIXMAN_REGION_OUT)
 			goto upload;
 

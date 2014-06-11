@@ -207,23 +207,27 @@ sna_damage_overlaps_box(const struct sna_damage *damage,
 	return true;
 }
 
-int _sna_damage_contains_box(struct sna_damage *damage,
+int _sna_damage_contains_box(struct sna_damage **damage,
 			     const BoxRec *box);
-static inline int sna_damage_contains_box(struct sna_damage *damage,
+static inline int sna_damage_contains_box(struct sna_damage **damage,
 					  const BoxRec *box)
 {
-	if (DAMAGE_IS_ALL(damage))
+	if (DAMAGE_IS_ALL(*damage))
 		return PIXMAN_REGION_IN;
+	if (*damage == NULL)
+		return PIXMAN_REGION_OUT;
 
 	return _sna_damage_contains_box(damage, box);
 }
-static inline int sna_damage_contains_box__offset(struct sna_damage *damage,
+static inline int sna_damage_contains_box__offset(struct sna_damage **damage,
 						  const BoxRec *box, int dx, int dy)
 {
 	BoxRec b;
 
-	if (DAMAGE_IS_ALL(damage))
+	if (DAMAGE_IS_ALL(*damage))
 		return PIXMAN_REGION_IN;
+	if (*damage == NULL)
+		return PIXMAN_REGION_OUT;
 
 	b = *box;
 	b.x1 += dx; b.x2 += dx;

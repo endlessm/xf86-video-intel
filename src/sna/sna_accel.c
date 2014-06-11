@@ -2720,8 +2720,8 @@ move_to_cpu:
 
 		DBG(("%s: try to operate inplace (CPU), read? %d, write? %d\n",
 		     __FUNCTION__, !!(flags & MOVE_READ), !!(flags & MOVE_WRITE)));
-		assert(sna_damage_contains_box(priv->gpu_damage, &region->extents) == PIXMAN_REGION_IN);
-		assert(sna_damage_contains_box(priv->cpu_damage, &region->extents) == PIXMAN_REGION_OUT);
+		assert(sna_damage_contains_box(&priv->gpu_damage, &region->extents) == PIXMAN_REGION_IN);
+		assert(sna_damage_contains_box(&priv->cpu_damage, &region->extents) == PIXMAN_REGION_OUT);
 
 		ptr = kgem_bo_map__cpu(&sna->kgem, priv->gpu_bo);
 		if (ptr != NULL) {
@@ -2854,8 +2854,8 @@ move_to_cpu:
 		} else {
 			if (sna_damage_contains_box__no_reduce(priv->cpu_damage,
 							       &region->extents)) {
-				assert(sna_damage_contains_box(priv->gpu_damage, &region->extents) == PIXMAN_REGION_OUT);
-				assert(sna_damage_contains_box(priv->cpu_damage, &region->extents) == PIXMAN_REGION_IN);
+				assert(sna_damage_contains_box(&priv->gpu_damage, &region->extents) == PIXMAN_REGION_OUT);
+				assert(sna_damage_contains_box(&priv->cpu_damage, &region->extents) == PIXMAN_REGION_IN);
 
 				DBG(("%s: region already in CPU damage\n",
 				     __FUNCTION__));
@@ -2863,7 +2863,7 @@ move_to_cpu:
 			}
 		}
 
-		if (sna_damage_contains_box(priv->gpu_damage,
+		if (sna_damage_contains_box(&priv->gpu_damage,
 					    &region->extents) != PIXMAN_REGION_OUT) {
 			RegionRec want, *r = region;
 
@@ -2936,8 +2936,8 @@ move_to_cpu:
 				DBG(("%s: region wholly inside damage\n",
 				     __FUNCTION__));
 
-				assert(sna_damage_contains_box(priv->gpu_damage, &r->extents) == PIXMAN_REGION_IN);
-				assert(sna_damage_contains_box(priv->cpu_damage, &r->extents) == PIXMAN_REGION_OUT);
+				assert(sna_damage_contains_box(&priv->gpu_damage, &r->extents) == PIXMAN_REGION_IN);
+				assert(sna_damage_contains_box(&priv->cpu_damage, &r->extents) == PIXMAN_REGION_OUT);
 
 				download_boxes(sna, priv,
 					       region_num_rects(r),
@@ -3322,8 +3322,8 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 		   sna_damage_contains_box__no_reduce(priv->cpu_damage, box)) {
 		bool ok = false;
 
-		assert(sna_damage_contains_box(priv->gpu_damage, box) == PIXMAN_REGION_OUT);
-		assert(sna_damage_contains_box(priv->cpu_damage, box) == PIXMAN_REGION_IN);
+		assert(sna_damage_contains_box(&priv->gpu_damage, box) == PIXMAN_REGION_OUT);
+		assert(sna_damage_contains_box(&priv->cpu_damage, box) == PIXMAN_REGION_IN);
 
 		if (use_cpu_bo_for_upload(sna, priv, 0)) {
 			DBG(("%s: using CPU bo for upload to GPU\n", __FUNCTION__));
@@ -3619,8 +3619,8 @@ create_gpu_bo:
 							       &region.extents)) {
 				DBG(("%s: region wholly contained within GPU damage\n",
 				     __FUNCTION__));
-				assert(sna_damage_contains_box(priv->gpu_damage, &region.extents) == PIXMAN_REGION_IN);
-				assert(sna_damage_contains_box(priv->cpu_damage, &region.extents) == PIXMAN_REGION_OUT);
+				assert(sna_damage_contains_box(&priv->gpu_damage, &region.extents) == PIXMAN_REGION_IN);
+				assert(sna_damage_contains_box(&priv->cpu_damage, &region.extents) == PIXMAN_REGION_OUT);
 				goto use_gpu_bo;
 			} else {
 				DBG(("%s: partial GPU damage with no CPU damage, continuing to use GPU\n",
@@ -3629,7 +3629,7 @@ create_gpu_bo:
 			}
 		}
 
-		ret = sna_damage_contains_box(priv->gpu_damage, &region.extents);
+		ret = sna_damage_contains_box(&priv->gpu_damage, &region.extents);
 		if (ret == PIXMAN_REGION_IN) {
 			DBG(("%s: region wholly contained within GPU damage\n",
 			     __FUNCTION__));
@@ -3644,7 +3644,7 @@ create_gpu_bo:
 	}
 
 	if ((flags & IGNORE_CPU) == 0 && priv->cpu_damage) {
-		ret = sna_damage_contains_box(priv->cpu_damage, &region.extents);
+		ret = sna_damage_contains_box(&priv->cpu_damage, &region.extents);
 		if (ret == PIXMAN_REGION_IN) {
 			DBG(("%s: region wholly contained within CPU damage\n",
 			     __FUNCTION__));
@@ -3824,8 +3824,8 @@ cpu_fail:
 		if (priv->cpu_damage &&
 		    sna_damage_contains_box__no_reduce(priv->cpu_damage,
 						       &region.extents)) {
-			assert(sna_damage_contains_box(priv->gpu_damage, &region.extents) == PIXMAN_REGION_OUT);
-			assert(sna_damage_contains_box(priv->cpu_damage, &region.extents) == PIXMAN_REGION_IN);
+			assert(sna_damage_contains_box(&priv->gpu_damage, &region.extents) == PIXMAN_REGION_OUT);
+			assert(sna_damage_contains_box(&priv->cpu_damage, &region.extents) == PIXMAN_REGION_IN);
 			*damage = NULL;
 		} else
 			*damage = &priv->cpu_damage;
@@ -5448,6 +5448,7 @@ sna_self_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 		goto fallback;
 	}
 
+		goto fallback;
 	if (priv->gpu_damage || (priv->cpu_damage == NULL && priv->gpu_bo)) {
 		assert(priv->gpu_bo);
 
@@ -5709,8 +5710,8 @@ sna_copy_boxes__inplace(struct sna *sna, RegionPtr region, int alu,
 		return false;
 	}
 
-	assert(sna_damage_contains_box__offset(src_priv->gpu_damage, &region->extents, dx, dy) == PIXMAN_REGION_IN);
-	assert(sna_damage_contains_box__offset(src_priv->cpu_damage, &region->extents, dx, dy) == PIXMAN_REGION_OUT);
+	assert(sna_damage_contains_box__offset(&src_priv->gpu_damage, &region->extents, dx, dy) == PIXMAN_REGION_IN);
+	assert(sna_damage_contains_box__offset(&src_priv->cpu_damage, &region->extents, dx, dy) == PIXMAN_REGION_OUT);
 
 	ptr = kgem_bo_map__cpu(&sna->kgem, src_priv->gpu_bo);
 	if (ptr == NULL) {
@@ -16195,8 +16196,8 @@ sna_get_image__inplace(PixmapPtr pixmap,
 	if (priv->move_to_gpu && !priv->move_to_gpu(sna, priv, MOVE_READ))
 		return false;
 
-	assert(sna_damage_contains_box(priv->gpu_damage, &region->extents) == PIXMAN_REGION_IN);
-	assert(sna_damage_contains_box(priv->cpu_damage, &region->extents) == PIXMAN_REGION_OUT);
+	assert(sna_damage_contains_box(&priv->gpu_damage, &region->extents) == PIXMAN_REGION_IN);
+	assert(sna_damage_contains_box(&priv->cpu_damage, &region->extents) == PIXMAN_REGION_OUT);
 
 	src = kgem_bo_map__cpu(&sna->kgem, priv->gpu_bo);
 	if (src == NULL)
@@ -16286,8 +16287,8 @@ sna_get_image__blt(PixmapPtr pixmap,
 
 	DBG(("%s: download through a temporary map\n", __FUNCTION__));
 
-	assert(sna_damage_contains_box(priv->gpu_damage, &region->extents) == PIXMAN_REGION_IN);
-	assert(sna_damage_contains_box(priv->cpu_damage, &region->extents) == PIXMAN_REGION_OUT);
+	assert(sna_damage_contains_box(&priv->gpu_damage, &region->extents) == PIXMAN_REGION_IN);
+	assert(sna_damage_contains_box(&priv->cpu_damage, &region->extents) == PIXMAN_REGION_OUT);
 
 	pitch = PixmapBytePad(region->extents.x2 - region->extents.x1,
 			      pixmap->drawable.depth);

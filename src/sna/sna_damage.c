@@ -1342,14 +1342,12 @@ fastcall struct sna_damage *_sna_damage_subtract_boxes(struct sna_damage *damage
 }
 #endif
 
-static int __sna_damage_contains_box(struct sna_damage *damage,
+static int __sna_damage_contains_box(struct sna_damage **_damage,
 				     const BoxRec *box)
 {
+	struct sna_damage *damage = *_damage;
 	const BoxRec *b;
 	int n, count, ret;
-
-	if (!damage)
-		return PIXMAN_REGION_OUT;
 
 	if (damage->mode == DAMAGE_ALL)
 		return PIXMAN_REGION_IN;
@@ -1390,18 +1388,24 @@ static int __sna_damage_contains_box(struct sna_damage *damage,
 	}
 
 	__sna_damage_reduce(damage);
+	if (!pixman_region_not_empty(&damage->region)) {
+		__sna_damage_destroy(damage);
+		*_damage = NULL;
+		return PIXMAN_REGION_OUT;
+	}
+
 	return pixman_region_contains_rectangle(&damage->region, (BoxPtr)box);
 }
 
 #if HAS_DEBUG_FULL
-int _sna_damage_contains_box(struct sna_damage *damage,
+int _sna_damage_contains_box(struct sna_damage **damage,
 			     const BoxRec *box)
 {
 	char damage_buf[1000];
 	int ret;
 
 	DBG(("%s(%s, [(%d, %d), (%d, %d)])\n", __FUNCTION__,
-	     _debug_describe_damage(damage_buf, sizeof(damage_buf), damage),
+	     _debug_describe_damage(damage_buf, sizeof(damage_buf), *damage),
 	     box->x1, box->y1, box->x2, box->y2));
 
 	ret = __sna_damage_contains_box(damage, box);
@@ -1414,7 +1418,7 @@ int _sna_damage_contains_box(struct sna_damage *damage,
 	return ret;
 }
 #else
-int _sna_damage_contains_box(struct sna_damage *damage,
+int _sna_damage_contains_box(struct sna_damage **damage,
 			     const BoxRec *box)
 {
 	return __sna_damage_contains_box(damage, box);
