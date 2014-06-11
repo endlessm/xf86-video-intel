@@ -4460,7 +4460,7 @@ try_upload_blt(PixmapPtr pixmap, RegionRec *region,
 	if (!sna_pixmap_move_area_to_gpu(pixmap, &region->extents, MOVE_WRITE | MOVE_ASYNC_HINT | (region->data ? MOVE_READ : 0)))
 		return false;
 
-	src_bo = kgem_create_map(&sna->kgem, bits, stride * h, true);
+	src_bo = kgem_create_map(&sna->kgem, bits, stride * h, false);
 	if (src_bo == NULL)
 		return false;
 
@@ -6223,7 +6223,7 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 			src_bo = kgem_create_map(&sna->kgem,
 						 src_pixmap->devPrivate.ptr,
 						 src_pixmap->devKind * src_pixmap->drawable.height,
-						 true);
+						 false);
 			if (src_bo) {
 				src_bo->pitch = src_pixmap->devKind;
 				kgem_bo_mark_unreusable(src_bo);
