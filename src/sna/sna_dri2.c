@@ -965,8 +965,8 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 	}
 
 	if (region) {
-		boxes = REGION_RECTS(region);
-		n = REGION_NUM_RECTS(region);
+		boxes = region_rects(region);
+		n = region_num_rects(region);
 		assert(n);
 	} else {
 		region = &clip;
@@ -1039,11 +1039,11 @@ sna_dri2_copy_region(DrawablePtr draw,
 	assert(get_private(src)->bo->refcnt);
 	assert(get_private(dst)->bo->refcnt);
 
-	DBG(("%s: region (%d, %d), (%d, %d) x %ld\n",
+	DBG(("%s: region (%d, %d), (%d, %d) x %d\n",
 	     __FUNCTION__,
 	     region->extents.x1, region->extents.y1,
 	     region->extents.x2, region->extents.y2,
-	     (long)REGION_NUM_RECTS(region)));
+	     region_num_rects(region)));
 
 	__sna_dri2_copy_region(sna, draw, region, src, dst, false);
 }
@@ -1420,7 +1420,7 @@ can_flip(struct sna * sna,
 	     win->drawable.width, win->drawable.height,
 	     win->clipList.extents.x1, win->clipList.extents.y1,
 	     win->clipList.extents.x2, win->clipList.extents.y2,
-	     RegionNumRects(&win->clipList)));
+	     region_num_rects(&win->clipList)));
 	if (!RegionEqual(&win->clipList, &draw->pScreen->root->winSize)) {
 		DBG(("%s: no, window is clipped: clip region=(%d, %d), (%d, %d), root size=(%d, %d), (%d, %d)\n",
 		     __FUNCTION__,
@@ -1509,7 +1509,7 @@ can_xchg(struct sna * sna,
 	     win->drawable.width, win->drawable.height,
 	     win->clipList.extents.x1, win->clipList.extents.y1,
 	     win->clipList.extents.x2, win->clipList.extents.y2,
-	     RegionNumRects(&win->clipList),
+	     region_num_rects(&win->clipList),
 	     pixmap->drawable.width,
 	     pixmap->drawable.height));
 	if (is_clipped(&win->clipList, &pixmap->drawable)) {
@@ -1631,7 +1631,7 @@ can_xchg_one(struct sna *sna,
 	     win->drawable.width, win->drawable.height,
 	     win->clipList.extents.x1, win->clipList.extents.y1,
 	     win->clipList.extents.x2, win->clipList.extents.y2,
-	     RegionNumRects(&win->clipList)));
+	     region_num_rects(&win->clipList)));
 	if (is_clipped(&win->clipList, &win->drawable)) {
 		DBG(("%s: no, %dx%d window is clipped: clip region=(%d, %d), (%d, %d)\n",
 		     __FUNCTION__,

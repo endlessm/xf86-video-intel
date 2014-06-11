@@ -107,6 +107,30 @@
 
 #endif
 
+static inline int
+region_num_rects(const RegionRec *r)
+{
+	return r->data ? r->data->numRects : 1;
+}
+
+static inline int
+region_nil(const RegionRec *r)
+{
+	return region_num_rects(r) == 0;
+}
+
+static inline BoxPtr
+region_boxptr(const RegionRec *r)
+{
+	return (BoxPtr)(r->data + 1);
+}
+
+static inline BoxPtr
+region_rects(const RegionRec *r)
+{
+	return r->data ? region_boxptr(r) :  (BoxPtr)&r->extents;
+}
+
 #ifndef INCLUDE_LEGACY_REGION_DEFINES
 #define RegionCreate(r, s) REGION_CREATE(NULL, r, s)
 #define RegionBreak(r) REGION_BREAK(NULL, r)

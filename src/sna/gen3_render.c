@@ -5382,8 +5382,8 @@ gen3_render_video(struct sna *sna,
 		  PixmapPtr pixmap)
 {
 	struct sna_pixmap *priv = sna_pixmap(pixmap);
-	BoxPtr pbox = REGION_RECTS(dstRegion);
-	int nbox = REGION_NUM_RECTS(dstRegion);
+	BoxPtr pbox = region_rects(dstRegion);
+	int nbox = region_num_rects(dstRegion);
 	int dst_width = dstRegion->extents.x2 - dstRegion->extents.x1;
 	int dst_height = dstRegion->extents.y2 - dstRegion->extents.y1;
 	int src_width = frame->src.x2 - frame->src.x1;
@@ -5508,8 +5508,8 @@ gen3_render_video(struct sna *sna,
 				   dst_bo, -dstRegion->extents.x1, -dstRegion->extents.y1,
 				   priv->gpu_bo, pix_xoff, pix_yoff,
 				   pixmap->drawable.bitsPerPixel,
-				   REGION_RECTS(dstRegion),
-				   REGION_NUM_RECTS(dstRegion));
+				   region_rects(dstRegion),
+				   region_num_rects(dstRegion));
 
 		kgem_bo_destroy(&sna->kgem, dst_bo);
 	}
@@ -5520,12 +5520,12 @@ gen3_render_video(struct sna *sna,
 			sna_damage_subtract(&priv->cpu_damage, dstRegion);
 		} else {
 			sna_damage_add_boxes(&priv->gpu_damage,
-					     REGION_RECTS(dstRegion),
-					     REGION_NUM_RECTS(dstRegion),
+					     region_rects(dstRegion),
+					     region_num_rects(dstRegion),
 					     pix_xoff, pix_yoff);
 			sna_damage_subtract_boxes(&priv->cpu_damage,
-						  REGION_RECTS(dstRegion),
-						  REGION_NUM_RECTS(dstRegion),
+						  region_rects(dstRegion),
+						  region_num_rects(dstRegion),
 						  pix_xoff, pix_yoff);
 		}
 	}

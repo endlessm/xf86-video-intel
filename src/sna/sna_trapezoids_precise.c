@@ -106,9 +106,9 @@ static void _assert_pixmap_contains_box(PixmapPtr pixmap, BoxPtr box, const char
 
 static void apply_damage(struct sna_composite_op *op, RegionPtr region)
 {
-	DBG(("%s: damage=%p, region=%ldx[(%d, %d), (%d, %d)]\n",
+	DBG(("%s: damage=%p, region=%dx[(%d, %d), (%d, %d)]\n",
 	     __FUNCTION__, op->damage,
-	     (long)REGION_NUM_RECTS(region),
+	     region_num_rects(region),
 	     region->extents.x1, region->extents.y1,
 	     region->extents.x2, region->extents.y2));
 
@@ -1012,10 +1012,10 @@ tor_blt_span_clipped(struct sna *sna,
 
 	pixman_region_init_rects(&region, box, 1);
 	RegionIntersect(&region, &region, clip);
-	if (REGION_NUM_RECTS(&region)) {
+	if (region_num_rects(&region)) {
 		op->boxes(sna, op,
-			  REGION_RECTS(&region),
-			  REGION_NUM_RECTS(&region),
+			  region_rects(&region),
+			  region_num_rects(&region),
 			  opacity);
 		apply_damage(&op->base, &region);
 	}
@@ -1667,10 +1667,10 @@ span_thread_clipped_box(struct sna *sna,
 
 	pixman_region_init_rects(&region, box, 1);
 	RegionIntersect(&region, &region, clip);
-	if (REGION_NUM_RECTS(&region)) {
+	if (region_num_rects(&region)) {
 		span_thread_add_boxes(sna, op,
-				      REGION_RECTS(&region),
-				      REGION_NUM_RECTS(&region),
+				      region_rects(&region),
+				      region_num_rects(&region),
 				      AREA_TO_FLOAT(coverage));
 	}
 	pixman_region_fini(&region);
@@ -2231,8 +2231,8 @@ tor_blt_src_clipped(struct sna *sna,
 
 	pixman_region_init_rects(&region, box, 1);
 	RegionIntersect(&region, &region, clip);
-	n = REGION_NUM_RECTS(&region);
-	box = REGION_RECTS(&region);
+	n = region_num_rects(&region);
+	box = region_rects(&region);
 	while (n--)
 		tor_blt_src(sna, op, NULL, box++, coverage);
 	pixman_region_fini(&region);
@@ -2281,8 +2281,8 @@ tor_blt_in_clipped(struct sna *sna,
 
 	pixman_region_init_rects(&region, box, 1);
 	RegionIntersect(&region, &region, clip);
-	n = REGION_NUM_RECTS(&region);
-	box = REGION_RECTS(&region);
+	n = region_num_rects(&region);
+	box = region_rects(&region);
 	while (n--)
 		tor_blt_in(sna, op, NULL, box++, coverage);
 	pixman_region_fini(&region);
@@ -2338,8 +2338,8 @@ tor_blt_add_clipped(struct sna *sna,
 
 	pixman_region_init_rects(&region, box, 1);
 	RegionIntersect(&region, &region, clip);
-	n = REGION_NUM_RECTS(&region);
-	box = REGION_RECTS(&region);
+	n = region_num_rects(&region);
+	box = region_rects(&region);
 	while (n--)
 		tor_blt_add(sna, op, NULL, box++, coverage);
 	pixman_region_fini(&region);
@@ -2410,8 +2410,8 @@ tor_blt_lerp32_clipped(struct sna *sna,
 
 	pixman_region_init_rects(&region, box, 1);
 	RegionIntersect(&region, &region, clip);
-	n = REGION_NUM_RECTS(&region);
-	box = REGION_RECTS(&region);
+	n = region_num_rects(&region);
+	box = region_rects(&region);
 	while (n--)
 		tor_blt_lerp32(sna, op, NULL, box++, coverage);
 	pixman_region_fini(&region);
@@ -2456,8 +2456,8 @@ pixmask_span_solid__clipped(struct sna *sna,
 
 	pixman_region_init_rects(&region, box, 1);
 	RegionIntersect(&region, &region, clip);
-	n = REGION_NUM_RECTS(&region);
-	box = REGION_RECTS(&region);
+	n = region_num_rects(&region);
+	box = region_rects(&region);
 	while (n--)
 		pixmask_span_solid(sna, op, NULL, box++, coverage);
 	pixman_region_fini(&region);
@@ -2494,8 +2494,8 @@ pixmask_span__clipped(struct sna *sna,
 
 	pixman_region_init_rects(&region, box, 1);
 	RegionIntersect(&region, &region, clip);
-	n = REGION_NUM_RECTS(&region);
-	box = REGION_RECTS(&region);
+	n = region_num_rects(&region);
+	box = region_rects(&region);
 	while (n--)
 		pixmask_span(sna, op, NULL, box++, coverage);
 	pixman_region_fini(&region);

@@ -516,8 +516,8 @@ sna_video_overlay_put_image(ClientPtr client,
 	     drw_x, drw_y, drw_w, drw_h,
 	     format->id, width, height, sync));
 
-	DBG(("%s: region %ld:(%d, %d), (%d, %d)\n", __FUNCTION__,
-	     (long)RegionNumRects(&clip),
+	DBG(("%s: region %d:(%d, %d), (%d, %d)\n", __FUNCTION__,
+	     region_num_rects(&clip),
 	     clip.extents.x1, clip.extents.y1,
 	     clip.extents.x2, clip.extents.y2));
 
@@ -581,8 +581,8 @@ sna_video_overlay_put_image(ClientPtr client,
 				       __sna_pixmap_get_bo(sna->front),
 				       sna->front->drawable.bitsPerPixel,
 				       video->color_key,
-				       RegionRects(&clip),
-				       RegionNumRects(&clip)))
+				       region_rects(&clip),
+				       region_num_rects(&clip)))
 			RegionCopy(&video->clip, &clip);
 		sna_window_set_port((WindowPtr)draw, port);
 	} else {

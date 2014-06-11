@@ -1412,8 +1412,8 @@ gen5_render_video(struct sna *sna,
 	src_scale_y = (float)src_height / dst_height / frame->height;
 	src_offset_y = (float)frame->src.y1 / frame->height - dstRegion->extents.y1 * src_scale_y;
 
-	box = REGION_RECTS(dstRegion);
-	nbox = REGION_NUM_RECTS(dstRegion);
+	box = region_rects(dstRegion);
+	nbox = region_num_rects(dstRegion);
 	while (nbox--) {
 		BoxRec r;
 

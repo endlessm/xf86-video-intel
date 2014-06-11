@@ -404,7 +404,7 @@ static void _assert_pixmap_contains_box(PixmapPtr pixmap, BoxPtr box, const char
 static void apply_damage(struct sna_composite_op *op, RegionPtr region)
 {
 	DBG(("%s: damage=%p, region=%d [(%d, %d), (%d, %d) + (%d, %d)]\n",
-	     __FUNCTION__, op->damage, (int)RegionNumRects(region),
+	     __FUNCTION__, op->damage, region_num_rects(region),
 	     region->extents.x1, region->extents.y1,
 	     region->extents.x2, region->extents.y2,
 	     op->dst.x, op->dst.y));
@@ -546,8 +546,8 @@ sna_composite_fb(CARD8 op,
 		    region->extents.x2 + sx <= src->pDrawable->width &&
 		    region->extents.y2 + sy <= src->pDrawable->height) {
 			if (sigtrap_get() == 0) {
-				BoxPtr box = RegionRects(region);
-				int nbox = RegionNumRects(region);
+				BoxPtr box = region_rects(region);
+				int nbox = region_num_rects(region);
 
 				sx += src->pDrawable->x;
 				sy += src->pDrawable->y;
@@ -734,7 +734,7 @@ sna_composite(CARD8 op,
 	else
 		tmp.boxes(sna, &tmp,
 			  RegionBoxptr(&region),
-			  RegionNumRects(&region));
+			  region_num_rects(&region));
 	apply_damage(&tmp, &region);
 	tmp.done(sna, &tmp);
 
@@ -899,11 +899,11 @@ sna_composite_rectangles(CARD8		 op,
 		goto cleanup_region;
 	}
 
-	DBG(("%s: clipped extents (%d, %d),(%d, %d) x %ld\n",
+	DBG(("%s: clipped extents (%d, %d),(%d, %d) x %d\n",
 	     __FUNCTION__,
 	     RegionExtents(&region)->x1, RegionExtents(&region)->y1,
 	     RegionExtents(&region)->x2, RegionExtents(&region)->y2,
-	     (long)RegionNumRects(&region)));
+	     region_num_rects(&region)));
 
 	/* XXX xserver-1.8: CompositeRects is not tracked by Damage, so we must
 	 * manually append the damaged regions ourselves.
@@ -1082,8 +1082,8 @@ fallback:
 
 	if (sigtrap_get() == 0) {
 		if (op <= PictOpSrc) {
-			int nbox = RegionNumRects(&region);
-			BoxPtr box = RegionRects(&region);
+			int nbox = region_num_rects(&region);
+			BoxPtr box = region_rects(&region);
 			uint32_t pixel;
 
 			if (op == PictOpClear)

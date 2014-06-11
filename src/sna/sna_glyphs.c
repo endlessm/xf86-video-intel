@@ -580,8 +580,8 @@ glyphs_to_dst(struct sna *sna,
 	     list->xOff, list->yOff, dst->pDrawable->x, dst->pDrawable->y));
 
 	if (clipped_glyphs(dst, nlist, list, glyphs)) {
-		rects = REGION_RECTS(dst->pCompositeClip);
-		nrect = REGION_NUM_RECTS(dst->pCompositeClip);
+		rects = region_rects(dst->pCompositeClip);
+		nrect = region_num_rects(dst->pCompositeClip);
 	} else
 		nrect = 0;
 
@@ -742,8 +742,8 @@ glyphs0_to_dst(struct sna *sna,
 	src_y -= list->yOff + y;
 
 	if (clipped_glyphs(dst, nlist, list, glyphs)) {
-		rects = REGION_RECTS(dst->pCompositeClip);
-		nrect = REGION_NUM_RECTS(dst->pCompositeClip);
+		rects = region_rects(dst->pCompositeClip);
+		nrect = region_num_rects(dst->pCompositeClip);
 		if (nrect == 0)
 			return true;
 
@@ -974,8 +974,8 @@ glyphs_slow(struct sna *sna,
 						   COMPOSITE_PARTIAL, memset(&tmp, 0, sizeof(tmp))))
 				return false;
 
-			rects = REGION_RECTS(dst->pCompositeClip);
-			nrect = REGION_NUM_RECTS(dst->pCompositeClip);
+			rects = region_rects(dst->pCompositeClip);
+			nrect = region_num_rects(dst->pCompositeClip);
 			do {
 				struct sna_composite_rectangles r;
 				int16_t x2, y2;

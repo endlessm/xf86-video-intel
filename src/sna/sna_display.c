@@ -1167,8 +1167,8 @@ static bool wait_for_shadow(struct sna *sna, struct sna_pixmap *priv, unsigned f
 	}
 
 	if (flags & MOVE_READ && RegionNotEmpty(&sna->mode.shadow_region)) {
-		DBG(("%s: copying existing GPU damage: %ldx(%d, %d), (%d, %d)\n",
-		     __FUNCTION__, (long)REGION_NUM_RECTS(&sna->mode.shadow_region),
+		DBG(("%s: copying existing GPU damage: %dx(%d, %d), (%d, %d)\n",
+		     __FUNCTION__, region_num_rects(&sna->mode.shadow_region),
 		     sna->mode.shadow_region.extents.x1,
 		     sna->mode.shadow_region.extents.y1,
 		     sna->mode.shadow_region.extents.x2,
@@ -1176,8 +1176,8 @@ static bool wait_for_shadow(struct sna *sna, struct sna_pixmap *priv, unsigned f
 		ret = sna->render.copy_boxes(sna, GXcopy,
 					     pixmap, priv->gpu_bo, 0, 0,
 					     pixmap, bo, 0, 0,
-					     REGION_RECTS(&sna->mode.shadow_region),
-					     REGION_NUM_RECTS(&sna->mode.shadow_region),
+					     region_rects(&sna->mode.shadow_region),
+					     region_num_rects(&sna->mode.shadow_region),
 					     0);
 	}
 
@@ -1216,10 +1216,10 @@ void sna_pixmap_discard_shadow_damage(struct sna_pixmap *priv,
 	sna = priv->move_to_gpu_data;
 	DBG(("%s: discarding region %dx[(%d, %d), (%d, %d)] from damage %dx[(%d, %d], (%d, %d)]\n",
 	     __FUNCTION__,
-	     RegionNumRects(region),
+	     region_num_rects(region),
 	     region->extents.x1, region->extents.y1,
 	     region->extents.x2, region->extents.y2,
-	     RegionNumRects(&sna->mode.shadow_region),
+	     region_num_rects(&sna->mode.shadow_region),
 	     sna->mode.shadow_region.extents.x1, sna->mode.shadow_region.extents.y1,
 	     sna->mode.shadow_region.extents.x2, sna->mode.shadow_region.extents.y2));
 
@@ -1629,7 +1629,7 @@ static void set_shadow(struct sna *sna, RegionPtr region)
 
 	DBG(("%s: waiting for region %dx[(%d, %d), (%d, %d)], front handle=%d, shadow handle=%d\n",
 	     __FUNCTION__,
-	     RegionNumRects(region),
+	     region_num_rects(region),
 	     region->extents.x1, region->extents.y1,
 	     region->extents.x2, region->extents.y2,
 	     priv->gpu_bo->handle, sna->mode.shadow->handle));
@@ -1860,9 +1860,9 @@ sna_crtc_damage(xf86CrtcPtr crtc)
 	damage = DamageRegion(sna->mode.shadow_damage);
 	RegionUnion(damage, damage, &region);
 
-	DBG(("%s: damage now %ldx[(%d, %d), (%d, %d)]\n",
+	DBG(("%s: damage now %dx[(%d, %d), (%d, %d)]\n",
 	     __FUNCTION__,
-	     (long)RegionNumRects(damage),
+	     region_num_rects(damage),
 	     damage->extents.x1, damage->extents.y1,
 	     damage->extents.x2, damage->extents.y2));
 }
@@ -5694,8 +5694,8 @@ sna_crtc_redisplay__fallback(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo 
 	kgem_bo_sync__gtt(&sna->kgem, bo);
 
 	if (sigtrap_get() == 0) { /* paranoia */
-		const BoxRec *b = REGION_RECTS(region);
-		int n = REGION_NUM_RECTS(region);
+		const BoxRec *b = region_rects(region);
+		int n = region_num_rects(region);
 		do {
 			BoxRec box;
 
@@ -5794,8 +5794,8 @@ sna_crtc_redisplay__composite(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo
 		goto free_dst;
 	}
 
-	n = REGION_NUM_RECTS(region);
-	b = REGION_RECTS(region);
+	n = region_num_rects(region);
+	b = region_rects(region);
 	do {
 		BoxRec box;
 
@@ -5828,11 +5828,11 @@ sna_crtc_redisplay(xf86CrtcPtr crtc, RegionPtr region)
 	int16_t tx, ty;
 
 	assert(sna_crtc);
-	DBG(("%s: crtc %d [pipe=%d], damage (%d, %d), (%d, %d) x %ld\n",
+	DBG(("%s: crtc %d [pipe=%d], damage (%d, %d), (%d, %d) x %d\n",
 	     __FUNCTION__, sna_crtc->id, sna_crtc->pipe,
 	     region->extents.x1, region->extents.y1,
 	     region->extents.x2, region->extents.y2,
-	     (long)RegionNumRects(region)));
+	     region_num_rects(region)));
 
 	assert(!wedged(sna));
 
@@ -5843,7 +5843,7 @@ sna_crtc_redisplay(xf86CrtcPtr crtc, RegionPtr region)
 		sna_blt_fill_boxes(sna, GXcopy,
 				   sna_crtc->bo, sna->front->drawable.bitsPerPixel,
 				   priv->clear_color,
-				   REGION_RECTS(region), REGION_NUM_RECTS(region));
+				   region_rects(region), region_num_rects(region));
 		return;
 	}
 
@@ -5862,7 +5862,7 @@ sna_crtc_redisplay(xf86CrtcPtr crtc, RegionPtr region)
 		if (sna->render.copy_boxes(sna, GXcopy,
 					   sna->front, priv->gpu_bo, 0, 0,
 					   &tmp, sna_crtc->bo, -tx, -ty,
-					   REGION_RECTS(region), REGION_NUM_RECTS(region), 0))
+					   region_rects(region), region_num_rects(region), 0))
 			return;
 	}
 
@@ -5944,8 +5944,8 @@ void sna_mode_redisplay(struct sna *sna)
 	if (RegionNil(region))
 		return;
 
-	DBG(("%s: damage: %ldx(%d, %d), (%d, %d)\n",
-	     __FUNCTION__, (long)REGION_NUM_RECTS(region),
+	DBG(("%s: damage: %dx(%d, %d), (%d, %d)\n",
+	     __FUNCTION__, region_num_rects(region),
 	     region->extents.x1, region->extents.y1,
 	     region->extents.x2, region->extents.y2));
 

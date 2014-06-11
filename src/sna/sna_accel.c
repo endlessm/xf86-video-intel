@@ -2789,8 +2789,8 @@ move_to_cpu:
 	}
 
 	if (priv->clear) {
-		int n = RegionNumRects(region);
-		BoxPtr box = RegionRects(region);
+		int n = region_num_rects(region);
+		BoxPtr box = region_rects(region);
 
 		assert(DAMAGE_IS_ALL(priv->gpu_damage));
 		assert(priv->cpu_damage == NULL);
@@ -2877,13 +2877,13 @@ move_to_cpu:
 			 * reads.
 			 */
 			if (flags & MOVE_WRITE) {
-				int n = RegionNumRects(region), i;
-				BoxPtr boxes = RegionRects(region);
+				int n = region_num_rects(region), i;
+				BoxPtr boxes = region_rects(region);
 				BoxPtr blocks;
 
 				blocks = NULL;
 				if (priv->cpu_damage == NULL)
-					blocks = malloc(sizeof(BoxRec) * RegionNumRects(region));
+					blocks = malloc(sizeof(BoxRec) * n);
 				if (blocks) {
 					for (i = 0; i < n; i++) {
 						blocks[i].x1 = boxes[i].x1 & ~31;
@@ -2931,8 +2931,8 @@ move_to_cpu:
 				assert(sna_damage_contains_box(priv->cpu_damage, &r->extents) == PIXMAN_REGION_OUT);
 
 				download_boxes(sna, priv,
-					       RegionNumRects(r),
-					       RegionRects(r));
+					       region_num_rects(r),
+					       region_rects(r));
 				sna_damage_subtract(&priv->gpu_damage, r);
 			} else {
 				RegionRec need;
@@ -2943,8 +2943,8 @@ move_to_cpu:
 					     __FUNCTION__));
 
 					download_boxes(sna, priv,
-						       RegionNumRects(&need),
-						       RegionRects(&need));
+						       region_num_rects(&need),
+						       region_rects(&need));
 					sna_damage_subtract(&priv->gpu_damage, r);
 					RegionUninit(&need);
 				}
@@ -3271,43 +3271,41 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 	assert(priv->cpu_damage);
 	region_set(&r, box);
 	if (MIGRATE_ALL || region_subsumes_damage(&r, priv->cpu_damage)) {
+		bool ok = false;
 		int n;
 
 		n = sna_damage_get_boxes(priv->cpu_damage, (BoxPtr *)&box);
-		if (n) {
-			bool ok = false;
+		assert(n);
+		if (use_cpu_bo_for_upload(sna, priv, 0)) {
+			DBG(("%s: using CPU bo for upload to GPU\n", __FUNCTION__));
+			ok = sna->render.copy_boxes(sna, GXcopy,
+						    pixmap, priv->cpu_bo, 0, 0,
+						    pixmap, priv->gpu_bo, 0, 0,
+						    box, n, 0);
+		}
+		if (!ok) {
+			sna_pixmap_unmap(pixmap, priv);
+			if (pixmap->devPrivate.ptr == NULL)
+				return NULL;
 
-			if (use_cpu_bo_for_upload(sna, priv, 0)) {
-				DBG(("%s: using CPU bo for upload to GPU\n", __FUNCTION__));
-				ok = sna->render.copy_boxes(sna, GXcopy,
-							    pixmap, priv->cpu_bo, 0, 0,
-							    pixmap, priv->gpu_bo, 0, 0,
-							    box, n, 0);
+			assert(pixmap->devKind);
+			if (n == 1 && !priv->pinned &&
+			    box->x1 <= 0 && box->y1 <= 0 &&
+			    box->x2 >= pixmap->drawable.width &&
+			    box->y2 >= pixmap->drawable.height) {
+				ok = sna_replace(sna, pixmap,
+						 pixmap->devPrivate.ptr,
+						 pixmap->devKind);
+			} else {
+				ok = sna_write_boxes(sna, pixmap,
+						     priv->gpu_bo, 0, 0,
+						     pixmap->devPrivate.ptr,
+						     pixmap->devKind,
+						     0, 0,
+						     box, n);
 			}
-			if (!ok) {
-				sna_pixmap_unmap(pixmap, priv);
-				if (pixmap->devPrivate.ptr == NULL)
-					return NULL;
-
-				assert(pixmap->devKind);
-				if (n == 1 && !priv->pinned &&
-				    box->x1 <= 0 && box->y1 <= 0 &&
-				    box->x2 >= pixmap->drawable.width &&
-				    box->y2 >= pixmap->drawable.height) {
-					ok = sna_replace(sna, pixmap,
-							 pixmap->devPrivate.ptr,
-							 pixmap->devKind);
-				} else {
-					ok = sna_write_boxes(sna, pixmap,
-							     priv->gpu_bo, 0, 0,
-							     pixmap->devPrivate.ptr,
-							     pixmap->devKind,
-							     0, 0,
-							     box, n);
-				}
-				if (!ok)
-					return NULL;
-			}
+			if (!ok)
+				return NULL;
 		}
 
 		sna_damage_destroy(&priv->cpu_damage);
@@ -3342,10 +3340,10 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 
 		sna_damage_subtract(&priv->cpu_damage, &r);
 	} else if (sna_damage_intersect(priv->cpu_damage, &r, &i)) {
-		int n = RegionNumRects(&i);
+		int n = region_num_rects(&i);
 		bool ok;
 
-		box = RegionRects(&i);
+		box = region_rects(&i);
 		ok = false;
 		if (use_cpu_bo_for_upload(sna, priv, 0)) {
 			DBG(("%s: using CPU bo for upload to GPU, %d boxes\n", __FUNCTION__, n));
@@ -4070,6 +4068,7 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 	}
 
 	n = sna_damage_get_boxes(priv->cpu_damage, &box);
+	assert(n);
 	if (n) {
 		bool ok;
 
@@ -4462,15 +4461,15 @@ try_upload_blt(PixmapPtr pixmap, RegionRec *region,
 	src_bo->pitch = stride;
 	kgem_bo_mark_unreusable(src_bo);
 
-	DBG(("%s: upload(%d, %d, %d, %d) x %ld through a temporary map\n",
-	     __FUNCTION__, x, y, w, h, (long)RegionNumRects(region)));
+	DBG(("%s: upload(%d, %d, %d, %d) x %d through a temporary map\n",
+	     __FUNCTION__, x, y, w, h, region_num_rects(region)));
 
 	if (sigtrap_get() == 0) {
 		ok = sna->render.copy_boxes(sna, GXcopy,
 					    pixmap, src_bo, -x, -y,
 					    pixmap, priv->gpu_bo, 0, 0,
-					    RegionRects(region),
-					    RegionNumRects(region),
+					    region_rects(region),
+					    region_num_rects(region),
 					    COPY_LAST);
 		sigtrap_put();
 	} else
@@ -4607,8 +4606,8 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 
 	kgem_bo_sync__cpu(&sna->kgem, priv->gpu_bo);
 
-	box = RegionRects(region);
-	n = RegionNumRects(region);
+	box = region_rects(region);
+	n = region_num_rects(region);
 
 	DBG(("%s: upload(%d, %d, %d, %d) x %d\n", __FUNCTION__, x, y, w, h, n));
 
@@ -4753,8 +4752,8 @@ sna_put_zpixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 		return false;
 
 	/* Region is pre-clipped and translated into pixmap space */
-	box = RegionRects(region);
-	n = RegionNumRects(region);
+	box = region_rects(region);
+	n = region_num_rects(region);
 	DBG(("%s: upload(%d, %d, %d, %d) x %d boxes\n", __FUNCTION__, x, y, w, h, n));
 	do {
 		DBG(("%s: copy box (%d, %d)->(%d, %d)x(%d, %d)\n",
@@ -4850,8 +4849,8 @@ sna_put_xybitmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 	kgem_set_mode(&sna->kgem, KGEM_BLT, bo);
 
 	/* Region is pre-clipped and translated into pixmap space */
-	box = RegionRects(region);
-	n = RegionNumRects(region);
+	box = region_rects(region);
+	n = region_num_rects(region);
 	do {
 		int bx1 = (box->x1 - x) & ~7;
 		int bx2 = (box->x2 - x + 7) & ~7;
@@ -5011,8 +5010,8 @@ sna_put_xypixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 
 	skip = h * BitmapBytePad(w + left);
 	for (i = 1 << (gc->depth-1); i; i >>= 1, bits += skip) {
-		const BoxRec *box = RegionRects(region);
-		int n = RegionNumRects(region);
+		const BoxRec *box = region_rects(region);
+		int n = region_num_rects(region);
 
 		if ((gc->planemask & i) == 0)
 			continue;
@@ -5407,14 +5406,14 @@ sna_self_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	PixmapPtr pixmap = get_drawable_pixmap(src);
 	struct sna *sna = to_sna_from_pixmap(pixmap);
 	struct sna_pixmap *priv = sna_pixmap(pixmap);
-	BoxPtr box = RegionRects(region);
-	int n = RegionNumRects(region);
+	BoxPtr box = region_rects(region);
+	int n = region_num_rects(region);
 	int alu = gc ? gc->alu : GXcopy;
 	int16_t tx, ty;
 
 	assert(pixmap == get_drawable_pixmap(dst));
 
-	assert(RegionNumRects(region));
+	assert(region_num_rects(region));
 	if (((dx | dy) == 0 && alu == GXcopy))
 		return;
 
@@ -5517,7 +5516,7 @@ out:
 	}
 
 free_boxes:
-	if (box != RegionRects(region))
+	if (box != region_rects(region))
 		free(box);
 }
 
@@ -5717,8 +5716,8 @@ sna_copy_boxes__inplace(struct sna *sna, RegionPtr region, int alu,
 
 	kgem_bo_sync__cpu_full(&sna->kgem, src_priv->gpu_bo, FORCE_FULL_SYNC);
 
-	box = RegionRects(region);
-	n = RegionNumRects(region);
+	box = region_rects(region);
+	n = region_num_rects(region);
 	if (src_priv->gpu_bo->tiling) {
 		DBG(("%s: copy from a tiled CPU map\n", __FUNCTION__));
 		assert(dst_pixmap->devKind);
@@ -5841,8 +5840,8 @@ upload_inplace:
 	}
 	dst_priv->clear = false;
 
-	box = RegionRects(region);
-	n = RegionNumRects(region);
+	box = region_rects(region);
+	n = region_num_rects(region);
 	if (dst_priv->gpu_bo->tiling) {
 		DBG(("%s: copy to a tiled CPU map\n", __FUNCTION__));
 		assert(dst_priv->gpu_bo->tiling == I915_TILING_X);
@@ -5917,14 +5916,14 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	struct kgem_bo *bo;
 	int16_t src_dx, src_dy;
 	int16_t dst_dx, dst_dy;
-	BoxPtr box = RegionRects(region);
-	int n = RegionNumRects(region);
+	BoxPtr box = region_rects(region);
+	int n = region_num_rects(region);
 	int alu = gc->alu;
 	int stride, bpp;
 	char *bits;
 	bool replaces;
 
-	assert(RegionNumRects(region));
+	assert(region_num_rects(region));
 
 	if (src_pixmap == dst_pixmap)
 		return sna_self_copy_boxes(src, dst, gc,
@@ -6607,18 +6606,18 @@ sna_do_copy(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 		} else
 			RegionIntersect(&region, &region, clip);
 	}
-	DBG(("%s: src extents (%d, %d), (%d, %d) x %ld\n", __FUNCTION__,
+	DBG(("%s: src extents (%d, %d), (%d, %d) x %d\n", __FUNCTION__,
 	     region.extents.x1, region.extents.y1,
 	     region.extents.x2, region.extents.y2,
-	     (long)RegionNumRects(&region)));
+	     region_num_rects(&region)));
 
 	RegionTranslate(&region, dx-sx, dy-sy);
 	if (gc->pCompositeClip->data)
 		RegionIntersect(&region, &region, gc->pCompositeClip);
-	DBG(("%s: copy region (%d, %d), (%d, %d) x %ld\n", __FUNCTION__,
+	DBG(("%s: copy region (%d, %d), (%d, %d) x %d\n", __FUNCTION__,
 	     region.extents.x1, region.extents.y1,
 	     region.extents.x2, region.extents.y2,
-	     (long)RegionNumRects(&region)));
+	     region_num_rects(&region)));
 
 	if (!box_empty(&region.extents))
 		copy(src, dst, gc, &region, sx-dx, sy-dy, bitPlane, closure);
@@ -6641,8 +6640,8 @@ sna_fallback_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 			RegionPtr region, int dx, int dy,
 			Pixel bitplane, void *closure)
 {
-	DBG(("%s (boxes=%ldx[(%d, %d), (%d, %d)...], src=+(%d, %d), alu=%d\n",
-	     __FUNCTION__, (long)RegionNumRects(region),
+	DBG(("%s (boxes=%dx[(%d, %d), (%d, %d)...], src=+(%d, %d), alu=%d\n",
+	     __FUNCTION__, region_num_rects(region),
 	     region->extents.x1, region->extents.y1,
 	     region->extents.x2, region->extents.y2,
 	     dx, dy, gc->alu));
@@ -7272,9 +7271,9 @@ no_damage_clipped:
 		assert(dx + clip.extents.x2 <= pixmap->drawable.width);
 		assert(dy + clip.extents.y2 <= pixmap->drawable.height);
 
-		DBG(("%s: clip %ld x [(%d, %d), (%d, %d)] x %d [(%d, %d)...]\n",
+		DBG(("%s: clip %d x [(%d, %d), (%d, %d)] x %d [(%d, %d)...]\n",
 		     __FUNCTION__,
-		     (long)RegionNumRects(&clip),
+		     region_num_rects(&clip),
 		     clip.extents.x1, clip.extents.y1, clip.extents.x2, clip.extents.y2,
 		     n, pt->x, pt->y));
 
@@ -7372,9 +7371,9 @@ damage_clipped:
 		assert(dx + clip.extents.x2 <= pixmap->drawable.width);
 		assert(dy + clip.extents.y2 <= pixmap->drawable.height);
 
-		DBG(("%s: clip %ld x [(%d, %d), (%d, %d)] x %d [(%d, %d)...]\n",
+		DBG(("%s: clip %d x [(%d, %d), (%d, %d)] x %d [(%d, %d)...]\n",
 		     __FUNCTION__,
-		     (long)RegionNumRects(&clip),
+		     region_num_rects(&clip),
 		     clip.extents.x1, clip.extents.y1, clip.extents.x2, clip.extents.y2,
 		     n, pt->x, pt->y));
 
@@ -7775,14 +7774,14 @@ sna_copy_bitmap_blt(DrawablePtr _bitmap, DrawablePtr drawable, GCPtr gc,
 	BoxPtr box;
 	int n;
 
-	DBG(("%s: plane=%x (%d,%d),(%d,%d)x%ld\n",
+	DBG(("%s: plane=%x (%d,%d),(%d,%d)xld\n",
 	     __FUNCTION__, (unsigned)bitplane,
 	     region->extents.x1, region->extents.y1,
 	     region->extents.x2, region->extents.y2,
-	     (long)RegionNumRects(region)));
+	     region_num_rects(region)));
 
-	box = RegionRects(region);
-	n = RegionNumRects(region);
+	box = region_rects(region);
+	n = region_num_rects(region);
 	assert(n);
 
 	get_drawable_deltas(drawable, pixmap, &dx, &dy);
@@ -7995,8 +7994,8 @@ sna_copy_plane_blt(DrawablePtr source, DrawablePtr drawable, GCPtr gc,
 	int16_t dx, dy;
 	int bit = ffs(bitplane) - 1;
 	uint32_t br00, br13;
-	BoxPtr box = RegionRects(region);
-	int n = RegionNumRects(region);
+	BoxPtr box = region_rects(region);
+	int n = region_num_rects(region);
 
 	DBG(("%s: plane=%x [%d] x%d\n", __FUNCTION__,
 	     (unsigned)bitplane, bit, n));
@@ -8620,8 +8619,8 @@ sna_poly_zero_line_blt(DrawablePtr drawable,
 	     clip.extents.x2, clip.extents.y2,
 	     dx, dy, damage));
 
-	extents = RegionRects(&clip);
-	last_extents = extents + RegionNumRects(&clip);
+	extents = region_rects(&clip);
+	last_extents = extents + region_num_rects(&clip);
 
 	b = box;
 	do {
@@ -9857,8 +9856,8 @@ sna_poly_zero_segment_blt(DrawablePtr drawable,
 	jump = _jump[(damage != NULL) | !!(dx|dy) << 1];
 
 	b = box;
-	extents = RegionRects(&clip);
-	last_extents = extents + RegionNumRects(&clip);
+	extents = region_rects(&clip);
+	last_extents = extents + region_num_rects(&clip);
 	do {
 		int n = _n;
 		const xSegment *s = _s;
@@ -11067,8 +11066,8 @@ sna_poly_rectangle(DrawablePtr drawable, GCPtr gc, int n, xRectangle *r)
 	}
 
 fallback:
-	DBG(("%s: fallback, clip=%ldx[(%d, %d), (%d, %d)]\n", __FUNCTION__,
-	     (long)RegionNumRects(gc->pCompositeClip),
+	DBG(("%s: fallback, clip=%dx[(%d, %d), (%d, %d)]\n", __FUNCTION__,
+	     region_num_rects(gc->pCompositeClip),
 	     gc->pCompositeClip->extents.x1, gc->pCompositeClip->extents.y1,
 	     gc->pCompositeClip->extents.x2, gc->pCompositeClip->extents.y2));
 
@@ -11076,8 +11075,8 @@ fallback:
 	if (!region_maybe_clip(&region, gc->pCompositeClip))
 		return;
 
-	DBG(("%s: CPU region=%ldx[(%d, %d), (%d, %d)]\n", __FUNCTION__,
-	     (long)RegionNumRects(&region),
+	DBG(("%s: CPU region=%dx[(%d, %d), (%d, %d)]\n", __FUNCTION__,
+	     region_num_rects(&region),
 	     region.extents.x1, region.extents.y1,
 	     region.extents.x2, region.extents.y2));
 	if (!sna_gc_move_to_cpu(gc, drawable, &region))
@@ -12406,8 +12405,8 @@ sna_poly_fill_rect_tiled_blt(DrawablePtr drawable,
 				assert(region.extents.x2 + dx <= pixmap->drawable.width);
 				assert(region.extents.y2 + dy <= pixmap->drawable.height);
 
-				nbox = RegionNumRects(&region);
-				box = RegionRects(&region);
+				nbox = region_num_rects(&region);
+				box = region_rects(&region);
 				DBG(("%s: split into %d boxes after clipping\n", __FUNCTION__, nbox));
 				while (nbox--) {
 					int height = box->y2 - box->y1;
@@ -14653,8 +14652,8 @@ sna_glyph_blt(DrawablePtr drawable, GCPtr gc,
 	_x += drawable->x + dx;
 	_y += drawable->y + dy;
 
-	extents = RegionRects(clip);
-	last_extents = extents + RegionNumRects(clip);
+	extents = region_rects(clip);
+	last_extents = extents + region_num_rects(clip);
 
 	if (!transparent) { /* emulate miImageGlyphBlt */
 		if (!sna_blt_fill_boxes(sna, GXcopy,
@@ -15370,8 +15369,8 @@ sna_reversed_glyph_blt(DrawablePtr drawable, GCPtr gc,
 	_x += drawable->x + dx;
 	_y += drawable->y + dy;
 
-	extents = RegionRects(clip);
-	last_extents = extents + RegionNumRects(clip);
+	extents = region_rects(clip);
+	last_extents = extents + region_num_rects(clip);
 
 	if (!transparent) { /* emulate miImageGlyphBlt */
 		if (!sna_blt_fill_boxes(sna, GXcopy,
@@ -15839,8 +15838,8 @@ sna_push_pixels_solid_blt(GCPtr gc,
 	kgem_set_mode(&sna->kgem, KGEM_BLT, bo);
 
 	/* Region is pre-clipped and translated into pixmap space */
-	box = RegionRects(region);
-	n = RegionNumRects(region);
+	box = region_rects(region);
+	n = region_num_rects(region);
 	do {
 		int bx1 = (box->x1 - region->extents.x1) & ~7;
 		int bx2 = (box->x2 - region->extents.x1 + 7) & ~7;
@@ -16094,9 +16093,9 @@ sna_validate_gc(GCPtr gc, unsigned long changes, DrawablePtr drawable)
 	    (gc->clientClipType != CT_NONE && (changes & (GCClipXOrigin | GCClipYOrigin)))) {
 		DBG(("%s: recomputing clip\n", __FUNCTION__));
 		miComputeCompositeClip(gc, drawable);
-		DBG(("%s: composite clip=%ldx[(%d, %d), (%d, %d)] [%p]\n",
+		DBG(("%s: composite clip=%dx[(%d, %d), (%d, %d)] [%p]\n",
 		     __FUNCTION__,
-		     (long)RegionNumRects(gc->pCompositeClip),
+		     region_num_rects(gc->pCompositeClip),
 		     gc->pCompositeClip->extents.x1,
 		     gc->pCompositeClip->extents.y1,
 		     gc->pCompositeClip->extents.x2,
@@ -16770,10 +16769,10 @@ static void sna_accel_post_damage(struct sna *sna)
 		region.extents.y2 = dirty->y + dst->drawable.height;
 		region.data = NULL;
 
-		DBG(("%s: pushing damage ((%d, %d), (%d, %d))x%d to slave pixmap=%ld, ((%d, %d), (%d, %d))\n", __FUNCTION__,
+		DBG(("%s: pushing damage ((%d, %d), (%d, %d))x%d to slave pixmap=%d, ((%d, %d), (%d, %d))\n", __FUNCTION__,
 		     damage->extents.x1, damage->extents.y1,
 		     damage->extents.x2, damage->extents.y2,
-		     RegionNumRects(damage),
+		     region_num_rects(damage),
 		     dst->drawable.serialNumber,
 		     region.extents.x1, region.extents.y1,
 		     region.extents.x2, region.extents.y2));
@@ -16788,10 +16787,10 @@ static void sna_accel_post_damage(struct sna *sna)
 		DBG(("%s: slave:  ((%d, %d), (%d, %d))x%d\n", __FUNCTION__,
 		     region.extents.x1, region.extents.y1,
 		     region.extents.x2, region.extents.y2,
-		     RegionNumRects(&region)));
+		     region_num_rects(&region)));
 
-		box = RegionRects(&region);
-		n = RegionNumRects(&region);
+		box = region_rects(&region);
+		n = region_num_rects(&region);
 		if (wedged(sna)) {
 fallback:
 			if (!sna_pixmap_move_to_cpu(src, MOVE_READ))

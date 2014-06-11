@@ -1134,9 +1134,9 @@ inline static bool is_power_of_two(unsigned x)
 inline static bool is_clipped(const RegionRec *r,
 			      const DrawableRec *d)
 {
-	DBG(("%s: region[%ld]x(%d, %d),(%d, %d) against drawable %dx%d\n",
+	DBG(("%s: region[%d]x(%d, %d),(%d, %d) against drawable %dx%d\n",
 	     __FUNCTION__,
-	     (long)RegionNumRects(r),
+	     region_num_rects(r),
 	     r->extents.x1, r->extents.y1,
 	     r->extents.x2, r->extents.y2,
 	     d->width, d->height));

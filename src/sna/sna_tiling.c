@@ -676,18 +676,18 @@ sna_tiling_fill_boxes(struct sna *sna,
 				    !sna->render.copy_boxes(sna, GXcopy,
 							    dst, dst_bo, 0, 0,
 							    &tmp, bo, -dx, -dy,
-							    REGION_RECTS(&this), REGION_NUM_RECTS(&this), 0))
+							    region_rects(&this), region_num_rects(&this), 0))
 					goto err;
 
 				RegionTranslate(&this, -dx, -dy);
 				if (!sna->render.fill_boxes(sna, op, format, color, &tmp, bo,
-							    REGION_RECTS(&this), REGION_NUM_RECTS(&this)))
+							    region_rects(&this), region_num_rects(&this)))
 					goto err;
 
 				if (!sna->render.copy_boxes(sna, GXcopy,
 							    &tmp, bo, 0, 0,
 							    dst, dst_bo, dx, dy,
-							    REGION_RECTS(&this), REGION_NUM_RECTS(&this), 0))
+							    region_rects(&this), region_num_rects(&this), 0))
 					goto err;
 
 				kgem_bo_destroy(&sna->kgem, bo);
@@ -871,14 +871,14 @@ sna_tiling_blt_copy_boxes__with_alpha(struct sna *sna, uint8_t alu,
 				if (!sna_blt_copy_boxes(sna, GXcopy,
 							src_bo, src_dx, src_dy,
 							bo, -dx, -dy,
-							bpp, REGION_RECTS(&this), REGION_NUM_RECTS(&this)))
+							bpp, region_rects(&this), region_num_rects(&this)))
 					goto err;
 
 				if (!sna_blt_copy_boxes__with_alpha(sna, alu,
 								    bo, -dx, -dy,
 								    dst_bo, dst_dx, dst_dy,
 								    bpp, alpha_fixup,
-								    REGION_RECTS(&this), REGION_NUM_RECTS(&this)))
+								    region_rects(&this), region_num_rects(&this)))
 					goto err;
 
 				kgem_bo_destroy(&sna->kgem, bo);
@@ -1098,13 +1098,13 @@ bool sna_tiling_blt_copy_boxes(struct sna *sna, uint8_t alu,
 				if (!sna_blt_copy_boxes(sna, GXcopy,
 							src_bo, src_dx, src_dy,
 							bo, -dx, -dy,
-							bpp, REGION_RECTS(&this), REGION_NUM_RECTS(&this)))
+							bpp, region_rects(&this), region_num_rects(&this)))
 					goto err;
 
 				if (!sna_blt_copy_boxes(sna, alu,
 							bo, -dx, -dy,
 							dst_bo, dst_dx, dst_dy,
-							bpp, REGION_RECTS(&this), REGION_NUM_RECTS(&this)))
+							bpp, region_rects(&this), region_num_rects(&this)))
 					goto err;
 
 				kgem_bo_destroy(&sna->kgem, bo);

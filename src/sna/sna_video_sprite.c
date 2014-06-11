@@ -383,7 +383,7 @@ static int sna_video_sprite_put_image(ClientPtr client,
 	     format->id, width, height, sync));
 
 	DBG(("%s: region %d:(%d, %d), (%d, %d)\n", __FUNCTION__,
-	     RegionNumRects(&clip),
+	     region_num_rects(&clip),
 	     clip.extents.x1, clip.extents.y1,
 	     clip.extents.x2, clip.extents.y2));
 
@@ -522,8 +522,8 @@ off:
 			       __sna_pixmap_get_bo(sna->front),
 			       sna->front->drawable.bitsPerPixel,
 			       video->color_key,
-			       RegionRects(&clip),
-			       RegionNumRects(&clip)))
+			       region_rects(&clip),
+			       region_num_rects(&clip)))
 		RegionCopy(&video->clip, &clip);
 	sna_window_set_port((WindowPtr)draw, port);
 
