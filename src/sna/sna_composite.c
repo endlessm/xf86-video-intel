@@ -946,6 +946,26 @@ sna_composite_rectangles(CARD8		 op,
 	 */
 	hint = can_render(sna) ? PREFER_GPU : 0;
 	if (op <= PictOpSrc) {
+		if (priv->clear) {
+			uint32_t pixel;
+			bool ok;
+
+			if (op == PictOpClear) {
+				ok = sna_get_pixel_from_rgba(&pixel,
+							     0, 0, 0, 0,
+							     dst->format);
+			} else {
+				ok = sna_get_pixel_from_rgba(&pixel,
+							     color->red,
+							     color->green,
+							     color->blue,
+							     color->alpha,
+							     dst->format);
+			}
+			if (ok && priv->clear_color == pixel)
+				goto done;
+		}
+
 		if (region.data == NULL) {
 			hint |= IGNORE_CPU;
 			if (region_subsumes_drawable(&region, &pixmap->drawable))
