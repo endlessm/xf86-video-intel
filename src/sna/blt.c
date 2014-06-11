@@ -796,6 +796,7 @@ memmove_box(const void *src, void *dst,
 	    const BoxRec *box,
 	    int dx, int dy)
 {
+#define FORCE_MEMMOVE 0
 	union {
 		uint8_t u8;
 		uint16_t u16;
@@ -808,6 +809,7 @@ memmove_box(const void *src, void *dst,
 
 	assert(src);
 	assert(dst);
+	assert(src != dst);
 	assert(bpp >= 8);
 	assert(box->x2 > box->x1);
 	assert(box->y2 > box->y1);
@@ -821,10 +823,11 @@ memmove_box(const void *src, void *dst,
 	width = box->y1 * stride + box->x1 * bpp;
 	src_bytes = (const uint8_t *)src + width;
 	dst_bytes = (uint8_t *)dst + width;
+	assert(dst_bytes != src_bytes);
 
 	width = (box->x2 - box->x1) * bpp;
 	height = (box->y2 - box->y1);
-	assert(width <= 8*stride);
+	assert(width <= stride);
 	if (width == stride) {
 		width *= height;
 		height = 1;
@@ -865,8 +868,9 @@ memmove_box(const void *src, void *dst,
 			break;
 
 		default:
-			if (dst_bytes < src_bytes + width &&
-			    src_bytes < dst_bytes + width) {
+			if (FORCE_MEMMOVE ||
+			    (dst_bytes < src_bytes + width &&
+			     src_bytes < dst_bytes + width)) {
 				do {
 					memmove(dst_bytes, src_bytes, width);
 					src_bytes += stride;
@@ -919,8 +923,9 @@ memmove_box(const void *src, void *dst,
 			break;
 
 		default:
-			if (dst_bytes < src_bytes + width &&
-			    src_bytes < dst_bytes + width) {
+			if (FORCE_MEMMOVE ||
+			    (dst_bytes < src_bytes + width &&
+			     src_bytes < dst_bytes + width)) {
 				do {
 					memmove(dst_bytes, src_bytes, width);
 					src_bytes -= stride;
