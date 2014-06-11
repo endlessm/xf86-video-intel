@@ -2147,7 +2147,7 @@ sna_render_copy_boxes__overlap(struct sna *sna, uint8_t alu,
 	if (bo == NULL)
 		goto out;
 
-	ret = (sna->render.copy_boxes(sna, alu,
+	ret = (sna->render.copy_boxes(sna, GXcopy,
 				      src, src_bo, src_dx, src_dy,
 				      tmp, bo, -extents->x1, -extents->y1,
 				      box, n , 0) &&
