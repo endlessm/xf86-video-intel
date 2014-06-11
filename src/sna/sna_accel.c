@@ -474,11 +474,15 @@ sna_copy_init_blt(struct sna_copy_op *copy,
 
 static void sna_pixmap_free_gpu(struct sna *sna, struct sna_pixmap *priv)
 {
+	DBG(("%s: handle=%d (pinned? %d)\n", __FUNCTION__, priv->gpu_bo ? priv->gpu_bo->handle : 0, priv->pinned));
 	assert(priv->gpu_damage == NULL || priv->gpu_bo);
 
 	if (priv->cow)
-		sna_pixmap_undo_cow(sna, priv, 0);
+		sna_pixmap_undo_cow(sna, priv, MOVE_WRITE);
 	assert(priv->cow == NULL);
+
+	if (priv->move_to_gpu)
+		priv->move_to_gpu(sna, priv, MOVE_WRITE);
 
 	sna_damage_destroy(&priv->gpu_damage);
 	priv->clear = false;
@@ -4423,7 +4427,7 @@ try_upload_blt(PixmapPtr pixmap, RegionRec *region,
 	if (priv == NULL)
 		return false;
 
-	if (DAMAGE_IS_ALL(priv->cpu_damage) || priv->gpu_damage == NULL) {
+	if (DAMAGE_IS_ALL(priv->cpu_damage) || priv->gpu_damage == NULL || priv->cpu) {
 		DBG(("%s: no, no gpu damage\n", __FUNCTION__));
 		return false;
 	}
@@ -4433,17 +4437,11 @@ try_upload_blt(PixmapPtr pixmap, RegionRec *region,
 
 	if ((priv->create & (KGEM_CAN_CREATE_GTT | KGEM_CAN_CREATE_LARGE)) == KGEM_CAN_CREATE_GTT &&
 	    kgem_bo_can_map(&sna->kgem, priv->gpu_bo) &&
-	    !__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo)) {
+	    (priv->cow == NULL &&
+	     (priv->move_to_gpu == NULL || sna_pixmap_discard_shadow_damage(priv, region))  &&
+	     !__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo))) {
 		DBG(("%s: no, target is idle\n", __FUNCTION__));
 		return false;
-	}
-
-	if (priv->cow || priv->move_to_gpu) {
-		if (!region_subsumes_drawable(region, &pixmap->drawable) ||
-		    !sna_pixmap_move_to_gpu(pixmap, MOVE_WRITE)) {
-			DBG(("%s: no, target is a partial COW\n", __FUNCTION__));
-			return false;
-		}
 	}
 
 	if (priv->cpu_damage &&
@@ -4453,6 +4451,9 @@ try_upload_blt(PixmapPtr pixmap, RegionRec *region,
 		DBG(("%s: no, damage on CPU and too small\n", __FUNCTION__));
 		return false;
 	}
+
+	if (!sna_pixmap_move_area_to_gpu(pixmap, &region->extents, MOVE_WRITE | MOVE_ASYNC_HINT | (region->data ? MOVE_READ : 0)))
+		return false;
 
 	src_bo = kgem_create_map(&sna->kgem, bits, stride * h, true);
 	if (src_bo == NULL)
@@ -4500,9 +4501,9 @@ try_upload_blt(PixmapPtr pixmap, RegionRec *region,
 			list_del(&priv->flush_list);
 			if (sna_pixmap_free_cpu(sna, priv, priv->cpu))
 				sna_damage_all(&priv->gpu_damage, pixmap);
-			priv->cpu = false;
 		}
 	}
+	priv->cpu = false;
 	priv->clear = false;
 
 	return true;
@@ -4543,7 +4544,8 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 	if (priv->gpu_bo && replaces) {
 		if (UNDO) kgem_bo_pair_undo(&sna->kgem, priv->gpu_bo, priv->cpu_bo);
 		if (can_create_upload_tiled_x(&sna->kgem, pixmap, priv, true) &&
-		    (__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo) ||
+		    (priv->cow ||
+		     __kgem_bo_is_busy(&sna->kgem, priv->gpu_bo) ||
 		     !kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, true))) {
 			DBG(("%s: discarding unusable target bo (busy? %d, mappable? %d)\n", __FUNCTION__,
 			     kgem_bo_is_busy(priv->gpu_bo),
@@ -4554,9 +4556,10 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 	}
 	assert(priv->gpu_bo == NULL || priv->gpu_bo->proxy == NULL);
 
-	if ((priv->cow || priv->move_to_gpu) &&
-	    (!replaces || !sna_pixmap_move_to_gpu(pixmap, MOVE_WRITE))) {
-		DBG(("%s: no, has COW or pending move-to-gpu\n", __FUNCTION__));
+	if (priv->cow ||
+	    (priv->move_to_gpu && !sna_pixmap_discard_shadow_damage(priv, replaces ? NULL : region))) {
+		DBG(("%s: no, has pending COW? %d or move-to-gpu? %d\n",
+		     __FUNCTION__, priv->cow != NULL, priv->move_to_gpu != NULL));
 		return false;
 	}
 

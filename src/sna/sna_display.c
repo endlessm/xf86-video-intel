@@ -1205,30 +1205,37 @@ done:
 	return ret;
 }
 
-void sna_pixmap_discard_shadow_damage(struct sna_pixmap *priv,
-				      RegionPtr region)
+bool sna_pixmap_discard_shadow_damage(struct sna_pixmap *priv,
+				      const RegionRec *region)
 {
 	struct sna *sna;
 
 	if (priv->move_to_gpu != wait_for_shadow)
-		return;
+		return false;
 
 	sna = priv->move_to_gpu_data;
-	DBG(("%s: discarding region %dx[(%d, %d), (%d, %d)] from damage %dx[(%d, %d], (%d, %d)]\n",
-	     __FUNCTION__,
-	     region_num_rects(region),
-	     region->extents.x1, region->extents.y1,
-	     region->extents.x2, region->extents.y2,
-	     region_num_rects(&sna->mode.shadow_region),
-	     sna->mode.shadow_region.extents.x1, sna->mode.shadow_region.extents.y1,
-	     sna->mode.shadow_region.extents.x2, sna->mode.shadow_region.extents.y2));
+	if (region) {
+		DBG(("%s: discarding region %dx[(%d, %d), (%d, %d)] from damage %dx[(%d, %d], (%d, %d)]\n",
+		     __FUNCTION__,
+		     region_num_rects(region),
+		     region->extents.x1, region->extents.y1,
+		     region->extents.x2, region->extents.y2,
+		     region_num_rects(&sna->mode.shadow_region),
+		     sna->mode.shadow_region.extents.x1, sna->mode.shadow_region.extents.y1,
+		     sna->mode.shadow_region.extents.x2, sna->mode.shadow_region.extents.y2));
 
-	if (region)
 		RegionSubtract(&sna->mode.shadow_region,
 			       &sna->mode.shadow_region,
-			       region);
-	else
+			       (RegionPtr)region);
+	} else {
+		DBG(("%s: discarding all damage %dx[(%d, %d], (%d, %d)]\n",
+		     region_num_rects(&sna->mode.shadow_region),
+		     sna->mode.shadow_region.extents.x1, sna->mode.shadow_region.extents.y1,
+		     sna->mode.shadow_region.extents.x2, sna->mode.shadow_region.extents.y2));
 		RegionEmpty(&sna->mode.shadow_region);
+	}
+
+	return RegionNil(&sna->mode.shadow_region);
 }
 
 static bool sna_mode_enable_shadow(struct sna *sna)
