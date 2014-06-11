@@ -572,13 +572,16 @@ static void __sna_pixmap_free_cpu(struct sna *sna, struct sna_pixmap *priv)
 		free(priv->ptr);
 }
 
-static void sna_pixmap_free_cpu(struct sna *sna, struct sna_pixmap *priv, bool active)
+static bool sna_pixmap_free_cpu(struct sna *sna, struct sna_pixmap *priv, bool active)
 {
 	if (active)
-		return;
+		return false;
 
 	if (IS_STATIC_PTR(priv->ptr))
-		return;
+		return false;
+
+	if (priv->ptr == NULL)
+		return false;
 
 	__sna_pixmap_free_cpu(sna, priv);
 
@@ -587,6 +590,8 @@ static void sna_pixmap_free_cpu(struct sna *sna, struct sna_pixmap *priv, bool a
 
 	if (priv->mapped == MAPPED_NONE)
 		priv->pixmap->devPrivate.ptr = NULL;
+
+	return true;
 }
 
 static inline uint32_t default_tiling(PixmapPtr pixmap,
@@ -2084,6 +2089,7 @@ _sna_pixmap_move_to_cpu(PixmapPtr pixmap, unsigned int flags)
 	if (kgem_bo_discard_cache(priv->gpu_bo, flags & MOVE_WRITE)) {
 		DBG(("%s: discarding cached upload buffer\n", __FUNCTION__));
 		assert(DAMAGE_IS_ALL(priv->cpu_damage));
+		assert(priv->gpu_damage == NULL);
 		assert(!priv->pinned);
 		assert(!priv->mapped);
 		kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
@@ -2099,7 +2105,7 @@ _sna_pixmap_move_to_cpu(PixmapPtr pixmap, unsigned int flags)
 
 	if (USE_INPLACE && (flags & MOVE_READ) == 0 && !(priv->cow || priv->move_to_gpu)) {
 		assert(flags & MOVE_WRITE);
-		DBG(("%s: no readbck, discarding gpu damage [%d], pending clear[%d]\n",
+		DBG(("%s: no readback, discarding gpu damage [%d], pending clear[%d]\n",
 		     __FUNCTION__, priv->gpu_damage != NULL, priv->clear));
 
 		if ((priv->gpu_bo || priv->create & KGEM_CAN_CREATE_GPU) &&
@@ -3206,6 +3212,7 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 
 	if (kgem_bo_discard_cache(priv->gpu_bo, flags & (MOVE_WRITE | __MOVE_FORCE))) {
 		DBG(("%s: discarding cached upload buffer\n", __FUNCTION__));
+		assert(DAMAGE_IS_ALL(priv->cpu_damage));
 		assert(priv->gpu_damage == NULL);
 		assert(!priv->pinned);
 		assert(!priv->mapped);
@@ -3445,8 +3452,8 @@ sna_drawable_use_bo(DrawablePtr drawable, unsigned flags, const BoxRec *box,
 	}
 
 	if (kgem_bo_discard_cache(priv->gpu_bo, true)) {
-		DBG(("%s: cached upload proxy, discard and revert to GPU\n",
-		     __FUNCTION__));
+		DBG(("%s: cached upload proxy, discard and revert to GPU\n", __FUNCTION__));
+		assert(DAMAGE_IS_ALL(priv->cpu_damage));
 		assert(priv->gpu_damage == NULL);
 		assert(!priv->pinned);
 		assert(!priv->mapped);
@@ -3942,6 +3949,7 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 
 	if (kgem_bo_discard_cache(priv->gpu_bo, flags & (MOVE_WRITE | __MOVE_FORCE))) {
 		DBG(("%s: discarding cached upload buffer\n", __FUNCTION__));
+		assert(DAMAGE_IS_ALL(priv->cpu_damage));
 		assert(priv->gpu_damage == NULL);
 		assert(!priv->pinned);
 		assert(!priv->mapped);
@@ -4491,11 +4499,12 @@ try_upload_blt(PixmapPtr pixmap, RegionRec *region,
 			sna_damage_subtract(&priv->cpu_damage, region);
 		if (priv->cpu_damage == NULL) {
 			list_del(&priv->flush_list);
-			sna_pixmap_free_cpu(sna, priv, priv->cpu);
+			if (sna_pixmap_free_cpu(sna, priv, priv->cpu))
+				sna_damage_all(&priv->gpu_damage, pixmap);
+			priv->cpu = false;
 		}
 	}
 	priv->clear = false;
-	priv->cpu = false;
 
 	return true;
 }
@@ -4523,6 +4532,11 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 	     replaces));
 
 	if (kgem_bo_discard_cache(priv->gpu_bo, true)) {
+		DBG(("%s: discarding cached upload buffer\n", __FUNCTION__));
+		assert(DAMAGE_IS_ALL(priv->cpu_damage));
+		assert(priv->gpu_damage == NULL);
+		assert(!priv->pinned);
+		assert(!priv->mapped);
 		kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
 		priv->gpu_bo = NULL;
 	}
@@ -4686,7 +4700,8 @@ try_upload_tiled_x(PixmapPtr pixmap, RegionRec *region,
 			sna_damage_subtract(&priv->cpu_damage, region);
 		if (priv->cpu_damage == NULL) {
 			list_del(&priv->flush_list);
-			sna_pixmap_free_cpu(sna, priv, priv->cpu);
+			if (sna_pixmap_free_cpu(sna, priv, priv->cpu))
+				sna_damage_all(&priv->gpu_damage, pixmap);
 			priv->cpu = false;
 		}
 	}
@@ -5873,6 +5888,8 @@ static void discard_cpu_damage(struct sna *sna, struct sna_pixmap *priv)
 {
 	DBG(("%s: discarding existing CPU damage\n", __FUNCTION__));
 	if (kgem_bo_discard_cache(priv->gpu_bo, true)) {
+		DBG(("%s: discarding cached upload buffer\n", __FUNCTION__));
+		assert(DAMAGE_IS_ALL(priv->cpu_damage));
 		assert(priv->gpu_damage == NULL);
 		assert(!priv->pinned);
 		assert(!priv->mapped);
