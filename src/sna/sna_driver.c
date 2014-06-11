@@ -611,6 +611,14 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 	if (xf86ReturnOptValBool(sna->Options, OPTION_TILING_FB, FALSE))
 		sna->tiling &= ~SNA_TILING_FB;
 
+	if (sna->tiling != SNA_TILING_ALL) {
+		xf86DrvMsg(scrn->scrnIndex, X_CONFIG, "Framebuffer %s, pixmaps %s\n",
+			   sna->tiling & SNA_TILING_FB ? "tiled" : "linear",
+			   sna->tiling & SNA_TILING_2D ? "tiled" : "linear");
+		xf86DrvMsg(scrn->scrnIndex, X_WARNING,
+			   "Tiling disabled, expect poor performance and increased power consumption.\n");
+	}
+
 	if (xf86ReturnOptValBool(sna->Options, OPTION_DELETE_DP12, FALSE))
 		sna->flags |= SNA_REMOVE_OUTPUTS;
 
@@ -633,19 +641,10 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 		sna->flags |= SNA_TRIPLE_BUFFER;
 	DBG(("%s: triple buffer? %s\n", __FUNCTION__, sna->flags & SNA_TRIPLE_BUFFER ? "enabled" : "disabled"));
 
-	if (xf86ReturnOptValBool(sna->Options, OPTION_CRTC_PIXMAPS, FALSE))
+	if (xf86ReturnOptValBool(sna->Options, OPTION_CRTC_PIXMAPS, FALSE)) {
+		xf86DrvMsg(scrn->scrnIndex, X_CONFIG, "Forcing per-crtc-pixmaps.\n");
 		sna->flags |= SNA_FORCE_SHADOW;
-
-	xf86DrvMsg(scrn->scrnIndex, X_CONFIG, "Framebuffer %s\n",
-		   sna->tiling & SNA_TILING_FB ? "tiled" : "linear");
-	xf86DrvMsg(scrn->scrnIndex, X_CONFIG, "Pixmaps %s\n",
-		   sna->tiling & SNA_TILING_2D ? "tiled" : "linear");
-	xf86DrvMsg(scrn->scrnIndex, X_CONFIG, "Forcing per-crtc-pixmaps? %s\n",
-		   sna->flags & SNA_FORCE_SHADOW ? "yes" : "no");
-
-	if (sna->tiling != SNA_TILING_ALL)
-		xf86DrvMsg(scrn->scrnIndex, X_WARNING,
-			   "Tiling disabled, expect poor performance and increased power consumption.\n");
+	}
 
 	if (!sna_mode_pre_init(scrn, sna)) {
 		xf86DrvMsg(scrn->scrnIndex, X_ERROR,
