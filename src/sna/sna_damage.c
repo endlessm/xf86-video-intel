@@ -370,6 +370,7 @@ _sna_damage_create_elt(struct sna_damage *damage,
 
 	DBG(("    %s: prev=(remain %d), count=%d\n",
 	     __FUNCTION__, damage->remain, count));
+	assert(count);
 
 restart:
 	n = count;
@@ -421,6 +422,7 @@ _sna_damage_create_elt_from_boxes(struct sna_damage *damage,
 	int i, n;
 
 	DBG(("    %s: prev=(remain %d)\n", __FUNCTION__, damage->remain));
+	assert(count);
 
 restart:
 	n = count;
@@ -483,6 +485,7 @@ _sna_damage_create_elt_from_rectangles(struct sna_damage *damage,
 
 	DBG(("    %s: prev=(remain %d), count=%d\n",
 	     __FUNCTION__, damage->remain, count));
+	assert(count);
 
 restart:
 	n = count;
@@ -545,6 +548,7 @@ _sna_damage_create_elt_from_points(struct sna_damage *damage,
 
 	DBG(("    %s: prev=(remain %d), count=%d\n",
 	     __FUNCTION__, damage->remain, count));
+	assert(count);
 
 restart:
 	n = count;
@@ -1532,6 +1536,9 @@ static int __sna_damage_get_boxes(struct sna_damage *damage, BoxPtr *boxes)
 	if (damage->dirty)
 		__sna_damage_reduce(damage);
 
+	assert(!damage->dirty);
+	assert(damage->mode == DAMAGE_ADD);
+
 	*boxes = region_rects(&damage->region);
 	return region_num_rects(&damage->region);
 }
@@ -1541,6 +1548,10 @@ struct sna_damage *_sna_damage_reduce(struct sna_damage *damage)
 	DBG(("%s\n", __FUNCTION__));
 
 	__sna_damage_reduce(damage);
+
+	assert(!damage->dirty);
+	assert(damage->mode == DAMAGE_ADD);
+
 	if (!pixman_region_not_empty(&damage->region)) {
 		__sna_damage_destroy(damage);
 		damage = NULL;
