@@ -4373,18 +4373,23 @@ static void __kgem_bo_make_scanout(struct kgem *kgem,
 	arg.depth = scrn->depth;
 	arg.handle = bo->handle;
 
-	if (gem_set_caching(kgem->fd, bo->handle, DISPLAY)) {
-		bo->scanout = true;
+	/* First move the scanout out of cached memory */
+	if (kgem->has_llc) {
+		if (!gem_set_caching(kgem->fd, bo->handle, DISPLAY) &&
+		    !gem_set_caching(kgem->fd, bo->handle, UNCACHED))
+			return;
+	}
 
-		/* Pre-emptively move the object into the mappable
-		 * portion to avoid rebinding later when busy.
-		 */
-		if (bo->map__gtt == NULL)
-			bo->map__gtt = __kgem_bo_map__gtt(kgem, bo);
-		if (bo->map__gtt) {
-			*(uint32_t *)bo->map__gtt = 0;
-			bo->domain = DOMAIN_GTT;
-		}
+	bo->scanout = true;
+
+	/* Then pre-emptively move the object into the mappable
+	 * portion to avoid rebinding later when busy.
+	 */
+	if (bo->map__gtt == NULL)
+		bo->map__gtt = __kgem_bo_map__gtt(kgem, bo);
+	if (bo->map__gtt) {
+		*(uint32_t *)bo->map__gtt = 0;
+		bo->domain = DOMAIN_GTT;
 	}
 
 	if (do_ioctl(kgem->fd, DRM_IOCTL_MODE_ADDFB, &arg) == 0) {
