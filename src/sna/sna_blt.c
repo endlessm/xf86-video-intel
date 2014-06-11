@@ -2789,8 +2789,13 @@ fill:
 	tmp->dst.bo = sna_drawable_use_bo(dst->pDrawable, hint,
 					  &dst_box, &tmp->damage);
 
-	if (tmp->dst.bo && hint & REPLACES)
-		kgem_bo_undo(&sna->kgem, tmp->dst.bo);
+	if (tmp->dst.bo && hint & REPLACES) {
+		struct sna_pixmap *priv = sna_pixmap(tmp->dst.pixmap);
+		kgem_bo_pair_undo(&sna->kgem, priv->gpu_bo, priv->cpu_bo);
+	}
+
+	if (tmp->dst.pixmap == src_pixmap)
+		bo = __sna_render_pixmap_bo(sna, src_pixmap, &src_box, true);
 
 	ret = false;
 	if (bo) {
