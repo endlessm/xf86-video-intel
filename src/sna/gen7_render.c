@@ -2966,7 +2966,6 @@ fallback_blt:
 			goto fallback_blt;
 
 		if (can_switch_to_blt(sna, dst_bo, flags) &&
-		    sna_blt_compare_depth(&src->drawable, &dst->drawable) &&
 		    sna_blt_copy_boxes(sna, alu,
 				       src_bo, src_dx, src_dy,
 				       dst_bo, dst_dx, dst_dy,
