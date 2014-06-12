@@ -2004,6 +2004,9 @@ sna_pixmap_make_cow(struct sna *sna,
 
 static inline bool operate_inplace(struct sna_pixmap *priv, unsigned flags)
 {
+	if (!USE_INPLACE)
+		return false;
+
 	if ((flags & MOVE_INPLACE_HINT) == 0) {
 		DBG(("%s: no, inplace operation not suitable\n", __FUNCTION__));
 		return false;
@@ -2166,8 +2169,7 @@ skip_inplace_map:
 
 	assert(priv->gpu_bo == NULL || priv->gpu_bo->proxy == NULL);
 
-	if (USE_INPLACE &&
-	    operate_inplace(priv, flags) &&
+	if (operate_inplace(priv, flags) &&
 	    pixmap_inplace(sna, pixmap, priv, flags) &&
 	    sna_pixmap_create_mappable_gpu(pixmap, (flags & MOVE_READ) == 0)) {
 		void *ptr;
@@ -2623,8 +2625,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 		RegionTranslate(region, dx, dy);
 	}
 
-	if (USE_INPLACE &&
-	    operate_inplace(priv, flags) &&
+	if (operate_inplace(priv, flags) &&
 	    region_inplace(sna, pixmap, region, priv, flags) &&
 	    sna_pixmap_create_mappable_gpu(pixmap, false)) {
 		void *ptr;
