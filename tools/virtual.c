@@ -3060,6 +3060,7 @@ static int first_display_sibling(struct context *ctx, int i)
 static void display_cleanup(struct display *display)
 {
 	Display *dpy = display->dpy;
+	XRRScreenResources *res;
 	int n;
 
 	XGrabServer(dpy);
@@ -3067,7 +3068,7 @@ static void display_cleanup(struct display *display)
 	res = _XRRGetScreenResourcesCurrent(dpy, display->root);
 	if (res != NULL) {
 		for (n = 0; n < res->ncrtc; n++)
-			disable_crtc(display->dpy, res, res->crtc[n]);
+			disable_crtc(display->dpy, res, res->crtcs[n]);
 
 		XRRFreeScreenResources(res);
 	}
@@ -3082,7 +3083,7 @@ static void context_cleanup(struct context *ctx)
 	int i, j;
 
 	for (i = 1; i < ctx->ndisplay; i++)
-		display_cleanup(&ctx.display[i]);
+		display_cleanup(&ctx->display[i]);
 
 	res = _XRRGetScreenResourcesCurrent(dpy, ctx->display->root);
 	if (res == NULL)
