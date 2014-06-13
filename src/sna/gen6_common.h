@@ -36,7 +36,7 @@
 static inline bool is_uncached(struct sna *sna,
 			       struct kgem_bo *bo)
 {
-	return bo->scanout && !sna->kgem.has_wt;
+	return bo->io || (bo->scanout && !sna->kgem.has_wt);
 }
 
 inline static bool can_switch_to_blt(struct sna *sna,
