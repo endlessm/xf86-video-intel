@@ -4761,15 +4761,24 @@ try_upload__blt(PixmapPtr pixmap, RegionRec *region,
 	return true;
 }
 
-static bool ignore_cpu_damage(struct sna_pixmap *priv, const BoxRec *box)
+static bool ignore_cpu_damage(struct sna *sna, struct sna_pixmap *priv, const RegionRec *region)
 {
-	if (priv->cpu_damage == NULL)
+	if (region_subsumes_pixmap(region, priv->pixmap))
 		return true;
 
-	if (!sna_damage_contains_box__no_reduce(priv->cpu_damage, box))
-		return true;
+	if (priv->cpu_damage != NULL) {
+		if (DAMAGE_IS_ALL(priv->cpu_damage == NULL))
+			return false;
 
-	return box_inplace(priv->pixmap, box);
+		if (!box_inplace(priv->pixmap, &region->extents))
+			return false;
+
+		if (sna_damage_contains_box__no_reduce(priv->cpu_damage, &region->extents))
+			return false;
+	}
+
+	return priv->gpu_bo == NULL || !__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo);
+
 }
 
 static bool
@@ -4786,9 +4795,7 @@ try_upload__fast(PixmapPtr pixmap, RegionRec *region,
 	if (priv == NULL)
 		return false;
 
-	if (region_subsumes_pixmap(region, pixmap) ||
-	    (ignore_cpu_damage(priv, &region->extents) &&
-	     (priv->gpu_bo == NULL || !__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo)))) {
+	if (ignore_cpu_damage(sna, priv, region)) {
 		if (try_upload__inplace(pixmap, region, x, y, w, h, bits, stride))
 			return true;
 	}

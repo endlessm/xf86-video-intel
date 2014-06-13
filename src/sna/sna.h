@@ -803,7 +803,7 @@ region_subsumes_drawable(RegionPtr region, DrawablePtr drawable)
 }
 
 static inline bool
-region_subsumes_pixmap(RegionPtr region, PixmapPtr pixmap)
+region_subsumes_pixmap(const RegionRec *region, PixmapPtr pixmap)
 {
 	if (region->data)
 		return false;
