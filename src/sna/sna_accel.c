@@ -14382,16 +14382,15 @@ sna_poly_fill_rect(DrawablePtr draw, GCPtr gc, int n, xRectangle *rect)
 			RegionTranslate(&region, dx, dy);
 		}
 
-		if (region_subsumes_drawable(&region, &pixmap->drawable)) {
-			discard_cpu_damage(sna, priv);
-			hint |= IGNORE_CPU | REPLACES;
-		} else {
-			if ((flags & 2) == 0)
-				hint |= IGNORE_CPU;
-			if (priv->cpu_damage &&
-			    region_subsumes_damage(&region, priv->cpu_damage)) {
+		if ((flags & 2) == 0) {
+			hint |= IGNORE_CPU;
+			if (region_subsumes_drawable(&region, &pixmap->drawable)) {
 				discard_cpu_damage(sna, priv);
-				hint |= IGNORE_CPU;
+				hint |= REPLACES;
+			} else {
+				if (priv->cpu_damage &&
+				    region_subsumes_damage(&region, priv->cpu_damage))
+					discard_cpu_damage(sna, priv);
 			}
 		}
 		if (priv->cpu_damage == NULL) {
