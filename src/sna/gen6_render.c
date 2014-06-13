@@ -2725,16 +2725,18 @@ fallback_blt:
 		     src_bo, src_dx, src_dy,
 		     dst_bo, dst_dx, dst_dy,
 		     box, n, &extents)) {
-		if (too_large(extents.x2-extents.x1, extents.y2-extents.y1))
-			goto fallback_blt;
+		bool big = too_large(extents.x2-extents.x1, extents.y2-extents.y1);
 
-		if (can_switch_to_blt(sna, dst_bo, flags) &&
+		if ((big || can_switch_to_blt(sna, dst_bo, flags)) &&
 		    sna_blt_copy_boxes(sna, alu,
 				       src_bo, src_dx, src_dy,
 				       dst_bo, dst_dx, dst_dy,
 				       dst->drawable.bitsPerPixel,
 				       box, n))
 			return true;
+
+		if (big)
+			goto fallback_blt;
 
 		return sna_render_copy_boxes__overlap(sna, alu,
 						      src, src_bo, src_dx, src_dy,
