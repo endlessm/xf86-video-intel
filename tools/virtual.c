@@ -1047,6 +1047,8 @@ static void output_init_xfer(struct clone *clone, struct output *output)
 	if (output->gc == None) {
 		XGCValues gcv;
 
+		DBG(("%s-%s: creating gc\n", DisplayString(output->dpy), output->name));
+
 		gcv.graphics_exposures = False;
 		gcv.subwindow_mode = IncludeInferiors;
 
@@ -1121,7 +1123,17 @@ static int clone_init_xfer(struct clone *clone)
 
 		_x_error_occurred = 0;
 
+		DBG(("%s-%s create xfer, trying DRI3\n",
+		     DisplayString(clone->dst.dpy), clone->dst.name));
+
 		fd = dri3_create_fd(clone->dst.dpy, clone->dst.window, &stride);
+		if (fd < 0)
+			goto disable_dri3;
+
+		DBG(("%s-%s create xfer, DRI3 fd=%d, stride=%d\n",
+		     DisplayString(clone->dst.dpy), clone->dst.name,
+		     fd, stride));
+
 		src = dri3_create_pixmap(clone->src.dpy, clone->src.window,
 					 width, height, clone->depth,
 					 fd, bpp_for_depth(clone->depth),
@@ -1135,8 +1147,12 @@ static int clone_init_xfer(struct clone *clone)
 		} else {
 			XFreePixmap(clone->src.dpy, src);
 			close(fd);
+disable_dri3:
 			dri3_fence_free(clone->src.dpy, &clone->dri3);
 			clone->dri3.xid = 0;
+
+			DBG(("%s-%s create xfer, DRI3 failed\n",
+			     DisplayString(clone->dst.dpy), clone->dst.name));
 		}
 	}
 
@@ -1144,6 +1160,9 @@ static int clone_init_xfer(struct clone *clone)
 	height = mode_height(&clone->src.mode, clone->src.rotation);
 
 	if (!clone->dri3.xid) {
+		DBG(("%s-%s create xfer, trying SHM\n",
+		     DisplayString(clone->dst.dpy), clone->dst.name));
+
 		clone->shm.shmid = shmget(IPC_PRIVATE,
 					  height * stride_for_depth(width, clone->depth),
 					  IPC_CREAT | 0666);
