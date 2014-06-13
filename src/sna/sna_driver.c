@@ -475,6 +475,18 @@ static void setup_dri(struct sna *sna)
 #endif
 }
 
+static bool enable_tear_free(struct sna *sna)
+{
+	/* Under certain conditions, we should enable TearFree by default,
+	 * for example when the hardware requires pageflipping to run within
+	 * its power/performance budget.
+	 */
+	if (sna_mode_wants_tear_free(sna))
+		return true;
+
+	return ENABLE_TEAR_FREE;
+}
+
 /**
  * This is called before ScreenInit to do any require probing of screen
  * configuration.
@@ -654,7 +666,7 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 	scrn->currentMode = scrn->modes;
 
 	if (sna->flags & SNA_HAS_FLIP &&
-	    xf86ReturnOptValBool(sna->Options, OPTION_TEAR_FREE, ENABLE_TEAR_FREE))
+	    xf86ReturnOptValBool(sna->Options, OPTION_TEAR_FREE, enable_tear_free(sna)))
 		sna->flags |= SNA_TEAR_FREE;
 	xf86DrvMsg(scrn->scrnIndex, X_CONFIG, "TearFree %sabled\n",
 		   sna->flags & SNA_TEAR_FREE ? "en" : "dis");

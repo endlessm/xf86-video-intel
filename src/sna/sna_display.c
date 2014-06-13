@@ -5200,6 +5200,25 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 	return scrn->modes != NULL;
 }
 
+bool
+sna_mode_wants_tear_free(struct sna *sna)
+{
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	int i;
+
+	for (i = 0; i < sna->mode.num_real_output; i++) {
+		struct sna_output *output = to_sna_output(config->output[i]);
+		int id = find_property(sna, output, "Panel Self-Refresh");
+		if (id !=-1 && output->prop_values[id] != -1) {
+			DBG(("%s: Panel Self-Refresh detected on %s\n",
+			     __FUNCTION__, config->output[i]->name));
+			return true;
+		}
+	}
+
+	return false;
+}
+
 void
 sna_mode_close(struct sna *sna)
 {
