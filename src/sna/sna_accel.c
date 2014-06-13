@@ -6005,7 +6005,8 @@ static void discard_cpu_damage(struct sna *sna, struct sna_pixmap *priv)
 	sna_damage_destroy(&priv->cpu_damage);
 	list_del(&priv->flush_list);
 
-	sna_pixmap_free_cpu(sna, priv, priv->cpu);
+	if (priv->gpu_bo && sna_pixmap_free_cpu(sna, priv, priv->cpu))
+		sna_damage_all(&priv->gpu_damage, priv->pixmap);
 	priv->cpu = false;
 }
 
