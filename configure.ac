@@ -622,8 +622,7 @@ AM_CONDITIONAL(SNA, test "x$SNA" != "xno")
 AC_MSG_RESULT([$SNA])
 
 if test "$XVMC" = "yes"; then
-	PKG_CHECK_MODULES(XVMCLIB, [xvmc dri2proto x11], [], [XVMC="no"])
-	PKG_CHECK_MODULES(XCB, [x11-xcb xcb-dri2 xcb-aux], [], [XVMC="no"])
+	PKG_CHECK_MODULES(XVMCLIB, [xvmc dri2proto x11 x11-xcb xcb-dri2 xcb-aux libdrm_intel], [], [XVMC="no"])
 fi
 AC_MSG_CHECKING([whether to include XvMC support])
 AC_MSG_RESULT([$XVMC])
