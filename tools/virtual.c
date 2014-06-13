@@ -3054,15 +3054,35 @@ static int first_display_sibling(struct context *ctx, int i)
 	return 1;
 }
 
-
 #define first_display_for_each_sibling(CTX, i) \
 	for (i = first_display_first_sibling(CTX); first_display_sibling(CTX, i); i++)
+
+static void display_cleanup(struct display *display)
+{
+	Display *dpy = display->dpy;
+	int n;
+
+	XGrabServer(dpy);
+
+	res = _XRRGetScreenResourcesCurrent(dpy, display->root);
+	if (res != NULL) {
+		for (n = 0; n < res->ncrtc; n++)
+			disable_crtc(display->dpy, res, res->crtc[n]);
+
+		XRRFreeScreenResources(res);
+	}
+
+	XUngrabServer(dpy);
+}
 
 static void context_cleanup(struct context *ctx)
 {
 	Display *dpy = ctx->display->dpy;
 	XRRScreenResources *res;
 	int i, j;
+
+	for (i = 1; i < ctx->ndisplay; i++)
+		display_cleanup(&ctx.display[i]);
 
 	res = _XRRGetScreenResourcesCurrent(dpy, ctx->display->root);
 	if (res == NULL)
