@@ -1091,12 +1091,12 @@ static int clone_init_xfer(struct clone *clone)
 	     DisplayString(clone->dst.dpy), clone->dst.name,
 	     width, height));
 
-	if (clone->src.use_shm)
-		XShmDetach(clone->src.dpy, &clone->src.shm);
-	if (clone->dst.use_shm)
-		XShmDetach(clone->dst.dpy, &clone->dst.shm);
-
 	if (clone->shm.shmaddr) {
+		if (clone->src.use_shm)
+			XShmDetach(clone->src.dpy, &clone->src.shm);
+		if (clone->dst.use_shm)
+			XShmDetach(clone->dst.dpy, &clone->dst.shm);
+
 		shmdt(clone->shm.shmaddr);
 		clone->shm.shmaddr = NULL;
 	}
