@@ -4226,7 +4226,9 @@ sna_set_cursor_position(ScrnInfoPtr scrn, int x, int y)
 		if (arg.x < crtc->mode.HDisplay && arg.x > -sna->cursor.size &&
 		    arg.y < crtc->mode.VDisplay && arg.y > -sna->cursor.size) {
 			cursor = __sna_get_cursor(sna, crtc);
-			if (cursor == NULL) {
+			if (cursor == NULL)
+				cursor = sna_crtc->cursor;
+			if (cursor == NULL || cursor->size > sna->cursor.size) {
 				__DBG(("%s: failed to grab cursor, disabling\n",
 				       __FUNCTION__));
 				goto disable;
@@ -4241,8 +4243,8 @@ sna_set_cursor_position(ScrnInfoPtr scrn, int x, int y)
 			arg.flags |= DRM_MODE_CURSOR_MOVE;
 			crtc->cursor_in_range = true;
 		} else {
-disable:
 			crtc->cursor_in_range = false;
+disable:
 			if (sna_crtc->cursor) {
 				arg.flags = DRM_MODE_CURSOR_BO;
 				arg.width = arg.height = 0;
