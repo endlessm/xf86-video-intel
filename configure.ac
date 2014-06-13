@@ -520,7 +520,7 @@ have_dri2=no
 have_dri3=no
 if test "x$DRI" != "xno"; then
 	if test "x$DRI2" != "xno"; then
-		PKG_CHECK_MODULES(have_dri2, [dri2proto >= 2.6], [have_dri2=$DRI], [have_dri2=no])
+		PKG_CHECK_MODULES(DRI2, [dri2proto >= 2.6], [have_dri2=$DRI], [have_dri2=no])
 	fi
 	if test "x$have_dri2" != "xno"; then
 		save_CFLAGS=$CFLAGS
