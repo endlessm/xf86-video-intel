@@ -1175,8 +1175,6 @@ disable_dri3:
 			return ENOMEM;
 		}
 
-		init_image(clone);
-
 		if (clone->src.use_shm) {
 			clone->src.shm = clone->shm;
 			clone->src.shm.readOnly = False;
@@ -1194,6 +1192,8 @@ disable_dri3:
 
 		clone->width = width;
 		clone->height = height;
+
+		init_image(clone);
 	}
 
 	output_init_xfer(clone, &clone->src);
