@@ -50,6 +50,8 @@ struct kgem_bo {
 #define RQ(rq) ((struct kgem_request *)((uintptr_t)(rq) & ~3))
 #define RQ_RING(rq) ((uintptr_t)(rq) & 3)
 #define RQ_IS_BLT(rq) (RQ_RING(rq) == KGEM_BLT)
+#define MAKE_REQUEST(rq, ring) ((struct kgem_request *)((uintptr_t)(rq) | (ring)))
+
 	struct drm_i915_gem_exec_object2 *exec;
 
 	struct kgem_bo *proxy;
@@ -569,10 +571,17 @@ void kgem_bo_pair_undo(struct kgem *kgem, struct kgem_bo *a, struct kgem_bo *b);
 
 bool __kgem_busy(struct kgem *kgem, int handle);
 
-static inline void kgem_bo_mark_busy(struct kgem_bo *bo, int ring)
+static inline void kgem_bo_mark_busy(struct kgem *kgem, struct kgem_bo *bo, int ring)
 {
 	assert(bo->refcnt);
-	bo->rq = (struct kgem_request *)((uintptr_t)bo->rq | ring);
+	bo->needs_flush = true;
+	if (bo->rq) {
+		bo->rq = MAKE_REQUEST(RQ(bo->rq), ring);
+	} else {
+		bo->rq = MAKE_REQUEST(kgem, ring);
+		list_add(&bo->request, &kgem->flushing);
+		kgem->need_retire = true;
+	}
 }
 
 inline static void __kgem_bo_clear_busy(struct kgem_bo *bo)

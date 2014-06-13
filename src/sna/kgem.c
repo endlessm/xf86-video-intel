@@ -118,8 +118,6 @@ search_snoop_cache(struct kgem *kgem, unsigned int num_pages, unsigned flags);
 #define MAKE_USER_MAP(ptr) ((void*)((uintptr_t)(ptr) | 1))
 #define IS_USER_MAP(ptr) ((uintptr_t)(ptr) & 1)
 
-#define MAKE_REQUEST(rq, ring) ((struct kgem_request *)((uintptr_t)(rq) | (ring)))
-
 #define LOCAL_I915_PARAM_HAS_BLT		11
 #define LOCAL_I915_PARAM_HAS_RELAXED_FENCING	12
 #define LOCAL_I915_PARAM_HAS_RELAXED_DELTA	15

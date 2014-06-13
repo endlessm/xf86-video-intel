@@ -6350,6 +6350,19 @@ fixup_flip:
 			crtc->flip_handler = shadow_flip_handler;
 			crtc->flip_bo = kgem_bo_reference(flip_bo);
 			crtc->flip_bo->active_scanout++;
+
+			{
+				struct drm_i915_gem_busy busy = { flip_bo->handle };
+				if (drmIoctl(sna->kgem.fd, DRM_IOCTL_I915_GEM_BUSY, &busy) == 0) {
+					if (busy.busy) {
+						int mode = KGEM_RENDER;
+						if (busy.busy & (1 << 17))
+							mode = KGEM_BLT;
+						kgem_bo_mark_busy(&sna->kgem, flip_bo, mode);
+					} else
+						__kgem_bo_clear_busy(flip_bo);
+				}
+			}
 		}
 
 		DBG(("%s: flipped %d outputs, shadow active? %d\n",

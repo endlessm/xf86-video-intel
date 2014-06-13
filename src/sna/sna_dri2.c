@@ -790,7 +790,7 @@ static void sna_dri2_select_mode(struct sna *sna, struct kgem_bo *dst, struct kg
 	mode = KGEM_RENDER;
 	if (busy.busy & (1 << 17))
 		mode = KGEM_BLT;
-	kgem_bo_mark_busy(busy.handle == src->handle ? src : dst, mode);
+	kgem_bo_mark_busy(&sna->kgem, busy.handle == src->handle ? src : dst, mode);
 	_kgem_set_mode(&sna->kgem, mode);
 }
 
