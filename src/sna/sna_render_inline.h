@@ -92,6 +92,9 @@ is_gpu(struct sna *sna, DrawablePtr drawable, unsigned prefer)
 	if (priv->cpu_bo && kgem_bo_is_busy(priv->cpu_bo))
 		return true;
 
+	if (DAMAGE_IS_ALL(priv->cpu_damage))
+		return false;
+
 	return priv->gpu_bo && kgem_bo_is_busy(priv->gpu_bo);
 }
 
@@ -107,6 +110,26 @@ too_small(struct sna_pixmap *priv)
 		return false;
 
 	return (priv->create & KGEM_CAN_CREATE_GPU) == 0;
+}
+
+static inline bool
+is_gpu_dst(struct sna_pixmap *priv)
+{
+	assert(priv);
+
+	if (too_small(priv))
+		return false;
+
+	if (priv->gpu_bo && kgem_bo_is_busy(priv->gpu_bo))
+		return true;
+
+	if (priv->cpu_bo && kgem_bo_is_busy(priv->cpu_bo))
+		return true;
+
+	if (DAMAGE_IS_ALL(priv->cpu_damage))
+		return false;
+
+	return priv->gpu_damage == NULL && priv->cpu;
 }
 
 static inline bool
