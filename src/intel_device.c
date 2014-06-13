@@ -439,8 +439,6 @@ static int authorise(struct intel_device *dev, int fd)
 	struct stat st;
 	drm_magic_t magic;
 
-	assert(is_i915_gem(fd));
-
 	if (is_render_node(fd, &st)) /* restricted authority, do not elevate */
 		return 1;
 
@@ -469,6 +467,8 @@ int intel_get_client_fd(ScrnInfoPtr scrn)
 		close(fd);
 		return -BadMatch;
 	}
+
+	assert(is_i915_gem(fd));
 
 	return fd;
 }
