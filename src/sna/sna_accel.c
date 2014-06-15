@@ -16659,8 +16659,15 @@ void sna_accel_flush(struct sna *sna)
 			     priv->pixmap->drawable.serialNumber));
 			assert(priv->flush);
 			if (sna_pixmap_move_to_gpu(priv->pixmap,
-						   MOVE_READ | __MOVE_FORCE))
-				kgem_bo_unclean(&sna->kgem, priv->gpu_bo);
+						   MOVE_READ | __MOVE_FORCE)) {
+				if (priv->flush & 2) {
+					kgem_bo_unclean(&sna->kgem, priv->gpu_bo);
+					sna_damage_all(&priv->gpu_damage, priv->pixmap);
+					assert(priv->cpu_damage == NULL);
+					priv->clear = false;
+					priv->cpu = false;
+				}
+			}
 		}
 		(void)ret;
 	}

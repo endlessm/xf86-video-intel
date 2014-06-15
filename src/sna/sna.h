@@ -148,7 +148,7 @@ struct sna_pixmap {
 	uint32_t clear_color;
 
 #define SOURCE_BIAS 4
-	uint16_t source_count;
+	uint8_t source_count;
 	uint8_t pinned :4;
 #define PIN_SCANOUT 0x1
 #define PIN_DRI2 0x2
@@ -159,7 +159,7 @@ struct sna_pixmap {
 #define MAPPED_NONE 0
 #define MAPPED_GTT 1
 #define MAPPED_CPU 2
-	uint8_t flush :1;
+	uint8_t flush :2;
 	uint8_t shm :1;
 	uint8_t clear :1;
 	uint8_t header :1;
