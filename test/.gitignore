@@ -24,3 +24,4 @@ dri2-swap
 dri2-test
 dri3-test
 present-test
+shm-test

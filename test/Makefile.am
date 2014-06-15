@@ -20,6 +20,7 @@ stress_TESTS = \
 	render-copyarea-size \
 	render-copy-alphaless \
 	mixed-stress \
+	shm-test \
 	$(NULL)
 
 if DRI2
