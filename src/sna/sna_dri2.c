@@ -52,6 +52,9 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <compositeext.h>
 #endif
 
+#define DBG_CAN_FLIP 1
+#define DBG_CAN_XCHG 1
+
 #if DRI2INFOREC_VERSION < 2
 #error DRI2 version supported by the Xserver is too old
 #endif
@@ -191,12 +194,14 @@ sna_dri2_get_back(struct sna *sna,
 		if (!found)
 			c = malloc(sizeof(*c));
 		if (c != NULL) {
-			c->bo = kgem_bo_reference(get_private(back)->bo);
+			c->bo = ref(get_private(back)->bo);
 			c->name = back->name;
 			list_add(&c->link, &info->cache);
+			DBG(("%s: cacheing handle=%d (name=%d)\n", __FUNCTION__, c->bo->handle, c->name));
 		}
 	}
 
+	assert(bo != get_private(back)->bo);
 	kgem_bo_destroy(&sna->kgem, get_private(back)->bo);
 	get_private(back)->bo = bo;
 	back->name = name;
@@ -243,8 +248,8 @@ sna_dri2_reuse_buffer(DrawablePtr draw, DRI2BufferPtr buffer)
 	     __FUNCTION__, get_drawable_pixmap(draw)->drawable.serialNumber,
 	     buffer->attachment, get_private(buffer)->bo->handle, buffer->name));
 	assert(get_private(buffer)->refcnt);
+	assert(get_private(buffer)->bo->refcnt > get_private(buffer)->bo->active_scanout);
 	assert(get_private(buffer)->pixmap == NULL || get_private(buffer)->pixmap == get_drawable_pixmap(draw));
-	assert(get_private(buffer)->bo->refcnt);
 
 	if (buffer->attachment == DRI2BufferBackLeft &&
 	    draw->type != DRAWABLE_PIXMAP) {
@@ -252,6 +257,7 @@ sna_dri2_reuse_buffer(DrawablePtr draw, DRI2BufferPtr buffer)
 		sna_dri2_get_back(to_sna_from_drawable(draw), draw, buffer, dri2_chain(draw));
 
 		assert(kgem_bo_flink(&to_sna_from_drawable(draw)->kgem, get_private(buffer)->bo) == buffer->name);
+		assert(get_private(buffer)->bo->refcnt);
 		assert(get_private(buffer)->bo->active_scanout == 0);
 	}
 }
@@ -607,6 +613,7 @@ static void _sna_dri2_destroy_buffer(struct sna *sna, DRI2Buffer2Ptr buffer)
 	assert(private->bo);
 
 	if (private->proxy) {
+		DBG(("%s: destroying proxy\n", __FUNCTION__));
 		_sna_dri2_destroy_buffer(sna, private->proxy);
 		private->pixmap = NULL;
 	}
@@ -788,7 +795,7 @@ static void sna_dri2_select_mode(struct sna *sna, struct kgem_bo *dst, struct kg
 	 * the cost of the query.
 	 */
 	mode = KGEM_RENDER;
-	if (busy.busy & (1 << 17))
+	if ((busy.busy & (1 << 16)) == 0)
 		mode = KGEM_BLT;
 	kgem_bo_mark_busy(&sna->kgem, busy.handle == src->handle ? src : dst, mode);
 	_kgem_set_mode(&sna->kgem, mode);
@@ -822,6 +829,11 @@ sna_dri2_copy_fallback(struct sna *sna, int bpp,
 	}
 }
 
+static bool is_front(int attachment)
+{
+	return attachment == DRI2BufferFrontLeft;
+}
+
 static struct kgem_bo *
 __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		      DRI2BufferPtr src, DRI2BufferPtr dst,
@@ -848,8 +860,7 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 	 * now attached to invalid (non-DRI) pixmaps.
 	 */
 
-	assert(dst->attachment == DRI2BufferFrontLeft ||
-	       src->attachment == DRI2BufferFrontLeft);
+	assert(is_front(dst->attachment) || is_front(src->attachment));
 	assert(dst->attachment != src->attachment);
 
 	/* Copy the minimum of the Drawable / src / dst extents */
@@ -884,7 +895,7 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 	}
 
 	sx = sy = dx = dy = 0;
-	if (dst->attachment == DRI2BufferFrontLeft) {
+	if (is_front(dst->attachment)) {
 		sx = -draw->x;
 		sy = -draw->y;
 	} else {
@@ -896,11 +907,13 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		int16_t tx, ty;
 
 		if (is_clipped(&win->clipList, draw)) {
-			DBG(("%s: draw=(%d, %d), delta=(%d, %d), clip.extents=(%d, %d), (%d, %d)\n",
-						__FUNCTION__, draw->x, draw->y,
-						get_drawable_dx(draw), get_drawable_dy(draw),
-						win->clipList.extents.x1, win->clipList.extents.y1,
-						win->clipList.extents.x2, win->clipList.extents.y2));
+			DBG(("%s: draw=(%d, %d), delta=(%d, %d), draw=(%d, %d),(%d, %d), clip.extents=(%d, %d), (%d, %d)\n",
+			     __FUNCTION__, draw->x, draw->y,
+			     get_drawable_dx(draw), get_drawable_dy(draw),
+			     clip.extents.x1, clip.extents.y1,
+			     clip.extents.x2, clip.extents.y2,
+			     win->clipList.extents.x1, win->clipList.extents.y1,
+			     win->clipList.extents.x2, win->clipList.extents.y2));
 
 			assert(region == NULL || region == &clip);
 			pixman_region_intersect(&clip, &win->clipList, &clip);
@@ -913,7 +926,7 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		}
 
 		if (get_drawable_deltas(draw, pixmap, &tx, &ty)) {
-			if (dst->attachment == DRI2BufferFrontLeft) {
+			if (is_front(dst->attachment)) {
 				pixman_region_translate(region ?: &clip, tx, ty);
 				sx -= tx;
 				sy -= ty;
@@ -926,16 +939,21 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		sync = false;
 
 	src_bo = src_priv->bo;
-	if (src->attachment == DRI2BufferFrontLeft) {
+	assert(src_bo->refcnt);
+	if (is_front(src->attachment)) {
 		struct sna_pixmap *priv;
 
 		priv = sna_pixmap_move_to_gpu(pixmap, MOVE_READ);
 		if (priv)
 			src_bo = priv->gpu_bo;
+		DBG(("%s: updated FrontLeft src_bo from handle=%d to handle=%d\n",
+		     __FUNCTION__, src_priv->bo->handle, src_bo->handle));
+		assert(src_bo->refcnt);
 	}
 
 	dst_bo = dst_priv->bo;
-	if (dst->attachment == DRI2BufferFrontLeft) {
+	assert(dst_bo->refcnt);
+	if (is_front(dst->attachment)) {
 		struct sna_pixmap *priv;
 		unsigned int flags;
 
@@ -948,6 +966,9 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 			damage(pixmap, priv, region);
 			dst_bo = priv->gpu_bo;
 		}
+		DBG(("%s: updated FrontLeft dst_bo from handle=%d to handle=%d\n",
+		     __FUNCTION__, dst_priv->bo->handle, dst_bo->handle));
+		assert(dst_bo->refcnt);
 	} else
 		sync = false;
 
@@ -995,8 +1016,10 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		if (sync) { /* STAT! */
 			struct kgem_request *rq = sna->kgem.next_request;
 			kgem_submit(&sna->kgem);
-			if (rq->bo)
-				bo = kgem_bo_reference(rq->bo);
+			if (rq->bo) {
+				bo = ref(rq->bo);
+				DBG(("%s: recording sync fence handle=%d\n", bo->handle));
+			}
 		}
 	}
 
@@ -1220,6 +1243,8 @@ sna_dri2_event_free(struct sna *sna,
 		    DrawablePtr draw,
 		    struct sna_dri2_event *info)
 {
+	DBG(("%s\n", __FUNCTION__));
+
 	if (draw && draw->type == DRAWABLE_WINDOW)
 		sna_dri2_remove_event((WindowPtr)draw, info);
 	_sna_dri2_destroy_buffer(sna, info->front);
@@ -1231,14 +1256,17 @@ sna_dri2_event_free(struct sna *sna,
 		c = list_first_entry(&info->cache, struct dri_bo, link);
 		list_del(&c->link);
 
+		DBG(("%s: releasing cached handle=%d\n", __FUNCTION__, c->bo ? c->bo->handle : 0));
 		if (c->bo)
 			kgem_bo_destroy(&sna->kgem, c->bo);
 
 		free(c);
 	}
 
-	if (info->bo)
+	if (info->bo) {
+		DBG(("%s: releasing batch handle=%d\n", __FUNCTION__, info->bo->handle));
 		kgem_bo_destroy(&sna->kgem, info->bo);
+	}
 
 	free(info);
 }
@@ -1332,6 +1360,10 @@ sna_dri2_flip(struct sna *sna, struct sna_dri2_event *info)
 	get_private(info->back)->bo = tmp_bo;
 	get_private(info->back)->stale = true;
 
+	assert(get_private(info->front)->bo->refcnt);
+	assert(get_private(info->back)->bo->refcnt);
+	assert(get_private(info->front)->bo != get_private(info->back)->bo);
+
 	info->queued = true;
 	return true;
 }
@@ -1347,6 +1379,9 @@ can_flip(struct sna * sna,
 	PixmapPtr pixmap;
 
 	assert((sna->flags & SNA_NO_WAIT) == 0);
+
+	if (!DBG_CAN_FLIP)
+		return false;
 
 	if (draw->type == DRAWABLE_PIXMAP)
 		return false;
@@ -1364,14 +1399,6 @@ can_flip(struct sna * sna,
 	if (front->format != back->format) {
 		DBG(("%s: no, format mismatch, front = %d, back = %d\n",
 		     __FUNCTION__, front->format, back->format));
-		return false;
-	}
-
-	if (front->attachment != DRI2BufferFrontLeft) {
-		DBG(("%s: no, front attachment [%d] is not FrontLeft [%d]\n",
-		     __FUNCTION__,
-		     front->attachment,
-		     DRI2BufferFrontLeft));
 		return false;
 	}
 
@@ -1473,6 +1500,8 @@ can_flip(struct sna * sna,
 		return false;
 	}
 
+	assert(dri2_window(win)->front == NULL);
+
 	return true;
 }
 
@@ -1485,20 +1514,15 @@ can_xchg(struct sna * sna,
 	WindowPtr win = (WindowPtr)draw;
 	PixmapPtr pixmap;
 
+	if (!DBG_CAN_XCHG)
+		return false;
+
 	if (draw->type == DRAWABLE_PIXMAP)
 		return false;
 
 	if (front->format != back->format) {
 		DBG(("%s: no, format mismatch, front = %d, back = %d\n",
 		     __FUNCTION__, front->format, back->format));
-		return false;
-	}
-
-	if (front->attachment != DRI2BufferFrontLeft) {
-		DBG(("%s: no, front attachment [%d] is not FrontLeft [%d]\n",
-		     __FUNCTION__,
-		     front->attachment,
-		     DRI2BufferFrontLeft));
 		return false;
 	}
 
@@ -1582,6 +1606,9 @@ can_xchg_one(struct sna *sna,
 	WindowPtr win = (WindowPtr)draw;
 	PixmapPtr pixmap;
 
+	if (!DBG_CAN_XCHG)
+		return false;
+
 	if ((sna->flags & SNA_TEAR_FREE) == 0) {
 		DBG(("%s: no, requires TearFree\n",
 		     __FUNCTION__));
@@ -1594,14 +1621,6 @@ can_xchg_one(struct sna *sna,
 	if (front->format != back->format) {
 		DBG(("%s: no, format mismatch, front = %d, back = %d\n",
 		     __FUNCTION__, front->format, back->format));
-		return false;
-	}
-
-	if (front->attachment != DRI2BufferFrontLeft) {
-		DBG(("%s: no, front attachment [%d] is not FrontLeft [%d]\n",
-		     __FUNCTION__,
-		     front->attachment,
-		     DRI2BufferFrontLeft));
 		return false;
 	}
 
@@ -1654,6 +1673,7 @@ can_xchg_one(struct sna *sna,
 		return false;
 	}
 
+	assert(win != win->drawable.pScreen->root);
 	DBG(("%s: yes\n", __FUNCTION__));
 	return true;
 }
@@ -1671,6 +1691,7 @@ sna_dri2_exchange_buffers(DrawablePtr draw,
 
 	back_bo = get_private(back)->bo;
 	front_bo = get_private(front)->bo;
+	assert(front_bo != back_bo);
 
 	DBG(("%s: exchange front=%d/%d and back=%d/%d, pixmap=%ld %dx%d\n",
 	     __FUNCTION__,
@@ -1958,6 +1979,7 @@ void sna_dri2_vblank_handler(struct sna *sna, struct drm_event_vblank *event)
 
 done:
 	sna_dri2_event_free(sna, draw, info);
+	DBG(("%s complete\n", __FUNCTION__));
 }
 
 static bool

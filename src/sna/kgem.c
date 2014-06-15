@@ -4437,6 +4437,7 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 		list_for_each_entry_reverse(bo, &kgem->scanout, list) {
 			assert(bo->scanout);
 			assert(!bo->flush);
+			assert(!bo->refcnt);
 			assert_tiling(kgem, bo);
 
 			if (size > num_pages(bo) || num_pages(bo) > 2*size)
@@ -4484,6 +4485,7 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 				struct drm_mode_fb_cmd arg;
 
 				assert(bo->scanout);
+				assert(!bo->refcnt);
 
 				if (size > num_pages(bo) || num_pages(bo) > 2*size)
 					continue;

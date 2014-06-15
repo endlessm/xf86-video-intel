@@ -1061,12 +1061,13 @@ static bool wait_for_shadow(struct sna *sna, struct sna_pixmap *priv, unsigned f
 				struct sna_crtc *crtc =
 					list_first_entry(&sna->mode.shadow_crtc, struct sna_crtc, shadow_link);
 
-				DBG(("%s: copying replaced CRTC: (%d, %d), (%d, %d)\n",
+				DBG(("%s: copying replaced CRTC: (%d, %d), (%d, %d), handle=%d\n",
 				     __FUNCTION__,
 				     crtc->base->bounds.x1,
 				     crtc->base->bounds.y1,
 				     crtc->base->bounds.x2,
-				     crtc->base->bounds.y2));
+				     crtc->base->bounds.y2,
+				     crtc->shadow_bo->handle));
 				ret &= sna->render.copy_boxes(sna, GXcopy,
 							      pixmap, crtc->shadow_bo, -crtc->base->bounds.x1, -crtc->base->bounds.y1,
 							      pixmap, priv->gpu_bo, 0, 0,
@@ -1099,8 +1100,8 @@ static bool wait_for_shadow(struct sna *sna, struct sna_pixmap *priv, unsigned f
 				    priv->gpu_bo->tiling,
 				    CREATE_EXACT | CREATE_SCANOUT);
 		if (bo != NULL) {
-			DBG(("%s: replacing still-attached GPU bo\n",
-			     __FUNCTION__));
+			DBG(("%s: replacing still-attached GPU bo handle=%d, flips=%d\n",
+			     __FUNCTION__, priv->gpu_bo->tiling, sna->mode.flip_active));
 
 			RegionUninit(&sna->mode.shadow_region);
 			sna->mode.shadow_region.extents.x1 = 0;
@@ -1145,12 +1146,13 @@ static bool wait_for_shadow(struct sna *sna, struct sna_pixmap *priv, unsigned f
 			list_first_entry(&sna->mode.shadow_crtc, struct sna_crtc, shadow_link);
 		RegionRec region;
 
-		DBG(("%s: copying replaced CRTC: (%d, %d), (%d, %d)\n",
+		DBG(("%s: copying replaced CRTC: (%d, %d), (%d, %d), handle=%d\n",
 		     __FUNCTION__,
 		     crtc->base->bounds.x1,
 		     crtc->base->bounds.y1,
 		     crtc->base->bounds.x2,
-		     crtc->base->bounds.y2));
+		     crtc->base->bounds.y2,
+		     crtc->shadow_bo->handle));
 		ret = sna->render.copy_boxes(sna, GXcopy,
 					     pixmap, crtc->shadow_bo, -crtc->base->bounds.x1, -crtc->base->bounds.y1,
 					     pixmap, bo, 0, 0,
@@ -6306,6 +6308,7 @@ fixup_shadow:
 
 			assert(config->crtc[i]->enabled);
 			assert(crtc->dpms_mode <= DPMSModeOn);
+			assert(crtc->flip_bo == NULL);
 
 			arg.crtc_id = crtc->id;
 			arg.user_data = (uintptr_t)crtc;
@@ -6334,6 +6337,7 @@ fixup_shadow:
 				     crtc_offset, crtc->offset));
 fixup_flip:
 				if (sna_crtc_flip(sna, crtc)) {
+					assert(flip_bo != crtc->bo);
 					assert(crtc->bo->active_scanout);
 					assert(crtc->bo->refcnt >= crtc->bo->active_scanout);
 					crtc->bo->active_scanout--;
@@ -6341,9 +6345,6 @@ fixup_flip:
 
 					crtc->bo = kgem_bo_reference(flip_bo);
 					crtc->bo->active_scanout++;
-
-					if (crtc->shadow_bo)
-						sna_shadow_set_crtc(sna, crtc->base, flip_bo);
 				} else {
 					if (sna->mode.flip_active == 0) {
 						DBG(("%s: abandoning flip attempt\n", __FUNCTION__));
@@ -6375,8 +6376,9 @@ fixup_flip:
 				if (drmIoctl(sna->kgem.fd, DRM_IOCTL_I915_GEM_BUSY, &busy) == 0) {
 					if (busy.busy) {
 						int mode = KGEM_RENDER;
-						if (busy.busy & (1 << 17))
+						if ((busy.busy & (1 << 16)) == 0)
 							mode = KGEM_BLT;
+						DBG(("%s: marking flip bo as busy [%x -> mode=%d]\n", __FUNCTION__, busy.busy, mode));
 						kgem_bo_mark_busy(&sna->kgem, flip_bo, mode);
 					} else
 						__kgem_bo_clear_busy(flip_bo);
@@ -6436,8 +6438,11 @@ void sna_mode_wakeup(struct sna *sna)
 				assert(crtc->flip_bo);
 				assert(crtc->flip_bo->active_scanout);
 				assert(crtc->flip_bo->refcnt >= crtc->flip_bo->active_scanout);
+				assert(crtc->flip_bo != crtc->bo);
 
 				if (crtc->bo) {
+					DBG(("%s: removing handle=%d from scanout, installing handle=%d\n",
+					     __FUNCTION__, crtc->bo->handle, crtc->flip_bo->handle));
 					assert(crtc->bo->active_scanout);
 					assert(crtc->bo->refcnt >= crtc->bo->active_scanout);
 					crtc->bo->active_scanout--;
