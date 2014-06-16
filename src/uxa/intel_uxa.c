@@ -703,6 +703,9 @@ free_priv:
 		if (priv->stride < stride ||
 		    priv->stride & (tile_width - 1) ||
 		    priv->stride >= KB(32)) {
+			xf86DrvMsg(scrn->scrnIndex, X_ERROR,
+				   "%s: stride on buffer object does not match constraints: stride=%d, must be greater than %d, but less than %d, and have alignment at least %d\n",
+				   __FUNCTION__, priv->stride, stride, KB(32), tile_width);
 			bo = NULL;
 			goto free_priv;
 		}
@@ -723,6 +726,9 @@ free_priv:
 			size = priv->stride * pixmap->drawable.height;
 
 		if (bo->size < size || bo->size > intel->max_bo_size) {
+			xf86DrvMsg(scrn->scrnIndex, X_ERROR,
+				   "%s: size of buffer object does not match constraints: size=%ld, must be greater than %d, but less than %d\n",
+				   __FUNCTION__, (long)bo->size, size, intel->max_bo_size);
 			bo = NULL;
 			goto free_priv;
 		}
