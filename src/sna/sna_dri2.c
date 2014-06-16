@@ -1606,11 +1606,11 @@ overlaps_other_crtc(struct sna *sna, xf86CrtcPtr desired)
 }
 
 static bool
-can_xchg_one(struct sna *sna,
-	     DrawablePtr draw,
-	     DRI2BufferPtr front,
-	     DRI2BufferPtr back,
-	     xf86CrtcPtr crtc)
+can_xchg_crtc(struct sna *sna,
+	      DrawablePtr draw,
+	      DRI2BufferPtr front,
+	      DRI2BufferPtr back,
+	      xf86CrtcPtr crtc)
 {
 	WindowPtr win = (WindowPtr)draw;
 	PixmapPtr pixmap;
@@ -1688,9 +1688,7 @@ can_xchg_one(struct sna *sna,
 }
 
 static void
-sna_dri2_exchange_buffers(DrawablePtr draw,
-			  DRI2BufferPtr front,
-			  DRI2BufferPtr back)
+sna_dri2_xchg(DrawablePtr draw, DRI2BufferPtr front, DRI2BufferPtr back)
 {
 	struct kgem_bo *back_bo, *front_bo;
 	PixmapPtr pixmap;
@@ -1736,6 +1734,38 @@ sna_dri2_exchange_buffers(DrawablePtr draw,
 	assert(back_bo->refcnt);
 
 	assert(get_private(front)->bo == sna_pixmap(pixmap)->gpu_bo);
+}
+
+static void sna_dri2_xchg_crtc(struct sna *sna, DrawablePtr draw, xf86CrtcPtr crtc, DRI2BufferPtr front, DRI2BufferPtr back)
+{
+	WindowPtr win = (WindowPtr)draw;
+	PixmapPtr pixmap = get_window_pixmap(win);
+
+	DBG(("%s: exchange front=%d/%d and back=%d/%d, win id=%lu, pixmap=%ld %dx%d\n",
+				__FUNCTION__,
+				get_private(front)->bo->handle, front->name,
+				get_private(back)->bo->handle, back->name,
+				win->drawable.id,
+				pixmap->drawable.serialNumber,
+				pixmap->drawable.width,
+				pixmap->drawable.height));
+
+	sna_shadow_set_crtc(sna, crtc, get_private(back)->bo);
+	DamageRegionProcessPending(&win->drawable);
+
+	if (get_private(front)->size == (draw->height << 16 | draw->width)) {
+		front->attachment = DRI2BufferBackLeft;
+		get_private(front)->stale = true;
+	} else
+		front->attachment = -1;
+	back->attachment = DRI2BufferFrontLeft;
+	if (get_private(back)->proxy == NULL) {
+		get_private(back)->proxy = sna_dri2_reference_buffer(sna_pixmap_get_buffer(pixmap));
+		get_private(back)->pixmap = pixmap;
+	}
+
+	assert(dri2_window(win)->front == NULL);
+	dri2_window(win)->front = sna_dri2_reference_buffer(back);
 }
 
 static void frame_swap_complete(struct sna *sna,
@@ -1816,7 +1846,9 @@ static void chain_swap(struct sna *sna, struct sna_dri2_event *chain)
 		}
 
 		if (can_xchg(sna, chain->draw, chain->front, chain->back)) {
-			sna_dri2_exchange_buffers(chain->draw, chain->front, chain->back);
+			sna_dri2_xchg(chain->draw, chain->front, chain->back);
+		} else if (can_xchg_crtc(sna, chain->draw, chain->front, chain->back, chain->crtc)) {
+			sna_dri2_xchg_crtc(sna, chain->draw, chain->crtc, chain->front, chain->back);
 		} else {
 			assert(chain->queued);
 			chain->bo = __sna_dri2_copy_region(sna, chain->draw, NULL,
@@ -1921,7 +1953,10 @@ void sna_dri2_vblank_handler(struct sna *sna, struct drm_event_vblank *event)
 			DBG(("%s -- recursed from wait_for_shadow(), requeuing\n", __FUNCTION__));
 
 		} else if (can_xchg(sna, draw, info->front, info->back)) {
-			sna_dri2_exchange_buffers(draw, info->front, info->back);
+			sna_dri2_xchg(draw, info->front, info->back);
+			info->type = SWAP_WAIT;
+		} else if (can_xchg_crtc(sna, draw, info->front, info->back, info->crtc)) {
+			sna_dri2_xchg_crtc(sna, draw, info->crtc, info->front, info->back);
 			info->type = SWAP_WAIT;
 		}  else {
 			assert(info->queued);
@@ -2307,7 +2342,7 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 			if (info->mode || current_msc >= *target_msc) {
 				DBG(("%s: executing xchg of pending flip\n",
 				     __FUNCTION__));
-				sna_dri2_exchange_buffers(draw, front, back);
+				sna_dri2_xchg(draw, front, back);
 				info->mode = type = FLIP_COMPLETE;
 				goto new_back;
 			} else {
@@ -2447,7 +2482,7 @@ sna_dri2_schedule_xchg(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 	if (!sync || event) {
 		DBG(("%s: performing immediate xchg on pipe %d\n",
 		     __FUNCTION__, sna_crtc_to_pipe(crtc)));
-		sna_dri2_exchange_buffers(draw, front, back);
+		sna_dri2_xchg(draw, front, back);
 	}
 	if (sync) {
 		struct sna_dri2_event *info;
@@ -2491,10 +2526,10 @@ complete:
 }
 
 static bool
-sna_dri2_schedule_xchg_one(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
-			   DRI2BufferPtr front, DRI2BufferPtr back,
-			   CARD64 *target_msc, CARD64 divisor, CARD64 remainder,
-			   DRI2SwapEventPtr func, void *data)
+sna_dri2_schedule_xchg_crtc(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
+			    DRI2BufferPtr front, DRI2BufferPtr back,
+			    CARD64 *target_msc, CARD64 divisor, CARD64 remainder,
+			    DRI2SwapEventPtr func, void *data)
 {
 	struct sna *sna = to_sna_from_drawable(draw);
 	uint64_t current_msc;
@@ -2506,36 +2541,9 @@ sna_dri2_schedule_xchg_one(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 	sync = current_msc < *target_msc;
 	event = dri2_chain(draw) == NULL;
 	if (!sync || event) {
-		WindowPtr win = (WindowPtr)draw;
-		PixmapPtr pixmap = get_window_pixmap(win);
-
 		DBG(("%s: performing immediate xchg only on pipe %d\n",
 		     __FUNCTION__, sna_crtc_to_pipe(crtc)));
-		DBG(("%s: exchange front=%d/%d and back=%d/%d, win id=%lu, pixmap=%ld %dx%d\n",
-		     __FUNCTION__,
-		     get_private(front)->bo->handle, front->name,
-		     get_private(back)->bo->handle, back->name,
-		     win->drawable.id,
-		     pixmap->drawable.serialNumber,
-		     pixmap->drawable.width,
-		     pixmap->drawable.height));
-
-		sna_shadow_set_crtc(sna, crtc, get_private(back)->bo);
-		DamageRegionProcessPending(&win->drawable);
-
-		if (get_private(front)->size == (draw->height << 16 | draw->width)) {
-			front->attachment = DRI2BufferBackLeft;
-			get_private(front)->stale = true;
-		} else
-			front->attachment = -1;
-		back->attachment = DRI2BufferFrontLeft;
-		if (get_private(back)->proxy == NULL) {
-			get_private(back)->proxy = sna_dri2_reference_buffer(sna_pixmap_get_buffer(pixmap));
-			get_private(back)->pixmap = pixmap;
-		}
-
-		assert(dri2_window(win)->front == NULL);
-		dri2_window(win)->front = sna_dri2_reference_buffer(back);
+		sna_dri2_xchg_crtc(sna, draw, crtc, front, back);
 	}
 	if (sync) {
 		struct sna_dri2_event *info;
@@ -2683,10 +2691,10 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 				   func, data))
 		return TRUE;
 
-	if (can_xchg_one(sna, draw, front, back, crtc) &&
-	    sna_dri2_schedule_xchg_one(client, draw, crtc, front, back,
-				       target_msc, divisor, remainder,
-				       func, data))
+	if (can_xchg_crtc(sna, draw, front, back, crtc) &&
+	    sna_dri2_schedule_xchg_crtc(client, draw, crtc, front, back,
+					target_msc, divisor, remainder,
+					func, data))
 		return TRUE;
 
 	if (can_flip(sna, draw, front, back, crtc) &&
@@ -2769,7 +2777,7 @@ blit:
 	if (info)
 		sna_dri2_event_free(sna, draw, info);
 	if (can_xchg(sna, draw, front, back))
-		sna_dri2_exchange_buffers(draw, front, back);
+		sna_dri2_xchg(draw, front, back);
 	else
 		__sna_dri2_copy_region(sna, draw, NULL, back, front, false);
 skip:
