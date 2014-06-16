@@ -248,6 +248,20 @@ static void assert_tiling(struct kgem *kgem, struct kgem_bo *bo)
 	assert(tiling.tiling_mode == bo->tiling);
 }
 
+static void assert_cacheing(struct kgem *kgem, struct kgem_bo *bo)
+{
+	struct local_i915_gem_caching arg;
+	int expect = kgem->has_llc ? SNOOPED : UNCACHED;
+
+	VG_CLEAR(arg);
+	arg.handle = bo->handle;
+	arg.caching = expect;
+
+	(void)do_ioctl(kgem->fd, LOCAL_IOCTL_I915_GEM_GET_CACHING, &arg);
+
+	assert(arg.caching == expect);
+}
+
 static void assert_bo_retired(struct kgem_bo *bo)
 {
 	DBG(("%s: handle=%d, domain: %d exec? %d, rq? %d\n", __FUNCTION__,
@@ -257,9 +271,9 @@ static void assert_bo_retired(struct kgem_bo *bo)
 	assert(bo->exec == NULL);
 	assert(list_is_empty(&bo->request));
 }
-
 #else
 #define assert_tiling(kgem, bo)
+#define assert_cacheing(kgem, bo)
 #define assert_bo_retired(bo)
 #endif
 
@@ -1888,6 +1902,7 @@ inline static void kgem_bo_move_to_inactive(struct kgem *kgem,
 	assert(!bo->needs_flush);
 	assert(list_is_empty(&bo->vma));
 	assert_tiling(kgem, bo);
+	assert_cacheing(kgem, bo);
 	ASSERT_IDLE(kgem, bo->handle);
 
 	if (bucket(bo) >= NUM_CACHE_BUCKETS) {
@@ -2263,6 +2278,7 @@ static void __kgem_bo_destroy(struct kgem *kgem, struct kgem_bo *bo)
 	assert(bo->snoop == false);
 	assert(bo->io == false);
 	assert(bo->scanout == false);
+	assert_cacheing(kgem, bo);
 
 	kgem_bo_undo(kgem, bo);
 	assert(bo->refcnt == 0);
