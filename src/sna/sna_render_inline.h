@@ -129,7 +129,7 @@ is_gpu_dst(struct sna_pixmap *priv)
 	if (DAMAGE_IS_ALL(priv->cpu_damage))
 		return false;
 
-	return priv->gpu_damage == NULL && priv->cpu;
+	return priv->gpu_damage != NULL || !priv->cpu;
 }
 
 static inline bool
