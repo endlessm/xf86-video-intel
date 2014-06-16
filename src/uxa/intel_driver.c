@@ -717,14 +717,13 @@ intel_init_initial_framebuffer(ScrnInfoPtr scrn)
 	intel_screen_private *intel = intel_get_screen_private(scrn);
 	int width = scrn->virtualX;
 	int height = scrn->virtualY;
-	unsigned long pitch;
+	int pitch;
 	uint32_t tiling;
 
 	intel->front_buffer = intel_allocate_framebuffer(scrn,
 							 width, height,
 							 intel->cpp,
-							 &pitch,
-							 &tiling);
+							 &pitch, &tiling);
 
 	if (!intel->front_buffer) {
 		xf86DrvMsg(scrn->scrnIndex, X_ERROR,

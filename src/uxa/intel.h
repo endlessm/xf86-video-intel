@@ -536,11 +536,13 @@ int intel_crtc_to_pipe(xf86CrtcPtr crtc);
 unsigned long intel_get_fence_size(intel_screen_private *intel, unsigned long size);
 unsigned long intel_get_fence_pitch(intel_screen_private *intel, unsigned long pitch,
 				   uint32_t tiling_mode);
+Bool intel_check_display_stride(ScrnInfoPtr scrn, int stride, Bool tiling);
+void intel_set_gem_max_sizes(ScrnInfoPtr scrn);
 
 drm_intel_bo *intel_allocate_framebuffer(ScrnInfoPtr scrn,
-					int w, int h, int cpp,
-					unsigned long *pitch,
-					uint32_t *tiling);
+					 int width, int height, int cpp,
+					 int *out_stride,
+					 uint32_t *out_tiling);
 
 /* i830_render.c */
 Bool i830_check_composite(int op,

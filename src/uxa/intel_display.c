@@ -511,7 +511,7 @@ intel_crtc_shadow_allocate(xf86CrtcPtr crtc, int width, int height)
 	ScrnInfoPtr scrn = crtc->scrn;
 	struct intel_crtc *intel_crtc = crtc->driver_private;
 	struct intel_mode *mode = intel_crtc->mode;
-	unsigned long rotate_pitch;
+	int rotate_pitch;
 	uint32_t tiling;
 	int ret;
 
@@ -1401,7 +1401,7 @@ intel_xf86crtc_resize(ScrnInfoPtr scrn, int width, int height)
 	Bool	    ret;
 	uint32_t    old_fb_id;
 	int	    i, old_width, old_height, old_pitch;
-	unsigned long pitch;
+	int pitch;
 	uint32_t tiling;
 	ScreenPtr screen;
 
@@ -1431,8 +1431,7 @@ intel_xf86crtc_resize(ScrnInfoPtr scrn, int width, int height)
 	intel->front_buffer = intel_allocate_framebuffer(scrn,
 							 width, height,
 							 intel->cpp,
-							 &pitch,
-							 &tiling);
+							 &pitch, &tiling);
 	if (!intel->front_buffer)
 		goto fail;
 
