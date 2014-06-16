@@ -4727,7 +4727,7 @@ large_inactive:
 	retry = NUM_CACHE_BUCKETS - bucket;
 	if (retry > 3 && (flags & CREATE_TEMPORARY) == 0)
 		retry = 3;
-search_again:
+search_active:
 	assert(bucket < NUM_CACHE_BUCKETS);
 	cache = &kgem->active[bucket][tiling];
 	if (tiling) {
@@ -4805,47 +4805,39 @@ search_again:
 		}
 	}
 
-	if (--retry && exact) {
-		if (kgem->gen >= 040) {
-			for (i = I915_TILING_NONE; i <= I915_TILING_Y; i++) {
-				if (i == tiling)
+	if (kgem->gen >= 040) {
+		for (i = I915_TILING_NONE; i <= I915_TILING_Y; i++) {
+			cache = &kgem->active[bucket][i];
+			list_for_each_entry(bo, cache, list) {
+				assert(!bo->purged);
+				assert(bo->refcnt == 0);
+				assert(bo->reusable);
+				assert(!bo->scanout);
+				assert(bo->flush == false);
+				assert_tiling(kgem, bo);
+
+				if (num_pages(bo) < size)
 					continue;
 
-				cache = &kgem->active[bucket][i];
-				list_for_each_entry(bo, cache, list) {
-					assert(!bo->purged);
-					assert(bo->refcnt == 0);
-					assert(bo->reusable);
-					assert(!bo->scanout);
-					assert(bo->flush == false);
-					assert_tiling(kgem, bo);
+				if (!gem_set_tiling(kgem->fd,
+						    bo->handle,
+						    tiling, pitch))
+					continue;
 
-					if (num_pages(bo) < size)
-						continue;
+				kgem_bo_remove_from_active(kgem, bo);
 
-					if (!gem_set_tiling(kgem->fd,
-							    bo->handle,
-							    tiling, pitch))
-						continue;
-
-					kgem_bo_remove_from_active(kgem, bo);
-
-					bo->unique_id = kgem_get_unique_id(kgem);
-					bo->pitch = pitch;
-					bo->tiling = tiling;
-					bo->delta = 0;
-					DBG(("  1:from active: pitch=%d, tiling=%d, handle=%d, id=%d\n",
-					     bo->pitch, bo->tiling, bo->handle, bo->unique_id));
-					assert(bo->pitch*kgem_aligned_height(kgem, height, bo->tiling) <= kgem_bo_size(bo));
-					assert_tiling(kgem, bo);
-					bo->refcnt = 1;
-					return bo;
-				}
+				bo->unique_id = kgem_get_unique_id(kgem);
+				bo->pitch = pitch;
+				bo->tiling = tiling;
+				bo->delta = 0;
+				DBG(("  1:from active: pitch=%d, tiling=%d, handle=%d, id=%d\n",
+				     bo->pitch, bo->tiling, bo->handle, bo->unique_id));
+				assert(bo->pitch*kgem_aligned_height(kgem, height, bo->tiling) <= kgem_bo_size(bo));
+				assert_tiling(kgem, bo);
+				bo->refcnt = 1;
+				return bo;
 			}
 		}
-
-		bucket++;
-		goto search_again;
 	}
 
 	if (!exact) { /* allow an active near-miss? */
@@ -4888,6 +4880,11 @@ search_again:
 				return bo;
 			}
 		}
+	}
+
+	if (--retry) {
+		bucket++;
+		goto search_active;
 	}
 
 skip_active_search:
