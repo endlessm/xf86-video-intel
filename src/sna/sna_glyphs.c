@@ -351,6 +351,20 @@ glyph_extents(int nlist,
 	extents->y2 = y2 < MAXSHORT ? y2 : MAXSHORT;
 }
 
+#if HAS_DEBUG_FULL
+static void
+glyph_count(int nlist,
+	    GlyphListPtr list)
+{
+	int count = 0;
+	while (nlist--) {
+		count += list->len;
+		list++;
+	}
+	return count;
+}
+#endif
+
 static inline unsigned int
 glyph_size_to_count(int size)
 {
@@ -544,8 +558,8 @@ static inline bool clipped_glyphs(PicturePtr dst, int nlist, GlyphListPtr list, 
 	box.y1 += dst->pDrawable->y;
 	box.y2 += dst->pDrawable->y;
 
-	DBG(("%s? glyph extents (%d, %d), (%d, %d), region (%d, %d), (%d, %d): %s\n",
-	     __FUNCTION__, box.x1, box.y1, box.x2, box.y2,
+	DBG(("%s? %d glyph in %d lists extents (%d, %d), (%d, %d), region (%d, %d), (%d, %d): %s\n",
+	     __FUNCTION__, glyph_count(nlist, list), nlist, box.x1, box.y1, box.x2, box.y2,
 	     dst->pCompositeClip->extents.x1, dst->pCompositeClip->extents.y1,
 	     dst->pCompositeClip->extents.x2, dst->pCompositeClip->extents.y2,
 	     pixman_region_contains_rectangle(dst->pCompositeClip,
@@ -1102,8 +1116,8 @@ glyphs_via_mask(struct sna *sna,
 	if (box.x2 <= box.x1 || box.y2 <= box.y1)
 		return true;
 
-	DBG(("%s: bounds=((%d, %d), (%d, %d))\n", __FUNCTION__,
-	     box.x1, box.y1, box.x2, box.y2));
+	DBG(("%s: nlist=%d, count=%d, bounds=((%d, %d), (%d, %d))\n", __FUNCTION__,
+	     nlist, glyph_count(nlist, list), box.x1, box.y1, box.x2, box.y2));
 
 	if (!sna_compute_composite_extents(&box,
 					   src, NULL, dst,
@@ -1602,7 +1616,8 @@ glyphs_fallback(CARD8 op,
 	int x, y, n;
 
 	glyph_extents(nlist, list, glyphs, &region.extents);
-	DBG(("%s: (%d, %d), (%d, %d)\n", __FUNCTION__,
+	DBG(("%s: nlist=%d, count=%d, extents (%d, %d), (%d, %d)\n", __FUNCTION__,
+	     nlist, glyph_count(nlist, list),
 	     region.extents.x1, region.extents.y1,
 	     region.extents.x2, region.extents.y2));
 
@@ -2027,8 +2042,8 @@ glyphs_via_image(struct sna *sna,
 	if (box.x2 <= box.x1 || box.y2 <= box.y1)
 		return true;
 
-	DBG(("%s: bounds=((%d, %d), (%d, %d))\n", __FUNCTION__,
-	     box.x1, box.y1, box.x2, box.y2));
+	DBG(("%s: nlist=%d, count=%d, bounds=((%d, %d), (%d, %d))\n", __FUNCTION__,
+	     nlist, glyph_count(nlist, list), box.x1, box.y1, box.x2, box.y2));
 
 	if (!sna_compute_composite_extents(&box,
 					   src, NULL, dst,
