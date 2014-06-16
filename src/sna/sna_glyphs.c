@@ -71,7 +71,7 @@
 #define NO_GLYPH_CACHE 0
 #define NO_GLYPHS_TO_DST 0
 #define NO_GLYPHS_VIA_MASK 0
-#define NO_SMALL_MASK 0
+#define FORCE_SMALL_MASK 0 /* -1 = never, 1 = always */
 #define NO_GLYPHS_SLOW 0
 #define NO_DISCARD_MASK 0
 
@@ -1087,6 +1087,17 @@ sna_glyph_get_image(GlyphPtr g, ScreenPtr s)
 	return image;
 }
 
+static inline bool use_small_mask(struct sna *sna, int16_t width, int16_t height, int depth)
+{
+	if (FORCE_SMALL_MASK)
+		return FORCE_SMALL_MASK > 0;
+
+	if (depth * width * height < 8 * 4096)
+		return true;
+
+	return too_large(sna, width, height);
+}
+
 flatten static bool
 glyphs_via_mask(struct sna *sna,
 		CARD8 op,
@@ -1147,9 +1158,7 @@ glyphs_via_mask(struct sna *sna,
 	}
 
 	component_alpha = NeedsComponent(format->format);
-	if (!NO_SMALL_MASK &&
-	    ((uint32_t)width * height * format->depth < 8 * 4096 ||
-	     too_large(sna, width, height))) {
+	if (use_small_mask(sna, width, height, format->depth)) {
 		pixman_image_t *mask_image;
 
 		DBG(("%s: small mask [format=%lx, depth=%d, size=%d], rendering glyphs to upload buffer\n",
