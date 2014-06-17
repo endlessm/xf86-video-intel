@@ -11443,7 +11443,7 @@ sna_poly_fill_rect_blt(DrawablePtr drawable,
 		       struct kgem_bo *bo,
 		       struct sna_damage **damage,
 		       GCPtr gc, uint32_t pixel,
-		       int n, xRectangle *rect,
+		       int n, const xRectangle *rect,
 		       const BoxRec *extents,
 		       bool clipped)
 {
@@ -12398,12 +12398,12 @@ sna_poly_fill_rect_tiled_blt(DrawablePtr drawable,
 			return true;
 		}
 	} else {
-		if ((tile->drawable.width | tile->drawable.height) <= 0xc &&
-				is_power_of_two(tile->drawable.width) &&
-				is_power_of_two(tile->drawable.height))
+		if ((tile->drawable.width | tile->drawable.height) <= 0xf &&
+		    is_power_of_two(tile->drawable.width) &&
+		    is_power_of_two(tile->drawable.height))
 			return sna_poly_fill_rect_tiled_nxm_blt(drawable, bo, damage,
-					gc, n, rect,
-					extents, clipped);
+								gc, n, rect,
+								extents, clipped);
 
 		tile_bo = sna_pixmap_get_source_bo(tile);
 		if (tile_bo == NULL) {
