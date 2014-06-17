@@ -11828,12 +11828,18 @@ sna_pixmap_get_source_bo(PixmapPtr pixmap)
 		return upload;
 	}
 
-	if (priv->gpu_damage &&
-	    !sna_pixmap_move_to_gpu(pixmap, MOVE_READ | MOVE_ASYNC_HINT))
-		return NULL;
-
-	if (priv->cpu_damage && priv->cpu_bo)
-		return kgem_bo_reference(priv->cpu_bo);
+	if (priv->gpu_damage) {
+		if (sna_pixmap_move_to_gpu(pixmap, MOVE_READ | MOVE_ASYNC_HINT))
+			return kgem_bo_reference(priv->gpu_bo);
+	} else if (priv->cpu_damage) {
+		if (priv->cpu_bo)
+			return kgem_bo_reference(priv->cpu_bo);
+	} else {
+		if (priv->gpu_bo)
+			return kgem_bo_reference(priv->gpu_bo);
+		if (priv->cpu_bo)
+			return kgem_bo_reference(priv->cpu_bo);
+	}
 
 	if (!sna_pixmap_move_to_gpu(pixmap, MOVE_READ | MOVE_ASYNC_HINT)) {
 		struct kgem_bo *upload;
