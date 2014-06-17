@@ -1151,7 +1151,7 @@ sna_share_pixmap_backing(PixmapPtr pixmap, ScreenPtr slave, void **fd_handle)
 	assert((priv->gpu_bo->pitch & 255) == 0);
 
 	/* And export the bo->pitch via pixmap->devKind */
-	if (priv->mapped != MAPPED_GTT) {
+	if (!priv->mapped) {
 		void *ptr;
 
 		ptr = kgem_bo_map__async(&sna->kgem, priv->gpu_bo);
@@ -1160,7 +1160,7 @@ sna_share_pixmap_backing(PixmapPtr pixmap, ScreenPtr slave, void **fd_handle)
 
 		pixmap->devPrivate.ptr = ptr;
 		pixmap->devKind = priv->gpu_bo->pitch;
-		priv->mapped = MAPPED_GTT;
+		priv->mapped = ptr == MAP(priv->gpu_bo->map__cpu) ? MAPPED_CPU : MAPPED_GTT;
 	}
 	assert_pixmap_map(pixmap, priv);
 
@@ -1264,7 +1264,7 @@ sna_create_pixmap_shared(struct sna *sna, ScreenPtr screen,
 		pixmap->devKind = priv->gpu_bo->pitch;
 
 		priv->stride = priv->gpu_bo->pitch;
-		priv->mapped = MAPPED_GTT;
+		priv->mapped = pixmap->devPrivate.ptr == MAP(priv->gpu_bo->map__cpu) ? MAPPED_CPU : MAPPED_GTT;
 		assert_pixmap_map(pixmap, priv);
 
 		sna_damage_all(&priv->gpu_damage, pixmap);
