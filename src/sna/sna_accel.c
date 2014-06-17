@@ -2088,9 +2088,14 @@ _sna_pixmap_move_to_cpu(PixmapPtr pixmap, unsigned int flags)
 	}
 
 	if (kgem_bo_discard_cache(priv->gpu_bo, flags & MOVE_WRITE)) {
-		DBG(("%s: discarding cached upload buffer\n", __FUNCTION__));
 		assert(DAMAGE_IS_ALL(priv->cpu_damage));
-		assert(priv->gpu_damage == NULL || DAMAGE_IS_ALL(priv->gpu_damage)); /* magical upload buffer */
+		if (DAMAGE_IS_ALL(priv->gpu_damage)) {
+			DBG(("%s: using magical upload buffer\n", __FUNCTION__));
+			goto skip;
+		}
+
+		DBG(("%s: discarding cached upload buffer\n", __FUNCTION__));
+		assert(priv->gpu_damage == NULL);
 		assert(!priv->pinned);
 		assert(!priv->mapped);
 		kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
@@ -2359,7 +2364,8 @@ done:
 			assert((flags & MOVE_WRITE) == 0 || !kgem_bo_is_busy(priv->cpu_bo));
 		}
 	}
-	priv->cpu |= (flags & (MOVE_WRITE |MOVE_ASYNC_HINT)) == MOVE_WRITE;
+skip:
+	priv->cpu |= (flags & (MOVE_WRITE | MOVE_ASYNC_HINT)) == MOVE_WRITE;
 	assert(pixmap->devPrivate.ptr == PTR(priv->ptr));
 	assert(pixmap->devKind);
 	assert_pixmap_damage(pixmap);
@@ -2498,9 +2504,14 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 	assert(priv->gpu_damage == NULL || priv->gpu_bo);
 
 	if (kgem_bo_discard_cache(priv->gpu_bo, flags & MOVE_WRITE)) {
-		DBG(("%s: discarding cached upload buffer\n", __FUNCTION__));
 		assert(DAMAGE_IS_ALL(priv->cpu_damage));
-		assert(priv->gpu_damage == NULL || DAMAGE_IS_ALL(priv->gpu_damage)); /* magical upload buffer */
+		if (DAMAGE_IS_ALL(priv->gpu_damage)) {
+			DBG(("%s: using magical upload buffer\n", __FUNCTION__));
+			goto skip;
+		}
+
+		DBG(("%s: discarding cached upload buffer\n", __FUNCTION__));
+		assert(priv->gpu_damage == NULL);
 		assert(!priv->pinned);
 		assert(!priv->mapped);
 		kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
@@ -2989,7 +3000,8 @@ out:
 				       FORCE_FULL_SYNC || flags & MOVE_WRITE);
 		assert((flags & MOVE_WRITE) == 0 || !kgem_bo_is_busy(priv->cpu_bo));
 	}
-	priv->cpu |= (flags & (MOVE_WRITE |MOVE_ASYNC_HINT)) == MOVE_WRITE;
+skip:
+	priv->cpu |= (flags & (MOVE_WRITE | MOVE_ASYNC_HINT)) == MOVE_WRITE;
 	assert(pixmap->devPrivate.ptr == PTR(priv->ptr));
 	assert(pixmap->devKind);
 	assert_pixmap_damage(pixmap);
@@ -3215,6 +3227,7 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 		assert(priv->gpu_damage == NULL || DAMAGE_IS_ALL(priv->gpu_damage)); /* magical upload buffer */
 		assert(!priv->pinned);
 		assert(!priv->mapped);
+		sna_damage_destroy(&priv->gpu_damage);
 		kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
 		priv->gpu_bo = NULL;
 	}
@@ -3458,6 +3471,7 @@ sna_drawable_use_bo(DrawablePtr drawable, unsigned flags, const BoxRec *box,
 		assert(priv->gpu_damage == NULL || DAMAGE_IS_ALL(priv->gpu_damage)); /* magical upload buffer */
 		assert(!priv->pinned);
 		assert(!priv->mapped);
+		sna_damage_destroy(&priv->gpu_damage);
 		kgem_bo_destroy(&to_sna_from_pixmap(pixmap)->kgem,
 				priv->gpu_bo);
 		priv->gpu_bo = NULL;
@@ -3954,6 +3968,7 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 		assert(priv->gpu_damage == NULL || DAMAGE_IS_ALL(priv->gpu_damage)); /* magical upload buffer */
 		assert(!priv->pinned);
 		assert(!priv->mapped);
+		sna_damage_destroy(&priv->gpu_damage);
 		kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
 		priv->gpu_bo = NULL;
 	}
@@ -4540,6 +4555,7 @@ try_upload__inplace(PixmapPtr pixmap, RegionRec *region,
 		assert(priv->gpu_damage == NULL || DAMAGE_IS_ALL(priv->gpu_damage)); /* magical upload buffer */
 		assert(!priv->pinned);
 		assert(!priv->mapped);
+		sna_damage_destroy(&priv->gpu_damage);
 		kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
 		priv->gpu_bo = NULL;
 	}
@@ -5999,6 +6015,7 @@ static void discard_cpu_damage(struct sna *sna, struct sna_pixmap *priv)
 		assert(priv->gpu_damage == NULL || DAMAGE_IS_ALL(priv->gpu_damage)); /* magical upload buffer */
 		assert(!priv->pinned);
 		assert(!priv->mapped);
+		sna_damage_destroy(&priv->gpu_damage);
 		kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
 		priv->gpu_bo = NULL;
 	}
