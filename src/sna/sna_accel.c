@@ -11835,8 +11835,32 @@ sna_pixmap_get_source_bo(PixmapPtr pixmap)
 	if (priv->cpu_damage && priv->cpu_bo)
 		return kgem_bo_reference(priv->cpu_bo);
 
-	if (!sna_pixmap_move_to_gpu(pixmap, MOVE_READ | MOVE_ASYNC_HINT))
-		return NULL;
+	if (!sna_pixmap_move_to_gpu(pixmap, MOVE_READ | MOVE_ASYNC_HINT)) {
+		struct kgem_bo *upload;
+		struct sna *sna = to_sna_from_pixmap(pixmap);
+		BoxRec box;
+
+		box.x1 = box.y1 = 0;
+		box.x2 = pixmap->drawable.width;
+		box.y2 = pixmap->drawable.height;
+
+		if (priv->gpu_damage)
+			return NULL;
+
+		upload = kgem_upload_source_image(&sna->kgem,
+						  pixmap->devPrivate.ptr, &box,
+						  pixmap->devKind,
+						  pixmap->drawable.bitsPerPixel);
+		if (upload == NULL)
+			return NULL;
+		if (pixmap->usage_hint == 0 && priv->gpu_bo == NULL) {
+			DBG(("%s: adding upload cache to pixmap=%ld\n",
+			     __FUNCTION__, pixmap->drawable.serialNumber));
+			assert(upload->proxy != NULL);
+			kgem_proxy_bo_attach(upload, &priv->gpu_bo);
+		}
+		return upload;
+	}
 
 	return kgem_bo_reference(priv->gpu_bo);
 }
