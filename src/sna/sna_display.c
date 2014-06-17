@@ -6438,7 +6438,6 @@ void sna_mode_wakeup(struct sna *sna)
 				assert(crtc->flip_bo);
 				assert(crtc->flip_bo->active_scanout);
 				assert(crtc->flip_bo->refcnt >= crtc->flip_bo->active_scanout);
-				assert(crtc->flip_bo != crtc->bo);
 
 				if (crtc->bo) {
 					DBG(("%s: removing handle=%d from scanout, installing handle=%d\n",
