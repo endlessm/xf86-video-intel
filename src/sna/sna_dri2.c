@@ -143,8 +143,8 @@ sna_dri2_get_back(struct sna *sna,
 
 	bo = get_private(back)->bo;
 	assert(bo->refcnt);
-	DBG(("%s: back buffer handle=%d, scanout?=%d\n",
-	     __FUNCTION__, bo->handle, bo->active_scanout));
+	DBG(("%s: back buffer handle=%d, scanout?=%d, refcnt=%d\n",
+	     __FUNCTION__, bo->handle, bo->active_scanout, get_private(back)->refcnt));
 	if (bo->active_scanout == 0) {
 		DBG(("%s: reuse unattached back\n", __FUNCTION__));
 		return;
@@ -1006,6 +1006,7 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 	DamageRegionAppend(&pixmap->drawable, region);
 
 	if (wedged(sna)) {
+fallback:
 		sna_dri2_copy_fallback(sna, draw->bitsPerPixel,
 				      src_bo, sx, sy,
 				      dst_bo, dx, dy,
@@ -1016,10 +1017,11 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		flags = COPY_LAST;
 		if (sync)
 			flags |= COPY_SYNC;
-		sna->render.copy_boxes(sna, GXcopy,
-				       pixmap, src_bo, sx, sy,
-				       pixmap, dst_bo, dx, dy,
-				       boxes, n, flags);
+		if (!sna->render.copy_boxes(sna, GXcopy,
+					    pixmap, src_bo, sx, sy,
+					    pixmap, dst_bo, dx, dy,
+					    boxes, n, flags))
+			goto fallback;
 
 		DBG(("%s: flushing? %d\n", __FUNCTION__, sync));
 		if (sync) { /* STAT! */
@@ -1509,8 +1511,8 @@ can_flip(struct sna * sna,
 		return false;
 	}
 
+	DBG(("%s: yes, pixmap=%ld\n", __FUNCTION__, pixmap->drawable.serialNumber));
 	assert(dri2_window(win)->front == NULL);
-
 	return true;
 }
 
@@ -1576,7 +1578,7 @@ can_xchg(struct sna * sna,
 		return false;
 	}
 
-	DBG(("%s: yes\n", __FUNCTION__));
+	DBG(("%s: yes, pixmap=%ld\n", __FUNCTION__, pixmap->drawable.serialNumber));
 	return true;
 }
 
@@ -1683,25 +1685,27 @@ can_xchg_crtc(struct sna *sna,
 	}
 
 	assert(win != win->drawable.pScreen->root);
-	DBG(("%s: yes\n", __FUNCTION__));
+	DBG(("%s: yes, pixmap=%ld\n", __FUNCTION__, pixmap->drawable.serialNumber));
 	return true;
 }
 
 static void
 sna_dri2_xchg(DrawablePtr draw, DRI2BufferPtr front, DRI2BufferPtr back)
 {
+	WindowPtr win = (WindowPtr)draw;
 	struct kgem_bo *back_bo, *front_bo;
 	PixmapPtr pixmap;
 	int tmp;
 
-	pixmap = get_drawable_pixmap(draw);
+	assert(draw->type != DRAWABLE_PIXMAP);
+	pixmap = get_window_pixmap(win);
 
 	back_bo = get_private(back)->bo;
 	front_bo = get_private(front)->bo;
 	assert(front_bo != back_bo);
 
-	DBG(("%s: exchange front=%d/%d and back=%d/%d, pixmap=%ld %dx%d\n",
-	     __FUNCTION__,
+	DBG(("%s: win=%ld, exchange front=%d/%d and back=%d/%d, pixmap=%ld %dx%d\n",
+	     __FUNCTION__, win->id,
 	     front_bo->handle, front->name,
 	     back_bo->handle, back->name,
 	     pixmap->drawable.serialNumber,
