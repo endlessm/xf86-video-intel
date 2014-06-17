@@ -2853,7 +2853,8 @@ move_to_cpu:
 				goto done;
 			}
 		} else {
-			if (sna_damage_contains_box__no_reduce(priv->cpu_damage,
+			if (DAMAGE_IS_ALL(priv->cpu_damage) ||
+			    sna_damage_contains_box__no_reduce(priv->cpu_damage,
 							       &region->extents)) {
 				assert(sna_damage_contains_box(&priv->gpu_damage, &region->extents) == PIXMAN_REGION_OUT);
 				assert(sna_damage_contains_box(&priv->cpu_damage, &region->extents) == PIXMAN_REGION_IN);
@@ -3623,7 +3624,8 @@ create_gpu_bo:
 					goto use_gpu_bo;
 			}
 
-			if (sna_damage_contains_box__no_reduce(priv->gpu_damage,
+			if (DAMAGE_IS_ALL(priv->gpu_damage) ||
+			    sna_damage_contains_box__no_reduce(priv->gpu_damage,
 							       &region.extents)) {
 				DBG(("%s: region wholly contained within GPU damage\n",
 				     __FUNCTION__));
@@ -3829,6 +3831,7 @@ cpu_fail:
 		sna_damage_destroy(&priv->gpu_damage);
 		*damage = NULL;
 	} else {
+		assert(!DAMAGE_IS_ALL(priv->cpu_damage));
 		if (priv->cpu_damage &&
 		    sna_damage_contains_box__no_reduce(priv->cpu_damage,
 						       &region.extents)) {
@@ -4712,8 +4715,9 @@ try_upload__blt(PixmapPtr pixmap, RegionRec *region,
 	assert(priv->gpu_bo->proxy == NULL);
 
 	if (priv->cpu_damage &&
-	    sna_damage_contains_box__no_reduce(priv->cpu_damage,
-					       &region->extents) &&
+	    (DAMAGE_IS_ALL(priv->cpu_damage) ||
+	     sna_damage_contains_box__no_reduce(priv->cpu_damage,
+						&region->extents)) &&
 	    !box_inplace(pixmap, &region->extents)) {
 		DBG(("%s: no, damage on CPU and too small\n", __FUNCTION__));
 		return false;
