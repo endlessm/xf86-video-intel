@@ -3479,18 +3479,32 @@ sna_drawable_use_bo(DrawablePtr drawable, unsigned flags, const BoxRec *box,
 		goto use_cpu_bo;
 	}
 
-	if (priv->flush)
+	if (priv->flush) {
+		DBG(("%s: exported target, set PREFER_GPU\n", __FUNCTION__));
 		flags |= PREFER_GPU;
-	if (priv->shm)
+	}
+	if (priv->shm) {
+		DBG(("%s: shm target, discard PREFER_GPU\n", __FUNCTION__));
 		flags &= ~PREFER_GPU;
-	if (priv->pinned)
+	}
+	if (priv->pinned) {
+		DBG(("%s: pinned, never REPLACES\n", __FUNCTION__));
 		flags &= ~REPLACES;
-	if (priv->cpu && (flags & (FORCE_GPU | IGNORE_CPU)) == 0)
+	}
+	if (priv->cpu && (flags & (FORCE_GPU | IGNORE_CPU)) == 0) {
+		DBG(("%s: last on cpu and needs damage, discard PREFER_GPU\n", __FUNCTION__));
 		flags &= ~PREFER_GPU;
+	}
+	if ((flags & FORCE_GPU) == 0 && priv->gpu_bo == NULL && sna_pixmap_choose_tiling(pixmap, DEFAULT_TILING) == I915_TILING_NONE) {
+		DBG(("%s: no gpu bo and linear, discard PREFER_GPU\n", __FUNCTION__));
+		flags &= ~PREFER_GPU;
+	}
 
 	if ((flags & (PREFER_GPU | IGNORE_CPU)) == IGNORE_CPU) {
-		if (priv->gpu_bo && (box_covers_pixmap(pixmap, box) || box_inplace(pixmap, box)))
+		if (priv->gpu_bo && (box_covers_pixmap(pixmap, box) || box_inplace(pixmap, box))) {
+			DBG(("%s: not reading damage and large, set PREFER_GPU\n", __FUNCTION__));
 			flags |= PREFER_GPU;
+		}
 	}
 
 	DBG(("%s: flush=%d, shm=%d, cpu=%d => flags=%x\n",
@@ -14445,7 +14459,7 @@ sna_poly_fill_rect(DrawablePtr draw, GCPtr gc, int n, xRectangle *rect)
 		DBG(("%s: not using GPU, hint=%x\n", __FUNCTION__, hint));
 		goto fallback;
 	}
-	if (hint & REPLACES && (flags & 2) == 0 && UNDO)
+	if (hint & REPLACES && UNDO)
 		kgem_bo_pair_undo(&sna->kgem, priv->gpu_bo, priv->cpu_bo);
 
 	if (gc_is_solid(gc, &color)) {
