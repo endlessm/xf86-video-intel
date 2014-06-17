@@ -1705,7 +1705,7 @@ sna_dri2_xchg(DrawablePtr draw, DRI2BufferPtr front, DRI2BufferPtr back)
 	assert(front_bo != back_bo);
 
 	DBG(("%s: win=%ld, exchange front=%d/%d and back=%d/%d, pixmap=%ld %dx%d\n",
-	     __FUNCTION__, win->id,
+	     __FUNCTION__, win->drawable.id,
 	     front_bo->handle, front->name,
 	     back_bo->handle, back->name,
 	     pixmap->drawable.serialNumber,

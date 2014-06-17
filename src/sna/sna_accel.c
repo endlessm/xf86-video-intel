@@ -12256,45 +12256,46 @@ sna_poly_fill_rect_tiled_nxm_blt(DrawablePtr drawable,
 	PixmapPtr pixmap = get_drawable_pixmap(drawable);
 	struct sna *sna = to_sna_from_pixmap(pixmap);
 	PixmapPtr tile = gc->tile.pixmap;
+	int w, h, bpp = tile->drawable.bitsPerPixel;
 	struct kgem_bo *upload;
-	int w, h, cpp;
 	void *ptr;
 	bool ret;
 
 	DBG(("%s: %dx%d\n", __FUNCTION__,
 	     tile->drawable.width, tile->drawable.height));
+	assert(tile->drawable.height && tile->drawable.height <= 8);
+	assert(tile->drawable.width && tile->drawable.width <= 8);
 
 	if (!sna_pixmap_move_to_cpu(tile, MOVE_READ))
 		return false;
 
-	upload = kgem_create_buffer(&sna->kgem, 8*tile->drawable.bitsPerPixel,
-				    KGEM_BUFFER_WRITE_INPLACE,
+	upload = kgem_create_buffer(&sna->kgem, 8*bpp,
+				    tile->drawable.height < 8 ? KGEM_BUFFER_WRITE : KGEM_BUFFER_WRITE_INPLACE,
 				    &ptr);
 	if (upload == NULL)
 		return false;
 
-	assert(tile->drawable.height && tile->drawable.height <= 8);
-	assert(tile->drawable.width && tile->drawable.width <= 8);
-	assert(has_coherent_ptr(sna, sna_pixmap(tile), MOVE_READ));
-	upload->pitch = 8*tile->drawable.bitsPerPixel >> 3; /* for sanity checks */
+	upload->pitch = bpp; /* for sanity checks */
 
 	assert(tile->devKind);
-	cpp = tile->drawable.bitsPerPixel/8;
+	assert(has_coherent_ptr(sna, sna_pixmap(tile), MOVE_READ));
 	for (h = 0; h < tile->drawable.height; h++) {
 		uint8_t *src = (uint8_t *)tile->devPrivate.ptr + tile->devKind*h;
-		uint8_t *dst = (uint8_t *)ptr + 8*cpp*h;
+		uint8_t *dst = (uint8_t *)ptr + bpp*h;
 
-		w = tile->drawable.width*cpp;
+		w = tile->drawable.width*bpp/8;
 		memcpy(dst, src, w);
-		while (w < 8*cpp) {
-			memcpy(dst+w, dst, w);
+		while (w < bpp) {
+			memcpy(dst+w, src, w);
 			w *= 2;
 		}
+		assert(w == bpp);
 	}
 	while (h < 8) {
-		memcpy((uint8_t*)ptr + h*w, ptr, h*w);
+		memcpy((uint8_t*)ptr + bpp*h, ptr, bpp*h);
 		h *= 2;
 	}
+	assert(h == 8);
 
 	ret = sna_poly_fill_rect_tiled_8x8_blt(drawable, bo, damage,
 					       upload, gc, n, rect,
