@@ -352,7 +352,7 @@ glyph_extents(int nlist,
 }
 
 #if HAS_DEBUG_FULL
-static void
+static int
 glyph_count(int nlist,
 	    GlyphListPtr list)
 {
