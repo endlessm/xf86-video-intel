@@ -64,6 +64,7 @@ search_snoop_cache(struct kgem *kgem, unsigned int num_pages, unsigned flags);
 #define DBG_NO_EXEC 0
 #define DBG_NO_TILING 0
 #define DBG_NO_CACHE 0
+#define DBG_NO_SNOOP_CACHE 0
 #define DBG_NO_CACHE_LEVEL 0
 #define DBG_NO_CPU 0
 #define DBG_NO_CREATE2 0
@@ -2067,6 +2068,11 @@ static void kgem_bo_move_to_snoop(struct kgem *kgem, struct kgem_bo *bo)
 	assert(!bo->needs_flush);
 	assert(bo->refcnt == 0);
 	assert(bo->exec == NULL);
+
+	if (DBG_NO_SNOOP_CACHE) {
+		kgem_bo_free(kgem, bo);
+		return;
+	}
 
 	if (num_pages(bo) > kgem->max_cpu_size >> 13) {
 		DBG(("%s handle=%d discarding large CPU buffer (%d >%d pages)\n",
