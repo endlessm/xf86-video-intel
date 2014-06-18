@@ -6120,18 +6120,25 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 		goto fallback;
 	}
 
-	/* XXX hack for firefox -- subsequent uses of src will be corrupt! */
-	if (src_priv &&
-	    COW(src_priv->cow) == COW(dst_priv->cow) &&
-	    IS_COW_OWNER(dst_priv->cow)) {
-		DBG(("%s: ignoring cow reference for cousin copy\n",
-		     __FUNCTION__));
-		assert(src_priv->cpu_damage == NULL);
-		assert(dst_priv->move_to_gpu == NULL);
-		bo = dst_priv->gpu_bo;
-		damage = NULL;
+	if (src_priv && COW(src_priv->cow) == COW(dst_priv->cow) && alu == GXcopy) {
+		if ((dx | dy) == 0) {
+			DBG(("%s: ignoring cow for no op\n",
+			     __FUNCTION__));
+			return;
+		} else if (IS_COW_OWNER(dst_priv->cow)) {
+			/* XXX hack for firefox -- subsequent uses of src will be corrupt! */
+			DBG(("%s: ignoring cow reference for cousin copy\n",
+			     __FUNCTION__));
+			assert(src_priv->cpu_damage == NULL);
+			assert(dst_priv->move_to_gpu == NULL);
+			bo = dst_priv->gpu_bo;
+			damage = NULL;
+		} else
+			goto discard_cow;
 	} else {
-		unsigned hint = copy_prefer_gpu(sna, dst_priv, src_priv, region, src_dx, src_dy);
+		unsigned hint;
+discard_cow:
+		hint = copy_prefer_gpu(sna, dst_priv, src_priv, region, src_dx, src_dy);
 		if (replaces) {
 			discard_cpu_damage(sna, dst_priv);
 			hint |= REPLACES | IGNORE_CPU;
