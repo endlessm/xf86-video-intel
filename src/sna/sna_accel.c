@@ -12295,14 +12295,22 @@ sna_poly_fill_rect_tiled_nxm_blt(DrawablePtr drawable,
 	tx = 0, tw = tile->drawable.width;
 	if (tw > extents->x2 - extents->x1) {
 		tx = (extents->x1 - gc->patOrg.x) % tw;
+		if (tx < 0)
+			tx += tw;
 		tw = extents->x2 - extents->x1;
+		if (tx + tw > tile->drawable.width)
+			return false;
 		gc->patOrg.x = extents->x1;
 	}
 
 	ty = 0, th = tile->drawable.height;
 	if (th > extents->y2 - extents->y1) {
 		ty = (extents->y1 - gc->patOrg.y) % th;
+		if (ty < 0)
+			ty += th;
 		th = extents->y2 - extents->y1;
+		if (ty + th > tile->drawable.height)
+			return false;
 		gc->patOrg.y = extents->y1;
 	}
 
@@ -12438,10 +12446,11 @@ sna_poly_fill_rect_tiled_blt(DrawablePtr drawable,
 			     __FUNCTION__, w, h));
 		}
 
-		if ((w | h) < 0x10 && is_power_of_two(w) && is_power_of_two(h))
-			return sna_poly_fill_rect_tiled_nxm_blt(drawable, bo, damage,
-								gc, n, rect,
-								extents, clipped);
+		if ((w|h) < 0x10 && is_power_of_two(w) && is_power_of_two(h) &&
+		    sna_poly_fill_rect_tiled_nxm_blt(drawable, bo, damage,
+						     gc, n, rect,
+						     extents, clipped))
+			return true;
 
 		tile_bo = sna_pixmap_get_source_bo(tile);
 		if (tile_bo == NULL) {
