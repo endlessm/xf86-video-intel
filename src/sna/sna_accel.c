@@ -4801,7 +4801,7 @@ static bool ignore_cpu_damage(struct sna *sna, struct sna_pixmap *priv, const Re
 		return true;
 
 	if (priv->cpu_damage != NULL) {
-		if (DAMAGE_IS_ALL(priv->cpu_damage == NULL))
+		if (DAMAGE_IS_ALL(priv->cpu_damage))
 			return false;
 
 		if (!box_inplace(priv->pixmap, &region->extents))
