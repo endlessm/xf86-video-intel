@@ -378,8 +378,10 @@ static bool sna_blt_alpha_fixup_init(struct sna *sna,
 {
 	struct kgem *kgem = &sna->kgem;
 
-	assert(kgem_bo_can_blt (kgem, src));
-	assert(kgem_bo_can_blt (kgem, dst));
+	DBG(("%s: dst handle=%d, src handle=%d, bpp=%d, fixup=%08x\n",
+	     __FUNCTION__, dst->handle, src->handle, bpp, alpha));
+	assert(kgem_bo_can_blt(kgem, src));
+	assert(kgem_bo_can_blt(kgem, dst));
 
 	blt->bo[0] = src;
 	blt->bo[1] = dst;

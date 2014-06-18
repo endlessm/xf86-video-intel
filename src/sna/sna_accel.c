@@ -12276,43 +12276,76 @@ sna_poly_fill_rect_tiled_nxm_blt(DrawablePtr drawable,
 	PixmapPtr pixmap = get_drawable_pixmap(drawable);
 	struct sna *sna = to_sna_from_pixmap(pixmap);
 	PixmapPtr tile = gc->tile.pixmap;
-	int w, h, bpp = tile->drawable.bitsPerPixel;
+	int w, h, tx, ty, tw, th, bpp = tile->drawable.bitsPerPixel;
+	const DDXPointRec origin = gc->patOrg;
 	struct kgem_bo *upload;
+	uint8_t *src, *dst;
 	void *ptr;
 	bool ret;
 
-	DBG(("%s: %dx%d\n", __FUNCTION__,
-	     tile->drawable.width, tile->drawable.height));
-	assert(tile->drawable.height && tile->drawable.height <= 8);
-	assert(tile->drawable.width && tile->drawable.width <= 8);
+	tx = 0, tw = tile->drawable.width;
+	if (tw > extents->x2 - extents->x1) {
+		tx = (extents->x1 - gc->patOrg.x) % tw;
+		tw = extents->x2 - extents->x1;
+		gc->patOrg.x = extents->x1;
+	}
+
+	ty = 0, th = tile->drawable.height;
+	if (th > extents->y2 - extents->y1) {
+		ty = (extents->y1 - gc->patOrg.y) % th;
+		th = extents->y2 - extents->y1;
+		gc->patOrg.y = extents->y1;
+	}
+
+	DBG(("%s: %dx%d+%d+%d (full tile size %dx%d)\n", __FUNCTION__,
+	     tw, th, tx, ty, tile->drawable.width, tile->drawable.height));
+	assert(tw && tw <= 8);
+	assert(th && th <= 8);
 
 	if (!sna_pixmap_move_to_cpu(tile, MOVE_READ))
 		return false;
 
-	upload = kgem_create_buffer(&sna->kgem, 8*bpp,
-				    tile->drawable.height < 8 ? KGEM_BUFFER_WRITE : KGEM_BUFFER_WRITE_INPLACE,
-				    &ptr);
+	assert(tile->devKind);
+	assert(has_coherent_ptr(sna, sna_pixmap(tile), MOVE_READ));
+
+	src = tile->devPrivate.ptr;
+	src += tile->devKind * ty;
+	src += tx * bpp/8;
+
+	if ((tw | th) == 1) {
+		uint32_t pixel;
+		switch (bpp) {
+			case 32: pixel = *(uint32_t *)src;
+			case 16: pixel = *(uint16_t *)src;
+			default: pixel = *(uint8_t *)src;
+		}
+		return sna_poly_fill_rect_blt(drawable, bo, damage,
+					      gc, pixel, n, rect,
+					      extents, clipped);
+	}
+
+	upload = kgem_create_buffer(&sna->kgem, 8*bpp, KGEM_BUFFER_WRITE, &ptr);
 	if (upload == NULL)
 		return false;
 
 	upload->pitch = bpp; /* for sanity checks */
 
-	assert(tile->devKind);
-	assert(has_coherent_ptr(sna, sna_pixmap(tile), MOVE_READ));
-	for (h = 0; h < tile->drawable.height; h++) {
-		uint8_t *src = (uint8_t *)tile->devPrivate.ptr + tile->devKind*h;
-		uint8_t *dst = (uint8_t *)ptr + bpp*h;
-
-		w = tile->drawable.width*bpp/8;
+	dst = ptr;
+	for (h = 0; h < th; h++) {
+		w = tw*bpp/8;
 		memcpy(dst, src, w);
 		while (w < bpp) {
-			memcpy(dst+w, src, w);
+			memcpy(dst+w, dst, w);
 			w *= 2;
 		}
 		assert(w == bpp);
+
+		src += tile->devKind;
+		dst += bpp;
 	}
 	while (h < 8) {
-		memcpy((uint8_t*)ptr + bpp*h, ptr, bpp*h);
+		memcpy(dst, ptr, bpp*h);
+		dst += bpp * h;
 		h *= 2;
 	}
 	assert(h == 8);
@@ -12322,6 +12355,7 @@ sna_poly_fill_rect_tiled_nxm_blt(DrawablePtr drawable,
 					       extents, clipped);
 
 	kgem_bo_destroy(&sna->kgem, upload);
+	gc->patOrg = origin;
 	return ret;
 }
 
@@ -12346,6 +12380,9 @@ sna_poly_fill_rect_tiled_blt(DrawablePtr drawable,
 	     __FUNCTION__, n, rect->x, rect->y, rect->width, rect->height,
 	     clipped));
 
+	assert(tile->drawable.depth == drawable->depth);
+	assert(bo);
+
 	tile_width = tile->drawable.width;
 	tile_height = tile->drawable.height;
 	if ((tile_width | tile_height) == 1) {
@@ -12362,7 +12399,7 @@ sna_poly_fill_rect_tiled_blt(DrawablePtr drawable,
 	 * RENDER.
 	 */
 
-	if ((tile->drawable.width | tile->drawable.height) == 8) {
+	if ((tile_width | tile_height) == 8) {
 		bool ret;
 
 		tile_bo = sna_pixmap_get_source_bo(tile);
@@ -12380,9 +12417,19 @@ sna_poly_fill_rect_tiled_blt(DrawablePtr drawable,
 			return true;
 		}
 	} else {
-		if ((tile->drawable.width | tile->drawable.height) <= 0xf &&
-		    is_power_of_two(tile->drawable.width) &&
-		    is_power_of_two(tile->drawable.height))
+		int w = tile_width, h = tile_height;
+		struct sna_pixmap *priv = sna_pixmap(tile);
+
+		if (priv == NULL || priv->gpu_damage == NULL) {
+			if (w > extents->x2 - extents->x1)
+				w = extents->x2 - extents->x1;
+			if (h > extents->y2 - extents->y1)
+				h = extents->y2 - extents->y1;
+			DBG(("%s: triming size for unattached tile: %dx%d\n",
+			     __FUNCTION__, w, h));
+		}
+
+		if ((w | h) < 0x10 && is_power_of_two(w) && is_power_of_two(h))
 			return sna_poly_fill_rect_tiled_nxm_blt(drawable, bo, damage,
 								gc, n, rect,
 								extents, clipped);
