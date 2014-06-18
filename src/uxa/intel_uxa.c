@@ -206,7 +206,7 @@ intel_uxa_compute_size(struct intel_screen_private *intel,
 			tile_height = 8;
 		else
 			tile_height = 32;
-		aligned_h = ALIGN(h, 2*tile_height);
+		aligned_h = ALIGN(h, tile_height);
 
 		*stride = intel_get_fence_pitch(intel,
 						ALIGN(pitch, 512),
@@ -768,7 +768,7 @@ free_priv:
 			else
 				height = 32;
 
-			height = ALIGN(pixmap->drawable.height, 2*height);
+			height = ALIGN(pixmap->drawable.height, height);
 			size = intel_get_fence_size(intel, priv->stride * height);
 		} else
 			size = priv->stride * pixmap->drawable.height;
