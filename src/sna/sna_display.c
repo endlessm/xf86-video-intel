@@ -6331,7 +6331,7 @@ fixup_shadow:
 				DBG(("%s: changing pitch (%d == %d) or offset (%x == %x)\n",
 				     __FUNCTION__,
 				     flip_bo->pitch, crtc->bo->pitch,
-				     crtc_offset, crtc->offset));
+				     y << 16 | x, crtc->offset));
 fixup_flip:
 				if (sna_crtc_flip(sna, crtc, flip_bo, x, y)) {
 					assert(flip_bo != crtc->bo);
