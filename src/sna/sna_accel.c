@@ -6120,7 +6120,9 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 		goto fallback;
 	}
 
-	if (src_priv && COW(src_priv->cow) == COW(dst_priv->cow) && alu == GXcopy) {
+	if (alu == GXcopy &&
+	    src_priv && src_priv->cow &&
+	    COW(src_priv->cow) == COW(dst_priv->cow)) {
 		if ((dx | dy) == 0) {
 			DBG(("%s: ignoring cow for no op\n",
 			     __FUNCTION__));
