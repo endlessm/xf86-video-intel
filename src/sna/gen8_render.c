@@ -2306,7 +2306,7 @@ gen8_render_composite(struct sna *sna,
 			return true;
 
 		if (!gen8_composite_channel_convert(&tmp->src))
-			goto cleanup_dst;
+			goto cleanup_src;
 
 		break;
 	}
@@ -2353,7 +2353,7 @@ gen8_render_composite(struct sna *sna,
 				/* fall through to fixup */
 			case 1:
 				if (!gen8_composite_channel_convert(&tmp->mask))
-					goto cleanup_src;
+					goto cleanup_mask;
 				break;
 			}
 		}
@@ -2588,7 +2588,7 @@ gen8_render_composite_spans(struct sna *sna,
 		/* fall through to fixup */
 	case 1:
 		if (!gen8_composite_channel_convert(&tmp->base.src))
-			goto cleanup_dst;
+			goto cleanup_src;
 		break;
 	}
 	tmp->base.mask.bo = NULL;
