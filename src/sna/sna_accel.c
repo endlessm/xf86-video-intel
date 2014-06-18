@@ -11791,41 +11791,21 @@ static struct kgem_bo *
 sna_pixmap_get_source_bo(PixmapPtr pixmap)
 {
 	struct sna_pixmap *priv = sna_pixmap(pixmap);
+	BoxRec box;
 
-	DBG(("%s(pixmap=%ld)\n", __FUNCTION__, pixmap->drawable.serialNumber));
+	box.x1 = box.y1 = 0;
+	box.x2 = pixmap->drawable.width;
+	box.y2 = pixmap->drawable.height;
+
+	DBG(("%s(pixmap=%ld, size=%dx%d)\n", __FUNCTION__,
+	     pixmap->drawable.serialNumber, pixmap->drawable.width, pixmap->drawable.height));
 
 	if (priv == NULL) {
-		struct kgem_bo *upload;
-		struct sna *sna = to_sna_from_pixmap(pixmap);
-		void *ptr;
-
-		upload = kgem_create_buffer_2d(&sna->kgem,
-					       pixmap->drawable.width,
-					       pixmap->drawable.height,
-					       pixmap->drawable.bitsPerPixel,
-					       KGEM_BUFFER_WRITE_INPLACE,
-					       &ptr);
-		if (upload == NULL)
-			return NULL;
-
-		if (sigtrap_get()) {
-			kgem_bo_destroy(&sna->kgem, upload);
-			return NULL;
-		}
-
-		assert(has_coherent_ptr(sna, sna_pixmap(pixmap), MOVE_READ));
-		assert(pixmap->devKind);
-		memcpy_blt(pixmap->devPrivate.ptr, ptr,
-			   pixmap->drawable.bitsPerPixel,
-			   pixmap->devKind, upload->pitch,
-			   0, 0,
-			   0, 0,
-			   pixmap->drawable.width,
-			   pixmap->drawable.height);
-
-		sigtrap_put();
-
-		return upload;
+		DBG(("%s: unattached, uploading data into temporary\n", __FUNCTION__));
+		return kgem_upload_source_image(&to_sna_from_pixmap(pixmap)->kgem,
+						pixmap->devPrivate.ptr, &box,
+						pixmap->devKind,
+						pixmap->drawable.bitsPerPixel);
 	}
 
 	if (priv->gpu_damage) {
@@ -11843,28 +11823,24 @@ sna_pixmap_get_source_bo(PixmapPtr pixmap)
 
 	if (!sna_pixmap_move_to_gpu(pixmap, MOVE_READ | MOVE_ASYNC_HINT)) {
 		struct kgem_bo *upload;
-		struct sna *sna = to_sna_from_pixmap(pixmap);
-		BoxRec box;
 
-		box.x1 = box.y1 = 0;
-		box.x2 = pixmap->drawable.width;
-		box.y2 = pixmap->drawable.height;
-
-		if (priv->gpu_damage)
+		if (!sna_pixmap_move_to_cpu(pixmap, MOVE_READ))
 			return NULL;
 
-		upload = kgem_upload_source_image(&sna->kgem,
+		upload = kgem_upload_source_image(&to_sna_from_pixmap(pixmap)->kgem,
 						  pixmap->devPrivate.ptr, &box,
 						  pixmap->devKind,
 						  pixmap->drawable.bitsPerPixel);
 		if (upload == NULL)
 			return NULL;
-		if (pixmap->usage_hint == 0 && priv->gpu_bo == NULL) {
+
+		if (priv->gpu_bo == NULL) {
 			DBG(("%s: adding upload cache to pixmap=%ld\n",
 			     __FUNCTION__, pixmap->drawable.serialNumber));
 			assert(upload->proxy != NULL);
 			kgem_proxy_bo_attach(upload, &priv->gpu_bo);
 		}
+
 		return upload;
 	}
 
