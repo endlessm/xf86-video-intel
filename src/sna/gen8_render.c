@@ -223,7 +223,7 @@ static bool unaligned(struct kgem_bo *bo, int bpp)
 
 	/* Assume that all tiled proxies are constructed correctly. */
 	if (bo->tiling)
-		return true;
+		return false;
 
 	DBG(("%s: checking alignment of a linear proxy, offset=%d, pitch=%d, bpp=%d: => (%d, %d)\n",
 	     __FUNCTION__, bo->delta, bo->pitch, bpp,
@@ -234,13 +234,13 @@ static bool unaligned(struct kgem_bo *bo, int bpp)
 	 */
 	y = bo->delta / bo->pitch;
 	if (y & 3)
-		return false;
+		return true;
 
 	x = 8 * (bo->delta - y * bo->pitch);
 	if (x & (4*bpp - 1))
-	    return false;
+	    return true;
 
-	return true;
+	return false;
 }
 
 static uint32_t gen8_get_blend(int op,
