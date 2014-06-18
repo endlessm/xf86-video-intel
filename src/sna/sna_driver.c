@@ -1326,6 +1326,11 @@ static void describe_sna(ScrnInfoPtr scrn)
 	xf86DrvMsg(scrn->scrnIndex, X_INFO,
 		   "SNA compiled with extra pixmap/damage validation\n");
 #endif
+#ifdef HAVE_VALGRIND
+	xf86DrvMsg(scrn->scrnIndex, X_INFO,
+		   "SNA compiled for use with valgrind\n");
+	VALGRIND_PRINTF("SNA compiled for use with valgrind\n");
+#endif
 	DBG(("pixman version: %s\n", pixman_version_string()));
 }
 
