@@ -42,6 +42,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <dirent.h>
+
+#include <xorg-server.h>
 #include <xf86.h>
 #include <pciaccess.h>
 
