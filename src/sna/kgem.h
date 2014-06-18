@@ -688,8 +688,9 @@ static inline void kgem_bo_mark_dirty(struct kgem_bo *bo)
 
 static inline bool kgem_bo_mapped(struct kgem *kgem, struct kgem_bo *bo)
 {
-	DBG(("%s: map=%p:%p, tiling=%d, domain=%d\n",
-	     __FUNCTION__, bo->map__gtt, bo->map__cpu, bo->tiling, bo->domain));
+	DBG(("%s: handle=%d, map=%p:%p, tiling=%d, domain=%d\n",
+	     __FUNCTION__, bo->handle, bo->map__gtt, bo->map__cpu, bo->tiling, bo->domain));
+	assert(bo->proxy == NULL);
 
 	if (bo->tiling == I915_TILING_NONE && (bo->domain == DOMAIN_CPU || kgem->has_llc))
 		return bo->map__cpu != NULL;
@@ -699,11 +700,13 @@ static inline bool kgem_bo_mapped(struct kgem *kgem, struct kgem_bo *bo)
 
 static inline bool kgem_bo_can_map(struct kgem *kgem, struct kgem_bo *bo)
 {
-	DBG(("%s: map=%p:%p, tiling=%d, domain=%d, offset=%ld\n",
-	     __FUNCTION__, bo->map__gtt, bo->map__cpu, bo->tiling, bo->domain, (long)bo->presumed_offset));
+	DBG(("%s: handle=%d, map=%p:%p, tiling=%d, domain=%d, offset=%ld\n",
+	     __FUNCTION__, bo->handle, bo->map__gtt, bo->map__cpu, bo->tiling, bo->domain, (long)bo->presumed_offset));
 
 	if (!bo->tiling && (kgem->has_llc || bo->domain == DOMAIN_CPU))
 		return true;
+
+	assert(bo->proxy == NULL);
 
 	if (bo->map__gtt != NULL)
 		return true;

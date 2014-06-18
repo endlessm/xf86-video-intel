@@ -4379,6 +4379,8 @@ static void __kgem_bo_make_scanout(struct kgem *kgem,
 		container_of(kgem, struct sna, kgem)->scrn;
 	struct drm_mode_fb_cmd arg;
 
+	assert(bo->proxy == NULL);
+
 	if (!scrn->vtSema)
 		return;
 
@@ -5822,6 +5824,7 @@ void *kgem_bo_map__gtt(struct kgem *kgem, struct kgem_bo *bo)
 	DBG(("%s: handle=%d, offset=%ld, tiling=%d, map=%p:%p, domain=%d\n", __FUNCTION__,
 	     bo->handle, (long)bo->presumed_offset, bo->tiling, bo->map__gtt, bo->map__cpu, bo->domain));
 
+	assert(bo->proxy == NULL);
 	assert(bo->exec == NULL);
 	assert(list_is_empty(&bo->list));
 	assert_tiling(kgem, bo);
