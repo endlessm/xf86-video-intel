@@ -320,6 +320,14 @@ intel_crtc_apply(xf86CrtcPtr crtc)
 		xf86OutputPtr output = xf86_config->output[i];
 		struct intel_output *intel_output;
 
+		/* Make sure we mark the output as off (and save the backlight)
+		 * before the kernel turns it off due to changing the pipe.
+		 * This is necessary as the kernel may turn off the backlight
+		 * and we lose track of the user settings.
+		 */
+		if (output->crtc == NULL)
+			output->funcs->dpms(output, DPMSModeOff);
+
 		if (output->crtc != crtc)
 			continue;
 
