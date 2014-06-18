@@ -1257,9 +1257,13 @@ intel_output_get_property(xf86OutputPtr output, Atom property)
 		if (!intel_output->backlight.iface)
 			return FALSE;
 
-		val = intel_output_backlight_get(output);
-		if (val < 0)
-			return FALSE;
+		if (intel_output->dpms_mode == DPMSModeOn) {
+			val = intel_output_backlight_get(output);
+			if (val < 0)
+				return FALSE;
+		} else {
+			val = intel_output->backlight_active_level;
+		}
 
 		err = RRChangeOutputProperty(output->randr_output, property,
 					     XA_INTEGER, 32, PropModeReplace, 1, &val,
