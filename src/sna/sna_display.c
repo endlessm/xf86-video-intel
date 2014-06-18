@@ -4504,10 +4504,9 @@ sna_cursors_fini(struct sna *sna)
 }
 
 static bool
-sna_crtc_flip(struct sna *sna, struct sna_crtc *crtc)
+sna_crtc_flip(struct sna *sna, struct sna_crtc *crtc, struct kgem_bo *bo, int x, int y)
 {
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
-	struct kgem_bo *bo = crtc->shadow_bo ? crtc->shadow_bo : crtc->bo;
 	struct drm_mode_crtc arg;
 	uint32_t output_ids[32];
 	int output_count = 0;
@@ -4541,15 +4540,8 @@ sna_crtc_flip(struct sna *sna, struct sna_crtc *crtc)
 	arg.crtc_id = crtc->id;
 	arg.fb_id = fb_id(bo);
 	assert(arg.fb_id);
-	if (bo != crtc->bo) {
-		arg.x = 0;
-		arg.y = 0;
-		crtc->offset = 0;
-	} else {
-		arg.x = crtc->base->x;
-		arg.y = crtc->base->y;
-		crtc->offset = arg.y << 16 | arg.x;
-	}
+	arg.x = x;
+	arg.y = y;
 	arg.set_connectors_ptr = (uintptr_t)output_ids;
 	arg.count_connectors = output_count;
 	arg.mode = crtc->kmode;
@@ -4565,7 +4557,11 @@ sna_crtc_flip(struct sna *sna, struct sna_crtc *crtc)
 	     bo != crtc->bo ? " [shadow]" : "",
 	     output_count, output_count ? output_ids[0] : 0));
 
-	return drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_SETCRTC, &arg) == 0;
+	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_SETCRTC, &arg))
+		return false;
+
+	crtc->offset = y << 16 | x;
+	return true;
 }
 
 static int do_page_flip(struct sna *sna, struct kgem_bo *bo,
@@ -4621,7 +4617,7 @@ static int do_page_flip(struct sna *sna, struct kgem_bo *bo,
 			     bo->pitch, crtc->bo->pitch,
 			     crtc_offset, crtc->offset));
 fixup_flip:
-			if (crtc->bo != bo && sna_crtc_flip(sna, crtc)) {
+			if (crtc->bo != bo && sna_crtc_flip(sna, crtc, bo, crtc->base->x, crtc->base->y)) {
 				assert(crtc->bo->active_scanout);
 				assert(crtc->bo->refcnt >= crtc->bo->active_scanout);
 				crtc->bo->active_scanout--;
@@ -6298,7 +6294,7 @@ fixup_shadow:
 		for (i = 0; i < sna->mode.num_real_crtc; i++) {
 			struct sna_crtc *crtc = config->crtc[i]->driver_private;
 			struct kgem_bo *flip_bo;
-			uint32_t crtc_offset = 0;
+			int x, y;
 
 			assert(crtc != NULL);
 			DBG(("%s: crtc %d [%d, pipe=%d] active? %d, transformed? %d\n",
@@ -6320,23 +6316,24 @@ fixup_shadow:
 						   crtc->base->mode.HDisplay,
 						   crtc->base->mode.VDisplay);
 				flip_bo = crtc->shadow_bo;
-				crtc_offset = 0;
+				x = y = 0;
 			} else {
 				arg.fb_id = fb_id;
 				flip_bo = new;
-				crtc_offset = crtc->base->y << 16 | crtc->base->x;
+				x = crtc->base->x;
+				y = crtc->base->y;
 			}
 
 			if (crtc->bo == flip_bo)
 				continue;
 
-			if (flip_bo->pitch != crtc->bo->pitch || crtc_offset != crtc->offset) {
+			if (flip_bo->pitch != crtc->bo->pitch || (y << 16 | x)  != crtc->offset) {
 				DBG(("%s: changing pitch (%d == %d) or offset (%x == %x)\n",
 				     __FUNCTION__,
 				     flip_bo->pitch, crtc->bo->pitch,
 				     crtc_offset, crtc->offset));
 fixup_flip:
-				if (sna_crtc_flip(sna, crtc)) {
+				if (sna_crtc_flip(sna, crtc, flip_bo, x, y)) {
 					assert(flip_bo != crtc->bo);
 					assert(crtc->bo->active_scanout);
 					assert(crtc->bo->refcnt >= crtc->bo->active_scanout);
