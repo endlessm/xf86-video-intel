@@ -1029,7 +1029,7 @@ fallback:
 			kgem_submit(&sna->kgem);
 			if (rq->bo) {
 				bo = ref(rq->bo);
-				DBG(("%s: recording sync fence handle=%d\n", bo->handle));
+				DBG(("%s: recording sync fence handle=%d\n", __FUNCTION__, bo->handle));
 			}
 		}
 	}
