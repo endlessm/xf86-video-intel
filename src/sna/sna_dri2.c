@@ -139,6 +139,9 @@ sna_dri2_get_back(struct sna *sna,
 	struct kgem_bo *bo;
 	uint32_t name;
 
+	if ((draw->height << 16 | draw->width) != get_private(back)->size)
+		return;
+
 	get_private(back)->stale = false;
 
 	bo = get_private(back)->bo;
@@ -249,7 +252,6 @@ sna_dri2_reuse_buffer(DrawablePtr draw, DRI2BufferPtr buffer)
 	     buffer->attachment, get_private(buffer)->bo->handle, buffer->name));
 	assert(get_private(buffer)->refcnt);
 	assert(get_private(buffer)->bo->refcnt > get_private(buffer)->bo->active_scanout);
-	assert(get_private(buffer)->pixmap == NULL || get_private(buffer)->pixmap == get_drawable_pixmap(draw));
 
 	if (buffer->attachment == DRI2BufferBackLeft &&
 	    draw->type != DRAWABLE_PIXMAP) {
