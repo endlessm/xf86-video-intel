@@ -12315,8 +12315,8 @@ sna_poly_fill_rect_tiled_nxm_blt(DrawablePtr drawable,
 
 	DBG(("%s: %dx%d+%d+%d (full tile size %dx%d)\n", __FUNCTION__,
 	     tw, th, tx, ty, tile->drawable.width, tile->drawable.height));
-	assert(tw && tw <= 8);
-	assert(th && th <= 8);
+	assert(tw && tw <= 8 && tw <= tile->drawable.width);
+	assert(th && th <= 8 && th <= tile->drawable.height);
 
 	if (!sna_pixmap_move_to_cpu(tile, MOVE_READ))
 		return false;
@@ -12346,29 +12346,33 @@ sna_poly_fill_rect_tiled_nxm_blt(DrawablePtr drawable,
 
 	upload->pitch = bpp; /* for sanity checks */
 
-	dst = ptr;
-	for (h = 0; h < th; h++) {
-		w = tw*bpp/8;
-		memcpy(dst, src, w);
-		while (w < bpp) {
-			memcpy(dst+w, dst, w);
-			w *= 2;
+	ret = false;
+	if (sigtrap_get() == 0) {
+		dst = ptr;
+		for (h = 0; h < th; h++) {
+			w = tw*bpp/8;
+			memcpy(dst, src, w);
+			while (w < bpp) {
+				memcpy(dst+w, dst, w);
+				w *= 2;
+			}
+			assert(w == bpp);
+
+			src += tile->devKind;
+			dst += bpp;
 		}
-		assert(w == bpp);
+		while (h < 8) {
+			memcpy(dst, ptr, bpp*h);
+			dst += bpp * h;
+			h *= 2;
+		}
+		assert(h == 8);
 
-		src += tile->devKind;
-		dst += bpp;
+		ret = sna_poly_fill_rect_tiled_8x8_blt(drawable, bo, damage,
+						       upload, gc, n, rect,
+						       extents, clipped);
+		sigtrap_put();
 	}
-	while (h < 8) {
-		memcpy(dst, ptr, bpp*h);
-		dst += bpp * h;
-		h *= 2;
-	}
-	assert(h == 8);
-
-	ret = sna_poly_fill_rect_tiled_8x8_blt(drawable, bo, damage,
-					       upload, gc, n, rect,
-					       extents, clipped);
 
 	kgem_bo_destroy(&sna->kgem, upload);
 	gc->patOrg = origin;
