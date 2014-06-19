@@ -481,8 +481,10 @@ static void sna_pixmap_free_gpu(struct sna *sna, struct sna_pixmap *priv)
 		sna_pixmap_undo_cow(sna, priv, MOVE_WRITE);
 	assert(priv->cow == NULL);
 
-	if (priv->move_to_gpu)
+	if (priv->move_to_gpu) {
+		sna_pixmap_discard_shadow_damage(priv, NULL);
 		priv->move_to_gpu(sna, priv, MOVE_WRITE);
+	}
 
 	sna_damage_destroy(&priv->gpu_damage);
 	priv->clear = false;
@@ -3170,13 +3172,18 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 	if (priv->move_to_gpu) {
 		unsigned int hint;
 
-		hint = flags | MOVE_READ | (priv->cpu_damage ? MOVE_WRITE : 0);
+		hint = flags | MOVE_READ;
 		if ((flags & MOVE_READ) == 0) {
 			RegionRec region;
 
 			region.extents = *box;
 			region.data = NULL;
 			sna_pixmap_discard_shadow_damage(priv, &region);
+			if (region_subsumes_pixmap(&region, pixmap))
+				hint &= ~MOVE_READ;
+		} else {
+			if (priv->cpu_damage)
+				hint |= MOVE_WRITE;
 		}
 		if (!priv->move_to_gpu(sna, priv, hint)) {
 			DBG(("%s: move-to-gpu override failed\n", __FUNCTION__));
@@ -3947,7 +3954,7 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 	assert_pixmap_damage(pixmap);
 
 	if (priv->move_to_gpu &&
-	    !priv->move_to_gpu(sna, priv, flags | (priv->cpu_damage ? MOVE_WRITE : 0))) {
+	    !priv->move_to_gpu(sna, priv, flags | ((priv->cpu_damage && (flags & MOVE_READ)) ? MOVE_WRITE : 0))) {
 		DBG(("%s: move-to-gpu override failed\n", __FUNCTION__));
 		return NULL;
 	}
