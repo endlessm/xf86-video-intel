@@ -12316,18 +12316,21 @@ sna_poly_fill_rect_tiled_nxm_blt(DrawablePtr drawable,
 	const DDXPointRec origin = gc->patOrg;
 	struct kgem_bo *upload;
 	uint8_t *src, *dst;
+	bool ret = false;
 	void *ptr;
-	bool ret;
 
 	tx = 0, tw = tile->drawable.width;
 	if (!tile8(tw) && tw > extents->x2 - extents->x1) {
-		tx = (extents->x1 - gc->patOrg.x) % tw;
+		tx = (extents->x1 - gc->patOrg.x - drawable->x) % tw;
 		if (tx < 0)
 			tx += tw;
 		tw = next8(extents->x2 - extents->x1, tw);
-		if (tx + tw > tile->drawable.width)
-			return false;
-		gc->patOrg.x = extents->x1;
+		if (tx + tw > tile->drawable.width) {
+			DBG(("%s: tx=%d + tw=%d > width=%d\n",
+			     __FUNCTION__, tx, tw, tile->drawable.width));
+			goto out_gc;
+		}
+		gc->patOrg.x = extents->x1 - drawable->x;
 	}
 
 	ty = 0, th = tile->drawable.height;
@@ -12336,9 +12339,12 @@ sna_poly_fill_rect_tiled_nxm_blt(DrawablePtr drawable,
 		if (ty < 0)
 			ty += th;
 		th = next8(extents->y2 - extents->y1, th);
-		if (ty + th > tile->drawable.height)
-			return false;
-		gc->patOrg.y = extents->y1;
+		if (ty + th > tile->drawable.height) {
+			DBG(("%s: ty=%d + th=%d > height=%d\n",
+			     __FUNCTION__, ty, th, tile->drawable.height));
+			goto out_gc;
+		}
+		gc->patOrg.y = extents->y1 - drawable->y;
 	}
 
 	DBG(("%s: %dx%d+%d+%d (full tile size %dx%d)\n", __FUNCTION__,
@@ -12349,7 +12355,7 @@ sna_poly_fill_rect_tiled_nxm_blt(DrawablePtr drawable,
 	assert(is_power_of_two(th));
 
 	if (!sna_pixmap_move_to_cpu(tile, MOVE_READ))
-		return false;
+		goto out_gc;
 
 	assert(tile->devKind);
 	assert(has_coherent_ptr(sna, sna_pixmap(tile), MOVE_READ));
@@ -12372,11 +12378,10 @@ sna_poly_fill_rect_tiled_nxm_blt(DrawablePtr drawable,
 
 	upload = kgem_create_buffer(&sna->kgem, 8*bpp, KGEM_BUFFER_WRITE, &ptr);
 	if (upload == NULL)
-		return false;
+		goto out_gc;
 
 	upload->pitch = bpp; /* for sanity checks */
 
-	ret = false;
 	if (sigtrap_get() == 0) {
 		dst = ptr;
 		for (h = 0; h < th; h++) {
@@ -12405,6 +12410,7 @@ sna_poly_fill_rect_tiled_nxm_blt(DrawablePtr drawable,
 	}
 
 	kgem_bo_destroy(&sna->kgem, upload);
+out_gc:
 	gc->patOrg = origin;
 	return ret;
 }
