@@ -290,6 +290,7 @@ struct sna {
 
 		int max_crtc_width, max_crtc_height;
 		RegionRec shadow_region;
+		RegionRec shadow_cancel;
 		struct list shadow_crtc;
 		bool shadow_dirty;
 

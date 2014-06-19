@@ -3726,17 +3726,16 @@ use_gpu_bo:
 		if (flags & IGNORE_CPU) {
 			region.extents = *box;
 			region.data = NULL;
+			if (get_drawable_deltas(drawable, pixmap, &dx, &dy)) {
+				region.extents.x1 += dx;
+				region.extents.x2 += dx;
+				region.extents.y1 += dy;
+				region.extents.y2 += dy;
+			}
+			sna_pixmap_discard_shadow_damage(priv, &region);
 			if (region_subsumes_pixmap(&region, pixmap)) {
 				DBG(("%s: discarding move-to-gpu READ for subsumed pixmap\n", __FUNCTION__));
 				hint = MOVE_WRITE;
-			} else {
-				if (get_drawable_deltas(drawable, pixmap, &dx, &dy)) {
-					region.extents.x1 += dx;
-					region.extents.x2 += dx;
-					region.extents.y1 += dy;
-					region.extents.y2 += dy;
-				}
-				sna_pixmap_discard_shadow_damage(priv, &region);
 			}
 		}
 
