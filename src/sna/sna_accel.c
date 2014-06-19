@@ -12274,6 +12274,34 @@ done:
 	return true;
 }
 
+static bool tile8(int x)
+{
+	switch(x) {
+	case 1:
+	case 2:
+	case 4:
+	case 8:
+		return true;
+	default:
+		return false;
+	}
+}
+
+static int next8(int x, int max)
+{
+	switch(x) {
+	case 1: return MIN(1, max);
+	case 2: return MIN(2, max);
+	case 3:
+	case 4: return MIN(4, max);
+	case 5:
+	case 6:
+	case 7:
+	case 8: return MIN(8, max);
+	default: return x;
+	}
+}
+
 static bool
 sna_poly_fill_rect_tiled_nxm_blt(DrawablePtr drawable,
 				 struct kgem_bo *bo,
@@ -12292,22 +12320,22 @@ sna_poly_fill_rect_tiled_nxm_blt(DrawablePtr drawable,
 	bool ret;
 
 	tx = 0, tw = tile->drawable.width;
-	if (tw > extents->x2 - extents->x1) {
+	if (!tile8(tw) && tw > extents->x2 - extents->x1) {
 		tx = (extents->x1 - gc->patOrg.x) % tw;
 		if (tx < 0)
 			tx += tw;
-		tw = extents->x2 - extents->x1;
+		tw = next8(extents->x2 - extents->x1, tw);
 		if (tx + tw > tile->drawable.width)
 			return false;
 		gc->patOrg.x = extents->x1;
 	}
 
 	ty = 0, th = tile->drawable.height;
-	if (th > extents->y2 - extents->y1) {
+	if (!tile8(th) && th > extents->y2 - extents->y1) {
 		ty = (extents->y1 - gc->patOrg.y) % th;
 		if (ty < 0)
 			ty += th;
-		th = extents->y2 - extents->y1;
+		th = next8(extents->y2 - extents->y1, th);
 		if (ty + th > tile->drawable.height)
 			return false;
 		gc->patOrg.y = extents->y1;
@@ -12316,7 +12344,9 @@ sna_poly_fill_rect_tiled_nxm_blt(DrawablePtr drawable,
 	DBG(("%s: %dx%d+%d+%d (full tile size %dx%d)\n", __FUNCTION__,
 	     tw, th, tx, ty, tile->drawable.width, tile->drawable.height));
 	assert(tw && tw <= 8 && tw <= tile->drawable.width);
+	assert(is_power_of_two(tw));
 	assert(th && th <= 8 && th <= tile->drawable.height);
+	assert(is_power_of_two(th));
 
 	if (!sna_pixmap_move_to_cpu(tile, MOVE_READ))
 		return false;
@@ -12441,10 +12471,8 @@ sna_poly_fill_rect_tiled_blt(DrawablePtr drawable,
 		struct sna_pixmap *priv = sna_pixmap(tile);
 
 		if (priv == NULL || priv->gpu_damage == NULL) {
-			if (w > extents->x2 - extents->x1)
-				w = extents->x2 - extents->x1;
-			if (h > extents->y2 - extents->y1)
-				h = extents->y2 - extents->y1;
+			w = next8(extents->x2 - extents->x1, w);
+			h = next8(extents->y2 - extents->y1, h);
 			DBG(("%s: triming size for unattached tile: %dx%d\n",
 			     __FUNCTION__, w, h));
 		}
