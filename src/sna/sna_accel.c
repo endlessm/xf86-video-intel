@@ -12335,7 +12335,7 @@ sna_poly_fill_rect_tiled_nxm_blt(DrawablePtr drawable,
 
 	ty = 0, th = tile->drawable.height;
 	if (!tile8(th) && th > extents->y2 - extents->y1) {
-		ty = (extents->y1 - gc->patOrg.y) % th;
+		ty = (extents->y1 - gc->patOrg.y - drawable->y) % th;
 		if (ty < 0)
 			ty += th;
 		th = next8(extents->y2 - extents->y1, th);
