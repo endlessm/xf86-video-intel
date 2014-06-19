@@ -6368,7 +6368,7 @@ discard_cow:
 			src_bo = kgem_create_map(&sna->kgem,
 						 src_pixmap->devPrivate.ptr,
 						 src_pixmap->devKind * src_pixmap->drawable.height,
-						 false);
+						 true);
 			if (src_bo) {
 				src_bo->pitch = src_pixmap->devKind;
 				kgem_bo_mark_unreusable(src_bo);
