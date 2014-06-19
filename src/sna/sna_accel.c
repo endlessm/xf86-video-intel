@@ -4736,16 +4736,18 @@ try_upload__blt(PixmapPtr pixmap, RegionRec *region,
 		return false;
 	}
 
-	if (!sna_pixmap_move_area_to_gpu(pixmap, &region->extents,
-					 MOVE_WRITE | MOVE_ASYNC_HINT | (region->data ? MOVE_READ : 0)))
-		return false;
-
-	src_bo = kgem_create_map(&sna->kgem, bits, stride * h, false);
+	src_bo = kgem_create_map(&sna->kgem, bits, stride * h, true);
 	if (src_bo == NULL)
 		return false;
 
 	src_bo->pitch = stride;
 	kgem_bo_mark_unreusable(src_bo);
+
+	if (!sna_pixmap_move_area_to_gpu(pixmap, &region->extents,
+					 MOVE_WRITE | MOVE_ASYNC_HINT | (region->data ? MOVE_READ : 0))) {
+		kgem_bo_destroy(&sna->kgem, src_bo);
+		return false;
+	}
 
 	DBG(("%s: upload(%d, %d, %d, %d) x %d through a temporary map\n",
 	     __FUNCTION__, x, y, w, h, region_num_rects(region)));
