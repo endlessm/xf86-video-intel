@@ -3812,6 +3812,9 @@ cpu_fail:
 		if (priv->cpu_bo->pitch >= 4096)
 			goto move_to_gpu;
 
+		if ((flags & IGNORE_CPU) == 0 && priv->cpu_bo->snoop)
+			goto move_to_gpu;
+
 		if (!sna->kgem.can_blt_cpu)
 			goto move_to_gpu;
 	}
