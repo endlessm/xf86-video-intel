@@ -109,13 +109,13 @@ static double _bench(struct test_display *t, enum target target_type,
 
 static void bench(struct test *t, enum target target, int op, int sf)
 {
-	double real, ref;
+	double out, ref;
 
 	ref = _bench(&t->ref, target, op, sf, 1000);
-	real = _bench(&t->real, target, op, sf, 1000);
+	out = _bench(&t->out, target, op, sf, 1000);
 
-	fprintf (stdout, "Testing %s with %s: ref=%f, real=%f\n",
-		 formats[sf].name, ops[op].name, ref, real);
+	fprintf (stdout, "Testing %s with %s: ref=%f, out=%f\n",
+		 formats[sf].name, ops[op].name, ref, out);
 }
 
 int main(int argc, char **argv)

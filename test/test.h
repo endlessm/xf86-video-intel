@@ -33,7 +33,7 @@ struct test {
 		int max_shm_size;
 		int width, height, depth;
 		XRenderPictFormat *format;
-	} real, ref;
+	} out, ref;
 };
 
 void die(const char *fmt, ...);
@@ -42,8 +42,8 @@ void die(const char *fmt, ...);
 
 void test_init(struct test *test, int argc, char **argv);
 
-void test_compare(struct test *real,
-		  Drawable real_draw, XRenderPictFormat *real_format,
+void test_compare(struct test *out,
+		  Drawable out_draw, XRenderPictFormat *out_format,
 		  Drawable ref_draw, XRenderPictFormat *ref_format,
 		  int x, int y, int w, int h, const char *info);
 
@@ -116,7 +116,7 @@ double test_timer_stop(struct test_display *t, struct timespec *tv);
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 #endif
 
+#define SETS(I) ((I) >= 12 ? 1 : 1 << (12 - (I)))
 #define REPS(I) (1 << (I))
-#define SETS(I) ((I) < 12 ? 1 << (12 - (I)) : 2)
 
 #endif

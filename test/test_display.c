@@ -27,7 +27,7 @@ static Window get_root(struct test_display *t)
 	return w;
 }
 
-static Display *real_display(int argc, char **argv)
+static Display *out_display(int argc, char **argv)
 {
 	Display *dpy;
 	const char *name = NULL;
@@ -52,7 +52,7 @@ static Display *real_display(int argc, char **argv)
 
 	dpy = XOpenDisplay(name);
 	if (dpy == NULL)
-		die("unable to open real display %s\n", name);
+		die("unable to open out display %s\n", name);
 
 	printf("Opened connection to %s for testing.\n", name);
 	return dpy;
@@ -129,15 +129,15 @@ static void default_setup(struct test_display *dpy)
 }
 
 static void test_get_displays(int argc, char **argv,
-			      struct test_display *real,
+			      struct test_display *out,
 			      struct test_display *ref)
 {
-	real->dpy = real_display(argc, argv);
-	default_setup(real);
-	shm_setup(real);
-	real->root = get_root(real);
+	out->dpy = out_display(argc, argv);
+	default_setup(out);
+	shm_setup(out);
+	out->root = get_root(out);
 
-	ref->dpy = ref_display(real->width, real->height, real->depth);
+	ref->dpy = ref_display(out->width, out->height, out->depth);
 	default_setup(ref);
 	shm_setup(ref);
 	ref->root = get_root(ref);
@@ -146,7 +146,7 @@ static void test_get_displays(int argc, char **argv,
 void test_init(struct test *test, int argc, char **argv)
 {
 	memset(test, 0, sizeof(*test));
-	test_get_displays(argc, argv, &test->real, &test->ref);
+	test_get_displays(argc, argv, &test->out, &test->ref);
 }
 
 void test_timer_start(struct test_display *t, struct timespec *tv)
