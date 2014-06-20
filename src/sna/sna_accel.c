@@ -11463,8 +11463,8 @@ sna_poly_fill_rect_blt(DrawablePtr drawable,
 	BoxRec boxes[512], *b = boxes, *const last_box = boxes+ARRAY_SIZE(boxes);
 	int16_t dx, dy;
 
-	DBG(("%s x %d [(%d, %d)x(%d, %d)...]+(%d,%d), clipped?=%d\n",
-	     __FUNCTION__, n,
+	DBG(("%s pixmap=%ld x %d [(%d, %d)x(%d, %d)...]+(%d,%d), clipped?=%d\n",
+	     __FUNCTION__, pixmap->drawable.serialNumber, n,
 	     rect->x, rect->y, rect->width, rect->height,
 	     drawable->x, drawable->y,
 	     clipped));
@@ -11482,6 +11482,9 @@ sna_poly_fill_rect_blt(DrawablePtr drawable,
 				r.x1 += dx; r.y1 += dy;
 				r.x2 += dx; r.y2 += dy;
 			}
+			DBG(("%s: using fill_one() fast path: (%d, %d), (%d, %d). alu=%d, pixel=%08x\n",
+			     __FUNCTION__, r.x1, r.y1, r.x2, r.y2, gc->alu, pixel));
+
 			if (sna->render.fill_one(sna, pixmap, bo, pixel,
 						 r.x1, r.y1, r.x2, r.y2,
 						 gc->alu)) {
@@ -11647,7 +11650,7 @@ done:
 static uint32_t
 get_pixel(PixmapPtr pixmap)
 {
-	DBG(("%s\n", __FUNCTION__));
+	DBG(("%s(pixmap=%ld)\n", __FUNCTION__, pixmap->drawable.serialNumber));
 	if (!sna_pixmap_move_to_cpu(pixmap, MOVE_READ))
 		return 0;
 
@@ -12186,6 +12189,9 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 				box.y1 = r->y + drawable->y;
 				box.x2 = bound(box.x1, r->width);
 				box.y2 = bound(box.y1, r->height);
+				DBG(("%s: rect=(%d, %d), (%d, %d), box=(%d, %d), (%d, %d)\n", __FUNCTION__,
+				     r->x, r->y, r->width, r->height,
+				     box.x1, box.y1, box.x2, box.y2));
 				r++;
 
 				c = find_clip_box_for_y(clip_start,
@@ -12194,12 +12200,15 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 				while (c != clip_end) {
 					BoxRec bb;
 
+					DBG(("%s: clip=(%d, %d), (%d, %d)\n", __FUNCTION__, c->x1, c->y1, c->x2, c->y2));
+
 					if (box.y2 <= c->y1)
 						break;
 
 					bb = box;
 					if (box_intersect(&bb, c++)) {
 						if (!kgem_check_batch(&sna->kgem, 3)) {
+							DBG(("%s: emitting split batch\n", __FUNCTION__));
 							_kgem_submit(&sna->kgem);
 							_kgem_set_mode(&sna->kgem, KGEM_BLT);
 
@@ -12252,6 +12261,9 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 						assert(bb.x2 + dx <= pixmap->drawable.width);
 						assert(bb.y2 + dy <= pixmap->drawable.height);
 
+						DBG(("%s: emit box=(%d, %d),(%d, %d) + (%d, %d), tile=(%d, %d) [relative to drawable: (%d, %d)]\n",
+						     __FUNCTION__, bb.x1, bb.y1, bb.x2, bb.y2, dx, dy, tx, ty, bb.x1 - drawable->x, bb.y1 - drawable->y));
+
 						assert(sna->kgem.mode == KGEM_BLT);
 						b = sna->kgem.batch + sna->kgem.nbatch;
 						b[0] = br00;
@@ -12267,7 +12279,7 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 			sna->kgem.nbatch = unwind_batch;
 			sna->kgem.nreloc = unwind_reloc;
 			if (sna->kgem.nbatch == 0)
-				kgem_bo_undo(&sna->kgem, bo);
+				kgem_bo_pair_undo(&sna->kgem, bo, tile_bo);
 		}
 	}
 done:
@@ -12291,17 +12303,11 @@ static bool tile8(int x)
 
 static int next8(int x, int max)
 {
-	switch(x) {
-	case 1: return MIN(1, max);
-	case 2: return MIN(2, max);
-	case 3:
-	case 4: return MIN(4, max);
-	case 5:
-	case 6:
-	case 7:
-	case 8: return MIN(8, max);
-	default: return x;
-	}
+	if (x > 2 && x <= 4)
+		x = 4;
+	else if (x < 8)
+		x = 8;
+	return MIN(x, max);
 }
 
 static bool
@@ -12434,8 +12440,9 @@ sna_poly_fill_rect_tiled_blt(DrawablePtr drawable,
 	int tile_width, tile_height;
 	int16_t dx, dy;
 
-	DBG(("%s x %d [(%d, %d)x(%d, %d)...], clipped? %d\n",
-	     __FUNCTION__, n, rect->x, rect->y, rect->width, rect->height,
+	DBG(("%s pixmap=%ld, x %d [(%d, %d)x(%d, %d)...], clipped? %d\n",
+	     __FUNCTION__, pixmap->drawable.serialNumber,
+	     n, rect->x, rect->y, rect->width, rect->height,
 	     clipped));
 
 	assert(tile->drawable.depth == drawable->depth);
@@ -12460,6 +12467,8 @@ sna_poly_fill_rect_tiled_blt(DrawablePtr drawable,
 	if ((tile_width | tile_height) == 8) {
 		bool ret;
 
+		DBG(("%s: have 8x8 tile, using BLT fast path\n", __FUNCTION__));
+
 		tile_bo = sna_pixmap_get_source_bo(tile);
 		if (tile_bo == NULL) {
 			DBG(("%s: unable to move tile go GPU, fallback\n",
@@ -12481,9 +12490,10 @@ sna_poly_fill_rect_tiled_blt(DrawablePtr drawable,
 		if (priv == NULL || priv->gpu_damage == NULL) {
 			w = next8(extents->x2 - extents->x1, w);
 			h = next8(extents->y2 - extents->y1, h);
-			DBG(("%s: triming size for unattached tile: %dx%d\n",
-			     __FUNCTION__, w, h));
 		}
+
+		DBG(("%s: not 8x8, triming size for tile: %dx%d from %dx%d (area %dx%d)\n",
+		     __FUNCTION__, w, h, tile_width, tile_height, extents->x2-extents->x1, extents->y2-extents->y1));
 
 		if ((w|h) < 0x10 && is_power_of_two(w) && is_power_of_two(h) &&
 		    sna_poly_fill_rect_tiled_nxm_blt(drawable, bo, damage,
