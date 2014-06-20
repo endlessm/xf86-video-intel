@@ -12330,8 +12330,8 @@ sna_poly_fill_rect_tiled_nxm_blt(DrawablePtr drawable,
 	int w, h, tx, ty, tw, th, bpp = tile->drawable.bitsPerPixel;
 	const DDXPointRec origin = gc->patOrg;
 	struct kgem_bo *upload;
-	uint8_t *src, *dst;
 	bool ret = false;
+	uint8_t *src;
 	void *ptr;
 
 	tx = 0, tw = tile->drawable.width;
@@ -12340,11 +12340,6 @@ sna_poly_fill_rect_tiled_nxm_blt(DrawablePtr drawable,
 		if (tx < 0)
 			tx += tw;
 		tw = next8(extents->x2 - extents->x1, tw);
-		if (tx + tw > tile->drawable.width) {
-			DBG(("%s: tx=%d + tw=%d > width=%d\n",
-			     __FUNCTION__, tx, tw, tile->drawable.width));
-			goto out_gc;
-		}
 		gc->patOrg.x = extents->x1 - drawable->x;
 	}
 
@@ -12354,16 +12349,13 @@ sna_poly_fill_rect_tiled_nxm_blt(DrawablePtr drawable,
 		if (ty < 0)
 			ty += th;
 		th = next8(extents->y2 - extents->y1, th);
-		if (ty + th > tile->drawable.height) {
-			DBG(("%s: ty=%d + th=%d > height=%d\n",
-			     __FUNCTION__, ty, th, tile->drawable.height));
-			goto out_gc;
-		}
 		gc->patOrg.y = extents->y1 - drawable->y;
 	}
 
 	DBG(("%s: %dx%d+%d+%d (full tile size %dx%d)\n", __FUNCTION__,
 	     tw, th, tx, ty, tile->drawable.width, tile->drawable.height));
+	assert(tx < tile->drawable.width && tx >= 0);
+	assert(ty < tile->drawable.height && ty >= 0);
 	assert(tw && tw <= 8 && tw <= tile->drawable.width);
 	assert(is_power_of_two(tw));
 	assert(th && th <= 8 && th <= tile->drawable.height);
@@ -12382,9 +12374,9 @@ sna_poly_fill_rect_tiled_nxm_blt(DrawablePtr drawable,
 	if ((tw | th) == 1) {
 		uint32_t pixel;
 		switch (bpp) {
-			case 32: pixel = *(uint32_t *)src;
-			case 16: pixel = *(uint16_t *)src;
-			default: pixel = *(uint8_t *)src;
+			case 32: pixel = *(uint32_t *)src; break;
+			case 16: pixel = *(uint16_t *)src; break;
+			default: pixel = *(uint8_t *)src; break;
 		}
 		return sna_poly_fill_rect_blt(drawable, bo, damage,
 					      gc, pixel, n, rect,
@@ -12398,25 +12390,52 @@ sna_poly_fill_rect_tiled_nxm_blt(DrawablePtr drawable,
 	upload->pitch = bpp; /* for sanity checks */
 
 	if (sigtrap_get() == 0) {
-		dst = ptr;
-		for (h = 0; h < th; h++) {
-			w = tw*bpp/8;
-			memcpy(dst, src, w);
-			while (w < bpp) {
-				memcpy(dst+w, dst, w);
-				w *= 2;
+		uint8_t *dst = ptr;
+		if (tx + tw > tile->drawable.width ||
+		    ty + th > tile->drawable.height) {
+			int sy = ty;
+			src = tile->devPrivate.ptr;
+			for (h = 0; h < th; h++) {
+				int sx = tx;
+				for (w = 0; w < tw; w++) {
+					memcpy(dst + w*bpp/8, src + sy * tile->devKind + sx*bpp/8, bpp/8);
+					if (++sx == tile->drawable.width)
+						sx = 0;
+				}
+				w *= bpp/8;
+				while (w < bpp) {
+					memcpy(dst+w, dst, w);
+					w *= 2;
+				}
+				if (++sy == tile->drawable.height)
+					sy = 0;
+				dst += bpp;
 			}
-			assert(w == bpp);
+			while (h < 8) {
+				memcpy(dst, ptr, bpp*h);
+				dst += bpp * h;
+				h *= 2;
+			}
+		} else {
+			for (h = 0; h < th; h++) {
+				w = tw*bpp/8;
+				memcpy(dst, src, w);
+				while (w < bpp) {
+					memcpy(dst+w, dst, w);
+					w *= 2;
+				}
+				assert(w == bpp);
 
-			src += tile->devKind;
-			dst += bpp;
+				src += tile->devKind;
+				dst += bpp;
+			}
+			while (h < 8) {
+				memcpy(dst, ptr, bpp*h);
+				dst += bpp * h;
+				h *= 2;
+			}
+			assert(h == 8);
 		}
-		while (h < 8) {
-			memcpy(dst, ptr, bpp*h);
-			dst += bpp * h;
-			h *= 2;
-		}
-		assert(h == 8);
 
 		ret = sna_poly_fill_rect_tiled_8x8_blt(drawable, bo, damage,
 						       upload, gc, n, rect,
