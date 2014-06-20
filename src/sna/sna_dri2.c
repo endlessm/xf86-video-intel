@@ -2658,6 +2658,14 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 	assert(get_private(front)->bo->refcnt);
 	assert(get_private(back)->bo->refcnt);
 
+	if (get_private(front)->pixmap != get_drawable_pixmap(draw))
+		goto skip;
+
+	if (get_private(back)->stale)
+		goto skip;
+
+	assert(sna_pixmap_from_drawable(draw)->flush);
+
 	if (draw->type != DRAWABLE_PIXMAP) {
 		struct dri2_window *priv = dri2_window((WindowPtr)draw);
 		if (priv->front) {
@@ -2667,14 +2675,6 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 			priv->front = NULL;
 		}
 	}
-
-	if (get_private(front)->pixmap != get_drawable_pixmap(draw))
-		goto skip;
-
-	if (get_private(back)->stale)
-		goto skip;
-
-	assert(sna_pixmap_from_drawable(draw)->flush);
 
 	/* Drawable not displayed... just complete the swap */
 	if ((sna->flags & SNA_NO_WAIT) == 0)
