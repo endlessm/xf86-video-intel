@@ -106,8 +106,12 @@ search_snoop_cache(struct kgem *kgem, unsigned int num_pages, unsigned flags);
  * is being simultaneously being read by the GPU, or within the sampler
  * prefetch. In general, the chipsets seem to have a requirement that sampler
  * offsets be aligned to a cacheline (64 bytes).
+ *
+ * Actually, it turns out the BLT color pattern (BR15) has the most severe
+ * alignment restrictions, 64 bytes for 8-bpp, 128 bytes for 16-bpp and 256
+ * bytes for 32-bpp.
  */
-#define UPLOAD_ALIGNMENT 128
+#define UPLOAD_ALIGNMENT 256
 
 #define PAGE_ALIGN(x) ALIGN(x, PAGE_SIZE)
 #define NUM_PAGES(x) (((x) + PAGE_SIZE-1) / PAGE_SIZE)
