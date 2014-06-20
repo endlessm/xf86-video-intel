@@ -125,10 +125,10 @@ region_boxptr(const RegionRec *r)
 	return (BoxPtr)(r->data + 1);
 }
 
-static inline BoxPtr
+static inline const BoxRec *
 region_rects(const RegionRec *r)
 {
-	return r->data ? region_boxptr(r) :  (BoxPtr)&r->extents;
+	return r->data ? (const BoxRec *)(r->data + 1) :  &r->extents;
 }
 
 #ifndef INCLUDE_LEGACY_REGION_DEFINES

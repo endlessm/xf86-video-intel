@@ -1533,7 +1533,7 @@ bool _sna_damage_intersect(struct sna_damage *damage,
 }
 #endif
 
-static int __sna_damage_get_boxes(struct sna_damage *damage, BoxPtr *boxes)
+static int __sna_damage_get_boxes(struct sna_damage *damage, const BoxRec **boxes)
 {
 	assert(damage && damage->mode != DAMAGE_ALL);
 
@@ -1565,7 +1565,7 @@ struct sna_damage *_sna_damage_reduce(struct sna_damage *damage)
 }
 
 #if HAS_DEBUG_FULL
-int _sna_damage_get_boxes(struct sna_damage *damage, BoxPtr *boxes)
+int _sna_damage_get_boxes(struct sna_damage *damage, const BoxRec **boxes)
 {
 	char damage_buf[1000];
 	int count;
@@ -1579,7 +1579,7 @@ int _sna_damage_get_boxes(struct sna_damage *damage, BoxPtr *boxes)
 	return count;
 }
 #else
-int _sna_damage_get_boxes(struct sna_damage *damage, BoxPtr *boxes)
+int _sna_damage_get_boxes(struct sna_damage *damage, const BoxRec **boxes)
 {
 	return __sna_damage_get_boxes(damage, boxes);
 }

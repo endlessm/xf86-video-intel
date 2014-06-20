@@ -546,7 +546,7 @@ sna_composite_fb(CARD8 op,
 		    region->extents.x2 + sx <= src->pDrawable->width &&
 		    region->extents.y2 + sy <= src->pDrawable->height) {
 			if (sigtrap_get() == 0) {
-				BoxPtr box = region_rects(region);
+				const BoxRec *box = region_rects(region);
 				int nbox = region_num_rects(region);
 
 				sx += src->pDrawable->x;
@@ -1103,7 +1103,7 @@ fallback:
 	if (sigtrap_get() == 0) {
 		if (op <= PictOpSrc) {
 			int nbox = region_num_rects(&region);
-			BoxPtr box = region_rects(&region);
+			const BoxRec *box = region_rects(&region);
 			uint32_t pixel;
 
 			if (op == PictOpClear)

@@ -580,7 +580,7 @@ glyphs_to_dst(struct sna *sna,
 	struct sna_composite_op tmp;
 	ScreenPtr screen = dst->pDrawable->pScreen;
 	PicturePtr glyph_atlas;
-	BoxPtr rects;
+	const BoxRec *rects;
 	int nrect;
 	int16_t x, y;
 
@@ -737,7 +737,7 @@ glyphs0_to_dst(struct sna *sna,
 	struct sna_composite_op tmp;
 	ScreenPtr screen = dst->pDrawable->pScreen;
 	PicturePtr glyph_atlas = NO_ATLAS;
-	BoxPtr rects;
+	const BoxRec *rects;
 	int nrect;
 	int x, y;
 
@@ -944,7 +944,7 @@ glyphs_slow(struct sna *sna,
 		while (n--) {
 			GlyphPtr glyph = *glyphs++;
 			struct sna_glyph *p;
-			BoxPtr rects;
+			const BoxRec *rects;
 			BoxRec box;
 			int nrect;
 

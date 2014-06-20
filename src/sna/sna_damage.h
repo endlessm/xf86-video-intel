@@ -244,9 +244,9 @@ sna_damage_contains_box__no_reduce(const struct sna_damage *damage,
 	return _sna_damage_contains_box__no_reduce(damage, box);
 }
 
-int _sna_damage_get_boxes(struct sna_damage *damage, BoxPtr *boxes);
+int _sna_damage_get_boxes(struct sna_damage *damage, const BoxRec **boxes);
 static inline int
-sna_damage_get_boxes(struct sna_damage *damage, BoxPtr *boxes)
+sna_damage_get_boxes(struct sna_damage *damage, const BoxRec **boxes)
 {
 	assert(damage);
 

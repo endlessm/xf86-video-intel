@@ -5382,7 +5382,7 @@ gen3_render_video(struct sna *sna,
 		  PixmapPtr pixmap)
 {
 	struct sna_pixmap *priv = sna_pixmap(pixmap);
-	BoxPtr pbox = region_rects(dstRegion);
+	const BoxRec *pbox = region_rects(dstRegion);
 	int nbox = region_num_rects(dstRegion);
 	int dst_width = dstRegion->extents.x2 - dstRegion->extents.x1;
 	int dst_height = dstRegion->extents.y2 - dstRegion->extents.y1;

@@ -5914,7 +5914,7 @@ sna_crtc_redisplay__composite(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo
 	PictFormatPtr format;
 	PicturePtr src, dst;
 	PixmapPtr pixmap;
-	BoxPtr b;
+	const BoxRec *b;
 	int n, depth, error;
 
 	DBG(("%s: compositing transformed damage boxes\n", __FUNCTION__));

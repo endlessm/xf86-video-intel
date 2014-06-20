@@ -1356,7 +1356,7 @@ gen5_render_video(struct sna *sna,
 	float src_offset_x, src_offset_y;
 	float src_scale_x, src_scale_y;
 	int nbox, pix_xoff, pix_yoff;
-	BoxPtr box;
+	const BoxRec *box;
 
 	DBG(("%s: %dx%d -> %dx%d\n", __FUNCTION__,
 	     src_width, src_height, dst_width, dst_height));

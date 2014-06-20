@@ -857,7 +857,7 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 	struct kgem_bo *bo = NULL;
 	struct kgem_bo *src_bo;
 	struct kgem_bo *dst_bo;
-	BoxRec *boxes;
+	const BoxRec *boxes;
 	int16_t dx, dy, sx, sy;
 	int w, h, n;
 

@@ -3726,7 +3726,7 @@ gen8_render_video(struct sna *sna,
 	float src_scale_x, src_scale_y;
 	int nbox, pix_xoff, pix_yoff;
 	unsigned filter;
-	BoxPtr box;
+	const BoxRec *box;
 
 	DBG(("%s: src=(%d, %d), dst=(%d, %d), %dx[(%d, %d), (%d, %d)...]\n",
 	     __FUNCTION__,

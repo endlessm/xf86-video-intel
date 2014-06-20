@@ -2306,7 +2306,7 @@ skip_inplace_map:
 		}
 
 		if (priv->gpu_damage) {
-			BoxPtr box;
+			const BoxRec *box;
 			int n;
 
 			DBG(("%s: flushing GPU damage\n", __FUNCTION__));
@@ -2800,7 +2800,7 @@ move_to_cpu:
 
 	if (priv->clear) {
 		int n = region_num_rects(region);
-		BoxPtr box = region_rects(region);
+		const BoxRec *box = region_rects(region);
 
 		assert(DAMAGE_IS_ALL(priv->gpu_damage));
 		assert(priv->cpu_damage == NULL);
@@ -2889,7 +2889,7 @@ move_to_cpu:
 			 */
 			if (flags & MOVE_WRITE) {
 				int n = region_num_rects(region), i;
-				BoxPtr boxes = region_rects(region);
+				const BoxRec *boxes = region_rects(region);
 				BoxPtr blocks;
 
 				blocks = NULL;
@@ -2920,7 +2920,7 @@ move_to_cpu:
 			}
 
 			if (region_subsumes_damage(r, priv->gpu_damage)) {
-				BoxPtr box;
+				const BoxRec *box;
 				int n;
 
 				DBG(("%s: region wholly contains damage\n",
@@ -3287,7 +3287,7 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 		bool ok = false;
 		int n;
 
-		n = sna_damage_get_boxes(priv->cpu_damage, (BoxPtr *)&box);
+		n = sna_damage_get_boxes(priv->cpu_damage, &box);
 		assert(n);
 		if (use_cpu_bo_for_upload(sna, priv, 0)) {
 			DBG(("%s: using CPU bo for upload to GPU\n", __FUNCTION__));
@@ -3928,7 +3928,7 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 {
 	struct sna *sna = to_sna_from_pixmap(pixmap);
 	struct sna_pixmap *priv;
-	BoxPtr box;
+	const BoxRec *box;
 	int n;
 
 	DBG(("%s(pixmap=%ld, usage=%d), flags=%x\n",
@@ -4447,7 +4447,7 @@ try_upload__tiled_x(PixmapPtr pixmap, RegionRec *region,
 {
 	struct sna *sna = to_sna_from_pixmap(pixmap);
 	struct sna_pixmap *priv = sna_pixmap(pixmap);
-	BoxRec *box;
+	const BoxRec *box;
 	uint8_t *dst;
 	int n;
 
@@ -4551,7 +4551,7 @@ try_upload__inplace(PixmapPtr pixmap, RegionRec *region,
 	struct sna_pixmap *priv = sna_pixmap(pixmap);
 	bool ignore_cpu = false;
 	bool replaces;
-	BoxRec *box;
+	const BoxRec *box;
 	uint8_t *dst;
 	int n;
 
@@ -4858,7 +4858,7 @@ sna_put_zpixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 {
 	PixmapPtr pixmap = get_drawable_pixmap(drawable);
 	unsigned int hint;
-	BoxRec *box;
+	const BoxRec *box;
 	int16_t dx, dy;
 	int n;
 
@@ -4954,7 +4954,7 @@ sna_put_xybitmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 	struct sna *sna = to_sna_from_pixmap(pixmap);
 	struct sna_damage **damage;
 	struct kgem_bo *bo;
-	BoxRec *box;
+	const BoxRec *box;
 	int16_t dx, dy;
 	int n;
 	uint8_t rop = copy_ROP[gc->alu];
@@ -5486,14 +5486,17 @@ move_to_gpu(PixmapPtr pixmap, struct sna_pixmap *priv,
 	}
 }
 
-static BoxPtr
-reorder_boxes(BoxPtr box, int n, int dx, int dy)
+static const BoxRec *
+reorder_boxes(const BoxRec *box, int n, int dx, int dy)
 {
-	BoxPtr new, base, next, tmp;
+	const BoxRec *next, *base;
+	BoxRec *new;
 
 	DBG(("%s x %d dx=%d, dy=%d\n", __FUNCTION__, n, dx, dy));
 
 	if (dy <= 0 && dx <= 0) {
+		BoxRec *tmp;
+
 		new = malloc(sizeof(BoxRec) * n);
 		if (new == NULL)
 			return NULL;
@@ -5510,6 +5513,8 @@ reorder_boxes(BoxPtr box, int n, int dx, int dy)
 
 		base = next = box + n - 1;
 		while (base >= box) {
+			const BoxRec *tmp;
+
 			while (next >= box && base->y1 == next->y1)
 				next--;
 			tmp = next + 1;
@@ -5525,6 +5530,8 @@ reorder_boxes(BoxPtr box, int n, int dx, int dy)
 
 		base = next = box;
 		while (base < box + n) {
+			const BoxRec *tmp;
+
 			while (next < box + n && next->y1 == base->y1)
 				next++;
 			tmp = next;
@@ -5546,7 +5553,7 @@ sna_self_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	PixmapPtr pixmap = get_drawable_pixmap(src);
 	struct sna *sna = to_sna_from_pixmap(pixmap);
 	struct sna_pixmap *priv = sna_pixmap(pixmap);
-	BoxPtr box = region_rects(region);
+	const BoxRec *box = region_rects(region);
 	int n = region_num_rects(region);
 	int alu = gc ? gc->alu : GXcopy;
 	int16_t tx, ty, sx, sy;
@@ -5659,7 +5666,7 @@ out:
 
 free_boxes:
 	if (box != region_rects(region))
-		free(box);
+		free((void *)box);
 }
 
 static inline bool
@@ -6060,7 +6067,7 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	struct kgem_bo *bo;
 	int16_t src_dx, src_dy;
 	int16_t dst_dx, dst_dy;
-	BoxPtr box = region_rects(region);
+	const BoxRec *box = region_rects(region);
 	int n = region_num_rects(region);
 	int alu = gc->alu;
 	int stride, bpp;
@@ -7924,7 +7931,7 @@ sna_copy_bitmap_blt(DrawablePtr _bitmap, DrawablePtr drawable, GCPtr gc,
 	PixmapPtr bitmap = (PixmapPtr)_bitmap;
 	uint32_t br00, br13;
 	int16_t dx, dy;
-	BoxPtr box;
+	const BoxRec *box;
 	int n;
 
 	DBG(("%s: plane=%x (%d,%d),(%d,%d)xld\n",
@@ -8147,7 +8154,7 @@ sna_copy_plane_blt(DrawablePtr source, DrawablePtr drawable, GCPtr gc,
 	int16_t dx, dy;
 	int bit = ffs(bitplane) - 1;
 	uint32_t br00, br13;
-	BoxPtr box = region_rects(region);
+	const BoxRec *box = region_rects(region);
 	int n = region_num_rects(region);
 
 	DBG(("%s: plane=%x [%d] x%d\n", __FUNCTION__,
@@ -12645,7 +12652,7 @@ sna_poly_fill_rect_tiled_blt(DrawablePtr drawable,
 		} else {
 			while (n--) {
 				RegionRec region;
-				BoxRec *box;
+				const BoxRec *box;
 				int nbox;
 
 				region.extents.x1 = rect->x + drawable->x;
@@ -16066,7 +16073,7 @@ sna_push_pixels_solid_blt(GCPtr gc,
 	struct sna *sna = to_sna_from_pixmap(pixmap);
 	struct sna_damage **damage;
 	struct kgem_bo *bo;
-	BoxRec *box;
+	const BoxRec *box;
 	int16_t dx, dy;
 	int n;
 	uint8_t rop = copy_ROP[gc->alu];
@@ -17021,7 +17028,7 @@ static void sna_accel_post_damage(struct sna *sna)
 	xorg_list_for_each_entry(dirty, &screen->pixmap_dirty_list, ent) {
 		RegionRec region, *damage;
 		PixmapPtr src, dst;
-		BoxPtr box;
+		const BoxRec *box;
 		int n;
 
 		assert(dirty->src == sna->front);

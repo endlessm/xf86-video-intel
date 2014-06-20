@@ -202,7 +202,7 @@ composite_aligned_boxes(struct sna *sna,
 				   clip.extents.y2 - clip.extents.y1,
 				   COMPOSITE_PARTIAL, memset(&tmp, 0, sizeof(tmp)))) {
 		unsigned int flags;
-		pixman_box16_t *b;
+		const pixman_box16_t *b;
 		int i, count;
 
 		DBG(("%s: composite render op not supported\n",
@@ -771,7 +771,7 @@ composite_unaligned_boxes_inplace__solid(struct sna *sna,
 	     __FUNCTION__, n));
 	do {
 		RegionRec clip;
-		BoxPtr extents;
+		const BoxRec *extents;
 		int count;
 
 		clip.extents.x1 = pixman_fixed_to_int(t->left.p1.x);
@@ -855,7 +855,7 @@ pixman:
 	do {
 		struct pixman_inplace pi;
 		RegionRec clip;
-		BoxPtr extents;
+		const BoxRec *extents;
 		int count;
 
 		clip.extents.x1 = pixman_fixed_to_int(t->left.p1.x);
@@ -1071,7 +1071,7 @@ composite_unaligned_boxes_inplace(struct sna *sna,
 	src_y -= pixman_fixed_to_int(t[0].left.p1.y);
 	do {
 		RegionRec clip;
-		BoxPtr extents;
+		const BoxRec *extents;
 		int count;
 		int num_threads;
 
