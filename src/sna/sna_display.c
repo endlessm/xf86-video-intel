@@ -1410,7 +1410,10 @@ sna_crtc_disable(xf86CrtcPtr crtc)
 		sna->mode.dirty = true;
 	}
 
+	sna_crtc->transform = false;
+
 	assert(sna_crtc->dpms_mode == DPMSModeOff);
+	assert(!sna_crtc->shadow);
 }
 
 static void update_flush_interval(struct sna *sna)
@@ -6213,6 +6216,7 @@ void sna_mode_redisplay(struct sna *sna)
 			continue;
 
 		assert(crtc->enabled);
+		assert(sna_crtc->bo);
 
 		damage.extents = crtc->bounds;
 		damage.data = NULL;
