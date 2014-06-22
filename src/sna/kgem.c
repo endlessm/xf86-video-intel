@@ -3017,6 +3017,8 @@ void kgem_reset(struct kgem *kgem)
 	kgem->nbatch = 0;
 	kgem->surface = kgem->batch_size;
 	kgem->mode = KGEM_NONE;
+	kgem->needs_semaphore = false;
+	kgem->needs_reservation = false;
 	kgem->flush = 0;
 	kgem->batch_flags = kgem->batch_flags_base;
 
@@ -5193,7 +5195,44 @@ void kgem_scanout_flush(struct kgem *kgem, struct kgem_bo *bo)
 
 inline static bool needs_semaphore(struct kgem *kgem, struct kgem_bo *bo)
 {
-	return kgem->nreloc && bo->rq && RQ_RING(bo->rq) != kgem->ring;
+	if (kgem->needs_semaphore)
+		return false;
+
+	if (bo->rq == NULL || RQ_RING(bo->rq) == kgem->ring)
+		return false;
+
+	kgem->needs_semaphore = true;
+	return true;
+}
+
+inline static bool needs_reservation(struct kgem *kgem, struct kgem_bo *bo)
+{
+	if (kgem->needs_reservation)
+		return false;
+
+	if (bo->presumed_offset || kgem_ring_is_idle(kgem, kgem->ring))
+		return false;
+
+	kgem->needs_reservation = true;
+	return true;
+}
+
+inline static bool needs_batch_flush(struct kgem *kgem, struct kgem_bo *bo)
+{
+	if (kgem->nreloc)
+		return false;
+
+	if (needs_semaphore(kgem, bo)) {
+		DBG(("%s: flushing before handle=%d for required semaphore\n", __FUNCTION__, bo->handle));
+		return true;
+	}
+
+	if (needs_reservation(kgem, bo)) {
+		DBG(("%s: flushing before handle=%d for new reservation\n", __FUNCTION__, bo->handle));
+		return true;
+	}
+
+	return false;
 }
 
 static bool aperture_check(struct kgem *kgem, unsigned num_pages)
@@ -5263,8 +5302,7 @@ bool kgem_check_bo(struct kgem *kgem, ...)
 		if (bo->exec)
 			continue;
 
-		if (needs_semaphore(kgem, bo)) {
-			DBG(("%s: flushing for required semaphore\n", __FUNCTION__));
+		if (needs_batch_flush(kgem, bo)) {
 			va_end(ap);
 			return false;
 		}
@@ -5351,10 +5389,8 @@ bool kgem_check_bo_fenced(struct kgem *kgem, struct kgem_bo *bo)
 	if (kgem->nexec >= KGEM_EXEC_SIZE(kgem) - 1)
 		return false;
 
-	if (needs_semaphore(kgem, bo)) {
-		DBG(("%s: flushing for required semaphore\n", __FUNCTION__));
+	if (needs_batch_flush(kgem, bo))
 		return false;
-	}
 
 	assert_tiling(kgem, bo);
 	if (kgem->gen < 040 && bo->tiling != I915_TILING_NONE) {
@@ -5432,8 +5468,7 @@ bool kgem_check_many_bo_fenced(struct kgem *kgem, ...)
 			continue;
 		}
 
-		if (needs_semaphore(kgem, bo)) {
-			DBG(("%s: flushing for required semaphore\n", __FUNCTION__));
+		if (needs_batch_flush(kgem, bo)) {
 			va_end(ap);
 			return false;
 		}

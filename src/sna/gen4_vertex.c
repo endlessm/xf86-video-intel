@@ -136,7 +136,8 @@ int gen4_vertex_finish(struct sna *sna)
 	if (sna->render.vbo == NULL)
 		sna->render.vbo = kgem_create_linear(&sna->kgem,
 						     256*1024, CREATE_GTT_MAP);
-	if (sna->render.vbo)
+	if (sna->render.vbo &&
+	    kgem_check_bo(&sna->kgem, sna->render.vbo, NULL))
 		sna->render.vertices = kgem_bo_map(&sna->kgem, sna->render.vbo);
 	if (sna->render.vertices == NULL) {
 		if (sna->render.vbo) {
