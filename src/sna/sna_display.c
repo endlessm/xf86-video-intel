@@ -203,6 +203,10 @@ static inline bool event_pending(int fd)
 
 static bool sna_mode_has_pending_events(struct sna *sna)
 {
+	/* In order to workaround a kernel bug in not honouring O_NONBLOCK,
+	 * check that the fd is readable before attempting to read the next
+	 * event from drm.
+	 */
 	return event_pending(sna->kgem.fd);
 }
 
@@ -5266,26 +5270,18 @@ sna_mode_wants_tear_free(struct sna *sna)
 void
 sna_mode_close(struct sna *sna)
 {
-	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
-	int i;
-
-	/* In order to workaround a kernel bug in not honouring O_NONBLOCK,
-	 * check that the fd is readable before attempting to read the next
-	 * event from drm.
-	 */
 	while (sna_mode_has_pending_events(sna))
 		sna_mode_wakeup(sna);
 
 	if (sna->flags & SNA_IS_HOSTED)
 		return;
 
-	sna_backlight_close(sna);
+	sna_mode_reset(sna);
+
 	sna_cursor_close(sna);
-
-	for (i = 0; i < sna->mode.num_real_crtc; i++)
-		sna_crtc_disable_shadow(sna, to_sna_crtc(config->crtc[i]));
-
 	sna_cursors_fini(sna);
+
+	sna_backlight_close(sna);
 }
 
 void
@@ -5801,6 +5797,10 @@ void sna_mode_reset(struct sna *sna)
 		sna_output_backlight_set(sna_output,
 					 sna_output->backlight.max);
 	}
+
+	/* drain the event queue */
+	while (sna_mode_has_pending_events(sna))
+		sna_mode_wakeup(sna);
 }
 
 static void transformed_box(BoxRec *box, xf86CrtcPtr crtc)
