@@ -3506,6 +3506,7 @@ static void sna_output_del(xf86OutputPtr output)
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(scrn);
 	int i;
 
+	DBG(("%s(%s)\n", __FUNCTION__, output->name));
 	assert(to_sna_output(output));
 
 	RROutputDestroy(output->randr_output);
@@ -3549,7 +3550,7 @@ void sna_mode_discover(struct sna *sna)
 	struct drm_mode_card_res res;
 	uint32_t connectors[32];
 	int i, j, serial;
-	bool changed = false;
+	int changed = 0;
 
 	VG_CLEAR(connectors);
 
@@ -3589,7 +3590,7 @@ void sna_mode_discover(struct sna *sna)
 				to_sna_output(output)->id = 0;
 				output->crtc = NULL;
 			}
-			changed = true;
+			changed |= 2;
 		}
 	}
 
@@ -3598,6 +3599,10 @@ void sna_mode_discover(struct sna *sna)
 
 		/* Reorder user visible listing */
 		sort_randr_outputs(sna, screen);
+
+		if (changed & 2)
+			xf86DisableUnusedFunctions(sna->scrn);
+
 		xf86RandR12TellChanged(screen);
 	}
 }
