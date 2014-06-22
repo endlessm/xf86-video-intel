@@ -121,6 +121,8 @@ struct sna_crtc {
 		uint32_t current;
 	} primary_rotation, sprite_rotation;
 
+	uint32_t mode_serial, flip_serial;
+
 	uint32_t last_seq, wrap_seq;
 	struct ust_msc swap;
 
@@ -969,7 +971,7 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 
 	DBG(("%s CRTC:%d [pipe=%d], handle=%d\n", __FUNCTION__, sna_crtc->id, sna_crtc->pipe, sna_crtc->bo->handle));
 
-	assert(config->num_output < ARRAY_SIZE(output_ids));
+	assert(sna->mode.num_real_output < ARRAY_SIZE(output_ids));
 
 	if (!rotation_set(sna, &sna_crtc->primary_rotation, sna_crtc->rotation)) {
 		ERR(("%s: set-primary-rotation failed (rotation-id=%d, rotation=%d) on CRTC:%d [pipe=%d], errno=%d\n",
@@ -979,7 +981,7 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 	DBG(("%s: CRTC:%d [pipe=%d] primary rotation set to %x\n",
 	     __FUNCTION__, sna_crtc->id, sna_crtc->pipe, sna_crtc->rotation));
 
-	for (i = 0; i < config->num_output; i++) {
+	for (i = 0; i < sna->mode.num_real_output; i++) {
 		xf86OutputPtr output = config->output[i];
 
 		/* Make sure we mark the output as off (and save the backlight)
@@ -1038,6 +1040,7 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_SETCRTC, &arg))
 		return false;
 
+	sna_crtc->mode_serial++;
 	sna_crtc_force_outputs_on(crtc);
 	return true;
 }
@@ -1397,6 +1400,8 @@ sna_crtc_disable(xf86CrtcPtr crtc)
 	memset(&arg, 0, sizeof(arg));
 	arg.crtc_id = sna_crtc->id;
 	(void)drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_SETCRTC, &arg);
+
+	sna_crtc->mode_serial++;
 
 	rotation_set(sna, &sna_crtc->primary_rotation, RR_Rotate_0);
 
@@ -1927,10 +1932,11 @@ sna_crtc_damage(xf86CrtcPtr crtc)
 
 static char *outputs_for_crtc(xf86CrtcPtr crtc, char *outputs, int max)
 {
+	struct sna *sna = to_sna(crtc->scrn);
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(crtc->scrn);
 	int len, i;
 
-	for (i = len = 0; i < config->num_output; i++) {
+	for (i = len = 0; i < sna->mode.num_real_output; i++) {
 		xf86OutputPtr output = config->output[i];
 
 		if (output->crtc != crtc)
@@ -4563,9 +4569,9 @@ sna_crtc_flip(struct sna *sna, struct sna_crtc *crtc, struct kgem_bo *bo, int x,
 
 	DBG(("%s CRTC:%d [pipe=%d], handle=%d\n", __FUNCTION__, crtc->id, crtc->pipe, bo->handle));
 
-	assert(config->num_output < ARRAY_SIZE(output_ids));
+	assert(sna->mode.num_real_output < ARRAY_SIZE(output_ids));
 
-	for (i = 0; i < config->num_output; i++) {
+	for (i = 0; i < sna->mode.num_real_output; i++) {
 		xf86OutputPtr output = config->output[i];
 
 		if (output->crtc != crtc->base)
@@ -4713,6 +4719,7 @@ fixup_flip:
 			crtc->flip_data = data;
 			crtc->flip_bo = kgem_bo_reference(bo);
 			crtc->flip_bo->active_scanout++;
+			crtc->flip_serial = crtc->mode_serial;
 			sna->mode.flip_active++;
 		}
 
@@ -4919,7 +4926,7 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 	}
 
 	/* First scan through all outputs and look for user overrides */
-	for (i = 0; i < config->num_output; i++) {
+	for (i = 0; i < sna->mode.num_real_output; i++) {
 		xf86OutputPtr output = config->output[i];
 
 		for (j = 0; j < ARRAY_SIZE(user_overrides); j++) {
@@ -4965,14 +4972,11 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 	}
 
 	/* Reconstruct outputs pointing to active CRTC */
-	for (i = 0; i < config->num_output; i++) {
+	for (i = 0; i < sna->mode.num_real_output; i++) {
 		xf86OutputPtr output = config->output[i];
 		uint32_t crtc_id;
 
-		if (to_sna_output(output) == NULL) {
-			assert(output->crtc == NULL);
-			continue;
-		}
+		assert(to_sna_output(output));
 
 		crtc_id = (uintptr_t)output->crtc;
 		output->crtc = NULL;
@@ -6287,6 +6291,7 @@ disable1:
 				sna_crtc->flip_handler = shadow_flip_handler;
 				sna_crtc->flip_bo = bo;
 				sna_crtc->flip_bo->active_scanout++;
+				sna_crtc->flip_serial = sna_crtc->mode_serial;
 
 				sna_crtc->shadow_bo = kgem_bo_reference(sna_crtc->bo);
 			} else {
@@ -6414,6 +6419,7 @@ fixup_flip:
 			crtc->flip_handler = shadow_flip_handler;
 			crtc->flip_bo = kgem_bo_reference(flip_bo);
 			crtc->flip_bo->active_scanout++;
+			crtc->flip_serial = crtc->mode_serial;
 
 			{
 				struct drm_i915_gem_busy busy = { flip_bo->handle };
@@ -6483,7 +6489,7 @@ void sna_mode_wakeup(struct sna *sna)
 				assert(crtc->flip_bo->active_scanout);
 				assert(crtc->flip_bo->refcnt >= crtc->flip_bo->active_scanout);
 
-				if (crtc->bo) {
+				if (crtc->flip_serial == crtc->mode_serial) {
 					DBG(("%s: removing handle=%d from scanout, installing handle=%d\n",
 					     __FUNCTION__, crtc->bo->handle, crtc->flip_bo->handle));
 					assert(crtc->bo->active_scanout);
