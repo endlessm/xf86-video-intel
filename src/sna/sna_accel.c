@@ -3765,21 +3765,27 @@ use_gpu_bo:
 
 use_cpu_bo:
 	if (!USE_CPU_BO || priv->cpu_bo == NULL) {
+		if ((flags & FORCE_GPU) == 0)
+			return NULL;
+
+		if (!sna_drawable_move_region_to_cpu(&pixmap->drawable, &region,
+						     (flags & IGNORE_DAMAGE ? 0 : MOVE_READ) | MOVE_WRITE | MOVE_ASYNC_HINT)) {
 cpu_fail:
-		if ((flags & FORCE_GPU) && priv->gpu_bo) {
-			region.extents = *box;
-			if (get_drawable_deltas(drawable, pixmap, &dx, &dy)) {
-				region.extents.x1 += dx;
-				region.extents.x2 += dx;
-				region.extents.y1 += dy;
-				region.extents.y2 += dy;
+			if (priv->gpu_bo) {
+				region.extents = *box;
+				if (get_drawable_deltas(drawable, pixmap, &dx, &dy)) {
+					region.extents.x1 += dx;
+					region.extents.x2 += dx;
+					region.extents.y1 += dy;
+					region.extents.y2 += dy;
+				}
+				region.data = NULL;
+
+				goto move_to_gpu;
 			}
-			region.data = NULL;
 
-			goto move_to_gpu;
+			return NULL;
 		}
-
-		return NULL;
 	}
 
 	assert(priv->cpu_bo->refcnt);
