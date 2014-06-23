@@ -2524,7 +2524,7 @@ clear:
 		if (can_render(sna)) {
 			hint |= PREFER_GPU;
 			if ((flags & COMPOSITE_PARTIAL) == 0) {
-				hint |= IGNORE_CPU;
+				hint |= IGNORE_DAMAGE;
 				if (width  == tmp->dst.pixmap->drawable.width &&
 				    height == tmp->dst.pixmap->drawable.height)
 					hint |= REPLACES;
@@ -2614,7 +2614,7 @@ fill:
 		if (can_render(sna)) {
 			hint |= PREFER_GPU;
 			if ((flags & COMPOSITE_PARTIAL) == 0) {
-				hint |= IGNORE_CPU;
+				hint |= IGNORE_DAMAGE;
 				if (width  == tmp->dst.pixmap->drawable.width &&
 				    height == tmp->dst.pixmap->drawable.height)
 					hint |= REPLACES;
@@ -2780,7 +2780,7 @@ fill:
 	if (bo || can_render(sna)) {
 		hint |= PREFER_GPU;
 		if ((flags & COMPOSITE_PARTIAL) == 0) {
-			hint |= IGNORE_CPU;
+			hint |= IGNORE_DAMAGE;
 			if (width  == tmp->dst.pixmap->drawable.width &&
 			    height == tmp->dst.pixmap->drawable.height)
 				hint |= REPLACES;

@@ -967,7 +967,7 @@ sna_composite_rectangles(CARD8		 op,
 		}
 
 		if (region.data == NULL) {
-			hint |= IGNORE_CPU;
+			hint |= IGNORE_DAMAGE;
 			if (region_subsumes_drawable(&region, &pixmap->drawable))
 				hint |= REPLACES;
 			if (priv->cpu_damage &&

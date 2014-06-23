@@ -3184,7 +3184,7 @@ gen3_composite_set_target(struct sna *sna,
 
 	hint = PREFER_GPU | FORCE_GPU | RENDER_GPU;
 	if (!partial) {
-		hint |= IGNORE_CPU;
+		hint |= IGNORE_DAMAGE;
 		if (w == op->dst.width && h == op->dst.height)
 			hint |= REPLACES;
 	}
@@ -3192,6 +3192,11 @@ gen3_composite_set_target(struct sna *sna,
 	op->dst.bo = sna_drawable_use_bo(dst->pDrawable, hint, &box, &op->damage);
 	if (op->dst.bo == NULL)
 		return false;
+
+	if (hint & REPLACES) {
+		struct sna_pixmap *priv = sna_pixmap(op->dst.pixmap);
+		kgem_bo_pair_undo(&sna->kgem, priv->gpu_bo, priv->cpu_bo);
+	}
 
 	assert(op->dst.bo->unique_id);
 

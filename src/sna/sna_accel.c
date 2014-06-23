@@ -3449,7 +3449,7 @@ sna_drawable_use_bo(DrawablePtr drawable, unsigned flags, const BoxRec *box,
 	if (priv->cow) {
 		unsigned cow = MOVE_WRITE | MOVE_READ;
 
-		if (flags & IGNORE_CPU) {
+		if (flags & IGNORE_DAMAGE) {
 			if (priv->gpu_damage) {
 				region.extents = *box;
 				if (get_drawable_deltas(drawable, pixmap, &dx, &dy)) {
@@ -3498,7 +3498,7 @@ sna_drawable_use_bo(DrawablePtr drawable, unsigned flags, const BoxRec *box,
 		DBG(("%s: pinned, never REPLACES\n", __FUNCTION__));
 		flags &= ~REPLACES;
 	}
-	if (priv->cpu && (flags & (FORCE_GPU | IGNORE_CPU)) == 0) {
+	if (priv->cpu && (flags & (FORCE_GPU | IGNORE_DAMAGE)) == 0) {
 		DBG(("%s: last on cpu and needs damage, discard PREFER_GPU\n", __FUNCTION__));
 		flags &= ~PREFER_GPU;
 	}
@@ -3507,7 +3507,7 @@ sna_drawable_use_bo(DrawablePtr drawable, unsigned flags, const BoxRec *box,
 		flags &= ~PREFER_GPU;
 	}
 
-	if ((flags & (PREFER_GPU | IGNORE_CPU)) == IGNORE_CPU) {
+	if ((flags & (PREFER_GPU | IGNORE_DAMAGE)) == IGNORE_DAMAGE) {
 		if (priv->gpu_bo && (box_covers_pixmap(pixmap, box) || box_inplace(pixmap, box))) {
 			DBG(("%s: not reading damage and large, set PREFER_GPU\n", __FUNCTION__));
 			flags |= PREFER_GPU;
@@ -3518,7 +3518,7 @@ sna_drawable_use_bo(DrawablePtr drawable, unsigned flags, const BoxRec *box,
 	     __FUNCTION__, priv->flush, priv->shm, priv->cpu, flags));
 
 	if ((flags & PREFER_GPU) == 0 &&
-	    (flags & REPLACES || !priv->gpu_damage || !kgem_bo_is_busy(priv->gpu_bo))) {
+	    (flags & (REPLACES | IGNORE_DAMAGE) || !priv->gpu_damage || !kgem_bo_is_busy(priv->gpu_bo))) {
 		DBG(("%s: try cpu as GPU bo is idle\n", __FUNCTION__));
 		goto use_cpu_bo;
 	}
@@ -3553,7 +3553,7 @@ sna_drawable_use_bo(DrawablePtr drawable, unsigned flags, const BoxRec *box,
 			goto use_cpu_bo;
 		}
 
-		if ((flags & IGNORE_CPU) == 0) {
+		if ((flags & IGNORE_DAMAGE) == 0) {
 			if (priv->cpu_bo) {
 				if (to_sna_from_pixmap(pixmap)->kgem.can_blt_cpu) {
 					if (kgem_bo_is_busy(priv->cpu_bo)) {
@@ -3632,11 +3632,11 @@ create_gpu_bo:
 
 	if (priv->gpu_damage) {
 		assert(priv->gpu_bo);
-		if (!priv->cpu_damage || flags & IGNORE_CPU) {
+		if (!priv->cpu_damage || flags & IGNORE_DAMAGE) {
 			if (flags & REPLACES || box_covers_pixmap(pixmap, &region.extents)) {
 				unsigned int move;
 
-				if (flags & IGNORE_CPU)
+				if (flags & IGNORE_DAMAGE)
 					move = MOVE_WRITE;
 				else
 					move = MOVE_WRITE | MOVE_READ;
@@ -3674,7 +3674,7 @@ create_gpu_bo:
 		}
 	}
 
-	if ((flags & IGNORE_CPU) == 0 && priv->cpu_damage) {
+	if ((flags & IGNORE_DAMAGE) == 0 && priv->cpu_damage) {
 		ret = sna_damage_contains_box(&priv->cpu_damage, &region.extents);
 		if (ret == PIXMAN_REGION_IN) {
 			DBG(("%s: region wholly contained within CPU damage\n",
@@ -3696,7 +3696,7 @@ create_gpu_bo:
 
 move_to_gpu:
 	if (!sna_pixmap_move_area_to_gpu(pixmap, &region.extents,
-					 flags & IGNORE_CPU ? MOVE_WRITE : MOVE_READ | MOVE_WRITE)) {
+					 flags & IGNORE_DAMAGE ? MOVE_WRITE : MOVE_READ | MOVE_WRITE)) {
 		DBG(("%s: failed to move-to-gpu, fallback\n", __FUNCTION__));
 		assert(priv->gpu_bo == NULL);
 		goto use_cpu_bo;
@@ -3730,7 +3730,7 @@ use_gpu_bo:
 
 		sna = to_sna_from_pixmap(pixmap);
 
-		if (flags & IGNORE_CPU) {
+		if (flags & IGNORE_DAMAGE) {
 			region.extents = *box;
 			region.data = NULL;
 			if (get_drawable_deltas(drawable, pixmap, &dx, &dy)) {
@@ -3819,7 +3819,7 @@ cpu_fail:
 		if (priv->cpu_bo->pitch >= 4096)
 			goto move_to_gpu;
 
-		if ((flags & IGNORE_CPU) == 0 && priv->cpu_bo->snoop)
+		if ((flags & IGNORE_DAMAGE) == 0 && priv->cpu_bo->snoop)
 			goto move_to_gpu;
 
 		if (!sna->kgem.can_blt_cpu)
@@ -3830,7 +3830,7 @@ cpu_fail:
 		goto cpu_fail;
 
 	if (!sna_drawable_move_region_to_cpu(&pixmap->drawable, &region,
-					     (flags & IGNORE_CPU ? 0 : MOVE_READ) | MOVE_WRITE | MOVE_ASYNC_HINT)) {
+					     (flags & IGNORE_DAMAGE ? 0 : MOVE_READ) | MOVE_WRITE | MOVE_ASYNC_HINT)) {
 		DBG(("%s: failed to move-to-cpu, fallback\n", __FUNCTION__));
 		goto cpu_fail;
 	}
@@ -6161,15 +6161,15 @@ discard_cow:
 		hint = copy_prefer_gpu(sna, dst_priv, src_priv, region, src_dx, src_dy);
 		if (replaces) {
 			discard_cpu_damage(sna, dst_priv);
-			hint |= REPLACES | IGNORE_CPU;
+			hint |= REPLACES | IGNORE_DAMAGE;
 		} else if (alu_overwrites(alu)) {
 			if (region->data == NULL)
-				hint |= IGNORE_CPU;
+				hint |= IGNORE_DAMAGE;
 			if (dst_priv->cpu_damage &&
 			    region_subsumes_damage(region,
 						   dst_priv->cpu_damage)) {
 				discard_cpu_damage(sna, dst_priv);
-				hint |= IGNORE_CPU;
+				hint |= IGNORE_DAMAGE;
 			}
 		}
 		bo = sna_drawable_use_bo(&dst_pixmap->drawable, hint,
@@ -14575,7 +14575,7 @@ sna_poly_fill_rect(DrawablePtr draw, GCPtr gc, int n, xRectangle *rect)
 		}
 
 		if ((flags & 2) == 0) {
-			hint |= IGNORE_CPU;
+			hint |= IGNORE_DAMAGE;
 			if (region_subsumes_drawable(&region, &pixmap->drawable)) {
 				discard_cpu_damage(sna, priv);
 				hint |= REPLACES;
@@ -14927,7 +14927,7 @@ sna_glyph_blt(DrawablePtr drawable, GCPtr gc,
 	}
 
 	if (!transparent && clip->data == NULL)
-		hint = PREFER_GPU | IGNORE_CPU;
+		hint = PREFER_GPU | IGNORE_DAMAGE;
 	else
 		hint = PREFER_GPU;
 
@@ -15982,7 +15982,7 @@ sna_image_glyph(DrawablePtr drawable, GCPtr gc,
 		goto fallback;
 
 	if (region.data == NULL)
-		hint = IGNORE_CPU | PREFER_GPU;
+		hint = IGNORE_DAMAGE | PREFER_GPU;
 	else
 		hint = PREFER_GPU;
 	if ((bo = sna_drawable_use_bo(drawable, hint,

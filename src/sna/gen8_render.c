@@ -1956,7 +1956,7 @@ gen8_composite_set_target(struct sna *sna,
 
 	hint = PREFER_GPU | FORCE_GPU | RENDER_GPU;
 	if (!partial) {
-		hint |= IGNORE_CPU;
+		hint |= IGNORE_DAMAGE;
 		if (w == op->dst.width && h == op->dst.height)
 			hint |= REPLACES;
 	}
@@ -1967,6 +1967,11 @@ gen8_composite_set_target(struct sna *sna,
 
 	if (unaligned(op->dst.bo, dst->pDrawable->bitsPerPixel))
 		return false;
+
+	if (hint & REPLACES) {
+		struct sna_pixmap *priv = sna_pixmap(op->dst.pixmap);
+		kgem_bo_pair_undo(&sna->kgem, priv->gpu_bo, priv->cpu_bo);
+	}
 
 	get_drawable_deltas(dst->pDrawable, op->dst.pixmap,
 			    &op->dst.x, &op->dst.y);
