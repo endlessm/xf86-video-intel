@@ -1273,6 +1273,7 @@ bool sna_pixmap_discard_shadow_damage(struct sna_pixmap *priv,
 			    (RegionPtr)region);
 	} else {
 		DBG(("%s: discarding all damage %dx[(%d, %d], (%d, %d)]\n",
+		     __FUNCTION__,
 		     region_num_rects(&sna->mode.shadow_region),
 		     sna->mode.shadow_region.extents.x1, sna->mode.shadow_region.extents.y1,
 		     sna->mode.shadow_region.extents.x2, sna->mode.shadow_region.extents.y2));
