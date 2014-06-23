@@ -5217,7 +5217,7 @@ inline static bool needs_reservation(struct kgem *kgem, struct kgem_bo *bo)
 
 inline static bool needs_batch_flush(struct kgem *kgem, struct kgem_bo *bo)
 {
-	if (kgem->nreloc)
+	if (kgem->nreloc == 0)
 		return false;
 
 	if (needs_semaphore(kgem, bo)) {
