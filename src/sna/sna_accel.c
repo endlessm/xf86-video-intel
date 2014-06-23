@@ -3845,6 +3845,8 @@ prefer_gpu_bo:
 				if (!sna_pixmap_move_to_gpu(pixmap, MOVE_WRITE | MOVE_READ | __MOVE_FORCE))
 					return NULL;
 
+				sna_damage_all(&priv->gpu_damage, pixmap);
+
 				DBG(("%s: allocated GPU bo for operation\n", __FUNCTION__));
 				goto done;
 			}
