@@ -771,11 +771,7 @@ static int sna_render_picture_downsample(struct sna *sna,
 	if (tmp == NULL)
 		goto fixup;
 
-	priv = sna_pixmap(tmp);
-	if (priv == NULL) {
-		screen->DestroyPixmap(tmp);
-		goto fixup;
-	}
+	assert(__sna_pixmap_get_bo(tmp));
 
 	if (!sna_pixmap_move_to_gpu(pixmap, MOVE_SOURCE_HINT | MOVE_READ)) {
 fixup:
@@ -1352,21 +1348,19 @@ sna_render_picture_convolve(struct sna *sna,
 		DBG(("%s: pixmap allocation failed\n", __FUNCTION__));
 		return -1;
 	}
+	assert(__sna_pixmap_get_bo(tmp));
 
-	tmp = CreatePicture(0, &pixmap->drawable,
-			    PictureMatchFormat(screen, depth, channel->pict_format),
-			    0, NULL, serverClient, &error);
+	tmp = NULL;
+	bo = __sna_pixmap_get_bo(pixmap);
+	if (sna->render.clear(sna, pixmap, bo))
+		tmp = CreatePicture(0, &pixmap->drawable,
+				PictureMatchFormat(screen, depth, channel->pict_format),
+				0, NULL, serverClient, &error);
 	screen->DestroyPixmap(pixmap);
 	if (tmp == NULL)
 		return -1;
 
 	ValidatePicture(tmp);
-
-	bo = __sna_pixmap_get_bo(pixmap);
-	if (!sna->render.clear(sna, pixmap, bo)) {
-		FreePicture(tmp, 0);
-		return 0;
-	}
 
 	picture->filter = PictFilterBilinear;
 	params += 2;
@@ -1412,7 +1406,7 @@ sna_render_picture_convolve(struct sna *sna,
 	return 1;
 }
 
-static int
+static bool
 sna_render_picture_flatten(struct sna *sna,
 			   PicturePtr picture,
 			   struct sna_composite_channel *channel,
@@ -1435,15 +1429,17 @@ sna_render_picture_flatten(struct sna *sna,
 	pixmap = screen->CreatePixmap(screen, w, h, 32, SNA_CREATE_SCRATCH);
 	if (pixmap == NullPixmap) {
 		DBG(("%s: pixmap allocation failed\n", __FUNCTION__));
-		return -1;
+		return false;
 	}
+
+	assert(__sna_pixmap_get_bo(pixmap));
 
 	tmp = CreatePicture(0, &pixmap->drawable,
 			    PictureMatchFormat(screen, 32, PICT_a8r8g8b8),
 			    0, NULL, serverClient, &error);
 	screen->DestroyPixmap(pixmap);
 	if (tmp == NULL)
-		return -1;
+		return false;
 
 	ValidatePicture(tmp);
 
@@ -1481,7 +1477,7 @@ sna_render_picture_flatten(struct sna *sna,
 	channel->bo = kgem_bo_reference(__sna_pixmap_get_bo(pixmap));
 	FreePicture(tmp, 0);
 
-	return 1;
+	return true;
 }
 
 int
@@ -1624,8 +1620,9 @@ sna_render_picture_fixup(struct sna *sna,
 		DBG(("%s: alphamap\n", __FUNCTION__));
 		if (is_gpu(sna, picture->pDrawable, PREFER_GPU_RENDER) ||
 		    is_gpu(sna, picture->alphaMap->pDrawable, PREFER_GPU_RENDER)) {
-			return sna_render_picture_flatten(sna, picture, channel,
-							  x, y, w, h, dst_x, dst_y);
+			if (sna_render_picture_flatten(sna, picture, channel,
+							  x, y, w, h, dst_x, dst_y))
+				return 1;
 		}
 
 		goto do_fixup;
@@ -1810,9 +1807,11 @@ sna_render_picture_convert(struct sna *sna,
 		     (unsigned)channel->pict_format,
 		     (unsigned)picture->format));
 
-		tmp = screen->CreatePixmap(screen, w, h, pixmap->drawable.bitsPerPixel, 0);
+		tmp = screen->CreatePixmap(screen, w, h, pixmap->drawable.bitsPerPixel, SNA_CREATE_SCRATCH);
 		if (tmp == NULL)
 			return -1;
+
+		assert(__sna_pixmap_get_bo(tmp));
 
 		dst = CreatePicture(0, &tmp->drawable,
 				    PictureMatchFormat(screen,
@@ -2144,8 +2143,7 @@ sna_render_copy_boxes__overlap(struct sna *sna, uint8_t alu,
 		return false;
 
 	bo = __sna_pixmap_get_bo(tmp);
-	if (bo == NULL)
-		goto out;
+	assert(bo);
 
 	ret = (sna->render.copy_boxes(sna, GXcopy,
 				      src, src_bo, src_dx, src_dy,
@@ -2156,7 +2154,6 @@ sna_render_copy_boxes__overlap(struct sna *sna, uint8_t alu,
 				      dst, dst_bo, dst_dx, dst_dy,
 				      box, n , 0));
 
-out:
 	screen->DestroyPixmap(tmp);
 	return ret;
 }

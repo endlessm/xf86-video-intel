@@ -246,6 +246,7 @@ bool sna_glyphs_create(struct sna *sna)
 		priv = sna_pixmap(pixmap);
 		if (priv != NULL) {
 			/* Prevent the cache from ever being paged out */
+			assert(priv->gpu_bo);
 			priv->pinned = PIN_SCANOUT;
 
 			component_alpha = NeedsComponent(pPictFormat->format);
@@ -1339,12 +1340,9 @@ next_image:
 					      width, height, format->depth,
 					      SNA_CREATE_SCRATCH);
 		if (!pixmap)
-			return false;
-
-		if (sna_pixmap(pixmap) == NULL) {
-			sna_pixmap_destroy(pixmap);
 			goto use_small_mask;
-		}
+
+		assert(__sna_pixmap_get_bo(pixmap));
 
 		mask = CreatePicture(0, &pixmap->drawable,
 				     format, CPComponentAlpha,

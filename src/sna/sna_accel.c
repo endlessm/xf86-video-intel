@@ -1325,12 +1325,12 @@ static PixmapPtr sna_create_pixmap(ScreenPtr screen,
 			goto fallback;
 
 	case SNA_CREATE_SCRATCH:
-		if (flags & KGEM_CAN_CREATE_GPU)
+		if (flags & (KGEM_CAN_CREATE_CPU | KGEM_CAN_CREATE_GPU))
 			return sna_pixmap_create_scratch(screen,
 							 width, height, depth,
 							 I915_TILING_Y);
 		else
-			goto fallback;
+			return NullPixmap;
 	}
 
 	if (usage == CREATE_PIXMAP_USAGE_GLYPH_PICTURE)
