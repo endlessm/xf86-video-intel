@@ -42,7 +42,9 @@ void gen4_vertex_align(struct sna *sna, const struct sna_composite_op *op)
 {
 	int vertex_index;
 
+	assert(op->floats_per_vertex);
 	assert(op->floats_per_rect == 3*op->floats_per_vertex);
+	assert(sna->render.vertex_used <= sna->render.vertex_size);
 
 	vertex_index = (sna->render.vertex_used + op->floats_per_vertex - 1) / op->floats_per_vertex;
 	if ((int)sna->render.vertex_size - vertex_index * op->floats_per_vertex < 2*op->floats_per_rect) {
@@ -52,6 +54,7 @@ void gen4_vertex_align(struct sna *sna, const struct sna_composite_op *op)
 			kgem_submit(&sna->kgem);
 			_kgem_set_mode(&sna->kgem, KGEM_RENDER);
 		}
+		assert(sna->render.vertex_used < sna->render.vertex_size);
 
 		vertex_index = (sna->render.vertex_used + op->floats_per_vertex - 1) / op->floats_per_vertex;
 		assert(vertex_index * op->floats_per_vertex <= sna->render.vertex_size);
@@ -118,18 +121,17 @@ int gen4_vertex_finish(struct sna *sna)
 		kgem_bo_destroy(&sna->kgem, bo);
 		hint |= CREATE_CACHED | CREATE_NO_THROTTLE;
 	} else {
-		if (kgem_is_idle(&sna->kgem)) {
-			sna->render.vertices = sna->render.vertex_data;
-			sna->render.vertex_size = ARRAY_SIZE(sna->render.vertex_data);
+		assert(sna->render.vertex_size == ARRAY_SIZE(sna->render.vertex_data));
+		assert(sna->render.vertices == sna->render.vertex_data);
+		if (kgem_is_idle(&sna->kgem))
 			return 0;
-		}
 	}
 
 	size = 256*1024;
 	assert(!sna->render.active);
 	sna->render.vertices = NULL;
 	sna->render.vbo = kgem_create_linear(&sna->kgem, size, hint);
-	while (sna->render.vbo == NULL && size > 16*1024) {
+	while (sna->render.vbo == NULL && size > sizeof(sna->render.vertex_data)) {
 		size /= 2;
 		sna->render.vbo = kgem_create_linear(&sna->kgem, size, hint);
 	}
@@ -165,11 +167,12 @@ int gen4_vertex_finish(struct sna *sna)
 	if (size >= UINT16_MAX)
 		size = UINT16_MAX - 1;
 
-	DBG(("%s: create vbo handle=%d, size=%d\n",
-	     __FUNCTION__, sna->render.vbo->handle, size));
+	DBG(("%s: create vbo handle=%d, size=%d floats [%d bytes]\n",
+	     __FUNCTION__, sna->render.vbo->handle, size, __kgem_bo_size(sna->render.vbo)));
+	assert(size > sna->render.vertex_used);
 
 	sna->render.vertex_size = size;
-	return sna->render.vertex_size - sna->render.vertex_used;
+	return size - sna->render.vertex_used;
 }
 
 void gen4_vertex_close(struct sna *sna)
