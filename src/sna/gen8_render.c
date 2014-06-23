@@ -2880,6 +2880,7 @@ fallback_blt:
 		tmp.src.bo = src_bo;
 		tmp.src.width  = src->drawable.width;
 		tmp.src.height = src->drawable.height;
+		tmp.src.offset[0] = tmp.src.offset[1] = 0;
 	}
 
 	tmp.mask.bo = NULL;
