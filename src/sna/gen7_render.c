@@ -2089,7 +2089,7 @@ gen7_composite_picture(struct sna *sna,
 				    x, y, w, h, dst_x, dst_y);
 }
 
-static void gen7_composite_channel_convert(struct sna_composite_channel *channel)
+inline static void gen7_composite_channel_convert(struct sna_composite_channel *channel)
 {
 	channel->repeat = gen7_repeat(channel->repeat);
 	channel->filter = gen7_filter(channel->filter);
@@ -2114,7 +2114,7 @@ static void gen7_render_composite_done(struct sna *sna,
 	sna_render_composite_redirect_done(sna, op);
 }
 
-static bool
+inline static bool
 gen7_composite_set_target(struct sna *sna,
 			  struct sna_composite_op *op,
 			  PicturePtr dst,

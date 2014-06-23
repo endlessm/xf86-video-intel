@@ -1898,7 +1898,7 @@ gen8_composite_picture(struct sna *sna,
 				    x, y, w, h, dst_x, dst_y);
 }
 
-static bool gen8_composite_channel_convert(struct sna_composite_channel *channel)
+inline static bool gen8_composite_channel_convert(struct sna_composite_channel *channel)
 {
 	if (unaligned(channel->bo, PICT_FORMAT_BPP(channel->pict_format)))
 		return false;
@@ -1928,7 +1928,7 @@ static void gen8_render_composite_done(struct sna *sna,
 	sna_render_composite_redirect_done(sna, op);
 }
 
-static bool
+inline static bool
 gen8_composite_set_target(struct sna *sna,
 			  struct sna_composite_op *op,
 			  PicturePtr dst,
