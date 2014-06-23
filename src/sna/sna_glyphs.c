@@ -1161,6 +1161,7 @@ glyphs_via_mask(struct sna *sna,
 	if (use_small_mask(sna, width, height, format->depth)) {
 		pixman_image_t *mask_image;
 
+use_small_mask:
 		DBG(("%s: small mask [format=%lx, depth=%d, size=%d], rendering glyphs to upload buffer\n",
 		     __FUNCTION__, (unsigned long)format->format,
 		     format->depth, (uint32_t)width*height*format->depth));
@@ -1339,6 +1340,11 @@ next_image:
 					      SNA_CREATE_SCRATCH);
 		if (!pixmap)
 			return false;
+
+		if (sna_pixmap(pixmap) == NULL) {
+			sna_pixmap_destroy(pixmap);
+			goto use_small_mask;
+		}
 
 		mask = CreatePicture(0, &pixmap->drawable,
 				     format, CPComponentAlpha,

@@ -4260,7 +4260,7 @@ unsigned kgem_can_create_2d(struct kgem *kgem,
 	if (size > 0) {
 		if (size <= kgem->max_cpu_size)
 			flags |= KGEM_CAN_CREATE_CPU;
-		if (size <= kgem->max_gpu_size)
+		else if (size <= kgem->max_gpu_size)
 			flags |= KGEM_CAN_CREATE_GPU;
 		if (size <= PAGE_SIZE*kgem->aperture_mappable/4)
 			flags |= KGEM_CAN_CREATE_GTT;
@@ -4282,8 +4282,6 @@ unsigned kgem_can_create_2d(struct kgem *kgem,
 		DBG(("%s: tiled[%d] size=%d\n", __FUNCTION__, tiling, size));
 		if (size > 0 && size <= kgem->max_gpu_size)
 			flags |= KGEM_CAN_CREATE_GPU;
-		if (size > kgem->max_gpu_size)
-			flags &= ~KGEM_CAN_CREATE_GPU;
 		if (size > 0 && size <= PAGE_SIZE*kgem->aperture_mappable/4)
 			flags |= KGEM_CAN_CREATE_GTT;
 		if (size > PAGE_SIZE*kgem->aperture_mappable/4)

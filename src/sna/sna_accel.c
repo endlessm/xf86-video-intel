@@ -3502,10 +3502,6 @@ sna_drawable_use_bo(DrawablePtr drawable, unsigned flags, const BoxRec *box,
 		DBG(("%s: last on cpu and needs damage, discard PREFER_GPU\n", __FUNCTION__));
 		flags &= ~PREFER_GPU;
 	}
-	if ((flags & FORCE_GPU) == 0 && priv->gpu_bo == NULL && sna_pixmap_choose_tiling(pixmap, DEFAULT_TILING) == I915_TILING_NONE) {
-		DBG(("%s: no gpu bo and linear, discard PREFER_GPU\n", __FUNCTION__));
-		flags &= ~PREFER_GPU;
-	}
 
 	if ((flags & (PREFER_GPU | IGNORE_DAMAGE)) == IGNORE_DAMAGE) {
 		if (priv->gpu_bo && (box_covers_pixmap(pixmap, box) || box_inplace(pixmap, box))) {
