@@ -35,6 +35,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <stdlib.h>
+#include <dirent.h>
 #include <errno.h>
 
 #include <pciaccess.h>
@@ -162,32 +163,164 @@ static int __intel_check_device(int fd)
 	return ret;
 }
 
+#ifdef __linux__
+static int __intel_open_device__major_minor(int _major, int _minor)
+{
+	char path[256];
+	DIR *dir;
+	struct dirent *de;
+	int base, fd = -1;
+
+	base = sprintf(path, "/dev/dri/");
+
+	dir = opendir(path);
+	if (dir == NULL)
+		return -1;
+
+	while ((de = readdir(dir)) != NULL) {
+		struct stat st;
+
+		if (*de->d_name == '.')
+			continue;
+
+		sprintf(path + base, "%s", de->d_name);
+		if (stat(path, &st) == 0 &&
+		    major(st.st_rdev) == _major &&
+		    minor(st.st_rdev) == _minor) {
+#ifdef O_CLOEXEC
+			fd = open(path, O_RDWR | O_NONBLOCK | O_CLOEXEC);
+#endif
+			if (fd == -1)
+				fd = fd_set_cloexec(open(path, O_RDWR | O_NONBLOCK));
+			break;
+		}
+	}
+
+	closedir(dir);
+
+	return fd;
+}
+
+static int __intel_open_device__pci(const struct pci_device *pci)
+{
+	struct stat st;
+	char path[256];
+	DIR *dir;
+	struct dirent *de;
+	int base;
+	int fd;
+
+	/* Look up the major:minor for the drm device through sysfs.
+	 * First we need to check that sysfs is available, then
+	 * check that we have loaded our driver. When we are happy
+	 * that our KMS module is loaded, we can then search for our
+	 * device node. We make the assumption that it uses the same
+	 * name, but after that we read the major:minor assigned to us
+	 * and search for a matching entry in /dev.
+	 */
+
+	base = sprintf(path,
+		       "/sys/bus/pci/devices/%04x:%02x:%02x.%d/",
+		       pci->domain, pci->bus, pci->dev, pci->func);
+	if (stat(path, &st))
+		return -1;
+
+	sprintf(path + base, "drm");
+	dir = opendir(path);
+	if (dir == NULL) {
+		int loop = 0;
+
+		sprintf(path + base, "driver");
+		if (stat(path, &st)) {
+			if (xf86LoadKernelModule("i915"))
+				return -1;
+			(void)xf86LoadKernelModule("fbcon");
+		}
+
+		sprintf(path + base, "drm");
+		while ((dir = opendir(path)) == NULL && loop++ < 100)
+			usleep(20000);
+
+		ErrorF("intel: waited %d ms for i915.ko driver to load\n", loop * 20000 / 1000);
+
+		if (dir == NULL)
+			return -1;
+	}
+
+	fd = -1;
+	while ((de = readdir(dir)) != NULL) {
+		if (*de->d_name == '.')
+			continue;
+
+		if (strncmp(de->d_name, "card", 4) == 0) {
+			sprintf(path + base + 4, "/dev/dri/%s", de->d_name);
+#ifdef O_CLOEXEC
+			fd = open(path + base + 4, O_RDWR | O_NONBLOCK | O_CLOEXEC);
+#endif
+			if (fd == -1)
+				fd = fd_set_cloexec(open(path + base + 4, O_RDWR | O_NONBLOCK));
+			if (fd != -1)
+				break;
+
+			sprintf(path + base + 3, "/%s/dev", de->d_name);
+			fd = open(path, O_RDONLY);
+			if (fd == -1)
+				break;
+
+			base = read(fd, path, 256);
+			close(fd);
+
+			fd = -1;
+			if (base > 0) {
+				int major, minor;
+				path[base] = '\0';
+				if (sscanf(path, "%d:%d", &major, &minor) == 2)
+					fd = __intel_open_device__major_minor(major, minor);
+			}
+			break;
+		}
+	}
+	closedir(dir);
+
+	return fd;
+}
+#else
+static int __intel_open_device__pci(const struct pci_device *pci) { return -1; }
+#endif
+
+static int __intel_open_device__legacy(const struct pci_device *pci)
+{
+	char id[20];
+	int ret;
+
+	snprintf(id, sizeof(id),
+		 "pci:%04x:%02x:%02x.%d",
+		 pci->domain, pci->bus, pci->dev, pci->func);
+
+	ret = drmCheckModesettingSupported(id);
+	if (ret) {
+		if (xf86LoadKernelModule("i915"))
+			ret = drmCheckModesettingSupported(id);
+		if (ret)
+			return -1;
+		/* Be nice to the user and load fbcon too */
+		(void)xf86LoadKernelModule("fbcon");
+	}
+
+	return fd_set_nonblock(drmOpen(NULL, id));
+}
+
 static int __intel_open_device(const struct pci_device *pci, const char *path)
 {
 	int fd;
 
 	if (path == NULL) {
-		char id[20];
-		int ret;
-
 		if (pci == NULL)
 			return -1;
 
-		snprintf(id, sizeof(id),
-			 "pci:%04x:%02x:%02x.%d",
-			 pci->domain, pci->bus, pci->dev, pci->func);
-
-		ret = drmCheckModesettingSupported(id);
-		if (ret) {
-			if (xf86LoadKernelModule("i915"))
-				ret = drmCheckModesettingSupported(id);
-			if (ret)
-				return -1;
-			/* Be nice to the user and load fbcon too */
-			(void)xf86LoadKernelModule("fbcon");
-		}
-
-		fd = fd_set_nonblock(drmOpen(NULL, id));
+		fd = __intel_open_device__pci(pci);
+		if (fd == -1)
+			fd = __intel_open_device__legacy(pci);
 	} else {
 #ifdef O_CLOEXEC
 		fd = open(path, O_RDWR | O_NONBLOCK | O_CLOEXEC);
