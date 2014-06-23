@@ -3851,14 +3851,16 @@ prefer_gpu_bo:
 			goto move_to_gpu;
 		}
 
-		if (priv->gpu_bo && priv->gpu_bo->tiling) {
-			DBG(("%s: prefer to use GPU bo for rendering large pixmaps\n", __FUNCTION__));
-			goto prefer_gpu_bo;
-		}
+		if ((priv->cpu_damage == NULL || flags & IGNORE_DAMAGE)) {
+			if (priv->gpu_bo && priv->gpu_bo->tiling) {
+				DBG(("%s: prefer to use GPU bo for rendering large pixmaps\n", __FUNCTION__));
+				goto prefer_gpu_bo;
+			}
 
-		if (priv->cpu_bo->pitch >= 4096) {
-			DBG(("%s: prefer to use GPU bo for rendering wide pixmaps\n", __FUNCTION__));
-			goto prefer_gpu_bo;
+			if (priv->cpu_bo->pitch >= 4096) {
+				DBG(("%s: prefer to use GPU bo for rendering wide pixmaps\n", __FUNCTION__));
+				goto prefer_gpu_bo;
+			}
 		}
 
 		if ((flags & IGNORE_DAMAGE) == 0 && priv->cpu_bo->snoop) {
