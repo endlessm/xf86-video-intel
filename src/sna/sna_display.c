@@ -6439,7 +6439,7 @@ fixup_flip:
 				if (drmIoctl(sna->kgem.fd, DRM_IOCTL_I915_GEM_BUSY, &busy) == 0) {
 					if (busy.busy) {
 						int mode = KGEM_RENDER;
-						if ((busy.busy & (1 << 16)) == 0)
+						if (busy.busy & (0xfffe << 16))
 							mode = KGEM_BLT;
 						DBG(("%s: marking flip bo as busy [%x -> mode=%d]\n", __FUNCTION__, busy.busy, mode));
 						kgem_bo_mark_busy(&sna->kgem, flip_bo, mode);

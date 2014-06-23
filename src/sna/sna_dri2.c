@@ -778,13 +778,17 @@ static void sna_dri2_select_mode(struct sna *sna, struct kgem_bo *dst, struct kg
 	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_I915_GEM_BUSY, &busy))
 		return;
 
-	DBG(("%s: src busy?=%x\n", __FUNCTION__, busy.busy));
+	DBG(("%s: src handle=%d busy?=%x\n", __FUNCTION__, busy.handle, busy.busy));
 	if (busy.busy == 0) {
+		__kgem_bo_clear_busy(src);
+
 		busy.handle = dst->handle;
 		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_I915_GEM_BUSY, &busy))
 			return;
-		DBG(("%s: dst busy?=%x\n", __FUNCTION__, busy.busy));
+
+		DBG(("%s: dst handle=%d busy?=%x\n", __FUNCTION__, busy.handle, busy.busy));
 		if (busy.busy == 0) {
+			__kgem_bo_clear_busy(dst);
 			DBG(("%s: src/dst is idle, using defaults\n", __FUNCTION__));
 			return;
 		}
@@ -806,7 +810,7 @@ static void sna_dri2_select_mode(struct sna *sna, struct kgem_bo *dst, struct kg
 	 * the cost of the query.
 	 */
 	mode = KGEM_RENDER;
-	if ((busy.busy & (1 << 16)) == 0)
+	if (busy.busy & (0xfffe << 16))
 		mode = KGEM_BLT;
 	kgem_bo_mark_busy(&sna->kgem, busy.handle == src->handle ? src : dst, mode);
 	_kgem_set_mode(&sna->kgem, mode);
