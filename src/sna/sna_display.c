@@ -3544,6 +3544,35 @@ static void sort_randr_outputs(struct sna *sna, ScreenPtr screen)
 	}
 }
 
+static void disable_unused_crtc(struct sna *sna)
+{
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	bool update = false;
+	int o, c;
+
+	for (c = 0; c < sna->mode.num_real_crtc; c++) {
+		xf86CrtcPtr crtc = config->crtc[c];
+
+		if (!crtc->enabled)
+			continue;
+
+
+		for (o = 0; o < sna->mode.num_real_output; o++) {
+			xf86OutputPtr output = config->output[o];
+			if (output->crtc == crtc)
+				break;
+		}
+
+		if (o == sna->mode.num_real_output) {
+			crtc->enabled = false;
+			update = true;
+		}
+	}
+
+	if (update)
+		xf86DisableUnusedFunctions(sna->scrn);
+}
+
 void sna_mode_discover(struct sna *sna)
 {
 	ScreenPtr screen = xf86ScrnToScreen(sna->scrn);
@@ -3609,7 +3638,7 @@ void sna_mode_discover(struct sna *sna)
 		sort_randr_outputs(sna, screen);
 
 		if (changed & 2)
-			xf86DisableUnusedFunctions(sna->scrn);
+			disable_unused_crtc(sna);
 
 		xf86RandR12TellChanged(screen);
 	}
