@@ -3553,6 +3553,7 @@ void sna_mode_discover(struct sna *sna)
 	int i, j, serial;
 	int changed = 0;
 
+	DBG(("%s()\n", __FUNCTION__));
 	VG_CLEAR(connectors);
 
 	memset(&res, 0, sizeof(res));
@@ -3574,17 +3575,21 @@ void sna_mode_discover(struct sna *sna)
 	for (i = 0; i < res.count_connectors; i++) {
 		for (j = 0; j < sna->mode.num_real_output; j++) {
 			if (to_sna_output(config->output[j])->id == connectors[i]) {
+				DBG(("%s: found %s (id=%d)\n", __FUNCTION__, config->output[j]->name, connectors[i]));
 				to_sna_output(config->output[j])->serial = serial;
 				break;
 			}
 		}
-		if (j == sna->mode.num_real_output)
+		if (j == sna->mode.num_real_output) {
+			DBG(("%s: adding id=%d\n", __FUNCTION__, connectors[i]));
 			changed |= sna_output_add(sna, connectors[i], serial) > 0;
+		}
 	}
 
 	for (i = 0; i < sna->mode.num_real_output; i++) {
 		xf86OutputPtr output = config->output[i];
 		if (to_sna_output(output)->serial != serial) {
+			DBG(("%s: removing output %s (id=%d)\n", __FUNCTION__, output->name, connectors[i]));
 			if (sna->flags & SNA_REMOVE_OUTPUTS) {
 				sna_output_del(output); i--;
 			} else {
@@ -3596,6 +3601,8 @@ void sna_mode_discover(struct sna *sna)
 	}
 
 	if (changed) {
+		DBG(("%s: outputs changed, broadcasting\n", __FUNCTION__));
+
 		sna_mode_compute_possible_outputs(sna);
 
 		/* Reorder user visible listing */
