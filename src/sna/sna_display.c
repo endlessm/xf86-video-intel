@@ -318,7 +318,7 @@ static void assert_scanout(struct kgem *kgem, struct kgem_bo *bo,
 	assert(bo->scanout);
 
 	VG_CLEAR(info);
-	info.fb_id = bo->delta;
+	info.fb_id = fb_id(bo);
 
 	assert(drmIoctl(kgem->fd, DRM_IOCTL_MODE_GETFB, &info) == 0);
 	gem_close(kgem->fd, info.handle);
@@ -340,11 +340,11 @@ static unsigned get_fb(struct sna *sna, struct kgem_bo *bo,
 	assert(!bo->snoop);
 	assert(8*bo->pitch >= width * scrn->bitsPerPixel);
 	assert(height * bo->pitch <= kgem_bo_size(bo)); /* XXX crtc offset */
-	if (bo->delta) {
+	if (fb_id(bo)) {
 		DBG(("%s: reusing fb=%d for handle=%d\n",
-		     __FUNCTION__, bo->delta, bo->handle));
+		     __FUNCTION__, fb_id(bo), bo->handle));
 		assert_scanout(&sna->kgem, bo, width, height);
-		return bo->delta;
+		return fb_id(bo);
 	}
 
 	DBG(("%s: create fb %dx%d@%d/%d\n",
@@ -1543,7 +1543,7 @@ void sna_copy_fbcon(struct sna *sna)
 		return;
 	}
 
-	if (fbcon.fb_id == priv->gpu_bo->delta) {
+	if (fbcon.fb_id == fb_id(priv->gpu_bo)) {
 		DBG(("%s: fb already installed as scanout\n", __FUNCTION__));
 		return;
 	}
@@ -6319,7 +6319,7 @@ disable1:
 		struct kgem_bo *new = __sna_pixmap_get_bo(sna->front);
 		struct kgem_bo *old = sna->mode.shadow;
 		struct drm_mode_crtc_page_flip arg;
-		uint32_t fb_id;
+		uint32_t fb;
 
 		DBG(("%s: flipping tear-free outputs, current scanout handle=%d [active?=%d], new handle=%d [active=%d]\n",
 		     __FUNCTION__, old->handle, old->active_scanout, new->handle, new->active_scanout));
@@ -6327,10 +6327,8 @@ disable1:
 		assert(new != old);
 		assert(new->refcnt);
 
-		fb_id = get_fb(sna, new,
-			       sna->scrn->virtualX,
-			       sna->scrn->virtualY);
-		if (fb_id == 0) {
+		fb = get_fb(sna, new, sna->scrn->virtualX, sna->scrn->virtualY);
+		if (fb == 0) {
 fixup_shadow:
 			if (sna_pixmap_move_to_gpu(sna->front, MOVE_READ | MOVE_ASYNC_HINT)) {
 				BoxRec box;
@@ -6383,7 +6381,7 @@ fixup_shadow:
 				flip_bo = crtc->shadow_bo;
 				x = y = 0;
 			} else {
-				arg.fb_id = fb_id;
+				arg.fb_id = fb;
 				flip_bo = new;
 				x = crtc->base->x;
 				y = crtc->base->y;
