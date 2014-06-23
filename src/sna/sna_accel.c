@@ -3809,6 +3809,9 @@ cpu_fail:
 	assert(priv->gpu_bo == NULL || priv->gpu_bo->proxy == NULL);
 
 	if (flags & RENDER_GPU) {
+		if ((flags & IGNORE_DAMAGE) == 0 && priv->gpu_damage)
+			goto move_to_gpu;
+
 		if (priv->gpu_bo && priv->gpu_bo->tiling)
 			goto move_to_gpu;
 
@@ -3865,6 +3868,7 @@ cpu_fail:
 	     __FUNCTION__, *damage != NULL));
 	assert(damage == NULL || !DAMAGE_IS_ALL(*damage));
 	assert(priv->clear == false);
+	priv->cpu = false;
 	return priv->cpu_bo;
 }
 
