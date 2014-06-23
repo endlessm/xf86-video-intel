@@ -3765,24 +3765,29 @@ use_gpu_bo:
 
 use_cpu_bo:
 	if (!USE_CPU_BO || priv->cpu_bo == NULL) {
-		if ((flags & FORCE_GPU) == 0)
+		if ((flags & FORCE_GPU) == 0) {
+			DBG(("%s: no CPU bo, and GPU not forced\n", __FUNCTION__));
 			return NULL;
+		}
+
+		flags &= ~FORCE_GPU;
+
+		region.extents = *box;
+		if (get_drawable_deltas(drawable, pixmap, &dx, &dy)) {
+			region.extents.x1 += dx;
+			region.extents.x2 += dx;
+			region.extents.y1 += dy;
+			region.extents.y2 += dy;
+		}
+		region.data = NULL;
 
 		if (!sna_drawable_move_region_to_cpu(&pixmap->drawable, &region,
-						     (flags & IGNORE_DAMAGE ? 0 : MOVE_READ) | MOVE_WRITE | MOVE_ASYNC_HINT)) {
+						     (flags & IGNORE_DAMAGE ? 0 : MOVE_READ) | MOVE_WRITE | MOVE_ASYNC_HINT) ||
+		    priv->cpu_bo == NULL) {
+			DBG(("%s: did not create CPU bo\n", __FUNCTION__));
 cpu_fail:
-			if (priv->gpu_bo) {
-				region.extents = *box;
-				if (get_drawable_deltas(drawable, pixmap, &dx, &dy)) {
-					region.extents.x1 += dx;
-					region.extents.x2 += dx;
-					region.extents.y1 += dy;
-					region.extents.y2 += dy;
-				}
-				region.data = NULL;
-
+			if (priv->gpu_bo)
 				goto move_to_gpu;
-			}
 
 			return NULL;
 		}
@@ -3798,7 +3803,6 @@ cpu_fail:
 		return NULL;
 	}
 
-
 	region.extents = *box;
 	if (get_drawable_deltas(drawable, pixmap, &dx, &dy)) {
 		region.extents.x1 += dx;
@@ -3808,27 +3812,64 @@ cpu_fail:
 	}
 	region.data = NULL;
 
-	/* Both CPU and GPU are busy, prefer to use the GPU */
-	if (priv->gpu_bo && kgem_bo_is_busy(priv->gpu_bo))
+	if (priv->gpu_bo && kgem_bo_is_busy(priv->gpu_bo)) {
+		DBG(("%s: both CPU and GPU are busy, prefer to use the GPU\n",
+		     __FUNCTION__));
 		goto move_to_gpu;
+	}
 
 	assert(priv->gpu_bo == NULL || priv->gpu_bo->proxy == NULL);
 
 	if (flags & RENDER_GPU) {
-		if ((flags & IGNORE_DAMAGE) == 0 && priv->gpu_damage)
-			goto move_to_gpu;
+		flags &= ~RENDER_GPU;
 
-		if (priv->gpu_bo && priv->gpu_bo->tiling)
-			goto move_to_gpu;
+		if ((flags & IGNORE_DAMAGE) == 0 && priv->gpu_damage) {
+			DBG(("%s: prefer to use GPU bo for rendering whilst reading from GPU damage\n", __FUNCTION__));
 
-		if (priv->cpu_bo->pitch >= 4096)
-			goto move_to_gpu;
+prefer_gpu_bo:
+			if (priv->gpu_bo == NULL) {
+				if ((flags & FORCE_GPU) == 0) {
+					DBG(("%s: untiled, will not force allocation\n",
+					     __FUNCTION__));
+					return NULL;
+				}
 
-		if ((flags & IGNORE_DAMAGE) == 0 && priv->cpu_bo->snoop)
-			goto move_to_gpu;
+				if (flags & IGNORE_DAMAGE) {
+					sna_damage_subtract(&priv->cpu_damage, &region);
+					if (priv->cpu_damage == NULL) {
+						list_del(&priv->flush_list);
+						priv->cpu = false;
+					}
+				}
 
-		if (!sna->kgem.can_blt_cpu)
+				if (!sna_pixmap_move_to_gpu(pixmap, MOVE_WRITE | MOVE_READ | __MOVE_FORCE))
+					return NULL;
+
+				DBG(("%s: allocated GPU bo for operation\n", __FUNCTION__));
+				goto done;
+			}
 			goto move_to_gpu;
+		}
+
+		if (priv->gpu_bo && priv->gpu_bo->tiling) {
+			DBG(("%s: prefer to use GPU bo for rendering large pixmaps\n", __FUNCTION__));
+			goto prefer_gpu_bo;
+		}
+
+		if (priv->cpu_bo->pitch >= 4096) {
+			DBG(("%s: prefer to use GPU bo for rendering wide pixmaps\n", __FUNCTION__));
+			goto prefer_gpu_bo;
+		}
+
+		if ((flags & IGNORE_DAMAGE) == 0 && priv->cpu_bo->snoop) {
+			DBG(("%s: prefer to use GPU bo for reading from snooped target bo\n", __FUNCTION__));
+			goto prefer_gpu_bo;
+		}
+
+		if (!sna->kgem.can_blt_cpu) {
+			DBG(("%s: can't render to CPU bo, try to use GPU bo\n", __FUNCTION__));
+			goto prefer_gpu_bo;
+		}
 	}
 
 	if (!sna->kgem.can_blt_cpu)
