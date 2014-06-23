@@ -2851,11 +2851,6 @@ fallback_blt:
 						   extents.y2 - extents.y1,
 						   n > 1))
 			goto fallback_tiled;
-
-		dst_dx += tmp.dst.x;
-		dst_dy += tmp.dst.y;
-
-		tmp.dst.x = tmp.dst.y = 0;
 	}
 
 	tmp.src.card_format = gen8_get_card_format(tmp.src.pict_format);
@@ -2881,9 +2876,6 @@ fallback_blt:
 					       extents.x2 - extents.x1,
 					       extents.y2 - extents.y1))
 			goto fallback_tiled_dst;
-
-		src_dx += tmp.src.offset[0];
-		src_dy += tmp.src.offset[1];
 	} else {
 		tmp.src.bo = src_bo;
 		tmp.src.width  = src->drawable.width;
@@ -2910,6 +2902,14 @@ fallback_blt:
 		}
 		_kgem_set_mode(&sna->kgem, KGEM_RENDER);
 	}
+
+	src_dx += tmp.src.offset[0];
+	src_dy += tmp.src.offset[1];
+
+	dst_dx += tmp.dst.x;
+	dst_dy += tmp.dst.y;
+
+	tmp.dst.x = tmp.dst.y = 0;
 
 	gen8_align_vertex(sna, &tmp);
 	gen8_emit_copy_state(sna, &tmp);
