@@ -548,7 +548,15 @@ static inline bool clipped_glyphs(PicturePtr dst, int nlist, GlyphListPtr list, 
 	if (dst->pCompositeClip->data == NULL &&
 	    region_matches_pixmap(dst->pCompositeClip,
 				  get_drawable_pixmap(dst->pDrawable))) {
-		DBG(("%s: no, region matches drawable\n", __FUNCTION__));
+		DBG(("%s: no, clip region (%d, %d), (%d, %d) matches drawable pixmap=%ld size=%dx%d\n",
+		     __FUNCTION__,
+		     dst->pCompositeClip->extents.x1,
+		     dst->pCompositeClip->extents.y1,
+		     dst->pCompositeClip->extents.x2,
+		     dst->pCompositeClip->extents.y2,
+		     get_drawable_pixmap(dst->pDrawable),
+		     get_drawable_pixmap(dst->pDrawable)->drawable.width,
+		     get_drawable_pixmap(dst->pDrawable)->drawable.height));
 		return false;
 	}
 
@@ -900,7 +908,7 @@ next_glyph_N:
 			     r.width, r.height));
 
 			tmp.blt(sna, &tmp, &r);
-			apply_damage(&tmp, &r);
+			apply_damage_clipped_to_dst(&tmp, &r, dst->pDrawable);
 
 next_glyph_0:
 			x += glyph->info.xOff;
