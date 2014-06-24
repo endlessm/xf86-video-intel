@@ -141,8 +141,8 @@ struct sna_property {
 
 struct sna_output {
 	xf86OutputPtr base;
-	int id;
-	int serial;
+	unsigned id;
+	unsigned serial;
 
 	unsigned possible_encoders;
 	unsigned attached_encoders;
@@ -3243,7 +3243,7 @@ static int name_from_path(struct sna *sna,
 }
 
 static int
-sna_output_add(struct sna *sna, int id, int serial)
+sna_output_add(struct sna *sna, unsigned id, unsigned serial)
 {
 	ScrnInfoPtr scrn = sna->scrn;
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(scrn);
@@ -3579,8 +3579,9 @@ void sna_mode_discover(struct sna *sna)
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
 	struct drm_mode_card_res res;
 	uint32_t connectors[32];
-	int i, j, serial;
-	int changed = 0;
+	unsigned changed = 0;
+	unsigned serial;
+	int i, j;
 
 	DBG(("%s()\n", __FUNCTION__));
 	VG_CLEAR(connectors);
@@ -3601,11 +3602,16 @@ void sna_mode_discover(struct sna *sna)
 	assert(sna->mode.num_real_encoder == res.count_encoders);
 
 	serial = ++sna->mode.serial;
+	if (serial == 0)
+		serial = ++sna->mode.serial;
+
 	for (i = 0; i < res.count_connectors; i++) {
 		for (j = 0; j < sna->mode.num_real_output; j++) {
-			if (to_sna_output(config->output[j])->id == connectors[i]) {
-				DBG(("%s: found %s (id=%d)\n", __FUNCTION__, config->output[j]->name, connectors[i]));
-				to_sna_output(config->output[j])->serial = serial;
+			xf86OutputPtr output = config->output[j];
+			if (to_sna_output(output)->id == connectors[i]) {
+				DBG(("%s: found %s (id=%d)\n", __FUNCTION__, output->name, connectors[i]));
+				assert(to_sna_output(output)->id);
+				to_sna_output(output)->serial = serial;
 				break;
 			}
 		}
@@ -3617,16 +3623,21 @@ void sna_mode_discover(struct sna *sna)
 
 	for (i = 0; i < sna->mode.num_real_output; i++) {
 		xf86OutputPtr output = config->output[i];
-		if (to_sna_output(output)->serial != serial) {
-			DBG(("%s: removing output %s (id=%d)\n", __FUNCTION__, output->name, connectors[i]));
-			if (sna->flags & SNA_REMOVE_OUTPUTS) {
-				sna_output_del(output); i--;
-			} else {
-				to_sna_output(output)->id = 0;
-				output->crtc = NULL;
-			}
-			changed |= 2;
+
+		if (to_sna_output(output)->id == 0)
+			continue;
+
+		if (to_sna_output(output)->serial == serial)
+			continue;
+
+		DBG(("%s: removing output %s (id=%d)\n", __FUNCTION__, output->name, to_sna_output(output)->id));
+		if (sna->flags & SNA_REMOVE_OUTPUTS) {
+			sna_output_del(output); i--;
+		} else {
+			to_sna_output(output)->id = 0;
+			output->crtc = NULL;
 		}
+		changed |= 2;
 	}
 
 	if (changed) {
