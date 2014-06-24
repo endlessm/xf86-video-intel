@@ -2328,8 +2328,10 @@ sna_output_detect(xf86OutputPtr output)
 
 	DBG(("%s(%s:%d)\n", __FUNCTION__, output->name, sna_output->id));
 
-	if (!sna_output->id)
+	if (!sna_output->id) {
+		DBG(("%s(%s) hiding due to lost connection\n", __FUNCTION__, output->name));
 		return XF86OutputStatusDisconnected;
+	}
 
 	VG_CLEAR(compat_conn);
 	compat_conn.conn.connector_id = sna_output->id;
@@ -3275,6 +3277,7 @@ sna_output_add(struct sna *sna, unsigned id, unsigned serial)
 		DBG(("%s: GETCONNECTOR[%d] failed, ret=%d\n", __FUNCTION__, id, errno));
 		return -1;
 	}
+	assert(compat_conn.conn.connector_id == id);
 
 	if (compat_conn.conn.connector_type < ARRAY_SIZE(output_names))
 		output_name = output_names[compat_conn.conn.connector_type];
@@ -3365,6 +3368,7 @@ sna_output_add(struct sna *sna, unsigned id, unsigned serial)
 		DBG(("%s: second! GETCONNECTOR failed, ret=%d\n", __FUNCTION__, errno));
 		goto cleanup;
 	}
+	assert(compat_conn.conn.connector_id == id);
 
 	/* statically constructed property list */
 	assert(sna_output->num_props == compat_conn.conn.count_props);
@@ -3414,6 +3418,7 @@ sna_output_add(struct sna *sna, unsigned id, unsigned serial)
 		goto cleanup;
 	}
 
+	DBG(("%s: inserting output #%d of %d\n", __FUNCTION__, sna->mode.num_real_output, config->num_output));
 	for (i = config->num_output; i > sna->mode.num_real_output; i--) {
 		outputs[i] = outputs[i-1];
 		assert(outputs[i]->driver_private == NULL);
@@ -3489,6 +3494,7 @@ reset:
 	     sna_output->possible_encoders,
 	     serial, sna_output->edid_idx, sna_output->dpms_id,
 	     (unsigned long)(uintptr_t)output->crtc));
+	assert(sna_output->id == id);
 
 	return 1;
 
@@ -3522,6 +3528,8 @@ static void sna_output_del(xf86OutputPtr output)
 		if (config->output[i] == output)
 			break;
 	assert(i < to_sna(scrn)->mode.num_real_output);
+	DBG(("%s: removing output #%d of %d\n",
+	     __FUNCTION__, i, to_sna(scrn)->mode.num_real_output));
 
 	for (; i < config->num_output; i++) {
 		config->output[i] = config->output[i+1];
@@ -3630,7 +3638,9 @@ void sna_mode_discover(struct sna *sna)
 		if (to_sna_output(output)->serial == serial)
 			continue;
 
-		DBG(("%s: removing output %s (id=%d)\n", __FUNCTION__, output->name, to_sna_output(output)->id));
+		DBG(("%s: removing output %s (id=%d), serial=%u [now %u]\n",
+		     __FUNCTION__, output->name, to_sna_output(output)->id,
+		    to_sna_output(output)->serial, serial));
 		if (sna->flags & SNA_REMOVE_OUTPUTS) {
 			sna_output_del(output); i--;
 		} else {
