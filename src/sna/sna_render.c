@@ -2205,7 +2205,7 @@ sna_render_copy_boxes__overlap(struct sna *sna, uint8_t alu,
 	region.extents.x1 = extents->x1 + dst_dx;
 	region.extents.x2 = extents->x2 + dst_dx;
 	region.extents.y1 = extents->y1 + dst_dy;
-	region.extents.y2 = extents->x2 + dst_dy;
+	region.extents.y2 = extents->y2 + dst_dy;
 
 	for (i = num_boxes = 0; i < n; i++) {
 		boxes[num_boxes].x1 = box[i].x1 + dst_dx;
@@ -2216,7 +2216,7 @@ sna_render_copy_boxes__overlap(struct sna *sna, uint8_t alu,
 		if (boxes[num_boxes].y1 < region.extents.y1)
 			boxes[num_boxes].y1 = region.extents.y1;
 
-		boxes[num_boxes].x2 = box[i].x2 + dst_dy;
+		boxes[num_boxes].x2 = box[i].x2 + dst_dx;
 		if (boxes[num_boxes].x2 > region.extents.x2)
 			boxes[num_boxes].x2 = region.extents.x2;
 
@@ -2240,7 +2240,7 @@ sna_render_copy_boxes__overlap(struct sna *sna, uint8_t alu,
 	overlap.extents.x1 = extents->x1 + src_dx;
 	overlap.extents.x2 = extents->x2 + src_dx;
 	overlap.extents.y1 = extents->y1 + src_dy;
-	overlap.extents.y2 = extents->x2 + src_dy;
+	overlap.extents.y2 = extents->y2 + src_dy;
 	overlap.data = NULL;
 
 	RegionIntersect(&overlap, &overlap, &region);
