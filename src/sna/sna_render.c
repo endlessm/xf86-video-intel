@@ -1348,10 +1348,10 @@ sna_render_picture_convolve(struct sna *sna,
 		DBG(("%s: pixmap allocation failed\n", __FUNCTION__));
 		return -1;
 	}
-	assert(__sna_pixmap_get_bo(tmp));
 
 	tmp = NULL;
 	bo = __sna_pixmap_get_bo(pixmap);
+	assert(bo);
 	if (sna->render.clear(sna, pixmap, bo))
 		tmp = CreatePicture(0, &pixmap->drawable,
 				PictureMatchFormat(screen, depth, channel->pict_format),

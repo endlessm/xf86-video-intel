@@ -1313,15 +1313,19 @@ void sna_dri2_destroy_window(WindowPtr win)
 
 		info = priv->chain;
 		info->draw = NULL;
+		info->client = NULL;
 
 		chain = info->chain;
 		info->chain = NULL;
 
 		assert(info->queued);
 		while ((info = chain)) {
+			info->draw = NULL;
+			info->client = NULL;
+
 			chain = info->chain;
 			info->chain = NULL;
-			info->draw = NULL;
+
 			if (!info->queued)
 				sna_dri2_event_free(sna, NULL, info);
 		}
@@ -1787,6 +1791,8 @@ static void frame_swap_complete(struct sna *sna,
 	if (frame->draw == NULL)
 		return;
 
+	assert(frame->client);
+
 	swap = sna_crtc_last_swap(frame->crtc);
 	DBG(("%s: draw=%ld, pipe=%d, frame=%lld [msc=%lld], tv=%d.%06d\n",
 	     __FUNCTION__, (long)frame->draw, frame->pipe,
@@ -2146,6 +2152,7 @@ static void chain_flip(struct sna *sna)
 	}
 
 	assert(chain == dri2_chain(chain->draw));
+	assert(!chain->queued);
 	chain->queued = true;
 
 	if (can_flip(sna, chain->draw, chain->front, chain->back, chain->crtc) &&
@@ -2153,7 +2160,6 @@ static void chain_flip(struct sna *sna)
 		DBG(("%s: performing chained flip\n", __FUNCTION__));
 	} else {
 		DBG(("%s: emitting chained vsync'ed blit\n", __FUNCTION__));
-		assert(chain->queued);
 		chain->bo = __sna_dri2_copy_region(sna, chain->draw, NULL,
 						  chain->back, chain->front,
 						  true);
@@ -2185,6 +2191,7 @@ static void sna_dri2_flip_event(struct sna *sna,
 				struct sna_dri2_event *flip)
 {
 	DBG(("%s(pipe=%d, event=%d)\n", __FUNCTION__, flip->pipe, flip->type));
+	assert(flip->queued);
 
 	if (sna->dri2.flip_pending == flip)
 		sna->dri2.flip_pending = NULL;
