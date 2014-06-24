@@ -846,6 +846,10 @@ AC_CONFIG_FILES([
 ])
 AC_OUTPUT
 
+echo ""
+echo ""
+test -e `pwd $0`/README && cat `pwd $0`/README
+
 accel_msg=""
 if test "x$SNA" != "xno"; then
 	if test "$accel" = "sna"; then
