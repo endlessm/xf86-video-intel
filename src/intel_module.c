@@ -224,6 +224,32 @@ static const SymTabRec intel_chipsets[] = {
 	{0x0155, "HD Graphics"},
 	{0x0157, "HD Graphics"},
 
+	/* Broadwell Marketing names */
+	{0x1602, "HD graphics"},
+	{0x1606, "HD graphics"},
+	{0x160B, "HD graphics"},
+	{0x160A, "HD graphics"},
+	{0x160D, "HD graphics"},
+	{0x160E, "HD graphics"},
+	{0x1612, "HD graphics 5600"},
+	{0x1616, "HD graphics 5500"},
+	{0x161B, "HD graphics"},
+	{0x161A, "HD graphics"},
+	{0x161D, "HD graphics"},
+	{0x161E, "HD graphics 5300"},
+	{0x1622, "Iris Pro graphics 6200"},
+	{0x1626, "HD graphics 6000"},
+	{0x162B, "Iris graphics 6100"},
+	{0x162A, "Iris Pro graphics P6300"},
+	{0x162D, "HD graphics"},
+	{0x162E, "HD graphics"},
+	{0x1632, "HD graphics"},
+	{0x1636, "HD graphics"},
+	{0x163B, "HD graphics"},
+	{0x163A, "HD graphics"},
+	{0x163D, "HD graphics"},
+	{0x163E, "HD graphics"},
+
 	/* When adding new identifiers, also update:
 	 * 1. intel_identify()
 	 * 2. man/intel.man
@@ -407,9 +433,9 @@ static void intel_identify(int flags)
 	if (unique != stack)
 		free(unique);
 
-	xf86Msg(X_INFO, INTEL_NAME ": Driver for Intel(R) HD Graphics: 2000-5000\n");
-	xf86Msg(X_INFO, INTEL_NAME ": Driver for Intel(R) Iris(TM) Graphics: 5100\n");
-	xf86Msg(X_INFO, INTEL_NAME ": Driver for Intel(R) Iris(TM) Pro Graphics: 5200\n");
+	xf86Msg(X_INFO, INTEL_NAME ": Driver for Intel(R) HD Graphics: 2000-6000\n");
+	xf86Msg(X_INFO, INTEL_NAME ": Driver for Intel(R) Iris(TM) Graphics: 5100, 6100\n");
+	xf86Msg(X_INFO, INTEL_NAME ": Driver for Intel(R) Iris(TM) Pro Graphics: 5200, 6200, P6300\n");
 }
 
 static Bool intel_driver_func(ScrnInfoPtr pScrn,
