@@ -178,7 +178,7 @@ sna_compute_composite_region(RegionPtr region,
 
 	if (region->extents.x1 >= region->extents.x2 ||
 	    region->extents.y1 >= region->extents.y2)
-		return FALSE;
+		return false;
 
 	region->extents.x1 += dst->pDrawable->x;
 	region->extents.x2 += dst->pDrawable->x;
@@ -190,7 +190,7 @@ sna_compute_composite_region(RegionPtr region,
 
 	/* clip against dst */
 	if (!clip_to_dst(region, dst->pCompositeClip, 0, 0))
-		return FALSE;
+		return false;
 
 	DBG(("%s: clip against dst->pCompositeClip: (%d, %d), (%d, %d)\n",
 	     __FUNCTION__,
@@ -202,7 +202,7 @@ sna_compute_composite_region(RegionPtr region,
 				 -dst->alphaOrigin.x,
 				 -dst->alphaOrigin.y)) {
 			pixman_region_fini (region);
-			return FALSE;
+			return false;
 		}
 	}
 
@@ -214,7 +214,7 @@ sna_compute_composite_region(RegionPtr region,
 		}
 		if (!clip_to_src(region, src, dst_x - src_x, dst_y - src_y)) {
 			pixman_region_fini (region);
-			return FALSE;
+			return false;
 		}
 		DBG(("%s: clip against src (%dx%d clip=%d): (%d, %d), (%d, %d)\n",
 		       __FUNCTION__,
@@ -229,7 +229,7 @@ sna_compute_composite_region(RegionPtr region,
 					 dst_x - (src_x - src->alphaOrigin.x),
 					 dst_y - (src_y - src->alphaOrigin.y))) {
 				pixman_region_fini(region);
-				return FALSE;
+				return false;
 			}
 		}
 	}
@@ -242,14 +242,14 @@ sna_compute_composite_region(RegionPtr region,
 		}
 		if (!clip_to_src(region, mask, dst_x - mask_x, dst_y - mask_y)) {
 			pixman_region_fini(region);
-			return FALSE;
+			return false;
 		}
 		if (mask->alphaMap) {
 			if (!clip_to_src(region, mask->alphaMap,
 					 dst_x - (mask_x - mask->alphaOrigin.x),
 					 dst_y - (mask_y - mask->alphaOrigin.y))) {
 				pixman_region_fini(region);
-				return FALSE;
+				return false;
 			}
 		}
 
@@ -342,14 +342,31 @@ sna_compute_composite_extents(BoxPtr extents,
 	     extents->x1, extents->y1,
 	     extents->x2, extents->y2));
 
-	if (extents->x1 >= extents->x2 ||
-	    extents->y1 >= extents->y2)
-		return FALSE;
+	if (extents->x1 >= extents->x2 || extents->y1 >= extents->y2)
+		return false;
 
 	extents->x1 += dst->pDrawable->x;
 	extents->x2 += dst->pDrawable->x;
 	extents->y1 += dst->pDrawable->y;
 	extents->y2 += dst->pDrawable->y;
+
+	if (extents->x1 < dst->pCompositeClip->extents.x1)
+		extents->x1 = dst->pCompositeClip->extents.x1;
+	if (extents->x2 > dst->pCompositeClip->extents.x2)
+		extents->x2 = dst->pCompositeClip->extents.x2;
+
+	if (extents->y1 < dst->pCompositeClip->extents.y1)
+		extents->y1 = dst->pCompositeClip->extents.y1;
+	if (extents->y2 > dst->pCompositeClip->extents.y2)
+		extents->y2 = dst->pCompositeClip->extents.y2;
+
+	DBG(("%s: initial clip against dst->pCompositeClip: (%d, %d), (%d, %d)\n",
+	     __FUNCTION__,
+	     extents->x1, extents->y1,
+	     extents->x2, extents->y2));
+
+	if (extents->x1 >= extents->x2 || extents->y1 >= extents->y2)
+		return false;
 
 	dst_x += dst->pDrawable->x;
 	dst_y += dst->pDrawable->y;
