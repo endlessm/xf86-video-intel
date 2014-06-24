@@ -3601,6 +3601,8 @@ void sna_mode_discover(struct sna *sna)
 	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETRESOURCES, &res))
 		return;
 
+	DBG(("%s: now %d (was %d) connectors\n", __FUNCTION__,
+	     res.count_connectors, sna->mode.num_real_output));
 	if (res.count_connectors > 32)
 		return;
 
@@ -3614,6 +3616,7 @@ void sna_mode_discover(struct sna *sna)
 		serial = ++sna->mode.serial;
 
 	for (i = 0; i < res.count_connectors; i++) {
+		DBG(("%s: connector[%d] = %d\n", __FUNCTION__, i, connectors[i]));
 		for (j = 0; j < sna->mode.num_real_output; j++) {
 			xf86OutputPtr output = config->output[j];
 			if (to_sna_output(output)->id == connectors[i]) {
