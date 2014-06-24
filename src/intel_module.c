@@ -224,6 +224,12 @@ static const SymTabRec intel_chipsets[] = {
 	{0x0155, "HD Graphics"},
 	{0x0157, "HD Graphics"},
 
+	/* When adding new identifiers, also update:
+	 * 1. intel_identify()
+	 * 2. man/intel.man
+	 * 3. README
+	 */
+
 	{-1, NULL} /* Sentinel */
 };
 
