@@ -163,6 +163,30 @@ static int __intel_check_device(int fd)
 	return ret;
 }
 
+static int open_cloexec(const char *path)
+{
+	struct stat st;
+	int loop = 1000;
+	int fd;
+
+	/* No file? Assume the driver is loading slowly */
+	while (stat(path, &st) == -1 && errno == ENOENT && --loop)
+		usleep(50000);
+
+	if (loop != 1000)
+		ErrorF("intel: waited %d ms for '%s' to appear\n",
+		       (1000 - loop) * 50, path);
+
+	fd = -1;
+#ifdef O_CLOEXEC
+	fd = open(path, O_RDWR | O_NONBLOCK | O_CLOEXEC);
+#endif
+	if (fd == -1)
+		fd = fd_set_cloexec(open(path, O_RDWR | O_NONBLOCK));
+
+	return fd;
+}
+
 #ifdef __linux__
 static int __intel_open_device__major_minor(int _major, int _minor)
 {
@@ -187,11 +211,7 @@ static int __intel_open_device__major_minor(int _major, int _minor)
 		if (stat(path, &st) == 0 &&
 		    major(st.st_rdev) == _major &&
 		    minor(st.st_rdev) == _minor) {
-#ifdef O_CLOEXEC
-			fd = open(path, O_RDWR | O_NONBLOCK | O_CLOEXEC);
-#endif
-			if (fd == -1)
-				fd = fd_set_cloexec(open(path, O_RDWR | O_NONBLOCK));
+			fd = open_cloexec(path);
 			break;
 		}
 	}
@@ -254,11 +274,7 @@ static int __intel_open_device__pci(const struct pci_device *pci)
 
 		if (strncmp(de->d_name, "card", 4) == 0) {
 			sprintf(path + base + 4, "/dev/dri/%s", de->d_name);
-#ifdef O_CLOEXEC
-			fd = open(path + base + 4, O_RDWR | O_NONBLOCK | O_CLOEXEC);
-#endif
-			if (fd == -1)
-				fd = fd_set_cloexec(open(path + base + 4, O_RDWR | O_NONBLOCK));
+			fd = open_cloexec(path + base + 4);
 			if (fd != -1)
 				break;
 
@@ -321,15 +337,8 @@ static int __intel_open_device(const struct pci_device *pci, const char *path)
 		fd = __intel_open_device__pci(pci);
 		if (fd == -1)
 			fd = __intel_open_device__legacy(pci);
-	} else {
-#ifdef O_CLOEXEC
-		fd = open(path, O_RDWR | O_NONBLOCK | O_CLOEXEC);
-#else
-		fd = -1;
-#endif
-		if (fd == -1)
-			fd = fd_set_cloexec(open(path, O_RDWR | O_NONBLOCK));
-	}
+	} else
+		fd = open_cloexec(path);
 
 	return fd;
 }
