@@ -319,5 +319,43 @@ untransformed(PicturePtr p)
 	return !p->transform || pixman_transform_is_int_translate(p->transform);
 }
 
+inline static void
+boxes_extents(const BoxRec *box, int n, BoxRec *extents)
+{
+	*extents = box[0];
+	while (--n) {
+		box++;
+
+		if (box->x1 < extents->x1)
+			extents->x1 = box->x1;
+		if (box->x2 > extents->x2)
+			extents->x2 = box->x2;
+
+		if (box->y1 < extents->y1)
+			extents->y1 = box->y1;
+		if (box->y2 > extents->y2)
+			extents->y2 = box->y2;
+	}
+}
+
+inline static bool
+overlaps(struct sna *sna,
+	 struct kgem_bo *src_bo, int16_t src_dx, int16_t src_dy,
+	 struct kgem_bo *dst_bo, int16_t dst_dx, int16_t dst_dy,
+	 const BoxRec *box, int n, unsigned flags,
+	 BoxRec *extents)
+{
+	if (src_bo != dst_bo)
+		return false;
+
+	if (flags & COPY_NO_OVERLAP)
+		return false;
+
+	boxes_extents(box, n, extents);
+	return (extents->x2 + src_dx > extents->x1 + dst_dx &&
+		extents->x1 + src_dx < extents->x2 + dst_dx &&
+		extents->y2 + src_dy > extents->y1 + dst_dy &&
+		extents->y1 + src_dy < extents->y2 + dst_dy);
+}
 
 #endif /* SNA_RENDER_INLINE_H */

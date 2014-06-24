@@ -2123,37 +2123,159 @@ sna_render_composite_redirect_done(struct sna *sna,
 	}
 }
 
-bool
-sna_render_copy_boxes__overlap(struct sna *sna, uint8_t alu,
-			       PixmapPtr src, struct kgem_bo *src_bo, int16_t src_dx, int16_t src_dy,
-			       PixmapPtr dst, struct kgem_bo *dst_bo, int16_t dst_dx, int16_t dst_dy,
-			       const BoxRec *box, int n, const BoxRec *extents)
+static bool
+copy_overlap(struct sna *sna, uint8_t alu,
+	     PixmapPtr pixmap, struct kgem_bo *bo,
+	     int16_t src_dx, int16_t src_dy,
+	     int16_t dst_dx, int16_t dst_dy,
+	     const BoxRec *box, int n, const BoxRec *extents)
 {
-	ScreenPtr screen = dst->drawable.pScreen;
-	struct kgem_bo *bo;
+	ScreenPtr screen = pixmap->drawable.pScreen;
+	struct kgem_bo *tmp_bo;
 	PixmapPtr tmp;
 	bool ret = false;
+
+	if (n == 0)
+		return true;
+
+	DBG(("%s: %d x %dx%d src=(%d, %d), dst=(%d, %d)\n",
+	     __FUNCTION__, n,
+	     extents->x2 - extents->x1,
+	     extents->y2 - extents->y1,
+	     src_dx, src_dy,
+	     dst_dx, dst_dy));
 
 	tmp = screen->CreatePixmap(screen,
 				   extents->x2 - extents->x1,
 				   extents->y2 - extents->y1,
-				   dst->drawable.depth,
+				   pixmap->drawable.depth,
 				   SNA_CREATE_SCRATCH);
 	if (tmp == NULL)
 		return false;
 
-	bo = __sna_pixmap_get_bo(tmp);
-	assert(bo);
+	tmp_bo = __sna_pixmap_get_bo(tmp);
+	assert(tmp_bo);
 
 	ret = (sna->render.copy_boxes(sna, GXcopy,
-				      src, src_bo, src_dx, src_dy,
-				      tmp, bo, -extents->x1, -extents->y1,
+				      pixmap, bo, src_dx, src_dy,
+				      tmp, tmp_bo, -extents->x1, -extents->y1,
 				      box, n , 0) &&
 	       sna->render.copy_boxes(sna, alu,
-				      tmp, bo, -extents->x1, -extents->y1,
-				      dst, dst_bo, dst_dx, dst_dy,
+				      tmp, tmp_bo, -extents->x1, -extents->y1,
+				      pixmap, bo, dst_dx, dst_dy,
 				      box, n , 0));
 
 	screen->DestroyPixmap(tmp);
+	return ret;
+}
+bool
+sna_render_copy_boxes__overlap(struct sna *sna, uint8_t alu,
+			       PixmapPtr pixmap, struct kgem_bo *bo,
+			       int16_t src_dx, int16_t src_dy,
+			       int16_t dst_dx, int16_t dst_dy,
+			       const BoxRec *box, int n, const BoxRec *extents)
+{
+	bool ret = false;
+	RegionRec overlap, non_overlap;
+	pixman_region16_t region;
+	pixman_box16_t stack_boxes[64], *boxes = stack_boxes;
+	int num_boxes, i;
+
+	DBG(("%s: pixmap=%ld, handle=%d, %d x [(%d, %d), (%d, %d)], dst=(%d, %d), src=(%d, %d)\n",
+	     __FUNCTION__, pixmap->drawable.serialNumber, bo->handle,
+	     n, extents->x1, extents->y1, extents->x2, extents->y2,
+	     src_dx, src_dy, dst_dx, dst_dy));
+
+	if ((dst_dx - src_dx < 4 && src_dx - dst_dx < 4) &&
+	    (dst_dy - src_dy < 4 && src_dy - dst_dy < 4))
+		return copy_overlap(sna, alu, pixmap, bo,
+				    src_dx, src_dy,
+				    dst_dx, dst_dy,
+				    box, n, extents);
+
+	if (n > ARRAY_SIZE(stack_boxes)) {
+		boxes = malloc(sizeof(pixman_box16_t) * n);
+		if (boxes == NULL)
+			return copy_overlap(sna, alu, pixmap, bo,
+					    src_dx, src_dy,
+					    dst_dx, dst_dy,
+					    box, n, extents);
+	}
+
+	region.extents.x1 = extents->x1 + dst_dx;
+	region.extents.x2 = extents->x2 + dst_dx;
+	region.extents.y1 = extents->y1 + dst_dy;
+	region.extents.y2 = extents->x2 + dst_dy;
+
+	for (i = num_boxes = 0; i < n; i++) {
+		boxes[num_boxes].x1 = box[i].x1 + dst_dx;
+		if (boxes[num_boxes].x1 < region.extents.x1)
+			boxes[num_boxes].x1 = region.extents.x1;
+
+		boxes[num_boxes].y1 = box[i].y1 + dst_dy;
+		if (boxes[num_boxes].y1 < region.extents.y1)
+			boxes[num_boxes].y1 = region.extents.y1;
+
+		boxes[num_boxes].x2 = box[i].x2 + dst_dy;
+		if (boxes[num_boxes].x2 > region.extents.x2)
+			boxes[num_boxes].x2 = region.extents.x2;
+
+		boxes[num_boxes].y2 = box[i].y2 + dst_dy;
+		if (boxes[num_boxes].y2 > region.extents.y2)
+			boxes[num_boxes].y2 = region.extents.y2;
+
+		if (boxes[num_boxes].x2 > boxes[num_boxes].x1 &&
+		    boxes[num_boxes].y2 > boxes[num_boxes].y1)
+			num_boxes++;
+	}
+
+	if (num_boxes == 0) {
+		ret = true;
+		goto cleanup_boxes;
+	}
+
+	if (!pixman_region_init_rects(&region, boxes, num_boxes))
+		goto cleanup_boxes;
+
+	overlap.extents.x1 = extents->x1 + src_dx;
+	overlap.extents.x2 = extents->x2 + src_dx;
+	overlap.extents.y1 = extents->y1 + src_dy;
+	overlap.extents.y2 = extents->x2 + src_dy;
+	overlap.data = NULL;
+
+	RegionIntersect(&overlap, &overlap, &region);
+	DBG(("%s: overlapping extents: (%d, %d), (%d, %d) x %d\n",
+	     __FUNCTION__,
+	     overlap.extents.x1, overlap.extents.y1,
+	     overlap.extents.x2, overlap.extents.y2,
+	     region_num_rects(&overlap)));
+
+	RegionNull(&non_overlap);
+	RegionSubtract(&non_overlap, &region, &overlap);
+	DBG(("%s: non-overlapping extents: (%d, %d), (%d, %d) x %d\n",
+	     __FUNCTION__,
+	     non_overlap.extents.x1, non_overlap.extents.y1,
+	     non_overlap.extents.x2, non_overlap.extents.y2,
+	     region_num_rects(&non_overlap)));
+
+	n = region_num_rects(&non_overlap);
+	box = region_rects(&non_overlap);
+	if (n && !sna->render.copy_boxes(sna, alu,
+					 pixmap, bo, -dst_dx + src_dx, -dst_dy + src_dy,
+					 pixmap, bo, 0, 0,
+					 box, n , COPY_NO_OVERLAP))
+		goto cleanup_boxes;
+
+	n = region_num_rects(&overlap);
+	box = region_rects(&overlap);
+	ret = copy_overlap(sna, alu, pixmap, bo,
+			   -dst_dx + src_dx, -dst_dy + src_dy,
+			   0, 0,
+			   box, n, &overlap.extents);
+
+cleanup_boxes:
+	if (boxes != stack_boxes)
+		free(boxes);
+
 	return ret;
 }

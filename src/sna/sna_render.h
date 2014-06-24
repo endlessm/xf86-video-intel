@@ -285,6 +285,7 @@ struct sna_render {
 			   const BoxRec *box, int n, unsigned flags);
 #define COPY_LAST 0x1
 #define COPY_SYNC 0x2
+#define COPY_NO_OVERLAP 0x4
 
 	bool (*copy)(struct sna *sna, uint8_t alu,
 		     PixmapPtr src, struct kgem_bo *src_bo,
@@ -814,8 +815,9 @@ sna_render_composite_redirect_done(struct sna *sna,
 
 bool
 sna_render_copy_boxes__overlap(struct sna *sna, uint8_t alu,
-			       PixmapPtr src, struct kgem_bo *src_bo, int16_t src_dx, int16_t src_dy,
-			       PixmapPtr dst, struct kgem_bo *dst_bo, int16_t dst_dx, int16_t dst_dy,
+			       PixmapPtr pixmap, struct kgem_bo *bo,
+			       int16_t src_dx, int16_t src_dy,
+			       int16_t dst_dx, int16_t dst_dy,
 			       const BoxRec *box, int n, const BoxRec *extents);
 
 bool

@@ -2655,40 +2655,6 @@ static inline bool prefer_blt_copy(struct sna *sna,
 	return prefer_blt_bo(sna, src_bo) || prefer_blt_bo(sna, dst_bo);
 }
 
-inline static void boxes_extents(const BoxRec *box, int n, BoxRec *extents)
-{
-	*extents = box[0];
-	while (--n) {
-		box++;
-
-		if (box->x1 < extents->x1)
-			extents->x1 = box->x1;
-		if (box->x2 > extents->x2)
-			extents->x2 = box->x2;
-
-		if (box->y1 < extents->y1)
-			extents->y1 = box->y1;
-		if (box->y2 > extents->y2)
-			extents->y2 = box->y2;
-	}
-}
-
-static inline bool
-overlaps(struct sna *sna,
-	 struct kgem_bo *src_bo, int16_t src_dx, int16_t src_dy,
-	 struct kgem_bo *dst_bo, int16_t dst_dx, int16_t dst_dy,
-	 const BoxRec *box, int n, BoxRec *extents)
-{
-	if (src_bo != dst_bo)
-		return false;
-
-	boxes_extents(box, n, extents);
-	return (extents->x2 + src_dx > extents->x1 + dst_dx &&
-		extents->x1 + src_dx < extents->x2 + dst_dx &&
-		extents->y2 + src_dy > extents->y1 + dst_dy &&
-		extents->y1 + src_dy < extents->y2 + dst_dy);
-}
-
 static bool
 gen6_render_copy_boxes(struct sna *sna, uint8_t alu,
 		       PixmapPtr src, struct kgem_bo *src_bo, int16_t src_dx, int16_t src_dy,
@@ -2704,7 +2670,7 @@ gen6_render_copy_boxes(struct sna *sna, uint8_t alu,
 	     overlaps(sna,
 		      src_bo, src_dx, src_dy,
 		      dst_bo, dst_dx, dst_dy,
-		      box, n, &extents)));
+		      box, n, flags, &extents)));
 
 	if (prefer_blt_copy(sna, src_bo, dst_bo, flags) &&
 	    sna_blt_compare_depth(&src->drawable, &dst->drawable) &&
@@ -2729,7 +2695,8 @@ fallback_blt:
 	if (overlaps(sna,
 		     src_bo, src_dx, src_dy,
 		     dst_bo, dst_dx, dst_dy,
-		     box, n, &extents)) {
+		     box, n, flags,
+		     &extents)) {
 		bool big = too_large(extents.x2-extents.x1, extents.y2-extents.y1);
 
 		if ((big || can_switch_to_blt(sna, dst_bo, flags)) &&
@@ -2743,9 +2710,14 @@ fallback_blt:
 		if (big)
 			goto fallback_blt;
 
+		assert(src_bo == dst_bo);
+		assert(src->drawable.depth == dst->drawable.depth);
+		assert(src->drawable.width == dst->drawable.width);
+		assert(src->drawable.height == dst->drawable.height);
 		return sna_render_copy_boxes__overlap(sna, alu,
-						      src, src_bo, src_dx, src_dy,
-						      dst, dst_bo, dst_dx, dst_dy,
+						      src, src_bo,
+						      src_dx, src_dy,
+						      dst_dx, dst_dy,
 						      box, n, &extents);
 	}
 
