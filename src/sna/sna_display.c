@@ -1280,6 +1280,16 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 		if (bo == NULL)
 			return NULL;
 
+		/* With overscan compensation enabled, we might end up with
+		   stale data being displayed in the borders we add. We avoid
+		   this by starting with an entirely black pixmap. */
+		if (sna->underscan)
+			(void)sna->render.fill_one(sna, sna->front, bo,
+						   0, 0, 0,
+						   crtc->mode.HDisplay + 2*xu,
+						   crtc->mode.VDisplay + 2*yu,
+						   GXcopy);
+
 		if (!get_fb(sna, bo, crtc->mode.HDisplay + 2*xu, crtc->mode.VDisplay + 2*yu)) {
 			kgem_bo_destroy(&sna->kgem, bo);
 			return NULL;
@@ -1472,7 +1482,6 @@ sna_crtc_set_mode_major(xf86CrtcPtr crtc, DisplayModePtr mode,
 	struct drm_mode_modeinfo saved_kmode;
 	bool saved_transform;
 	char outputs[256];
-	BoxRec box;
 
 	if (mode->HDisplay == 0 || mode->VDisplay == 0)
 		return FALSE;
@@ -1529,14 +1538,6 @@ retry: /* Attach per-crtc pixmap or direct */
 		kgem_bo_destroy(&sna->kgem, saved_bo);
 
 	sna_crtc_randr(crtc);
-
-	box.x1 = 0;
-	box.y1 = 0;
-	box.x2 = mode->HDisplay + 2*(mode->HSkew >> 8);
-	box.y2 = mode->VDisplay + 2*(mode->HSkew & 0xFF);
-	sna_blt_fill_boxes(sna, GXcopy,
-			   sna_crtc->bo, sna->front->drawable.bitsPerPixel,
-			   0, &box, 1);
 
 	if (sna_crtc->shadow)
 		sna_crtc_damage(crtc);
