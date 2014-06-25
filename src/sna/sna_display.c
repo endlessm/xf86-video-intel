@@ -3385,19 +3385,6 @@ sna_output_add(struct sna *sna, unsigned id, unsigned serial)
 			goto skip;
 		}
 
-		if (serial) {
-			for (i = 0; i < sna->mode.num_real_output; i++) {
-				output = config->output[i];
-				if (strcmp(output->name, name) == 0) {
-					assert(output->scrn == scrn);
-					assert(output->funcs == &sna_output_funcs);
-					assert(to_sna_output(output)->id == 0);
-					sna_output_destroy(output);
-					goto reset;
-				}
-			}
-		}
-
 		str = xf86GetOptValString(sna->Options, OPTION_ZAPHOD);
 		if (str && !sna_zaphod_match(str, name)) {
 			DBG(("%s: zaphod mismatch, want %s, have %s\n", __FUNCTION__, str, name));
@@ -3406,6 +3393,20 @@ sna_output_add(struct sna *sna, unsigned id, unsigned serial)
 		}
 
 		len = path;
+	}
+
+	/* Check if we are dynamically reattaching an old connector */
+	if (serial) {
+		for (i = 0; i < sna->mode.num_real_output; i++) {
+			output = config->output[i];
+			if (strcmp(output->name, name) == 0) {
+				assert(output->scrn == scrn);
+				assert(output->funcs == &sna_output_funcs);
+				assert(to_sna_output(output)->id == 0);
+				sna_output_destroy(output);
+				goto reset;
+			}
+		}
 	}
 
 	output = calloc(1, sizeof(*output) + len + 1);
