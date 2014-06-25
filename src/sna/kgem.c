@@ -5174,9 +5174,10 @@ static void __kgem_flush(struct kgem *kgem, struct kgem_bo *bo)
 
 void kgem_scanout_flush(struct kgem *kgem, struct kgem_bo *bo)
 {
-	kgem_bo_submit(kgem, bo);
 	if (!bo->needs_flush)
 		return;
+
+	kgem_bo_submit(kgem, bo);
 
 	/* If the kernel fails to emit the flush, then it will be forced when
 	 * we assume direct access. And as the usual failure is EIO, we do

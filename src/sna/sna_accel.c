@@ -17047,7 +17047,7 @@ static void timer_enable(struct sna *sna, int whom, int interval)
 
 static bool sna_scanout_do_flush(struct sna *sna)
 {
-	int interval = sna->vblank_interval ?: 20;
+	int interval = sna->vblank_interval ?: 50;
 	if (sna->timer_active & (1<<(FLUSH_TIMER))) {
 		int32_t delta = sna->timer_expire[FLUSH_TIMER] - TIME;
 		DBG(("%s: flush timer active: delta=%d\n",
