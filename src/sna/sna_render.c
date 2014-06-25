@@ -771,7 +771,8 @@ static int sna_render_picture_downsample(struct sna *sna,
 	if (tmp == NULL)
 		goto fixup;
 
-	assert(__sna_pixmap_get_bo(tmp));
+	priv = sna_pixmap(tmp);
+	assert(priv && priv->gpu_bo);
 
 	if (!sna_pixmap_move_to_gpu(pixmap, MOVE_SOURCE_HINT | MOVE_READ)) {
 fixup:
