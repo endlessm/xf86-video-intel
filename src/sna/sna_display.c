@@ -1120,6 +1120,8 @@ static bool wait_for_shadow(struct sna *sna,
 	if (sna->mode.flip_active) {
 		/* raw cmd to avoid setting wedged in the middle of an op */
 		drmIoctl(sna->kgem.fd, DRM_IOCTL_I915_GEM_THROTTLE, 0);
+		sna->kgem.need_throttle = false;
+
 		while (sna->mode.flip_active && sna_mode_has_pending_events(sna))
 			sna_mode_wakeup(sna);
 	}

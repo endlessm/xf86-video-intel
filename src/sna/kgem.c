@@ -967,8 +967,10 @@ static bool __kgem_throttle(struct kgem *kgem)
 	 * too much and completely starve X. We will sleep again shortly,
 	 * and so catch up or detect the hang.
 	 */
-	if (ioctl(kgem->fd, DRM_IOCTL_I915_GEM_THROTTLE) == 0)
+	if (ioctl(kgem->fd, DRM_IOCTL_I915_GEM_THROTTLE) == 0) {
+		kgem->need_throttle = 0;
 		return false;
+	}
 
 	return errno == EIO;
 }
@@ -3398,7 +3400,6 @@ static void find_hang_state(struct kgem *kgem, char *path, int maxlen)
 
 void kgem_throttle(struct kgem *kgem)
 {
-	kgem->need_throttle = 0;
 	if (kgem->wedged)
 		return;
 
@@ -3414,6 +3415,8 @@ void kgem_throttle(struct kgem *kgem)
 			xf86DrvMsg(kgem_get_screen_index(kgem), X_ERROR,
 				   "When reporting this, please include %s and the full dmesg.\n",
 				   path);
+
+		kgem->need_throttle = false;
 	}
 }
 
