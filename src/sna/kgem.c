@@ -5195,6 +5195,16 @@ void kgem_scanout_flush(struct kgem *kgem, struct kgem_bo *bo)
 	bo->domain = DOMAIN_NONE;
 }
 
+inline static bool nearly_idle(struct kgem *kgem)
+{
+	int ring = kgem->ring == KGEM_BLT;
+
+	if (list_is_singular(&kgem->requests[ring]))
+		return true;
+
+	return __kgem_ring_is_idle(kgem, ring);
+}
+
 inline static bool needs_semaphore(struct kgem *kgem, struct kgem_bo *bo)
 {
 	if (kgem->needs_semaphore)
@@ -5212,29 +5222,28 @@ inline static bool needs_reservation(struct kgem *kgem, struct kgem_bo *bo)
 	if (kgem->needs_reservation)
 		return false;
 
-	if (bo->presumed_offset || kgem_ring_is_idle(kgem, kgem->ring))
+	if (bo->presumed_offset)
 		return false;
 
 	kgem->needs_reservation = true;
-	return true;
+	return nearly_idle(kgem);
 }
 
 inline static bool needs_batch_flush(struct kgem *kgem, struct kgem_bo *bo)
 {
-	if (kgem->nreloc == 0)
-		return false;
+	bool flush = false;
 
 	if (needs_semaphore(kgem, bo)) {
 		DBG(("%s: flushing before handle=%d for required semaphore\n", __FUNCTION__, bo->handle));
-		return true;
+		flush = true;
 	}
 
 	if (needs_reservation(kgem, bo)) {
 		DBG(("%s: flushing before handle=%d for new reservation\n", __FUNCTION__, bo->handle));
-		return true;
+		flush = true;
 	}
 
-	return false;
+	return kgem->nreloc ? flush : false;
 }
 
 static bool aperture_check(struct kgem *kgem, unsigned num_pages)
