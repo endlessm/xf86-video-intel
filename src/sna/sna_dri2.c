@@ -123,6 +123,7 @@ struct sna_dri2_event {
 	struct sna_dri2_event *chain;
 
 	struct list cache;
+	struct list link;
 
 	int mode;
 };
@@ -1218,52 +1219,12 @@ sna_dri2_remove_event(WindowPtr win, struct sna_dri2_event *info)
 	chain->chain = info->chain;
 }
 
-static struct sna_dri2_event *
-sna_dri2_add_event(DrawablePtr draw, ClientPtr client)
-{
-	struct dri2_window *priv;
-	struct sna_dri2_event *info, *chain;
-
-	assert(draw->type == DRAWABLE_WINDOW);
-	DBG(("%s: adding event to window %ld)\n",
-	     __FUNCTION__, (long)draw->id));
-
-	priv = dri2_window((WindowPtr)draw);
-	if (priv == NULL)
-		return NULL;
-
-	info = calloc(1, sizeof(struct sna_dri2_event));
-	if (info == NULL)
-		return NULL;
-
-	list_init(&info->cache);
-	info->draw = draw;
-	info->client = client;
-	info->crtc = priv->crtc;
-	info->pipe = sna_crtc_to_pipe(priv->crtc);
-
-	assert(priv->chain != info);
-
-	if (priv->chain == NULL) {
-		priv->chain = info;
-		return info;
-	}
-
-	chain = priv->chain;
-	while (chain->chain != NULL)
-		chain = chain->chain;
-
-	assert(chain != info);
-	chain->chain = info;
-	return info;
-}
-
 static void
 sna_dri2_event_free(struct sna *sna,
 		    DrawablePtr draw,
 		    struct sna_dri2_event *info)
 {
-	DBG(("%s\n", __FUNCTION__));
+	DBG(("%s(draw?=%d)\n", __FUNCTION__, draw != NULL));
 
 	if (draw && draw->type == DRAWABLE_WINDOW)
 		sna_dri2_remove_event((WindowPtr)draw, info);
@@ -1288,7 +1249,103 @@ sna_dri2_event_free(struct sna *sna,
 		kgem_bo_destroy(&sna->kgem, info->bo);
 	}
 
+	_list_del(&info->link);
 	free(info);
+}
+
+static void
+sna_dri2_client_gone(CallbackListPtr *list, void *closure, void *data)
+{
+	NewClientInfoRec *clientinfo = data;
+	ClientPtr client = clientinfo->client;
+	struct sna_client *priv = sna_client(client);
+	struct sna *sna = closure;
+
+	if (priv->events.next == NULL)
+		return;
+
+	if (client->clientState != ClientStateGone)
+		return;
+
+	DBG(("%s()\n", __FUNCTION__));
+
+	while (!list_is_empty(&priv->events)) {
+		struct sna_dri2_event *event;
+
+		event = list_first_entry(&priv->events, struct sna_dri2_event, link);
+		assert(event->client == client);
+
+		if (event->queued) {
+			event->client = NULL;
+			event->draw = NULL;
+			list_del(&event->link);
+		} else
+			sna_dri2_event_free(sna, event->draw, event);
+	}
+
+	if (--sna->dri2.client_count == 0)
+		DeleteCallback(&ClientStateCallback, sna_dri2_client_gone, sna);
+}
+
+static bool add_event_to_client(struct sna_dri2_event *info, struct sna *sna, ClientPtr client)
+{
+	struct sna_client *priv = sna_client(client);
+
+	if (priv->events.next == NULL) {
+		if (sna->dri2.client_count++ == 0 &&
+		    !AddCallback(&ClientStateCallback, sna_dri2_client_gone, sna))
+			return false;
+
+		list_init(&priv->events);
+	}
+
+	list_add(&info->link, &priv->events);
+	info->client = client;
+	return true;
+}
+
+static struct sna_dri2_event *
+sna_dri2_add_event(struct sna *sna, DrawablePtr draw, ClientPtr client)
+{
+	struct dri2_window *priv;
+	struct sna_dri2_event *info, *chain;
+
+	assert(draw->type == DRAWABLE_WINDOW);
+	DBG(("%s: adding event to window %ld)\n",
+	     __FUNCTION__, (long)draw->id));
+
+	priv = dri2_window((WindowPtr)draw);
+	if (priv == NULL)
+		return NULL;
+
+	info = calloc(1, sizeof(struct sna_dri2_event));
+	if (info == NULL)
+		return NULL;
+
+	list_init(&info->cache);
+	info->draw = draw;
+	info->crtc = priv->crtc;
+	info->pipe = sna_crtc_to_pipe(priv->crtc);
+
+	if (!add_event_to_client(info, sna, client)) {
+		free(info);
+		return NULL;
+	}
+
+	assert(priv->chain != info);
+
+	if (priv->chain == NULL) {
+		priv->chain = info;
+		return info;
+	}
+
+	chain = priv->chain;
+	while (chain->chain != NULL)
+		chain = chain->chain;
+
+	assert(chain != info);
+	chain->chain = info;
+	return info;
 }
 
 void sna_dri2_destroy_window(WindowPtr win)
@@ -2022,6 +2079,7 @@ void sna_dri2_vblank_handler(struct sna *sna, struct drm_event_vblank *event)
 		break;
 
 	case WAITMSC:
+		assert(info->client);
 		DRI2WaitMSCComplete(info->client, draw, msc,
 				    event->tv_sec, event->tv_usec);
 		break;
@@ -2377,7 +2435,7 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 			}
 		}
 
-		info = sna_dri2_add_event(draw, client);
+		info = sna_dri2_add_event(sna, draw, client);
 		if (info == NULL)
 			return false;
 
@@ -2423,7 +2481,7 @@ out:
 		return true;
 	}
 
-	info = sna_dri2_add_event(draw, client);
+	info = sna_dri2_add_event(sna, draw, client);
 	if (info == NULL)
 		return false;
 
@@ -2507,7 +2565,7 @@ sna_dri2_schedule_xchg(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 	if (sync) {
 		struct sna_dri2_event *info;
 
-		info = sna_dri2_add_event(draw, client);
+		info = sna_dri2_add_event(sna, draw, client);
 		if (!info)
 			goto complete;
 
@@ -2568,7 +2626,7 @@ sna_dri2_schedule_xchg_crtc(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc
 	if (sync) {
 		struct sna_dri2_event *info;
 
-		info = sna_dri2_add_event(draw, client);
+		info = sna_dri2_add_event(sna, draw, client);
 		if (!info)
 			goto complete;
 
@@ -2725,7 +2783,7 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 
 	VG_CLEAR(vbl);
 
-	info = sna_dri2_add_event(draw, client);
+	info = sna_dri2_add_event(sna, draw, client);
 	if (!info)
 		goto blit;
 
@@ -2893,7 +2951,7 @@ sna_dri2_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc
 	if (divisor == 0 && current_msc >= target_msc)
 		goto out_complete;
 
-	info = sna_dri2_add_event(draw, client);
+	info = sna_dri2_add_event(sna, draw, client);
 	if (!info)
 		goto out_complete;
 

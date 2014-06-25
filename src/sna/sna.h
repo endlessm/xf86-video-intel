@@ -114,6 +114,7 @@ struct sna_cursor;
 struct sna_crtc;
 
 struct sna_client {
+	struct list events;
 	int is_compositor; /* only 4 bits used */
 };
 
@@ -334,6 +335,7 @@ struct sna {
 
 #if HAVE_DRI2
 		void *flip_pending;
+		unsigned client_count;
 #endif
 	} dri2;
 
