@@ -230,6 +230,9 @@ dri2_chain(DrawablePtr d)
 	assert(priv != NULL);
 	return priv->chain;
 }
+inline static DRI2BufferPtr dri2_window_get_front(WindowPtr win) { return dri2_window(win)->front; }
+#else
+inline static void *dri2_window_get_front(WindowPtr win) { return NULL; }
 #endif
 
 #if DRI2INFOREC_VERSION < 6
@@ -420,7 +423,7 @@ sna_dri2_create_buffer(DrawablePtr draw,
 		pixmap = get_drawable_pixmap(draw);
 		buffer = NULL;
 		if (draw->type != DRAWABLE_PIXMAP)
-			buffer = dri2_window((WindowPtr)draw)->front;
+			buffer = dri2_window_get_front((WindowPtr)draw);
 		if (buffer == NULL)
 			buffer = sna_pixmap_get_buffer(pixmap);
 		if (buffer) {
@@ -466,7 +469,7 @@ sna_dri2_create_buffer(DrawablePtr draw,
 
 	case DRI2BufferBackLeft:
 		if (draw->type != DRAWABLE_PIXMAP) {
-			if (dri2_window((WindowPtr)draw)->front)
+			if (dri2_window_get_front((WindowPtr)draw))
 				flags |= CREATE_SCANOUT;
 			if (draw->width  == sna->front->drawable.width &&
 			    draw->height == sna->front->drawable.height &&
