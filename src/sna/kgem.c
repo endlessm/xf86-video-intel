@@ -363,15 +363,29 @@ static uint32_t gem_userptr(int fd, void *ptr, int size, int read_only)
 	return arg.handle;
 }
 
+static bool __kgem_throttle(struct kgem *kgem, bool harder)
+{
+	/* Let this be woken up by sigtimer so that we don't block here
+	 * too much and completely starve X. We will sleep again shortly,
+	 * and so catch up or detect the hang.
+	 */
+	do {
+		if (ioctl(kgem->fd, DRM_IOCTL_I915_GEM_THROTTLE) == 0) {
+			kgem->need_throttle = 0;
+			return false;
+		}
+
+		if (errno == EIO)
+			return true;
+	} while (harder);
+
+	return false;
+}
+
 static bool __kgem_throttle_retire(struct kgem *kgem, unsigned flags)
 {
-	if (flags & CREATE_NO_RETIRE) {
-		DBG(("%s: not retiring per-request\n", __FUNCTION__));
-		return false;
-	}
-
-	if (!kgem->need_retire) {
-		DBG(("%s: nothing to retire\n", __FUNCTION__));
+	if (flags & CREATE_NO_RETIRE || !kgem->need_retire) {
+		DBG(("%s: not retiring\n", __FUNCTION__));
 		return false;
 	}
 
@@ -383,7 +397,7 @@ static bool __kgem_throttle_retire(struct kgem *kgem, unsigned flags)
 		return false;
 	}
 
-	kgem_throttle(kgem);
+	__kgem_throttle(kgem, false);
 	return kgem_retire(kgem);
 }
 
@@ -961,20 +975,6 @@ static bool test_has_semaphores_enabled(struct kgem *kgem)
 	return detected;
 }
 
-static bool __kgem_throttle(struct kgem *kgem)
-{
-	/* Let this be woken up by sigtimer so that we don't block here
-	 * too much and completely starve X. We will sleep again shortly,
-	 * and so catch up or detect the hang.
-	 */
-	if (ioctl(kgem->fd, DRM_IOCTL_I915_GEM_THROTTLE) == 0) {
-		kgem->need_throttle = 0;
-		return false;
-	}
-
-	return errno == EIO;
-}
-
 static bool is_hw_supported(struct kgem *kgem,
 			    struct pci_device *dev)
 {
@@ -1352,7 +1352,7 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 		xf86DrvMsg(kgem_get_screen_index(kgem), X_WARNING,
 			   "Detected unsupported/dysfunctional hardware, disabling acceleration.\n");
 		kgem->wedged = 1;
-	} else if (__kgem_throttle(kgem)) {
+	} else if (__kgem_throttle(kgem, false)) {
 		xf86DrvMsg(kgem_get_screen_index(kgem), X_WARNING,
 			   "Detected a hung GPU, disabling acceleration.\n");
 		kgem->wedged = 1;
@@ -3403,7 +3403,7 @@ void kgem_throttle(struct kgem *kgem)
 	if (kgem->wedged)
 		return;
 
-	kgem->wedged = __kgem_throttle(kgem);
+	kgem->wedged = __kgem_throttle(kgem, true);
 	if (kgem->wedged) {
 		char path[128];
 
@@ -4981,16 +4981,60 @@ search_inactive:
 		return bo;
 	}
 
-	if (flags & CREATE_INACTIVE &&
-	    !list_is_empty(&kgem->active[bucket][tiling]) &&
-	    __kgem_throttle_retire(kgem, flags)) {
-		flags &= ~CREATE_INACTIVE;
-		goto search_inactive;
+	if ((flags & CREATE_NO_RETIRE) == 0) {
+		list_for_each_entry_reverse(bo, &kgem->active[bucket][tiling], list) {
+			if (bo->exec)
+				break;
+
+			if (size > num_pages(bo))
+				continue;
+
+			if (__kgem_busy(kgem, bo->handle)) {
+				if (flags & CREATE_NO_THROTTLE)
+					goto no_retire;
+
+				do {
+					if (!kgem->need_throttle) {
+						DBG(("%s: not throttling for active handle=%d\n", __FUNCTION__, bo->handle));
+						goto no_retire;
+					}
+
+					__kgem_throttle(kgem, false);
+				} while (__kgem_busy(kgem, bo->handle));
+			}
+
+			DBG(("%s: flushed active handle=%d\n", __FUNCTION__, bo->handle));
+
+			kgem_bo_remove_from_active(kgem, bo);
+			__kgem_bo_clear_busy(bo);
+
+			if (tiling != I915_TILING_NONE && bo->pitch != pitch) {
+				if (!gem_set_tiling(kgem->fd, bo->handle, tiling, pitch)) {
+					kgem_bo_free(kgem, bo);
+					goto no_retire;
+				}
+			}
+
+			bo->pitch = pitch;
+			bo->unique_id = kgem_get_unique_id(kgem);
+			bo->delta = 0;
+			DBG(("  2:from active: pitch=%d, tiling=%d, handle=%d, id=%d\n",
+			     bo->pitch, bo->tiling, bo->handle, bo->unique_id));
+			assert(bo->pitch*kgem_aligned_height(kgem, height, bo->tiling) <= kgem_bo_size(bo));
+			assert_tiling(kgem, bo);
+			bo->refcnt = 1;
+
+			if (flags & CREATE_SCANOUT)
+				__kgem_bo_make_scanout(kgem, bo, width, height);
+
+			return bo;
+		}
+no_retire:
+		flags |= CREATE_NO_RETIRE;
 	}
 
 	if (--retry) {
 		bucket++;
-		flags &= ~CREATE_INACTIVE;
 		goto search_inactive;
 	}
 
