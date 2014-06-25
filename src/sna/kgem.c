@@ -1063,7 +1063,7 @@ static bool test_has_userptr(struct kgem *kgem)
 	if (kgem->gen == 040)
 		return false;
 
-	if (kgem->gem >= 0100)
+	if (kgem->gen >= 0100)
 		return false; /* FIXME https://bugs.freedesktop.org/show_bug.cgi?id=79053 */
 
 	if (posix_memalign(&ptr, PAGE_SIZE, PAGE_SIZE))
