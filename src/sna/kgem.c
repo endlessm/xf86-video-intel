@@ -3102,29 +3102,33 @@ out_16384:
 		}
 	}
 
-	if (kgem->gen == 020 && !kgem->has_pinned_batches) {
-		assert(size <= 16384);
+	if (kgem->gen == 020) {
+		bo = kgem_create_linear(kgem, size, CREATE_CACHED | CREATE_TEMPORARY);
+		if (bo)
+			return bo;
 
-		bo = list_first_entry(&kgem->pinned_batches[size > 4096],
-				      struct kgem_bo,
-				      list);
-		list_move_tail(&bo->list, &kgem->pinned_batches[size > 4096]);
+		if (size < 16384) {
+			bo = list_first_entry(&kgem->pinned_batches[size > 4096],
+					      struct kgem_bo,
+					      list);
+			list_move_tail(&bo->list, &kgem->pinned_batches[size > 4096]);
 
-		DBG(("%s: syncing due to busy batches\n", __FUNCTION__));
+			DBG(("%s: syncing due to busy batches\n", __FUNCTION__));
 
-		VG_CLEAR(set_domain);
-		set_domain.handle = bo->handle;
-		set_domain.read_domains = I915_GEM_DOMAIN_GTT;
-		set_domain.write_domain = I915_GEM_DOMAIN_GTT;
-		if (do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain)) {
-			DBG(("%s: sync: GPU hang detected\n", __FUNCTION__));
-			kgem_throttle(kgem);
-			return NULL;
+			VG_CLEAR(set_domain);
+			set_domain.handle = bo->handle;
+			set_domain.read_domains = I915_GEM_DOMAIN_GTT;
+			set_domain.write_domain = I915_GEM_DOMAIN_GTT;
+			if (do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain)) {
+				DBG(("%s: sync: GPU hang detected\n", __FUNCTION__));
+				kgem_throttle(kgem);
+				return NULL;
+			}
+
+			kgem_retire(kgem);
+			assert(bo->rq == NULL);
+			return kgem_bo_reference(bo);
 		}
-
-		kgem_retire(kgem);
-		assert(bo->rq == NULL);
-		return kgem_bo_reference(bo);
 	}
 
 	return kgem_create_linear(kgem, size, CREATE_NO_THROTTLE);
