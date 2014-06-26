@@ -752,8 +752,7 @@ sna_wakeup_handler(WAKEUPHANDLER_ARGS_DECL)
 static void
 sna_handle_uevents(int fd, void *closure)
 {
-	ScrnInfoPtr scrn = closure;
-	struct sna *sna = to_sna(scrn);
+	struct sna *sna = closure;
 	struct udev_device *dev;
 	const char *str;
 	struct stat s;
@@ -773,9 +772,11 @@ sna_handle_uevents(int fd, void *closure)
 
 	str = udev_device_get_property_value(dev, "HOTPLUG");
 	if (str && atoi(str) == 1) {
-		DBG(("%s: hotplug event (vtSema?=%d)\n",
-		     __FUNCTION__, sna->scrn->vtSema));
-		if (sna->scrn->vtSema) {
+		ScrnInfoPtr scrn = sna->scrn;
+
+		DBG(("%s: hotplug event (vtSema?=%d)\n", __FUNCTION__, scrn->vtSema));
+
+		if (scrn->vtSema) {
 			sna_mode_discover(sna);
 			sna_mode_check(sna);
 			RRGetInfo(xf86ScrnToScreen(scrn), TRUE);
@@ -787,12 +788,10 @@ sna_handle_uevents(int fd, void *closure)
 }
 
 static void
-sna_uevent_init(ScrnInfoPtr scrn)
+sna_uevent_init(struct sna *sna)
 {
-	struct sna *sna = to_sna(scrn);
 	struct udev *u;
 	struct udev_monitor *mon;
-	Bool hotplug;
 	MessageType from = X_CONFIG;
 
 	if (sna->flags & SNA_IS_HOSTED)
@@ -804,51 +803,47 @@ sna_uevent_init(ScrnInfoPtr scrn)
 	 * RR hotplug events is then verboten.
 	 */
 	if (!dixPrivateKeyRegistered(rrPrivKey))
-		return;
+		goto out;
 
-	if (!xf86GetOptValBool(sna->Options, OPTION_HOTPLUG, &hotplug))
-		from = X_DEFAULT, hotplug = TRUE;
-	xf86DrvMsg(scrn->scrnIndex, from, "hotplug detection: \"%s\"\n",
-			hotplug ? "enabled" : "disabled");
-	if (!hotplug)
-		return;
-
-	u = udev_new();
+	u = NULL;
+	if (xf86ReturnOptValBool(sna->Options, OPTION_HOTPLUG, TRUE))
+		u = udev_new();
 	if (!u)
-		return;
+		goto out;
+
+	from = X_DEFAULT;
 
 	mon = udev_monitor_new_from_netlink(u, "udev");
-	if (!mon) {
-		udev_unref(u);
-		return;
-	}
+	if (!mon)
+		goto err_dev;
 
-	if (udev_monitor_filter_add_match_subsystem_devtype(mon,
-				"drm", "drm_minor") < 0 ||
-	    udev_monitor_enable_receiving(mon) < 0)
-	{
-		udev_monitor_unref(mon);
-		udev_unref(u);
-		return;
-	}
+	if (udev_monitor_filter_add_match_subsystem_devtype(mon, "drm", "drm_minor") < 0)
+		goto err_monitor;
+
+	if (udev_monitor_enable_receiving(mon) < 0)
+		goto err_monitor;
 
 	sna->uevent_handler = xf86AddGeneralHandler(udev_monitor_get_fd(mon),
-						    sna_handle_uevents, scrn);
-	if (!sna->uevent_handler) {
-		udev_monitor_unref(mon);
-		udev_unref(u);
-		return;
-	}
+						    sna_handle_uevents, sna);
+	if (!sna->uevent_handler)
+		goto err_monitor;
 
 	sna->uevent_monitor = mon;
+out:
+	xf86DrvMsg(sna->scrn->scrnIndex, from, "display hotplug detection %s\n",
+		   sna->uevent_monitor ? "enabled" : "disabled");
+	return;
 
-	DBG(("%s: installed uvent handler\n", __FUNCTION__));
+err_monitor:
+	udev_monitor_unref(mon);
+err_dev:
+	udev_unref(u);
+	goto out;
 }
 
 static void
-sna_uevent_fini(ScrnInfoPtr scrn)
+sna_uevent_fini(struct sna *sna)
 {
-	struct sna *sna = to_sna(scrn);
 	struct udev *u;
 
 	if (sna->uevent_handler == NULL)
@@ -866,8 +861,8 @@ sna_uevent_fini(ScrnInfoPtr scrn)
 	DBG(("%s: removed uvent handler\n", __FUNCTION__));
 }
 #else
-static void sna_uevent_init(ScrnInfoPtr scrn) { }
-static void sna_uevent_fini(ScrnInfoPtr scrn) { }
+static void sna_uevent_init(struct sna *sna) { }
+static void sna_uevent_fini(struct sna *sna) { }
 #endif /* HAVE_UDEV */
 
 static void sna_leave_vt(VT_FUNC_ARGS_DECL)
@@ -892,7 +887,7 @@ static Bool sna_early_close_screen(CLOSE_SCREEN_ARGS_DECL)
 
 	/* XXX Note that we will leak kernel resources if !vtSema */
 
-	sna_uevent_fini(scrn);
+	sna_uevent_fini(sna);
 	sna_mode_close(sna);
 
 	if (sna->present.open) {
@@ -1142,7 +1137,7 @@ sna_screen_init(SCREEN_INIT_ARGS_DECL)
 
 	sna->suspended = FALSE;
 
-	sna_uevent_init(scrn);
+	sna_uevent_init(sna);
 
 	return TRUE;
 }
