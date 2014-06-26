@@ -4840,7 +4840,7 @@ search_active:
 	}
 
 	if (kgem->gen >= 040) {
-		for (i = I915_TILING_NONE; i <= I915_TILING_Y; i++) {
+		for (i = I915_TILING_Y; i >= I915_TILING_NONE; i--) {
 			cache = &kgem->active[bucket][i];
 			list_for_each_entry(bo, cache, list) {
 				assert(!bo->purged);
@@ -4853,10 +4853,13 @@ search_active:
 				if (num_pages(bo) < size)
 					continue;
 
-				if (!gem_set_tiling(kgem->fd,
-						    bo->handle,
-						    tiling, pitch))
-					continue;
+				if (bo->tiling != tiling ||
+				    (tiling != I915_TILING_NONE && bo->pitch != pitch)) {
+					if (!gem_set_tiling(kgem->fd,
+							    bo->handle,
+							    tiling, pitch))
+						continue;
+				}
 
 				kgem_bo_remove_from_active(kgem, bo);
 
@@ -4872,11 +4875,8 @@ search_active:
 				return bo;
 			}
 		}
-	}
-
-	if (!exact) { /* allow an active near-miss? */
-		i = tiling;
-		while (--i >= 0) {
+	} else if (!exact) { /* allow an active near-miss? */
+		for (i = tiling; i >= I915_TILING_NONE; i--) {
 			tiled_height = kgem_surface_size(kgem, kgem->has_relaxed_fencing, flags,
 							 width, height, bpp, tiling, &pitch);
 			cache = active(kgem, tiled_height / PAGE_SIZE, i);
@@ -7091,6 +7091,8 @@ kgem_replace_bo(struct kgem *kgem,
 	dst->pitch = pitch;
 	dst->unique_id = kgem_get_unique_id(kgem);
 	dst->refcnt = 1;
+	assert(dst->tiling == I915_TILING_NONE);
+	assert(kgem_bo_can_blt(kgem, dst));
 
 	kgem_set_mode(kgem, KGEM_BLT, dst);
 	if (!kgem_check_batch(kgem, 10) ||
