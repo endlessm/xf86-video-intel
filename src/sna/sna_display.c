@@ -2658,10 +2658,16 @@ sna_output_destroy(xf86OutputPtr output)
 
 	free(sna_output->edid_raw);
 	for (i = 0; i < sna_output->num_props; i++) {
-		if (output->randr_output)
-			RRDeleteOutputProperty(output->randr_output, sna_output->props[i].atoms[0]);
+		if (sna_output->props[i].kprop == NULL)
+			continue;
+
+		if (sna_output->props[i].atoms) {
+			if (output->randr_output)
+				RRDeleteOutputProperty(output->randr_output, sna_output->props[i].atoms[0]);
+			free(sna_output->props[i].atoms);
+		}
+
 		drmModeFreeProperty(sna_output->props[i].kprop);
-		free(sna_output->props[i].atoms);
 	}
 	free(sna_output->props);
 	free(sna_output->prop_ids);
