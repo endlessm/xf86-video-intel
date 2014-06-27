@@ -65,13 +65,161 @@ static const struct op {
 	[PictOpSaturate] = { "Saturate" },
 };
 
+static Picture source_pixmap(struct test_display *t, struct test_target *target, int format)
+{
+	XRenderColor render_color = { 0x8000, 0x8000, 0x8000, 0x8000 };
+	Pixmap pixmap;
+	Picture picture;
+
+	pixmap = XCreatePixmap(t->dpy, t->root,
+			       target->width, target->height,
+			       PIXMAN_FORMAT_DEPTH(formats[format].pixman_format));
+
+	picture = XRenderCreatePicture(t->dpy, pixmap,
+				       XRenderFindStandardFormat(t->dpy, format),
+				       0, NULL);
+	XFreePixmap(t->dpy, pixmap);
+
+	XRenderFillRectangle(t->dpy, PictOpSrc, picture, &render_color,
+			     0, 0, target->width, target->height);
+
+	return picture;
+}
+
+static Picture source_a8r8g8b8(struct test_display *t, struct test_target *target)
+{
+	return source_pixmap(t, target, 0);
+}
+
+static Picture source_x8r8g8b8(struct test_display *t, struct test_target *target)
+{
+	return source_pixmap(t, target, 1);
+}
+
+static Picture source_a8(struct test_display *t, struct test_target *target)
+{
+	return source_pixmap(t, target, 2);
+}
+
+static Picture source_a4(struct test_display *t, struct test_target *target)
+{
+	return source_pixmap(t, target, 3);
+}
+
+static Picture source_a1(struct test_display *t, struct test_target *target)
+{
+	return source_pixmap(t, target, 3);
+}
+
+static Picture source_1x1r(struct test_display *t, struct test_target *target)
+{
+	XRenderColor render_color = { 0x8000, 0x8000, 0x8000, 0x8000 };
+	XRenderPictureAttributes pa;
+	Pixmap pixmap;
+	Picture picture;
+
+	pa.repeat = RepeatNormal;
+
+	pixmap = XCreatePixmap(t->dpy, t->root, 1, 1, 32);
+	picture = XRenderCreatePicture(t->dpy, pixmap,
+				       XRenderFindStandardFormat(t->dpy, 0),
+				       CPRepeat, &pa);
+	XFreePixmap(t->dpy, pixmap);
+
+	XRenderFillRectangle(t->dpy, PictOpSrc, picture, &render_color,
+			     0, 0, 1, 1);
+
+	return picture;
+}
+
+static Picture source_solid(struct test_display *t, struct test_target *target)
+{
+	XRenderColor render_color = { 0x8000, 0x8000, 0x8000, 0x8000 };
+	return XRenderCreateSolidFill(t->dpy, &render_color);
+}
+
+static Picture source_linear_horizontal(struct test_display *t, struct test_target *target)
+{
+	XRenderColor colors[2] = {{0}, {0xffff, 0xffff, 0xffff, 0xffff}};
+	XFixed stops[2] = {0, 0xffff};
+	XLinearGradient gradient = { {0, 0}, {target->width << 16, 0}};
+
+	return XRenderCreateLinearGradient(t->dpy, &gradient, stops, colors, 2);
+}
+
+static Picture source_linear_vertical(struct test_display *t, struct test_target *target)
+{
+	XRenderColor colors[2] = {{0}, {0xffff, 0xffff, 0xffff, 0xffff}};
+	XFixed stops[2] = {0, 0xffff};
+	XLinearGradient gradient = { {0, 0}, {0, target->height << 16}};
+
+	return XRenderCreateLinearGradient(t->dpy, &gradient, stops, colors, 2);
+}
+
+static Picture source_linear_diagonal(struct test_display *t, struct test_target *target)
+{
+	XRenderColor colors[2] = {{0}, {0xffff, 0xffff, 0xffff, 0xffff}};
+	XFixed stops[2] = {0, 0xffff};
+	XLinearGradient gradient = { {0, 0}, {target->width << 16, target->height << 16}};
+
+	return XRenderCreateLinearGradient(t->dpy, &gradient, stops, colors, 2);
+}
+
+static Picture source_radial_concentric(struct test_display *t, struct test_target *target)
+{
+	XRenderColor colors[2] = {{0}, {0xffff, 0xffff, 0xffff, 0xffff}};
+	XFixed stops[2] = {0, 0xffff};
+	XRadialGradient gradient = {
+		{
+			((target->width << 16) + 1) / 2,
+			((target->height << 16) + 1) / 2,
+			0,
+		},
+		{
+			((target->width << 16) + 1) / 2,
+			((target->height << 16) + 1) / 2,
+			target->width << 15,
+		}
+	};
+
+	return XRenderCreateRadialGradient(t->dpy, &gradient, stops, colors, 2);
+}
+
+static Picture source_radial_generic(struct test_display *t, struct test_target *target)
+{
+	XRenderColor colors[2] = {{0}, {0xffff, 0xffff, 0xffff, 0xffff}};
+	XFixed stops[2] = {0, 0xffff};
+	XRadialGradient gradient = {
+		{ 0, 0, target->width << 14, },
+		{ target->width << 16, target->height << 16, target->width << 14, }
+	};
+
+	return XRenderCreateRadialGradient(t->dpy, &gradient, stops, colors, 2);
+}
+
+static const struct {
+	Picture (*create)(struct test_display *, struct test_target *);
+	const char *name;
+} source[] = {
+	{ source_a8r8g8b8, "a8r8g8b8 pixmap" },
+	{ source_x8r8g8b8, "x8r8g8b8 pixmap" },
+	{ source_a8, "a8 pixmap" },
+	{ source_a4, "a4 pixmap" },
+	{ source_a1, "a1 pixmap" },
+	{ source_1x1r, "a8r8g8b8 1x1R pixmap" },
+	{ source_solid, "solid" },
+	{ source_linear_horizontal, "linear (horizontal gradient)" },
+	{ source_linear_vertical, "linear (vertical gradient)" },
+	{ source_linear_diagonal, "linear (diagonal gradient)" },
+	{ source_radial_concentric, "radial (concentric)" },
+	{ source_radial_generic, "radial (generic)" },
+};
+
 static double _bench(struct test_display *t, enum target target_type,
-		     int op, int src_format,
-		     int loops)
+		     int op, int src, int loops)
 {
 	XRenderColor render_color = { 0x8000, 0x8000, 0x8000, 0x8000 };
 	struct test_target target;
-	Pixmap pixmap;
 	Picture picture;
 	struct timespec tv;
 	double elapsed;
@@ -80,15 +228,7 @@ static double _bench(struct test_display *t, enum target target_type,
 	XRenderFillRectangle(t->dpy, PictOpClear, target.picture, &render_color,
 			     0, 0, target.width, target.height);
 
-	pixmap = XCreatePixmap(t->dpy, t->root,
-			       target.width, target.height,
-			       PIXMAN_FORMAT_DEPTH(formats[src_format].pixman_format));
-
-	picture = XRenderCreatePicture(t->dpy, pixmap,
-				       XRenderFindStandardFormat(t->dpy, src_format),
-				       0, NULL);
-	XRenderFillRectangle(t->dpy, PictOpSrc, picture, &render_color,
-			     0, 0, target.width, target.height);
+	picture = source[src].create(t, &target);
 
 	test_timer_start(t, &tv);
 	while (loops--)
@@ -101,33 +241,32 @@ static double _bench(struct test_display *t, enum target target_type,
 	elapsed = test_timer_stop(t, &tv);
 
 	XRenderFreePicture(t->dpy, picture);
-	XFreePixmap(t->dpy, pixmap);
 	test_target_destroy_render(t, &target);
 
 	return elapsed;
 }
 
-static void bench(struct test *t, enum target target, int op, int sf)
+static void bench(struct test *t, enum target target, int op, int src)
 {
 	double out, ref;
 
-	ref = _bench(&t->ref, target, op, sf, 1000);
-	out = _bench(&t->out, target, op, sf, 1000);
+	ref = _bench(&t->ref, target, op, src, 1000);
+	out = _bench(&t->out, target, op, src, 1000);
 
-	fprintf (stdout, "Testing %s with %s: ref=%f, out=%f\n",
-		 formats[sf].name, ops[op].name, ref, out);
+	fprintf (stdout, "%28s with %s: ref=%f, out=%f\n",
+		 source[src].name, ops[op].name, ref, out);
 }
 
 int main(int argc, char **argv)
 {
 	struct test test;
-	unsigned op, sf;
+	unsigned op, src;
 
 	test_init(&test, argc, argv);
 
 	for (op = 0; op < sizeof(ops)/sizeof(ops[0]); op++) {
-		for (sf = 0; sf < sizeof(formats)/sizeof(formats[0]); sf++)
-			bench(&test, ROOT, op, sf);
+		for (src = 0; src < sizeof(source)/sizeof(source[0]); src++)
+			bench(&test, ROOT, op, src);
 		fprintf (stdout, "\n");
 	}
 
