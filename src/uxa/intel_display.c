@@ -1461,6 +1461,9 @@ intel_xf86crtc_resize(ScrnInfoPtr scrn, int width, int height)
 	scrn->virtualX = width;
 	scrn->virtualY = height;
 
+	if (!intel_uxa_create_screen_resources(scrn->pScreen))
+		goto fail;
+
 	for (i = 0; i < xf86_config->num_crtc; i++) {
 		xf86CrtcPtr crtc = xf86_config->crtc[i];
 
@@ -1470,8 +1473,6 @@ intel_xf86crtc_resize(ScrnInfoPtr scrn, int width, int height)
 		if (!intel_crtc_apply(crtc))
 			goto fail;
 	}
-
-	intel_uxa_create_screen_resources(scrn->pScreen);
 
 	if (old_fb_id)
 		drmModeRmFB(mode->fd, old_fb_id);

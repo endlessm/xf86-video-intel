@@ -1260,6 +1260,7 @@ Bool intel_uxa_create_screen_resources(ScreenPtr screen)
 	PixmapPtr pixmap;
 	intel_screen_private *intel = intel_get_screen_private(scrn);
 	dri_bo *bo = intel->front_buffer;
+	int old_width, old_height, old_pitch;
 
 	if (!uxa_resources_init(screen))
 		return FALSE;
@@ -1268,23 +1269,34 @@ Bool intel_uxa_create_screen_resources(ScreenPtr screen)
 		return FALSE;
 
 	pixmap = screen->GetScreenPixmap(screen);
+	old_width = pixmap->drawable.width;
+	old_height = pixmap->drawable.height;
+	old_pitch = pixmap->devKind;
+
+	if (!screen->ModifyPixmapHeader(pixmap,
+					scrn->virtualX,
+					scrn->virtualY,
+					-1, -1,
+					intel->front_pitch,
+					NULL))
+		return FALSE;
+
 	intel_set_pixmap_bo(pixmap, bo);
 	if (intel_get_pixmap_private(pixmap) == NULL)
-		return FALSE;
-
-	intel_get_pixmap_private(pixmap)->pinned |= PIN_SCANOUT;
-	screen->ModifyPixmapHeader(pixmap,
-				   scrn->virtualX,
-				   scrn->virtualY,
-				   -1, -1,
-				   intel->front_pitch,
-				   NULL);
-	scrn->displayWidth = intel->front_pitch / intel->cpp;
+		goto err;
 
 	if (!intel_glamor_create_screen_resources(screen))
-		return FALSE;
+		goto err;
+
+	intel_get_pixmap_private(pixmap)->pinned |= PIN_SCANOUT;
+	scrn->displayWidth = intel->front_pitch / intel->cpp;
 
 	return TRUE;
+
+err:
+	screen->ModifyPixmapHeader(pixmap,
+				   old_width, old_height, -1, -1, old_pitch, NULL);
+	return FALSE;
 }
 
 #ifdef CREATE_PIXMAP_USAGE_SHARED
