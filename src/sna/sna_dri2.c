@@ -1200,7 +1200,7 @@ sna_dri2_remove_event(WindowPtr win, struct sna_dri2_event *info)
 
 	assert(win->drawable.type == DRAWABLE_WINDOW);
 	DBG(("%s: remove[%p] from window %ld, active? %d\n",
-	     __FUNCTION__, info, (long)win->drawable.id, info->darw != NULL));
+	     __FUNCTION__, info, (long)win->drawable.id, info->draw != NULL));
 
 	priv = dri2_window(win);
 	assert(priv);
@@ -1267,7 +1267,7 @@ sna_dri2_client_gone(CallbackListPtr *list, void *closure, void *data)
 	if (client->clientState != ClientStateGone)
 		return;
 
-	DBG(("%s(active?=%d)\n", __FUNCTION__
+	DBG(("%s(active?=%d)\n", __FUNCTION__,
 	     !list_is_empty(&priv->events)));
 
 	while (!list_is_empty(&priv->events)) {
