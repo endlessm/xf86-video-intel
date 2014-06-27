@@ -83,6 +83,7 @@
 
 #define N_STACK_GLYPHS 512
 #define NO_ATLAS ((PicturePtr)-1)
+#define GLYPH_TOLERANCE 3
 
 #define glyph_valid(g) *((uint32_t *)&(g)->info.width)
 #define glyph_copy_size(r, g) *(uint32_t *)&(r)->width = *(uint32_t *)&g->info.width
@@ -1517,8 +1518,10 @@ glyphs_format(int nlist, GlyphListPtr list, GlyphPtr * glyphs)
 				 * boundary is small, yet glyphs frequently
 				 * overlap on the boundaries.
 				 */
-				if (x1 < extents.x2-1 && x2 > extents.x1+1 &&
-				    y1 < extents.y2-1 && y2 > extents.y1+1) {
+				if (x1 < extents.x2-GLYPH_TOLERANCE &&
+				    x2 > extents.x1+GLYPH_TOLERANCE &&
+				    y1 < extents.y2-GLYPH_TOLERANCE &&
+				    y2 > extents.y1+GLYPH_TOLERANCE) {
 					DBG(("%s: overlapping glyph inside line, current bbox (%d, %d), (%d, %d), glyph (%d, %d), (%d, %d)\n",
 					     __FUNCTION__,
 					     extents.x1, extents.y1, extents.x2, extents.y2,
@@ -1547,10 +1550,10 @@ skip_glyph:
 		 */
 		if (!first) {
 			for (j = 0; j < i; j++) {
-				if (extents.x1 < list_extents[j].x2-1 &&
-				    extents.x2 > list_extents[j].x1+1 &&
-				    extents.y1 < list_extents[j].y2-1 &&
-				    extents.y2 > list_extents[j].y1+1) {
+				if (extents.x1 < list_extents[j].x2-GLYPH_TOLERANCE &&
+				    extents.x2 > list_extents[j].x1+GLYPH_TOLERANCE &&
+				    extents.y1 < list_extents[j].y2-GLYPH_TOLERANCE &&
+				    extents.y2 > list_extents[j].y1+GLYPH_TOLERANCE) {
 					DBG(("%s: overlapping lines, current bbox (%d, %d), (%d, %d), previous line (%d, %d), (%d, %d)\n",
 					     __FUNCTION__,
 					     extents.x1, extents.y1, extents.x2, extents.y2,
