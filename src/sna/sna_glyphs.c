@@ -70,6 +70,7 @@
 #define FALLBACK 0
 #define NO_GLYPH_CACHE 0
 #define NO_GLYPHS_TO_DST 0
+#define FORCE_GLYPHS_TO_DST 0
 #define NO_GLYPHS_VIA_MASK 0
 #define FORCE_SMALL_MASK 0 /* -1 = never, 1 = always */
 #define NO_GLYPHS_SLOW 0
@@ -1991,7 +1992,8 @@ sna_glyphs(CARD8 op,
 	}
 
 	/* Try to discard the mask for non-overlapping glyphs */
-	if (mask == NULL ||
+	if (FORCE_GLYPHS_TO_DST ||
+	    mask == NULL ||
 	    (dst->pCompositeClip->data == NULL &&
 	     can_discard_mask(op, src, mask, nlist, list, glyphs))) {
 		DBG(("%s: discarding mask\n", __FUNCTION__));
