@@ -2804,8 +2804,13 @@ fill:
 		if (!tmp->dst.bo) {
 			DBG(("%s: fallback -- unaccelerated read back\n",
 			     __FUNCTION__));
+fallback:
 			if (flags & COMPOSITE_FALLBACK || !kgem_bo_is_busy(bo))
 				goto put;
+		} else if (!kgem_bo_can_blt(&sna->kgem, bo)) {
+			DBG(("%s: fallback -- cannot blit from source\n",
+			     __FUNCTION__));
+			goto fallback;
 		} else if (bo->snoop && tmp->dst.bo->snoop) {
 			DBG(("%s: fallback -- can not copy between snooped bo\n",
 			     __FUNCTION__));
@@ -2813,12 +2818,11 @@ fill:
 		} else if (!kgem_bo_can_blt(&sna->kgem, tmp->dst.bo)) {
 			DBG(("%s: fallback -- unaccelerated upload\n",
 			     __FUNCTION__));
-			if (flags & COMPOSITE_FALLBACK || !kgem_bo_is_busy(bo))
-				goto put;
+			goto fallback;
 		} else {
 			ret = prepare_blt_copy(sna, tmp, bo, alpha_fixup);
-			if (flags & COMPOSITE_FALLBACK && !ret)
-				goto put;
+			if (!ret)
+				goto fallback;
 		}
 	} else {
 		RegionRec region;
