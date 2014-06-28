@@ -4708,6 +4708,11 @@ try_upload__inplace(PixmapPtr pixmap, RegionRec *region,
 		break;
 	}
 
+	if (priv->gpu_damage == NULL && !box_inplace(pixmap, &region->extents)) {
+		DBG(("%s: no, too small to bother with using the GTT\n", __FUNCTION__));
+		return false;
+	}
+
 	if (!kgem_bo_can_map(&sna->kgem, priv->gpu_bo)) {
 		DBG(("%s: no, cannot map through the CPU\n", __FUNCTION__));
 		return false;
