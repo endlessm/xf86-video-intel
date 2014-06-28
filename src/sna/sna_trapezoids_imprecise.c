@@ -1505,6 +1505,15 @@ inplace_end_subrows(struct active_list *active, uint8_t *row,
 }
 
 static void
+convert_mono(uint8_t *ptr, int w)
+{
+	while (w--) {
+		*ptr = 0xff * (*ptr >= 0xf0);
+		ptr++;
+	}
+}
+
+static void
 tor_inplace(struct tor *converter, PixmapPtr scratch, int mono, uint8_t *buf)
 {
 	int i, j, h = converter->extents.y2;
@@ -1516,7 +1525,6 @@ tor_inplace(struct tor *converter, PixmapPtr scratch, int mono, uint8_t *buf)
 	int width = scratch->drawable.width;
 
 	__DBG(("%s: mono=%d, buf?=%d\n", __FUNCTION__, mono, buf != NULL));
-	assert(!mono);
 	assert(converter->extents.y1 == 0);
 	assert(converter->extents.x1 == 0);
 	assert(scratch->drawable.depth == 8);
@@ -1552,6 +1560,8 @@ tor_inplace(struct tor *converter, PixmapPtr scratch, int mono, uint8_t *buf)
 		if (do_full_step) {
 			memset(ptr, 0, width);
 			inplace_row(active, ptr, width);
+			if (mono)
+				convert_mono(ptr, width);
 			if (row != ptr)
 				memcpy(row, ptr, width);
 
@@ -1584,8 +1594,11 @@ tor_inplace(struct tor *converter, PixmapPtr scratch, int mono, uint8_t *buf)
 			}
 			assert(min >= 0 && max <= width);
 			memset(row, 0, min);
-			if (max > min)
+			if (max > min) {
 				inplace_end_subrows(active, row+min, (int8_t*)ptr+min, max-min);
+				if (mono)
+					convert_mono(row+min, max-min);
+			}
 			if (max < width)
 				memset(row+max, 0, width-max);
 		}
