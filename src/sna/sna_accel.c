@@ -2865,7 +2865,7 @@ move_to_cpu:
 
 				DBG(("%s: region already in CPU damage\n",
 				     __FUNCTION__));
-				goto done;
+				goto already_damaged;
 			}
 		}
 
@@ -2986,6 +2986,7 @@ done:
 		}
 	}
 
+already_damaged:
 	if (dx | dy)
 		RegionTranslate(region, -dx, -dy);
 
