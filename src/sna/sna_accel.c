@@ -6126,7 +6126,11 @@ upload_inplace:
 
 static void discard_cpu_damage(struct sna *sna, struct sna_pixmap *priv)
 {
+	if (priv->cpu_damage == NULL && !priv->shm)
+		return;
+
 	DBG(("%s: discarding existing CPU damage\n", __FUNCTION__));
+
 	if (kgem_bo_discard_cache(priv->gpu_bo, true)) {
 		DBG(("%s: discarding cached upload buffer\n", __FUNCTION__));
 		assert(DAMAGE_IS_ALL(priv->cpu_damage));
@@ -6137,6 +6141,7 @@ static void discard_cpu_damage(struct sna *sna, struct sna_pixmap *priv)
 		kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
 		priv->gpu_bo = NULL;
 	}
+
 	sna_damage_destroy(&priv->cpu_damage);
 	list_del(&priv->flush_list);
 
