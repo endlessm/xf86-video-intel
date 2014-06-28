@@ -4520,6 +4520,14 @@ try_upload__tiled_x(PixmapPtr pixmap, RegionRec *region,
 		return false;
 	}
 
+	if (!sna_pixmap_move_area_to_gpu(pixmap, &region->extents,
+					 MOVE_WRITE | (region->data ? MOVE_READ : 0)))
+		return false;
+
+	if ((priv->create & KGEM_CAN_CREATE_LARGE) == 0 &&
+	    __kgem_bo_is_busy(&sna->kgem, priv->gpu_bo))
+		return false;
+
 	dst = kgem_bo_map__cpu(&sna->kgem, priv->gpu_bo);
 	if (dst == NULL)
 		return false;
@@ -4622,6 +4630,11 @@ try_upload__inplace(PixmapPtr pixmap, RegionRec *region,
 	if (!USE_INPLACE)
 		return false;
 
+	assert(priv);
+
+	if (priv->shm && priv->gpu_damage == NULL)
+		return false;
+
 	replaces = region_subsumes_pixmap(region, pixmap);
 
 	DBG(("%s: bo? %d, can map? %d, replaces? %d\n", __FUNCTION__,
@@ -4678,16 +4691,8 @@ try_upload__inplace(PixmapPtr pixmap, RegionRec *region,
 		}
 	}
 
-	if (!sna_pixmap_move_area_to_gpu(pixmap, &region->extents,
-					 MOVE_WRITE | (region->data ? MOVE_READ : 0)))
-		return false;
-
 	if (priv->gpu_bo == NULL &&
 	    !create_upload_tiled_x(&sna->kgem, pixmap, priv, ignore_cpu))
-		return false;
-
-	if ((priv->create & KGEM_CAN_CREATE_LARGE) == 0 &&
-	    __kgem_bo_is_busy(&sna->kgem, priv->gpu_bo))
 		return false;
 
 	DBG(("%s: tiling=%d\n", __FUNCTION__, priv->gpu_bo->tiling));
@@ -4707,6 +4712,14 @@ try_upload__inplace(PixmapPtr pixmap, RegionRec *region,
 		DBG(("%s: no, cannot map through the CPU\n", __FUNCTION__));
 		return false;
 	}
+
+	if (!sna_pixmap_move_area_to_gpu(pixmap, &region->extents,
+					 MOVE_WRITE | (region->data ? MOVE_READ : 0)))
+		return false;
+
+	if ((priv->create & KGEM_CAN_CREATE_LARGE) == 0 &&
+	    __kgem_bo_is_busy(&sna->kgem, priv->gpu_bo))
+		return false;
 
 	dst = kgem_bo_map(&sna->kgem, priv->gpu_bo);
 	if (dst == NULL)
@@ -4768,6 +4781,14 @@ done:
 			sna_damage_destroy(&priv->cpu_damage);
 		else
 			sna_damage_subtract(&priv->cpu_damage, region);
+
+		if (priv->cpu_damage == NULL) {
+			list_del(&priv->flush_list);
+			sna_damage_all(&priv->gpu_damage, pixmap);
+		}
+
+		if (priv->shm)
+			sna_add_flush_pixmap(sna, priv, priv->cpu_bo);
 	}
 
 	assert(!priv->clear);
@@ -4895,6 +4916,7 @@ try_upload__fast(PixmapPtr pixmap, RegionRec *region,
 		return false;
 
 	if (ignore_cpu_damage(sna, priv, region)) {
+		DBG(("%s: ignore existing cpu damage (if any)\n", __FUNCTION__));
 		if (try_upload__inplace(pixmap, region, x, y, w, h, bits, stride))
 			return true;
 	}
@@ -6056,6 +6078,8 @@ upload_inplace:
 					    region);
 	}
 	dst_priv->clear = false;
+
+	assert(has_coherent_ptr(sna, src_priv, MOVE_READ));
 
 	box = region_rects(region);
 	n = region_num_rects(region);
