@@ -787,6 +787,11 @@ memcpy_to_tiled_x(struct kgem *kgem,
 		  int16_t dst_x, int16_t dst_y,
 		  uint16_t width, uint16_t height)
 {
+	assert(kgem->memcpy_to_tiled_x);
+	assert(src_x >= 0 && src_y >= 0);
+	assert(dst_x >= 0 && dst_y >= 0);
+	assert(8*src_stride >= (src_x+width) * bpp);
+	assert(8*dst_stride >= (dst_x+width) * bpp);
 	return kgem->memcpy_to_tiled_x(src, dst, bpp,
 				       src_stride, dst_stride,
 				       src_x, src_y,
@@ -802,6 +807,11 @@ memcpy_from_tiled_x(struct kgem *kgem,
 		    int16_t dst_x, int16_t dst_y,
 		    uint16_t width, uint16_t height)
 {
+	assert(kgem->memcpy_from_tiled_x);
+	assert(src_x >= 0 && src_y >= 0);
+	assert(dst_x >= 0 && dst_y >= 0);
+	assert(8*src_stride >= (src_x+width) * bpp);
+	assert(8*dst_stride >= (dst_x+width) * bpp);
 	return kgem->memcpy_from_tiled_x(src, dst, bpp,
 					 src_stride, dst_stride,
 					 src_x, src_y,

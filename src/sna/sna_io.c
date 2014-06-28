@@ -118,7 +118,6 @@ read_boxes_inplace__cpu(struct kgem *kgem,
 		return false;
 
 	if (bo->tiling == I915_TILING_X) {
-		assert(kgem->memcpy_from_tiled_x);
 		do {
 			memcpy_from_tiled_x(kgem, src, dst, bpp, src_pitch, dst_pitch,
 					    box->x1, box->y1,

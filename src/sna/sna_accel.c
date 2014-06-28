@@ -1693,30 +1693,32 @@ static inline bool gpu_bo_download(struct sna *sna,
 		return false;
 
 	if (priv->gpu_bo->tiling) {
+		int bpp = priv->pixmap->drawable.bitsPerPixel;
+		void *dst = priv->pixmap->devPrivate.ptr;
+		int dst_pitch = priv->pixmap->devKind;
+
 		DBG(("%s: download through a tiled CPU map\n", __FUNCTION__));
 		do {
 			DBG(("%s: box (%d, %d), (%d, %d)\n",
 			     __FUNCTION__, box->x1, box->y1, box->x2, box->y2));
-			memcpy_from_tiled_x(&sna->kgem, src,
-					    priv->pixmap->devPrivate.ptr,
-					    priv->pixmap->drawable.bitsPerPixel,
-					    priv->gpu_bo->pitch,
-					    priv->pixmap->devKind,
+			memcpy_from_tiled_x(&sna->kgem, src, dst, bpp,
+					    priv->gpu_bo->pitch, dst_pitch,
 					    box->x1, box->y1,
 					    box->x1, box->y1,
 					    box->x2 - box->x1, box->y2 - box->y1);
 			box++;
 		} while (--n);
 	} else {
+		int bpp = priv->pixmap->drawable.bitsPerPixel;
+		void *dst = priv->pixmap->devPrivate.ptr;
+		int dst_pitch = priv->pixmap->devKind;
+
 		DBG(("%s: download through a linear CPU map\n", __FUNCTION__));
 		do {
 			DBG(("%s: box (%d, %d), (%d, %d)\n",
 			     __FUNCTION__, box->x1, box->y1, box->x2, box->y2));
-			memcpy_blt(src,
-				   priv->pixmap->devPrivate.ptr,
-				   priv->pixmap->drawable.bitsPerPixel,
-				   priv->gpu_bo->pitch,
-				   priv->pixmap->devKind,
+			memcpy_blt(src, dst, bpp,
+				   priv->gpu_bo->pitch, dst_pitch,
 				   box->x1, box->y1,
 				   box->x1, box->y1,
 				   box->x2 - box->x1, box->y2 - box->y1);
@@ -4934,6 +4936,10 @@ sna_put_zpixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 	get_drawable_deltas(drawable, pixmap, &dx, &dy);
 	x += dx + drawable->x;
 	y += dy + drawable->y;
+	assert(region->extents.x1 >= x);
+	assert(region->extents.y1 >= y);
+	assert(region->extents.x2 <= x + w);
+	assert(region->extents.y2 <= y + h);
 
 	if (try_upload__fast(pixmap, region, x, y, w, h, bits, stride))
 		return true;
