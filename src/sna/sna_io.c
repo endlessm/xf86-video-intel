@@ -117,6 +117,8 @@ read_boxes_inplace__cpu(struct kgem *kgem,
 	if (sigtrap_get())
 		return false;
 
+	DBG(("%s x %d\n", __FUNCTION__, n));
+
 	if (bo->tiling == I915_TILING_X) {
 		do {
 			memcpy_from_tiled_x(kgem, src, dst, bpp, src_pitch, dst_pitch,
@@ -210,10 +212,13 @@ static bool download_inplace(struct kgem *kgem,
 	if (FORCE_INPLACE)
 		return FORCE_INPLACE > 0;
 
+	if (cpu)
+		return true;
+
 	if (kgem->can_blt_cpu && kgem->max_cpu_size)
 		return false;
 
-	return !__kgem_bo_is_busy(kgem, bo) || cpu;
+	return !__kgem_bo_is_busy(kgem, bo);
 }
 
 void sna_read_boxes(struct sna *sna, PixmapPtr dst, struct kgem_bo *src_bo,
@@ -253,7 +258,7 @@ void sna_read_boxes(struct sna *sna, PixmapPtr dst, struct kgem_bo *src_bo,
 	 * this path.
 	 */
 
-	if (download_inplace(kgem, dst, src_bo, box ,nbox)) {
+	if (download_inplace(kgem, dst, src_bo, box, nbox)) {
 fallback:
 		read_boxes_inplace(kgem, dst, src_bo, box, nbox);
 		return;
