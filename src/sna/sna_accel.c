@@ -508,7 +508,7 @@ static bool must_check
 sna_pixmap_alloc_cpu(struct sna *sna,
 		     PixmapPtr pixmap,
 		     struct sna_pixmap *priv,
-		     bool from_gpu)
+		     unsigned flags)
 {
 	/* Restore after a GTT mapping? */
 	assert(priv->gpu_damage == NULL || priv->gpu_bo);
@@ -520,14 +520,21 @@ sna_pixmap_alloc_cpu(struct sna *sna,
 	assert(priv->stride);
 
 	if (priv->create & KGEM_CAN_CREATE_CPU) {
+		unsigned hint;
+
 		DBG(("%s: allocating CPU buffer (%dx%d)\n", __FUNCTION__,
 		     pixmap->drawable.width, pixmap->drawable.height));
+
+		hint = 0;
+		if ((flags & MOVE_ASYNC_HINT) == 0 &&
+		    ((flags & MOVE_READ) == 0 || (priv->gpu_damage && !priv->clear && !sna->kgem.has_llc)))
+			hint = CREATE_CPU_MAP | CREATE_INACTIVE | CREATE_NO_THROTTLE;
 
 		priv->cpu_bo = kgem_create_cpu_2d(&sna->kgem,
 						  pixmap->drawable.width,
 						  pixmap->drawable.height,
 						  pixmap->drawable.bitsPerPixel,
-						  from_gpu ? 0 : CREATE_CPU_MAP | CREATE_INACTIVE | CREATE_NO_THROTTLE);
+						  hint);
 		if (priv->cpu_bo) {
 			priv->ptr = kgem_bo_map__cpu(&sna->kgem, priv->cpu_bo);
 			if (priv->ptr) {
@@ -2165,7 +2172,8 @@ _sna_pixmap_move_to_cpu(PixmapPtr pixmap, unsigned int flags)
 skip_inplace_map:
 		sna_damage_destroy(&priv->gpu_damage);
 		priv->clear = false;
-		if (priv->cpu_bo && !priv->cpu_bo->flush &&
+		if ((flags & MOVE_ASYNC_HINT) == 0 &&
+		    priv->cpu_bo && !priv->cpu_bo->flush &&
 		    __kgem_bo_is_busy(&sna->kgem, priv->cpu_bo)) {
 			DBG(("%s: discarding busy CPU bo\n", __FUNCTION__));
 			assert(!priv->shm);
@@ -2175,7 +2183,7 @@ skip_inplace_map:
 			sna_pixmap_free_cpu(sna, priv, false);
 
 			assert(priv->mapped == MAPPED_NONE);
-			if (!sna_pixmap_alloc_cpu(sna, pixmap, priv, false))
+			if (!sna_pixmap_alloc_cpu(sna, pixmap, priv, 0))
 				return false;
 			assert(priv->mapped == MAPPED_NONE);
 			assert(pixmap->devPrivate.ptr == PTR(priv->ptr));
@@ -2277,8 +2285,7 @@ skip_inplace_map:
 
 	assert(priv->mapped == MAPPED_NONE);
 	if (pixmap->devPrivate.ptr == NULL &&
-	    !sna_pixmap_alloc_cpu(sna, pixmap, priv,
-				  flags & MOVE_READ ? priv->gpu_damage && !priv->clear : 0))
+	    !sna_pixmap_alloc_cpu(sna, pixmap, priv, flags))
 		return false;
 	assert(priv->mapped == MAPPED_NONE);
 	assert(pixmap->devPrivate.ptr == PTR(priv->ptr));
@@ -2290,6 +2297,15 @@ skip_inplace_map:
 			     pixmap->devKind, pixmap->devKind * pixmap->drawable.height));
 
 			if (priv->cpu_bo) {
+				if ((flags & MOVE_ASYNC_HINT || priv->cpu_bo->exec) &&
+				    sna->render.fill_one(sna,
+							  pixmap, priv->cpu_bo, priv->clear_color,
+							  0, 0,
+							  pixmap->drawable.width,
+							  pixmap->drawable.height,
+							  GXcopy))
+					goto clear_done;
+
 				DBG(("%s: syncing CPU bo\n", __FUNCTION__));
 				kgem_bo_sync__cpu(&sna->kgem, priv->cpu_bo);
 				assert(pixmap->devPrivate.ptr == MAP(priv->cpu_bo->map__cpu));
@@ -2311,6 +2327,7 @@ skip_inplace_map:
 					    priv->clear_color);
 			}
 
+clear_done:
 			sna_damage_all(&priv->cpu_damage, pixmap);
 			sna_pixmap_free_gpu(sna, priv);
 			assert(priv->gpu_damage == NULL);
@@ -2474,6 +2491,27 @@ static inline bool region_inplace(struct sna *sna,
 		>= sna->kgem.half_cpu_cache_pages;
 }
 
+static bool cpu_clear_boxes(struct sna *sna,
+			    PixmapPtr pixmap,
+			    struct sna_pixmap *priv,
+			    const BoxRec *box, int n)
+{
+	struct sna_fill_op fill;
+
+	if (!sna_fill_init_blt(&fill, sna,
+			       pixmap, priv->cpu_bo,
+			       GXcopy, priv->clear_color,
+			       FILL_BOXES)) {
+		DBG(("%s: unsupported fill\n",
+		     __FUNCTION__));
+		return false;
+	}
+
+	fill.boxes(sna, &fill, box, n);
+	fill.done(sna, &fill);
+	return true;
+}
+
 bool
 sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 				RegionPtr region,
@@ -2602,7 +2640,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 		sna_pixmap_unmap(pixmap, priv);
 		assert(priv->mapped == MAPPED_NONE);
 		if (pixmap->devPrivate.ptr == NULL &&
-		    !sna_pixmap_alloc_cpu(sna, pixmap, priv, false))
+		    !sna_pixmap_alloc_cpu(sna, pixmap, priv, flags))
 			return false;
 		assert(priv->mapped == MAPPED_NONE);
 		assert(pixmap->devPrivate.ptr == PTR(priv->ptr));
@@ -2788,8 +2826,7 @@ move_to_cpu:
 
 	assert(priv->mapped == MAPPED_NONE);
 	if (pixmap->devPrivate.ptr == NULL &&
-	    !sna_pixmap_alloc_cpu(sna, pixmap, priv,
-				  flags & MOVE_READ ? priv->gpu_damage && !priv->clear : 0)) {
+	    !sna_pixmap_alloc_cpu(sna, pixmap, priv, flags)) {
 		DBG(("%s: CPU bo allocation failed, trying full move-to-cpu\n", __FUNCTION__));
 		goto move_to_cpu;
 	}
@@ -2819,6 +2856,10 @@ move_to_cpu:
 
 		DBG(("%s: pending clear, doing partial fill\n", __FUNCTION__));
 		if (priv->cpu_bo) {
+			if ((flags & MOVE_ASYNC_HINT || priv->cpu_bo->exec) &&
+			    cpu_clear_boxes(sna, pixmap, priv, box, n))
+				goto clear_done;
+
 			DBG(("%s: syncing CPU bo\n", __FUNCTION__));
 			kgem_bo_sync__cpu(&sna->kgem, priv->cpu_bo);
 			assert(pixmap->devPrivate.ptr == MAP(priv->cpu_bo->map__cpu));
@@ -2836,6 +2877,7 @@ move_to_cpu:
 			box++;
 		} while (--n);
 
+clear_done:
 		if (flags & MOVE_WRITE ||
 		    region->extents.x2 - region->extents.x1 > 1 ||
 		    region->extents.y2 - region->extents.y1 > 1) {
