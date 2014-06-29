@@ -1679,14 +1679,22 @@ static inline bool gpu_bo_download(struct sna *sna,
 	if (!kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, FORCE_FULL_SYNC))
 		return false;
 
-	if (idle && __kgem_bo_is_busy(&sna->kgem, priv->gpu_bo))
-		return false;
+	if (idle) {
+		if (__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo))
+			return false;
+
+		if (priv->cpu_bo && __kgem_bo_is_busy(&sna->kgem, priv->cpu_bo))
+			return false;
+	}
 
 	src = kgem_bo_map__cpu(&sna->kgem, priv->gpu_bo);
 	if (src == NULL)
 		return false;
 
 	kgem_bo_sync__cpu_full(&sna->kgem, priv->gpu_bo, FORCE_FULL_SYNC);
+
+	if (priv->cpu_bo)
+		kgem_bo_sync__cpu(&sna->kgem, priv->cpu_bo);
 	assert(has_coherent_ptr(sna, priv, MOVE_WRITE));
 
 	if (sigtrap_get())
