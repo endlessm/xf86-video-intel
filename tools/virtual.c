@@ -3205,7 +3205,8 @@ int main(int argc, char **argv)
 	if (ret) {
 		fprintf(stderr, "Unable to connect to \"%s\".\n", src_name ?: getenv("DISPLAY") ?:
 			"<unspecified>, set either the DISPLAY environment variable or pass -d <display name> on the commandline");
-		return -ret;
+		ret = -ret;
+		goto out;
 	}
 
 	if (singleton) {
@@ -3214,8 +3215,10 @@ int main(int argc, char **argv)
 			DBG(X11, ("%s: pinging singleton\n", DisplayString(ctx.display->dpy)));
 			ret = first_display_send_command(&ctx, 2000, "P");
 			if (ret) {
-				if (ret != -ETIME)
-					return -ret;
+				if (ret != -ETIME) {
+					ret = -ret;
+					goto out;
+				}
 				DBG(X11, ("No reply from singleton; assuming control\n"));
 			} else {
 				DBG(X11, ("%s: singleton active, sending open commands\n", DisplayString(ctx.display->dpy)));
@@ -3247,21 +3250,25 @@ int main(int argc, char **argv)
 					} else
 						open++;
 				}
-				return open || !fail ? 0 : ECONNREFUSED;
+				ret = open || !fail ? 0 : ECONNREFUSED;
+				goto out;
 			}
 		}
 		ret = first_display_register_as_singleton(&ctx);
 		if (ret)
-			return ret;
+			goto out;
 	}
 
 	ret = display_init_damage(ctx.display);
-	if (ret)
-		return ret;
+	if (ret) {
+		context_cleanup(&ctx);
+		goto out;
+	}
 
 	if ((ctx.display->rr_event | ctx.display->rr_error) == 0) {
 		fprintf(stderr, "RandR extension not supported by %s\n", DisplayString(ctx.display->dpy));
-		return EINVAL;
+		ret = EINVAL;
+		goto out;
 	}
 	XRRSelectInput(ctx.display->dpy, ctx.display->root, RRScreenChangeNotifyMask);
 	XFixesSelectCursorInput(ctx.display->dpy, ctx.display->root, XFixesDisplayCursorNotifyMask);
@@ -3269,7 +3276,8 @@ int main(int argc, char **argv)
 	ret = add_fd(&ctx, record_mouse(&ctx));
 	if (ret) {
 		fprintf(stderr, "XTEST extension not supported by display \"%s\"\n", DisplayString(ctx.display->dpy));
-		return -ret;
+		ret = -ret;
+		goto out;
 	}
 
 	open = fail = 0;
@@ -3299,11 +3307,15 @@ int main(int argc, char **argv)
 		} else
 			open++;
 	}
-	if (open == 0)
-		return fail ? ECONNREFUSED : 0;
+	if (open == 0) {
+		ret = fail ? ECONNREFUSED : 0;
+		goto out;
+	}
 
-	if (daemonize && daemon(0, 0))
-		return EINVAL;
+	if (daemonize && daemon(0, 0)) {
+		ret = EINVAL;
+		goto out;
+	}
 
 	signal(SIGHUP, signal_handler);
 	signal(SIGINT, signal_handler);
@@ -3445,6 +3457,8 @@ int main(int argc, char **argv)
 		}
 	}
 
+	ret = 0;
+out:
 	context_cleanup(&ctx);
-	return 0;
+	return ret;
 }
