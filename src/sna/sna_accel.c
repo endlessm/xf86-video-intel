@@ -1528,6 +1528,7 @@ static inline bool has_coherent_ptr(struct sna *sna, struct sna_pixmap *priv, un
 		if (!priv->cpu_bo)
 			return true;
 
+		assert(!priv->cpu_bo->needs_flush);
 		assert(priv->pixmap->devKind == priv->cpu_bo->pitch);
 		return priv->pixmap->devPrivate.ptr == MAP(priv->cpu_bo->map__cpu);
 	}
@@ -1790,6 +1791,9 @@ static void download_boxes(struct sna *sna,
 	if (!ok)
 		ok = gpu_bo_download(sna, priv, n, box, false);
 	if (!ok) {
+		if (priv->cpu_bo)
+			kgem_bo_sync__cpu(&sna->kgem, priv->cpu_bo);
+		assert(priv->mapped == MAPPED_NONE);
 		assert(has_coherent_ptr(sna, priv, MOVE_WRITE));
 		sna_read_boxes(sna, priv->pixmap, priv->gpu_bo, box, n);
 	}
