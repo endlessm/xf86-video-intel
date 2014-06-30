@@ -295,8 +295,8 @@ static const struct {
 	{ source_radial_generic, "radial (generic)" },
 };
 
-static double _bench(struct test_display *t, enum target target_type,
-		     int op, int src, int loops)
+static double _bench_source(struct test_display *t, enum target target_type,
+			    int op, int src, int loops)
 {
 	XRenderColor render_color = { 0x8000, 0x8000, 0x8000, 0x8000 };
 	struct test_target target;
@@ -328,27 +328,80 @@ static double _bench(struct test_display *t, enum target target_type,
 	return elapsed;
 }
 
-static void bench(struct test *t, enum target target, int op, int src)
+static void bench_source(struct test *t, enum target target, int op, int src)
 {
 	double out, ref;
 
-	ref = _bench(&t->ref, target, op, src, 1000);
+	ref = _bench_source(&t->ref, target, op, src, 1000);
 	if (ref < 0)
 		return;
 
-	out = _bench(&t->out, target, op, src, 1000);
+	out = _bench_source(&t->out, target, op, src, 1000);
 	if (out < 0)
 		return;
-
 
 	fprintf (stdout, "%28s with %s: ref=%f, out=%f\n",
 		 source[src].name, ops[op].name, ref, out);
 }
 
+static double _bench_mask(struct test_display *t, enum target target_type,
+			    int op, int src, int mask, int loops)
+{
+	XRenderColor render_color = { 0x8000, 0x8000, 0x8000, 0x8000 };
+	struct test_target target;
+	Picture ps, pm;
+	struct timespec tv;
+	double elapsed;
+
+	test_target_create_render(t, target_type, &target);
+	XRenderFillRectangle(t->dpy, PictOpClear, target.picture, &render_color,
+			     0, 0, target.width, target.height);
+
+	ps = source[src].create(t, &target);
+	pm = source[mask].create(t, &target);
+	if (ps && pm) {
+		test_timer_start(t, &tv);
+		while (loops--)
+			XRenderComposite(t->dpy, op,
+					 ps, pm, target.picture,
+					 0, 0,
+					 0, 0,
+					 0, 0,
+					 target.width, target.height);
+		elapsed = test_timer_stop(t, &tv);
+	} else
+		elapsed = -1;
+
+	if (ps)
+		XRenderFreePicture(t->dpy, ps);
+	if (pm)
+		XRenderFreePicture(t->dpy, pm);
+
+	test_target_destroy_render(t, &target);
+
+	return elapsed;
+}
+
+static void bench_mask(struct test *t, enum target target, int op, int src, int mask)
+{
+	double out, ref;
+
+	ref = _bench_mask(&t->ref, target, op, src, mask, 1000);
+	if (ref < 0)
+		return;
+
+	out = _bench_mask(&t->out, target, op, src, mask, 1000);
+	if (out < 0)
+		return;
+
+	fprintf (stdout, "%28s In %28s with %s: ref=%f, out=%f\n",
+		 source[src].name, source[mask].name, ops[op].name, ref, out);
+}
+
 int main(int argc, char **argv)
 {
 	struct test test;
-	unsigned op, src;
+	unsigned op, src, mask;
 
 	test_init(&test, argc, argv);
 
@@ -356,7 +409,12 @@ int main(int argc, char **argv)
 
 	for (op = 0; op < sizeof(ops)/sizeof(ops[0]); op++) {
 		for (src = 0; src < sizeof(source)/sizeof(source[0]); src++)
-			bench(&test, ROOT, op, src);
+			bench_source(&test, ROOT, op, src);
+		fprintf (stdout, "\n");
+
+		for (src = 0; src < sizeof(source)/sizeof(source[0]); src++)
+			for (mask = 0; mask < sizeof(source)/sizeof(source[0]); mask++)
+				bench_mask(&test, ROOT, op, src, mask);
 		fprintf (stdout, "\n");
 	}
 
