@@ -23,6 +23,10 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,7 +35,19 @@
 
 #include <X11/X.h>
 #include <X11/Xutil.h> /* for XDestroyImage */
+#include <X11/Xlibint.h>
+#include <X11/extensions/Xrender.h>
+#include <X11/extensions/XShm.h>
+#if HAVE_X11_EXTENSIONS_SHMPROTO_H
+#include <X11/extensions/shmproto.h>
+#elif HAVE_X11_EXTENSIONS_SHMSTR_H
+#include <X11/extensions/shmstr.h>
+#else
+#error Failed to find the right header for X11 MIT-SHM protocol definitions
+#endif
 #include <pixman.h> /* for pixman blt functions */
+#include <sys/ipc.h>
+#include <sys/shm.h>
 
 #include "test.h"
 
@@ -67,7 +83,10 @@ static const struct op {
 
 static Picture source_pixmap(struct test_display *t, struct test_target *target, int format)
 {
-	XRenderColor render_color = { 0x8000, 0x8000, 0x8000, 0x8000 };
+	XRenderColor render_color[2] = {
+		{ 0x8000, 0x8000, 0x8000, 0x8000 },
+		{ 0xffff, 0xffff, 0xffff, 0xffff },
+	};
 	Pixmap pixmap;
 	Picture picture;
 
@@ -80,8 +99,10 @@ static Picture source_pixmap(struct test_display *t, struct test_target *target,
 				       0, NULL);
 	XFreePixmap(t->dpy, pixmap);
 
-	XRenderFillRectangle(t->dpy, PictOpSrc, picture, &render_color,
-			     0, 0, target->width, target->height);
+	XRenderFillRectangle(t->dpy, PictOpSrc, picture, &render_color[0],
+			     0, 0, target->width, target->height/2);
+	XRenderFillRectangle(t->dpy, PictOpSrc, picture, &render_color[1],
+			     0, target->height/2, target->width, target->height/2);
 
 	return picture;
 }
@@ -197,6 +218,64 @@ static Picture source_radial_generic(struct test_display *t, struct test_target 
 	return XRenderCreateRadialGradient(t->dpy, &gradient, stops, colors, 2);
 }
 
+static XShmSegmentInfo shm;
+
+static void setup_shm(struct test *t)
+{
+	int size;
+
+	shm.shmid = -1;
+
+	if (!(t->ref.has_shm_pixmaps && t->out.has_shm_pixmaps))
+		return;
+
+	size = t->ref.width * t->ref.height * 4;
+	size = (size + 4095) & -4096;
+
+	shm.shmid = shmget(IPC_PRIVATE, size, IPC_CREAT | 0666);
+	if (shm.shmid == -1)
+		return;
+
+	shm.shmaddr = shmat(shm.shmid, 0, 0);
+	if (shm.shmaddr == (char *) -1) {
+		shmctl(shm.shmid, IPC_RMID, NULL);
+		shm.shmid = -1;
+		return;
+	}
+
+	shm.readOnly = False;
+	XShmAttach(t->ref.dpy, &shm);
+	XSync(t->ref.dpy, True);
+
+	XShmAttach(t->out.dpy, &shm);
+	XSync(t->out.dpy, True);
+}
+
+static Picture source_shm(struct test_display *t, struct test_target *target)
+{
+	Pixmap pixmap;
+	Picture picture;
+	int size;
+
+	if (shm.shmid == -1)
+		return 0;
+
+	pixmap = XShmCreatePixmap(t->dpy, t->root,
+				  shm.shmaddr, &shm,
+				  target->width, target->height, 32);
+
+	picture = XRenderCreatePicture(t->dpy, pixmap,
+				       XRenderFindStandardFormat(t->dpy, 0),
+				       0, NULL);
+	XFreePixmap(t->dpy, pixmap);
+
+	size = target->width * target->height * 4;
+	memset(shm.shmaddr, 0x80, size/2);
+	memset(shm.shmaddr+size/2, 0xff, size/2);
+
+	return picture;
+}
+
 static const struct {
 	Picture (*create)(struct test_display *, struct test_target *);
 	const char *name;
@@ -208,6 +287,7 @@ static const struct {
 	{ source_a1, "a1 pixmap" },
 	{ source_1x1r, "a8r8g8b8 1x1R pixmap" },
 	{ source_solid, "solid" },
+	{ source_shm, "a8r8g8b8 shm" },
 	{ source_linear_horizontal, "linear (horizontal gradient)" },
 	{ source_linear_vertical, "linear (vertical gradient)" },
 	{ source_linear_diagonal, "linear (diagonal gradient)" },
@@ -229,18 +309,20 @@ static double _bench(struct test_display *t, enum target target_type,
 			     0, 0, target.width, target.height);
 
 	picture = source[src].create(t, &target);
+	if (picture) {
+		test_timer_start(t, &tv);
+		while (loops--)
+			XRenderComposite(t->dpy, op,
+					 picture, 0, target.picture,
+					 0, 0,
+					 0, 0,
+					 0, 0,
+					 target.width, target.height);
+		elapsed = test_timer_stop(t, &tv);
+		XRenderFreePicture(t->dpy, picture);
+	} else
+		elapsed = -1;
 
-	test_timer_start(t, &tv);
-	while (loops--)
-		XRenderComposite(t->dpy, op,
-				 picture, 0, target.picture,
-				 0, 0,
-				 0, 0,
-				 0, 0,
-				 target.width, target.height);
-	elapsed = test_timer_stop(t, &tv);
-
-	XRenderFreePicture(t->dpy, picture);
 	test_target_destroy_render(t, &target);
 
 	return elapsed;
@@ -251,7 +333,13 @@ static void bench(struct test *t, enum target target, int op, int src)
 	double out, ref;
 
 	ref = _bench(&t->ref, target, op, src, 1000);
+	if (ref < 0)
+		return;
+
 	out = _bench(&t->out, target, op, src, 1000);
+	if (out < 0)
+		return;
+
 
 	fprintf (stdout, "%28s with %s: ref=%f, out=%f\n",
 		 source[src].name, ops[op].name, ref, out);
@@ -263,6 +351,8 @@ int main(int argc, char **argv)
 	unsigned op, src;
 
 	test_init(&test, argc, argv);
+
+	setup_shm(&test);
 
 	for (op = 0; op < sizeof(ops)/sizeof(ops[0]); op++) {
 		for (src = 0; src < sizeof(source)/sizeof(source[0]); src++)

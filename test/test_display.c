@@ -97,10 +97,10 @@ static Display *ref_display(int width, int height, int depth)
 
 static void shm_setup(struct test_display *d)
 {
-	int major, minor, has_pixmaps;
+	int major, minor;
 	int size;
 
-	XShmQueryVersion(d->dpy, &major, &minor, &has_pixmaps);
+	XShmQueryVersion(d->dpy, &major, &minor, &d->has_shm_pixmaps);
 	if (major == 0 && minor == 0)
 		die("XSHM not supported\n");
 

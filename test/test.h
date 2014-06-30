@@ -31,6 +31,7 @@ struct test {
 		Window root;
 		XShmSegmentInfo shm;
 		int max_shm_size;
+		int has_shm_pixmaps;
 		int width, height, depth;
 		XRenderPictFormat *format;
 	} out, ref;
