@@ -332,16 +332,24 @@ static void bench_source(struct test *t, enum target target, int op, int src)
 {
 	double out, ref;
 
+	fprintf(stdout, "%28s with %s: ", source[src].name, ops[op].name);
+	fflush(stdout);
+
 	ref = _bench_source(&t->ref, target, op, src, 1000);
-	if (ref < 0)
+	if (ref < 0) {
+		fprintf(stdout, "SKIP\n");
 		return;
+	}
+	fprintf(stdout, "ref=%f, ", ref);
+	fflush(stdout);
 
 	out = _bench_source(&t->out, target, op, src, 1000);
-	if (out < 0)
+	if (out < 0) {
+		fprintf(stdout, "SKIP\n");
 		return;
+	}
 
-	fprintf (stdout, "%28s with %s: ref=%f, out=%f\n",
-		 source[src].name, ops[op].name, ref, out);
+	fprintf(stdout, "out=%f\n", out);
 }
 
 static double _bench_mask(struct test_display *t, enum target target_type,
@@ -386,16 +394,25 @@ static void bench_mask(struct test *t, enum target target, int op, int src, int 
 {
 	double out, ref;
 
+	fprintf(stdout, "%28s In %28s with %s: ",
+		source[src].name, source[mask].name, ops[op].name);
+	fflush(stdout);
+
 	ref = _bench_mask(&t->ref, target, op, src, mask, 1000);
-	if (ref < 0)
+	if (ref < 0) {
+		fprintf(stdout, "SKIP\n");
 		return;
+	}
+	fprintf(stdout, "ref=%f, ", ref);
+	fflush(stdout);
 
 	out = _bench_mask(&t->out, target, op, src, mask, 1000);
-	if (out < 0)
+	if (out < 0) {
+		fprintf(stdout, "SKIP\n");
 		return;
+	}
 
-	fprintf (stdout, "%28s In %28s with %s: ref=%f, out=%f\n",
-		 source[src].name, source[mask].name, ops[op].name, ref, out);
+	fprintf(stdout, "out=%f\n", out);
 }
 
 int main(int argc, char **argv)
