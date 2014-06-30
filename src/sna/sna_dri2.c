@@ -867,7 +867,7 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 	struct kgem_bo *dst_bo;
 	const BoxRec *boxes;
 	int16_t dx, dy, sx, sy;
-	int w, h, n;
+	int n;
 
 	/* To hide a stale DRI2Buffer, one may choose to substitute
 	 * pixmap->gpu_bo instead of dst/src->bo, however you then run
@@ -882,23 +882,10 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 	assert(is_front(dst->attachment) || is_front(src->attachment));
 	assert(dst->attachment != src->attachment);
 
-	/* Copy the minimum of the Drawable / src / dst extents */
-	w = draw->width;
-	if ((src_priv->size & 0xffff) < w)
-		w = src_priv->size & 0xffff;
-	if ((dst_priv->size & 0xffff) < w)
-		w = dst_priv->size & 0xffff;
-
-	h = draw->height;
-	if ((src_priv->size >> 16) < h)
-		h = src_priv->size >> 16;
-	if ((dst_priv->size >> 16) < h)
-		h = dst_priv->size >> 16;
-
 	clip.extents.x1 = draw->x;
 	clip.extents.y1 = draw->y;
-	clip.extents.x2 = draw->x + w;
-	clip.extents.y2 = draw->y + h;
+	clip.extents.x2 = draw->x + draw->width;
+	clip.extents.y2 = draw->y + draw->height;
 	clip.data = NULL;
 
 	if (region) {
@@ -968,6 +955,30 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		DBG(("%s: updated FrontLeft src_bo from handle=%d to handle=%d\n",
 		     __FUNCTION__, src_priv->bo->handle, src_bo->handle));
 		assert(src_bo->refcnt);
+	} else {
+		bool changed = false;
+
+		DBG(("%s: source size %dx%d, region size %dx%d\n",
+		     __FUNCTION__,
+		     src_priv->size & 0xffff, src_priv->size >> 16,
+		     (region ?: &clip)->extents.x2 - (region ?: &clip)->extents.x1,
+		     (region ?: &clip)->extents.y2 - (region ?: &clip)->extents.y1));
+
+		assert(sx + clip.extents.x1 >= 0);
+		assert(sy + clip.extents.y1 >= 0);
+
+		if (sx + clip.extents.x2 > (src_priv->size & 0xffff)) {
+			clip.extents.x2 = (src_priv->size & 0xffff) - sx;
+			changed = !!region;
+		}
+
+		if (sy + clip.extents.y2 > (src_priv->size >> 16)) {
+			clip.extents.y2 = (src_priv->size >> 16) - sy;
+			changed = !!region;
+		}
+
+		if (changed)
+			pixman_region_intersect(region, &clip, region);
 	}
 
 	dst_bo = dst_priv->bo;
@@ -988,8 +999,33 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		DBG(("%s: updated FrontLeft dst_bo from handle=%d to handle=%d\n",
 		     __FUNCTION__, dst_priv->bo->handle, dst_bo->handle));
 		assert(dst_bo->refcnt);
-	} else
+	} else {
+		bool changed = false;
+
+		DBG(("%s: target size %dx%d, region size %dx%d\n",
+		     __FUNCTION__,
+		     dst_priv->size & 0xffff, dst_priv->size >> 16,
+		     (region ?: &clip)->extents.x2 - (region ?: &clip)->extents.x1,
+		     (region ?: &clip)->extents.y2 - (region ?: &clip)->extents.y1));
+
+		assert(dx + clip.extents.x1 >= 0);
+		assert(dy + clip.extents.y1 >= 0);
+
+		if (dx + clip.extents.x2 > (dst_priv->size & 0xffff)) {
+			clip.extents.x2 = (dst_priv->size & 0xffff) - dx;
+			changed = !!region;
+		}
+
+		if (dy + clip.extents.y2 > (dst_priv->size >> 16)) {
+			clip.extents.y2 = (dst_priv->size >> 16) - dy;
+			changed = !!region;
+		}
+
+		if (changed)
+			pixman_region_intersect(region, &clip, region);
+
 		sync = false;
+	}
 
 	if (!wedged(sna)) {
 		xf86CrtcPtr crtc;
