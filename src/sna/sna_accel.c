@@ -17098,7 +17098,7 @@ static bool start_flush(struct sna *sna)
 		return true;
 	}
 
-	if (scanout->cpu_damage || scanout->gpu_bo->exec)
+	if (scanout->cpu_damage || scanout->gpu_bo->needs_flush)
 		return true;
 
 	kgem_scanout_flush(&sna->kgem, scanout->gpu_bo);
@@ -17814,7 +17814,7 @@ restart:
 	if (sna_scanout_do_flush(sna))
 		sna_scanout_flush(sna);
 	assert(sna_accel_scanout(sna) == NULL ||
-	       sna_accel_scanout(sna)->gpu_bo->exec == NULL ||
+	       sna_accel_scanout(sna)->gpu_bo->needs_flush == NULL ||
 	       sna->timer_active & (1<<(FLUSH_TIMER)));
 
 	if (sna_accel_do_throttle(sna))
