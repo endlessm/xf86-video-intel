@@ -1524,6 +1524,11 @@ static inline bool has_coherent_ptr(struct sna *sna, struct sna_pixmap *priv, un
 	if (priv == NULL)
 		return true;
 
+	if (flags & MOVE_ASYNC_HINT) {
+		/* Not referencing the pointer itself, so do not care */
+		return true;
+	}
+
 	if (!priv->mapped) {
 		if (!priv->cpu_bo)
 			return true;
@@ -3065,7 +3070,7 @@ skip:
 	assert(pixmap->devPrivate.ptr == PTR(priv->ptr));
 	assert(pixmap->devKind);
 	assert_pixmap_damage(pixmap);
-	assert(has_coherent_ptr(sna, sna_pixmap(pixmap), flags));
+	assert(has_coherent_ptr(sna, priv, flags));
 	return true;
 }
 
