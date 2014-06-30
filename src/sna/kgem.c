@@ -4270,7 +4270,7 @@ unsigned kgem_can_create_2d(struct kgem *kgem,
 	if (size > 0) {
 		if (size <= kgem->max_cpu_size)
 			flags |= KGEM_CAN_CREATE_CPU;
-		else if (size <= kgem->max_gpu_size)
+		if (size > 4096 && size <= kgem->max_gpu_size)
 			flags |= KGEM_CAN_CREATE_GPU;
 		if (size <= PAGE_SIZE*kgem->aperture_mappable/4)
 			flags |= KGEM_CAN_CREATE_GTT;
