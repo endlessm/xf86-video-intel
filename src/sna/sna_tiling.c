@@ -596,7 +596,7 @@ sna_tiling_fill_boxes(struct sna *sna,
 		      CARD8 op,
 		      PictFormat format,
 		      const xRenderColor *color,
-		      PixmapPtr dst, struct kgem_bo *dst_bo,
+		      const DrawableRec *dst, struct kgem_bo *dst_bo,
 		      const BoxRec *box, int n)
 {
 	RegionRec region, tile, this;
@@ -608,7 +608,7 @@ sna_tiling_fill_boxes(struct sna *sna,
 
 	/* Use a small step to accommodate enlargement through tile alignment */
 	step = sna->render.max_3d_size;
-	if (region.extents.x1 & (8*512 / dst->drawable.bitsPerPixel - 1) ||
+	if (region.extents.x1 & (8*512 / dst->bitsPerPixel - 1) ||
 	    region.extents.y1 & 63)
 		step /= 2;
 
@@ -637,7 +637,7 @@ sna_tiling_fill_boxes(struct sna *sna,
 		for (tile.extents.x1 = tile.extents.x2 = region.extents.x1;
 		     tile.extents.x2 < region.extents.x2;
 		     tile.extents.x1 = tile.extents.x2) {
-			PixmapRec tmp;
+			DrawableRec tmp;
 			int x2 = tile.extents.x1 + step;
 			if (x2 > region.extents.x2)
 				x2 = region.extents.x2;
@@ -650,21 +650,20 @@ sna_tiling_fill_boxes(struct sna *sna,
 			if (RegionNil(&this))
 				continue;
 
-			tmp.drawable.width  = this.extents.x2 - this.extents.x1;
-			tmp.drawable.height = this.extents.y2 - this.extents.y1;
-			tmp.drawable.depth  = dst->drawable.depth;
-			tmp.drawable.bitsPerPixel = dst->drawable.bitsPerPixel;
-			tmp.devPrivate.ptr = NULL;
+			tmp.width  = this.extents.x2 - this.extents.x1;
+			tmp.height = this.extents.y2 - this.extents.y1;
+			tmp.depth  = dst->depth;
+			tmp.bitsPerPixel = dst->bitsPerPixel;
 
 			bo = kgem_create_2d(&sna->kgem,
-					    tmp.drawable.width,
-					    tmp.drawable.height,
-					    dst->drawable.bitsPerPixel,
+					    tmp.width,
+					    tmp.height,
+					    dst->bitsPerPixel,
 					    kgem_choose_tiling(&sna->kgem,
 							       I915_TILING_X,
-							       tmp.drawable.width,
-							       tmp.drawable.height,
-							       dst->drawable.bitsPerPixel),
+							       tmp.width,
+							       tmp.height,
+							       dst->bitsPerPixel),
 					    CREATE_TEMPORARY);
 			if (bo) {
 				int16_t dx = this.extents.x1;
@@ -1125,12 +1124,12 @@ done:
 
 bool
 sna_tiling_copy_boxes(struct sna *sna, uint8_t alu,
-		      PixmapPtr src, struct kgem_bo *src_bo, int16_t src_dx, int16_t src_dy,
-		      PixmapPtr dst, struct kgem_bo *dst_bo, int16_t dst_dx, int16_t dst_dy,
+		      const DrawableRec *src, struct kgem_bo *src_bo, int16_t src_dx, int16_t src_dy,
+		      const DrawableRec *dst, struct kgem_bo *dst_bo, int16_t dst_dx, int16_t dst_dy,
 		      const BoxRec *box, int n)
 {
 	BoxRec extents, tile, stack[64], *clipped, *c;
-	PixmapRec p;
+	DrawableRec p;
 	int i, step, tiling;
 	bool create = true;
 	bool ret = false;
@@ -1174,9 +1173,8 @@ sna_tiling_copy_boxes(struct sna *sna, uint8_t alu,
 	} else
 		clipped = stack;
 
-	p.drawable.depth = src->drawable.depth;
-	p.drawable.bitsPerPixel = src->drawable.bitsPerPixel;
-	p.devPrivate.ptr = NULL;
+	p.depth = src->depth;
+	p.bitsPerPixel = src->bitsPerPixel;
 
 	for (tile.y1 = extents.y1; tile.y1 < extents.y2; tile.y1 = tile.y2) {
 		int y2 = tile.y1 + step;
@@ -1209,17 +1207,17 @@ sna_tiling_copy_boxes(struct sna *sna, uint8_t alu,
 			if (c == clipped)
 				continue;
 
-			p.drawable.width  = tile.x2 - tile.x1;
-			p.drawable.height = tile.y2 - tile.y1;
+			p.width  = tile.x2 - tile.x1;
+			p.height = tile.y2 - tile.y1;
 
 			DBG(("%s: tile (%d, %d), (%d, %d)\n",
 			     __FUNCTION__, tile.x1, tile.y1, tile.x2, tile.y2));
 
 			if (create) {
 				tmp_bo = kgem_create_2d(&sna->kgem,
-							p.drawable.width,
-							p.drawable.height,
-							p.drawable.bitsPerPixel,
+							p.width,
+							p.height,
+							p.bitsPerPixel,
 							tiling, CREATE_TEMPORARY);
 				if (!tmp_bo)
 					goto tiled_error;

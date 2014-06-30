@@ -178,7 +178,7 @@ picture_is_cpu(struct sna *sna, PicturePtr picture)
 	return !is_gpu(sna, picture->pDrawable, PREFER_GPU_RENDER);
 }
 
-static inline bool sna_blt_compare_depth(DrawablePtr src, DrawablePtr dst)
+static inline bool sna_blt_compare_depth(const DrawableRec *src, const DrawableRec *dst)
 {
 	if (src->depth == dst->depth)
 		return true;

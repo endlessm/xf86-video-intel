@@ -2300,30 +2300,30 @@ gen5_copy_bind_surfaces(struct sna *sna,
 
 static bool
 gen5_render_copy_boxes(struct sna *sna, uint8_t alu,
-		       PixmapPtr src, struct kgem_bo *src_bo, int16_t src_dx, int16_t src_dy,
-		       PixmapPtr dst, struct kgem_bo *dst_bo, int16_t dst_dx, int16_t dst_dy,
+		       const DrawableRec *src, struct kgem_bo *src_bo, int16_t src_dx, int16_t src_dy,
+		       const DrawableRec *dst, struct kgem_bo *dst_bo, int16_t dst_dx, int16_t dst_dy,
 		       const BoxRec *box, int n, unsigned flags)
 {
 	struct sna_composite_op tmp;
 
 	DBG(("%s alu=%d, src=%ld:handle=%d, dst=%ld:handle=%d boxes=%d x [((%d, %d), (%d, %d))...], flags=%x\n",
 	     __FUNCTION__, alu,
-	     src->drawable.serialNumber, src_bo->handle,
-	     dst->drawable.serialNumber, dst_bo->handle,
+	     src->serialNumber, src_bo->handle,
+	     dst->serialNumber, dst_bo->handle,
 	     n, box->x1, box->y1, box->x2, box->y2,
 	     flags));
 
-	if (sna_blt_compare_depth(&src->drawable, &dst->drawable) &&
+	if (sna_blt_compare_depth(src, dst) &&
 	    sna_blt_copy_boxes(sna, alu,
 			       src_bo, src_dx, src_dy,
 			       dst_bo, dst_dx, dst_dy,
-			       dst->drawable.bitsPerPixel,
+			       dst->bitsPerPixel,
 			       box, n))
 		return true;
 
 	if (!(alu == GXcopy || alu == GXclear) || src_bo == dst_bo) {
 fallback_blt:
-		if (!sna_blt_compare_depth(&src->drawable, &dst->drawable))
+		if (!sna_blt_compare_depth(src, dst))
 			return false;
 
 		return sna_blt_copy_boxes_fallback(sna, alu,
@@ -2334,12 +2334,12 @@ fallback_blt:
 
 	memset(&tmp, 0, sizeof(tmp));
 
-	if (dst->drawable.depth == src->drawable.depth) {
-		tmp.dst.format = sna_render_format_for_depth(dst->drawable.depth);
+	if (dst->depth == src->depth) {
+		tmp.dst.format = sna_render_format_for_depth(dst->depth);
 		tmp.src.pict_format = tmp.dst.format;
 	} else {
-		tmp.dst.format = sna_format_for_depth(dst->drawable.depth);
-		tmp.src.pict_format = sna_format_for_depth(src->drawable.depth);
+		tmp.dst.format = sna_format_for_depth(dst->depth);
+		tmp.src.pict_format = sna_format_for_depth(src->depth);
 	}
 	if (!gen5_check_format(tmp.src.pict_format)) {
 		DBG(("%s: unsupported source format, %x, use BLT\n",
@@ -2352,9 +2352,9 @@ fallback_blt:
 
 	tmp.op = alu == GXcopy ? PictOpSrc : PictOpClear;
 
-	tmp.dst.pixmap = dst;
-	tmp.dst.width  = dst->drawable.width;
-	tmp.dst.height = dst->drawable.height;
+	tmp.dst.pixmap = (PixmapPtr)dst;
+	tmp.dst.width  = dst->width;
+	tmp.dst.height = dst->height;
 	tmp.dst.x = tmp.dst.y = 0;
 	tmp.dst.bo = dst_bo;
 	tmp.damage = NULL;
@@ -2387,7 +2387,7 @@ fallback_blt:
 	tmp.src.filter = SAMPLER_FILTER_NEAREST;
 	tmp.src.repeat = SAMPLER_EXTEND_NONE;
 	tmp.src.card_format = gen5_get_card_format(tmp.src.pict_format);
-	if (too_large(src->drawable.width, src->drawable.height)) {
+	if (too_large(src->width, src->height)) {
 		BoxRec extents = box[0];
 		int i;
 
@@ -2411,11 +2411,11 @@ fallback_blt:
 			goto fallback_tiled_dst;
 	} else {
 		tmp.src.bo = kgem_bo_reference(src_bo);
-		tmp.src.width  = src->drawable.width;
-		tmp.src.height = src->drawable.height;
+		tmp.src.width  = src->width;
+		tmp.src.height = src->height;
 		tmp.src.offset[0] = tmp.src.offset[1] = 0;
-		tmp.src.scale[0] = 1.f/src->drawable.width;
-		tmp.src.scale[1] = 1.f/src->drawable.height;
+		tmp.src.scale[0] = 1.f/src->width;
+		tmp.src.scale[1] = 1.f/src->height;
 	}
 
 	tmp.is_affine = true;
@@ -2483,11 +2483,11 @@ fallback_tiled_dst:
 	if (tmp.redirect.real_bo)
 		kgem_bo_destroy(&sna->kgem, tmp.dst.bo);
 fallback_tiled:
-	if (sna_blt_compare_depth(&src->drawable, &dst->drawable) &&
+	if (sna_blt_compare_depth(src, dst) &&
 	    sna_blt_copy_boxes(sna, alu,
 			       src_bo, src_dx, src_dy,
 			       dst_bo, dst_dx, dst_dy,
-			       dst->drawable.bitsPerPixel,
+			       dst->bitsPerPixel,
 			       box, n))
 		return true;
 
@@ -2663,7 +2663,7 @@ gen5_render_fill_boxes(struct sna *sna,
 		       CARD8 op,
 		       PictFormat format,
 		       const xRenderColor *color,
-		       PixmapPtr dst, struct kgem_bo *dst_bo,
+		       const DrawableRec *dst, struct kgem_bo *dst_bo,
 		       const BoxRec *box, int n)
 {
 	struct sna_composite_op tmp;
@@ -2682,7 +2682,7 @@ gen5_render_fill_boxes(struct sna *sna,
 
 	if (op <= PictOpSrc &&
 	    (prefer_blt_fill(sna) ||
-	     too_large(dst->drawable.width, dst->drawable.height) ||
+	     too_large(dst->width, dst->height) ||
 	     !gen5_check_dst_format(format))) {
 		uint8_t alu = GXinvalid;
 
@@ -2699,14 +2699,14 @@ gen5_render_fill_boxes(struct sna *sna,
 
 		if (alu != GXinvalid &&
 		    sna_blt_fill_boxes(sna, alu,
-				       dst_bo, dst->drawable.bitsPerPixel,
+				       dst_bo, dst->bitsPerPixel,
 				       pixel, box, n))
 			return true;
 
 		if (!gen5_check_dst_format(format))
 			return false;
 
-		if (too_large(dst->drawable.width, dst->drawable.height))
+		if (too_large(dst->width, dst->height))
 			return sna_tiling_fill_boxes(sna, op, format, color,
 						     dst, dst_bo, box, n);
 	}
@@ -2728,9 +2728,10 @@ gen5_render_fill_boxes(struct sna *sna,
 
 	tmp.op = op;
 
-	tmp.dst.pixmap = dst;
-	tmp.dst.width  = dst->drawable.width;
-	tmp.dst.height = dst->drawable.height;
+	assert(dst->type == DRAWABLE_PIXMAP);
+	tmp.dst.pixmap = (PixmapPtr)dst;
+	tmp.dst.width  = dst->width;
+	tmp.dst.height = dst->height;
 	tmp.dst.format = format;
 	tmp.dst.bo = dst_bo;
 

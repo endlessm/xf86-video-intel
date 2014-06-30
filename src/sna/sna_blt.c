@@ -4118,8 +4118,8 @@ static void box_extents(const BoxRec *box, int n, BoxRec *extents)
 }
 
 bool sna_blt_copy_boxes_fallback(struct sna *sna, uint8_t alu,
-				 PixmapPtr src, struct kgem_bo *src_bo, int16_t src_dx, int16_t src_dy,
-				 PixmapPtr dst, struct kgem_bo *dst_bo, int16_t dst_dx, int16_t dst_dy,
+				 const DrawableRec *src, struct kgem_bo *src_bo, int16_t src_dx, int16_t src_dy,
+				 const DrawableRec *dst, struct kgem_bo *dst_bo, int16_t dst_dx, int16_t dst_dy,
 				 const BoxRec *box, int nbox)
 {
 	struct kgem_bo *free_bo = NULL;
@@ -4127,9 +4127,9 @@ bool sna_blt_copy_boxes_fallback(struct sna *sna, uint8_t alu,
 
 	DBG(("%s: alu=%d, n=%d\n", __FUNCTION__, alu, nbox));
 
-	if (!sna_blt_compare_depth(&src->drawable, &dst->drawable)) {
+	if (!sna_blt_compare_depth(src, dst)) {
 		DBG(("%s: mismatching depths %d -> %d\n",
-		     __FUNCTION__, src->drawable.depth, dst->drawable.depth));
+		     __FUNCTION__, src->depth, dst->depth));
 		return false;
 	}
 
@@ -4142,8 +4142,11 @@ bool sna_blt_copy_boxes_fallback(struct sna *sna, uint8_t alu,
 
 			DBG(("%s: src is Y-tiled\n", __FUNCTION__));
 
-			assert(src_bo == sna_pixmap(src)->gpu_bo);
-			bo = sna_pixmap_change_tiling(src, I915_TILING_X);
+			if (src->type != DRAWABLE_PIXMAP)
+				return false;
+
+			assert(sna_pixmap((PixmapPtr)src)->gpu_bo == src_bo);
+			bo = sna_pixmap_change_tiling((PixmapPtr)src, I915_TILING_X);
 			if (bo == NULL) {
 				BoxRec extents;
 
@@ -4154,7 +4157,7 @@ bool sna_blt_copy_boxes_fallback(struct sna *sna, uint8_t alu,
 				free_bo = kgem_create_2d(&sna->kgem,
 							 extents.x2 - extents.x1,
 							 extents.y2 - extents.y1,
-							 src->drawable.bitsPerPixel,
+							 src->bitsPerPixel,
 							 I915_TILING_X, 0);
 				if (free_bo == NULL) {
 					DBG(("%s: fallback -- temp allocation failed\n",
@@ -4165,7 +4168,7 @@ bool sna_blt_copy_boxes_fallback(struct sna *sna, uint8_t alu,
 				if (!sna_blt_copy_boxes(sna, GXcopy,
 							src_bo, src_dx, src_dy,
 							free_bo, -extents.x1, -extents.y1,
-							src->drawable.bitsPerPixel,
+							src->bitsPerPixel,
 							box, nbox)) {
 					DBG(("%s: fallback -- temp copy failed\n",
 					     __FUNCTION__));
@@ -4183,8 +4186,10 @@ bool sna_blt_copy_boxes_fallback(struct sna *sna, uint8_t alu,
 		if (src_bo->tiling == I915_TILING_Y &&
 		    kgem_bo_blt_pitch_is_ok(&sna->kgem, src_bo)) {
 			DBG(("%s: src is y-tiled\n", __FUNCTION__));
-			assert(src_bo == sna_pixmap(src)->gpu_bo);
-			src_bo = sna_pixmap_change_tiling(src, I915_TILING_X);
+			if (src->type != DRAWABLE_PIXMAP)
+				return false;
+			assert(sna_pixmap((PixmapPtr)src)->gpu_bo == src_bo);
+			src_bo = sna_pixmap_change_tiling((PixmapPtr)src, I915_TILING_X);
 			if (src_bo == NULL) {
 				DBG(("%s: fallback -- src y-tiling conversion failed\n",
 				     __FUNCTION__));
@@ -4195,8 +4200,10 @@ bool sna_blt_copy_boxes_fallback(struct sna *sna, uint8_t alu,
 		if (dst_bo->tiling == I915_TILING_Y &&
 		    kgem_bo_blt_pitch_is_ok(&sna->kgem, dst_bo)) {
 			DBG(("%s: dst is y-tiled\n", __FUNCTION__));
-			assert(dst_bo == sna_pixmap(dst)->gpu_bo);
-			dst_bo = sna_pixmap_change_tiling(dst, I915_TILING_X);
+			if (dst->type != DRAWABLE_PIXMAP)
+				return false;
+			assert(sna_pixmap((PixmapPtr)dst)->gpu_bo == dst_bo);
+			dst_bo = sna_pixmap_change_tiling((PixmapPtr)dst, I915_TILING_X);
 			if (dst_bo == NULL) {
 				DBG(("%s: fallback -- dst y-tiling conversion failed\n",
 				     __FUNCTION__));
@@ -4208,7 +4215,7 @@ bool sna_blt_copy_boxes_fallback(struct sna *sna, uint8_t alu,
 	ret =  sna_blt_copy_boxes(sna, alu,
 				  src_bo, src_dx, src_dy,
 				  dst_bo, dst_dx, dst_dy,
-				  dst->drawable.bitsPerPixel,
+				  dst->bitsPerPixel,
 				  box, nbox);
 
 	if (free_bo)

@@ -125,19 +125,19 @@ no_render_check_composite_spans(struct sna *sna,
 
 static bool
 no_render_copy_boxes(struct sna *sna, uint8_t alu,
-		     PixmapPtr src, struct kgem_bo *src_bo, int16_t src_dx, int16_t src_dy,
-		     PixmapPtr dst, struct kgem_bo *dst_bo, int16_t dst_dx, int16_t dst_dy,
+		     const DrawableRec *src, struct kgem_bo *src_bo, int16_t src_dx, int16_t src_dy,
+		     const DrawableRec *dst, struct kgem_bo *dst_bo, int16_t dst_dx, int16_t dst_dy,
 		     const BoxRec *box, int n, unsigned flags)
 {
 	DBG(("%s (n=%d)\n", __FUNCTION__, n));
 
-	if (!sna_blt_compare_depth(&src->drawable, &dst->drawable))
+	if (!sna_blt_compare_depth(src, dst))
 		return false;
 
 	return sna_blt_copy_boxes(sna, alu,
 				  src_bo, src_dx, src_dy,
 				  dst_bo, dst_dx, dst_dy,
-				  dst->drawable.bitsPerPixel,
+				  dst->bitsPerPixel,
 				  box, n);
 }
 
@@ -163,7 +163,7 @@ no_render_fill_boxes(struct sna *sna,
 		     CARD8 op,
 		     PictFormat format,
 		     const xRenderColor *color,
-		     PixmapPtr dst, struct kgem_bo *dst_bo,
+		     const DrawableRec *dst, struct kgem_bo *dst_bo,
 		     const BoxRec *box, int n)
 {
 	uint8_t alu = GXcopy;
@@ -197,7 +197,7 @@ no_render_fill_boxes(struct sna *sna,
 		return false;
 
 	return sna_blt_fill_boxes(sna, alu,
-				  dst_bo, dst->drawable.bitsPerPixel,
+				  dst_bo, dst->bitsPerPixel,
 				  pixel, box, n);
 }
 
@@ -892,7 +892,7 @@ cleanup_tmp:
 
 bool
 sna_render_pixmap_partial(struct sna *sna,
-			  PixmapPtr pixmap,
+			  const DrawableRec *draw,
 			  struct kgem_bo *bo,
 			  struct sna_composite_channel *channel,
 			  int16_t x, int16_t y,
@@ -933,11 +933,11 @@ sna_render_pixmap_partial(struct sna *sna,
 		box.y1 = box.y1 & ~(2*tile_height - 1);
 		box.y2 = ALIGN(box.y2, 2*tile_height);
 
-		assert(tile_width * 8 >= pixmap->drawable.bitsPerPixel);
-		box.x1 = box.x1 & ~(tile_width * 8 / pixmap->drawable.bitsPerPixel - 1);
-		box.x2 = ALIGN(box.x2, tile_width * 8 / pixmap->drawable.bitsPerPixel);
+		assert(tile_width * 8 >= draw->bitsPerPixel);
+		box.x1 = box.x1 & ~(tile_width * 8 / draw->bitsPerPixel - 1);
+		box.x2 = ALIGN(box.x2, tile_width * 8 / draw->bitsPerPixel);
 
-		offset = box.x1 * pixmap->drawable.bitsPerPixel / 8 / tile_width * tile_size;
+		offset = box.x1 * draw->bitsPerPixel / 8 / tile_width * tile_size;
 	} else {
 		box.y1 = box.y1 & ~1;
 		box.y2 = ALIGN(box.y2, 2);
@@ -945,19 +945,19 @@ sna_render_pixmap_partial(struct sna *sna,
 		box.x1 = box.x1 & ~1;
 		box.x2 = ALIGN(box.x2, 2);
 
-		offset = box.x1 * pixmap->drawable.bitsPerPixel / 8;
+		offset = box.x1 * draw->bitsPerPixel / 8;
 	}
 
-	if (box.x2 > pixmap->drawable.width)
-		box.x2 = pixmap->drawable.width;
-	if (box.y2 > pixmap->drawable.height)
-		box.y2 = pixmap->drawable.height;
+	if (box.x2 > draw->width)
+		box.x2 = draw->width;
+	if (box.y2 > draw->height)
+		box.y2 = draw->height;
 
 	w = box.x2 - box.x1;
 	h = box.y2 - box.y1;
 	DBG(("%s box=(%d, %d), (%d, %d): (%d, %d)/(%d, %d)\n", __FUNCTION__,
 	     box.x1, box.y1, box.x2, box.y2, w, h,
-	     pixmap->drawable.width, pixmap->drawable.height));
+	     draw->width, draw->height));
 	if (w <= 0 || h <= 0 ||
 	    w > sna->render.max_3d_size ||
 	    h > sna->render.max_3d_size) {
@@ -1220,19 +1220,18 @@ sna_render_picture_extract(struct sna *sna,
 						       pixmap->drawable.bitsPerPixel),
 				    CREATE_TEMPORARY);
 		if (bo) {
-			PixmapRec tmp;
+			DrawableRec tmp;
 
-			tmp.drawable.width  = w;
-			tmp.drawable.height = h;
-			tmp.drawable.depth  = pixmap->drawable.depth;
-			tmp.drawable.bitsPerPixel = pixmap->drawable.bitsPerPixel;
-			tmp.devPrivate.ptr = NULL;
+			tmp.width  = w;
+			tmp.height = h;
+			tmp.depth  = pixmap->drawable.depth;
+			tmp.bitsPerPixel = pixmap->drawable.bitsPerPixel;
 
-			assert(tmp.drawable.width);
-			assert(tmp.drawable.height);
+			assert(tmp.width);
+			assert(tmp.height);
 
 			if (!sna->render.copy_boxes(sna, GXcopy,
-						    pixmap, src_bo, 0, 0,
+						    &pixmap->drawable, src_bo, 0, 0,
 						    &tmp, bo, -box.x1, -box.y1,
 						    &box, 1, 0)) {
 				kgem_bo_destroy(&sna->kgem, bo);
@@ -2126,12 +2125,12 @@ sna_render_composite_redirect_done(struct sna *sna,
 
 static bool
 copy_overlap(struct sna *sna, uint8_t alu,
-	     PixmapPtr pixmap, struct kgem_bo *bo,
+	     const DrawableRec *draw, struct kgem_bo *bo,
 	     int16_t src_dx, int16_t src_dy,
 	     int16_t dst_dx, int16_t dst_dy,
 	     const BoxRec *box, int n, const BoxRec *extents)
 {
-	ScreenPtr screen = pixmap->drawable.pScreen;
+	ScreenPtr screen = draw->pScreen;
 	struct kgem_bo *tmp_bo;
 	PixmapPtr tmp;
 	bool ret = false;
@@ -2149,7 +2148,7 @@ copy_overlap(struct sna *sna, uint8_t alu,
 	tmp = screen->CreatePixmap(screen,
 				   extents->x2 - extents->x1,
 				   extents->y2 - extents->y1,
-				   pixmap->drawable.depth,
+				   draw->depth,
 				   SNA_CREATE_SCRATCH);
 	if (tmp == NULL)
 		return false;
@@ -2158,12 +2157,12 @@ copy_overlap(struct sna *sna, uint8_t alu,
 	assert(tmp_bo);
 
 	ret = (sna->render.copy_boxes(sna, GXcopy,
-				      pixmap, bo, src_dx, src_dy,
-				      tmp, tmp_bo, -extents->x1, -extents->y1,
+				      draw, bo, src_dx, src_dy,
+				      &tmp->drawable, tmp_bo, -extents->x1, -extents->y1,
 				      box, n , 0) &&
 	       sna->render.copy_boxes(sna, alu,
-				      tmp, tmp_bo, -extents->x1, -extents->y1,
-				      pixmap, bo, dst_dx, dst_dy,
+				      &tmp->drawable, tmp_bo, -extents->x1, -extents->y1,
+				      draw, bo, dst_dx, dst_dy,
 				      box, n , 0));
 
 	screen->DestroyPixmap(tmp);
@@ -2171,7 +2170,7 @@ copy_overlap(struct sna *sna, uint8_t alu,
 }
 bool
 sna_render_copy_boxes__overlap(struct sna *sna, uint8_t alu,
-			       PixmapPtr pixmap, struct kgem_bo *bo,
+			       const DrawableRec *draw, struct kgem_bo *bo,
 			       int16_t src_dx, int16_t src_dy,
 			       int16_t dst_dx, int16_t dst_dy,
 			       const BoxRec *box, int n, const BoxRec *extents)
@@ -2182,14 +2181,15 @@ sna_render_copy_boxes__overlap(struct sna *sna, uint8_t alu,
 	pixman_box16_t stack_boxes[64], *boxes = stack_boxes;
 	int num_boxes, i;
 
+	assert(draw->type == DRAWABLE_PIXMAP);
 	DBG(("%s: pixmap=%ld, handle=%d, %d x [(%d, %d), (%d, %d)], dst=(%d, %d), src=(%d, %d)\n",
-	     __FUNCTION__, pixmap->drawable.serialNumber, bo->handle,
+	     __FUNCTION__, draw->serialNumber, bo->handle,
 	     n, extents->x1, extents->y1, extents->x2, extents->y2,
 	     src_dx, src_dy, dst_dx, dst_dy));
 
 	if ((dst_dx - src_dx < 4 && src_dx - dst_dx < 4) &&
 	    (dst_dy - src_dy < 4 && src_dy - dst_dy < 4))
-		return copy_overlap(sna, alu, pixmap, bo,
+		return copy_overlap(sna, alu, draw, bo,
 				    src_dx, src_dy,
 				    dst_dx, dst_dy,
 				    box, n, extents);
@@ -2197,7 +2197,7 @@ sna_render_copy_boxes__overlap(struct sna *sna, uint8_t alu,
 	if (n > ARRAY_SIZE(stack_boxes)) {
 		boxes = malloc(sizeof(pixman_box16_t) * n);
 		if (boxes == NULL)
-			return copy_overlap(sna, alu, pixmap, bo,
+			return copy_overlap(sna, alu, draw, bo,
 					    src_dx, src_dy,
 					    dst_dx, dst_dy,
 					    box, n, extents);
@@ -2262,14 +2262,14 @@ sna_render_copy_boxes__overlap(struct sna *sna, uint8_t alu,
 	n = region_num_rects(&non_overlap);
 	box = region_rects(&non_overlap);
 	if (n && !sna->render.copy_boxes(sna, alu,
-					 pixmap, bo, -dst_dx + src_dx, -dst_dy + src_dy,
-					 pixmap, bo, 0, 0,
+					 draw, bo, -dst_dx + src_dx, -dst_dy + src_dy,
+					 draw, bo, 0, 0,
 					 box, n , COPY_NO_OVERLAP))
 		goto cleanup_boxes;
 
 	n = region_num_rects(&overlap);
 	box = region_rects(&overlap);
-	ret = copy_overlap(sna, alu, pixmap, bo,
+	ret = copy_overlap(sna, alu, draw, bo,
 			   -dst_dx + src_dx, -dst_dy + src_dy,
 			   0, 0,
 			   box, n, &overlap.extents);

@@ -706,8 +706,8 @@ struct kgem_bo *sna_pixmap_change_tiling(PixmapPtr pixmap, uint32_t tiling)
 	box.y2 = pixmap->drawable.height;
 
 	if (!sna->render.copy_boxes(sna, GXcopy,
-				    pixmap, priv->gpu_bo, 0, 0,
-				    pixmap, bo, 0, 0,
+				    &pixmap->drawable, priv->gpu_bo, 0, 0,
+				    &pixmap->drawable, bo, 0, 0,
 				    &box, 1, 0)) {
 		DBG(("%s: copy failed\n", __FUNCTION__));
 		kgem_bo_destroy(&sna->kgem, bo);
@@ -1144,8 +1144,8 @@ sna_share_pixmap_backing(PixmapPtr pixmap, ScreenPtr slave, void **fd_handle)
 
 		assert(!wedged(sna)); /* XXX */
 		if (!sna->render.copy_boxes(sna, GXcopy,
-					    pixmap, priv->gpu_bo, 0, 0,
-					    pixmap, bo, 0, 0,
+					    &pixmap->drawable, priv->gpu_bo, 0, 0,
+					    &pixmap->drawable, bo, 0, 0,
 					    &box, 1, 0)) {
 			DBG(("%s: copy failed\n", __FUNCTION__));
 			kgem_bo_destroy(&sna->kgem, bo);
@@ -1777,8 +1777,8 @@ static inline bool cpu_bo_download(struct sna *sna,
 
 	DBG(("%s: using GPU write to CPU bo for download from GPU\n", __FUNCTION__));
 	return sna->render.copy_boxes(sna, GXcopy,
-				      priv->pixmap, priv->gpu_bo, 0, 0,
-				      priv->pixmap, priv->cpu_bo, 0, 0,
+				      &priv->pixmap->drawable, priv->gpu_bo, 0, 0,
+				      &priv->pixmap->drawable, priv->cpu_bo, 0, 0,
 				      box, n, COPY_LAST);
 }
 
@@ -1883,8 +1883,8 @@ sna_pixmap_undo_cow(struct sna *sna, struct sna_pixmap *priv, unsigned flags)
 		}
 
 		if (!sna->render.copy_boxes(sna, GXcopy,
-					    pixmap, priv->gpu_bo, 0, 0,
-					    pixmap, bo, 0, 0,
+					    &pixmap->drawable, priv->gpu_bo, 0, 0,
+					    &pixmap->drawable, bo, 0, 0,
 					    &box, 1, 0)) {
 			DBG(("%s: copy failed\n", __FUNCTION__));
 			kgem_bo_destroy(&sna->kgem, bo);
@@ -1932,8 +1932,8 @@ sna_pixmap_undo_cow(struct sna *sna, struct sna_pixmap *priv, unsigned flags)
 			}
 
 			if (!sna->render.copy_boxes(sna, GXcopy,
-						    pixmap, priv->gpu_bo, 0, 0,
-						    pixmap, bo, 0, 0,
+						    &pixmap->drawable, priv->gpu_bo, 0, 0,
+						    &pixmap->drawable, bo, 0, 0,
 						    &box, 1, 0)) {
 				DBG(("%s: copy failed\n", __FUNCTION__));
 				kgem_bo_destroy(&sna->kgem, bo);
@@ -3361,8 +3361,8 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 		if (use_cpu_bo_for_upload(sna, priv, 0)) {
 			DBG(("%s: using CPU bo for upload to GPU\n", __FUNCTION__));
 			ok = sna->render.copy_boxes(sna, GXcopy,
-						    pixmap, priv->cpu_bo, 0, 0,
-						    pixmap, priv->gpu_bo, 0, 0,
+						    &pixmap->drawable, priv->cpu_bo, 0, 0,
+						    &pixmap->drawable, priv->gpu_bo, 0, 0,
 						    box, n, 0);
 		}
 		if (!ok) {
@@ -3401,8 +3401,8 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 		if (use_cpu_bo_for_upload(sna, priv, 0)) {
 			DBG(("%s: using CPU bo for upload to GPU\n", __FUNCTION__));
 			ok = sna->render.copy_boxes(sna, GXcopy,
-						    pixmap, priv->cpu_bo, 0, 0,
-						    pixmap, priv->gpu_bo, 0, 0,
+						    &pixmap->drawable, priv->cpu_bo, 0, 0,
+						    &pixmap->drawable, priv->gpu_bo, 0, 0,
 						    box, 1, 0);
 		}
 		if (!ok) {
@@ -3430,8 +3430,8 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 		if (use_cpu_bo_for_upload(sna, priv, 0)) {
 			DBG(("%s: using CPU bo for upload to GPU, %d boxes\n", __FUNCTION__, n));
 			ok = sna->render.copy_boxes(sna, GXcopy,
-						    pixmap, priv->cpu_bo, 0, 0,
-						    pixmap, priv->gpu_bo, 0, 0,
+						    &pixmap->drawable, priv->cpu_bo, 0, 0,
+						    &pixmap->drawable, priv->gpu_bo, 0, 0,
 						    box, n, 0);
 		}
 		if (!ok) {
@@ -4236,8 +4236,8 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 		if (use_cpu_bo_for_upload(sna, priv, flags)) {
 			DBG(("%s: using CPU bo for upload to GPU\n", __FUNCTION__));
 			ok = sna->render.copy_boxes(sna, GXcopy,
-						    pixmap, priv->cpu_bo, 0, 0,
-						    pixmap, priv->gpu_bo, 0, 0,
+						    &pixmap->drawable, priv->cpu_bo, 0, 0,
+						    &pixmap->drawable, priv->gpu_bo, 0, 0,
 						    box, n, 0);
 		}
 		if (!ok) {
@@ -4903,8 +4903,8 @@ try_upload__blt(PixmapPtr pixmap, RegionRec *region,
 
 	if (sigtrap_get() == 0) {
 		ok = sna->render.copy_boxes(sna, GXcopy,
-					    pixmap, src_bo, -x, -y,
-					    pixmap, priv->gpu_bo, 0, 0,
+					    &pixmap->drawable, src_bo, -x, -y,
+					    &pixmap->drawable, priv->gpu_bo, 0, 0,
 					    region_rects(region),
 					    region_num_rects(region),
 					    COPY_LAST);
@@ -5756,8 +5756,8 @@ sna_self_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 		assert(priv->cpu_damage == NULL);
 
 		if (!sna->render.copy_boxes(sna, alu,
-					    pixmap, priv->gpu_bo, sx, sy,
-					    pixmap, priv->gpu_bo, tx, ty,
+					    &pixmap->drawable, priv->gpu_bo, sx, sy,
+					    &pixmap->drawable, priv->gpu_bo, tx, ty,
 					    box, n, 0)) {
 			DBG(("%s: fallback - accelerated copy boxes failed\n",
 			     __FUNCTION__));
@@ -6410,8 +6410,8 @@ discard_cow:
 				}
 			}
 			if (!sna->render.copy_boxes(sna, alu,
-						    src_pixmap, src_priv->gpu_bo, src_dx, src_dy,
-						    dst_pixmap, bo, 0, 0,
+						    &src_pixmap->drawable, src_priv->gpu_bo, src_dx, src_dy,
+						    &dst_pixmap->drawable, bo, 0, 0,
 						    box, n, 0)) {
 				DBG(("%s: fallback - accelerated copy boxes failed\n",
 				     __FUNCTION__));
@@ -6447,8 +6447,8 @@ discard_cow:
 				kgem_bo_pair_undo(&sna->kgem, dst_priv->gpu_bo, dst_priv->cpu_bo);
 
 			if (!sna->render.copy_boxes(sna, alu,
-						    src_pixmap, src_priv->gpu_bo, src_dx, src_dy,
-						    dst_pixmap, bo, 0, 0,
+						    &src_pixmap->drawable, src_priv->gpu_bo, src_dx, src_dy,
+						    &dst_pixmap->drawable, bo, 0, 0,
 						    box, n, 0)) {
 				DBG(("%s: fallback - accelerated copy boxes failed\n",
 				     __FUNCTION__));
@@ -6490,8 +6490,8 @@ discard_cow:
 			}
 
 			if (!sna->render.copy_boxes(sna, alu,
-						    src_pixmap, src_priv->cpu_bo, src_dx, src_dy,
-						    dst_pixmap, bo, 0, 0,
+						    &src_pixmap->drawable, src_priv->cpu_bo, src_dx, src_dy,
+						    &dst_pixmap->drawable, bo, 0, 0,
 						    box, n, src_priv->shm ? COPY_LAST : 0)) {
 				DBG(("%s: fallback - accelerated copy boxes failed\n",
 				     __FUNCTION__));
@@ -6542,8 +6542,8 @@ discard_cow:
 				kgem_bo_mark_unreusable(src_bo);
 
 				ok = sna->render.copy_boxes(sna, alu,
-							    src_pixmap, src_bo, src_dx, src_dy,
-							    dst_pixmap, bo, 0, 0,
+							    &src_pixmap->drawable, src_bo, src_dx, src_dy,
+							    &dst_pixmap->drawable, bo, 0, 0,
 							    box, n, COPY_LAST);
 
 				kgem_bo_sync__cpu(&sna->kgem, src_bo);
@@ -6620,8 +6620,8 @@ discard_cow:
 			}
 
 			if (!sna->render.copy_boxes(sna, alu,
-						    tmp, src_bo, dx, dy,
-						    dst_pixmap, bo, 0, 0,
+						    &tmp->drawable, src_bo, dx, dy,
+						    &dst_pixmap->drawable, bo, 0, 0,
 						    box, n, 0)) {
 				DBG(("%s: fallback - accelerated copy boxes failed\n",
 				     __FUNCTION__));
@@ -16738,8 +16738,8 @@ sna_get_image__blt(PixmapPtr pixmap,
 		kgem_bo_mark_unreusable(dst_bo);
 
 		ok = sna->render.copy_boxes(sna, GXcopy,
-					    pixmap, priv->gpu_bo, 0, 0,
-					    pixmap, dst_bo,
+					    &pixmap->drawable, priv->gpu_bo, 0, 0,
+					    &pixmap->drawable, dst_bo,
 					    -region->extents.x1,
 					    -region->extents.y1,
 					    &region->extents, 1,
@@ -17304,8 +17304,8 @@ fallback:
 				goto fallback;
 
 			if (!sna->render.copy_boxes(sna, GXcopy,
-						    src, __sna_pixmap_get_bo(src), dirty->x, dirty->y,
-						    dst, __sna_pixmap_get_bo(dst),0, 0,
+						    &src->drawable, __sna_pixmap_get_bo(src), dirty->x, dirty->y,
+						    &dst->drawable, __sna_pixmap_get_bo(dst),0, 0,
 						    box, n, COPY_LAST))
 				goto fallback;
 

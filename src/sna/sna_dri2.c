@@ -859,6 +859,7 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		      bool sync)
 {
 	PixmapPtr pixmap = get_drawable_pixmap(draw);
+	DrawableRec scratch, *src_draw = &pixmap->drawable, *dst_draw = &pixmap->drawable;
 	struct sna_dri2_private *src_priv = get_private(src);
 	struct sna_dri2_private *dst_priv = get_private(dst);
 	pixman_region16_t clip;
@@ -956,29 +957,28 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		     __FUNCTION__, src_priv->bo->handle, src_bo->handle));
 		assert(src_bo->refcnt);
 	} else {
-		bool changed = false;
+		RegionRec source;
+
+		scratch.x = scratch.y = 0;
+		scratch.width = src_priv->size & 0xffff;
+		scratch.height = src_priv->size >> 16;
+		src_draw = &scratch;
 
 		DBG(("%s: source size %dx%d, region size %dx%d\n",
 		     __FUNCTION__,
-		     src_priv->size & 0xffff, src_priv->size >> 16,
-		     (region ?: &clip)->extents.x2 - (region ?: &clip)->extents.x1,
-		     (region ?: &clip)->extents.y2 - (region ?: &clip)->extents.y1));
+		     scratch.width, scratch.height,
+		     clip.extents.x2 - clip.extents.x1,
+		     clip.extents.y2 - clip.extents.y1));
 
-		assert(sx + clip.extents.x1 >= 0);
-		assert(sy + clip.extents.y1 >= 0);
+		source.extents.x1 = -sx;
+		source.extents.y1 = -sy;
+		source.extents.x2 = source.extents.x1 + scratch.width;
+		source.extents.y2 = source.extents.y1 + scratch.height;
+		source.data = NULL;
 
-		if (sx + clip.extents.x2 > (src_priv->size & 0xffff)) {
-			clip.extents.x2 = (src_priv->size & 0xffff) - sx;
-			changed = !!region;
-		}
+		assert(region == NULL || region == &clip);
+		pixman_region_intersect(&clip, &clip, &source);
 
-		if (sy + clip.extents.y2 > (src_priv->size >> 16)) {
-			clip.extents.y2 = (src_priv->size >> 16) - sy;
-			changed = !!region;
-		}
-
-		if (changed)
-			pixman_region_intersect(region, &clip, region);
 	}
 
 	dst_bo = dst_priv->bo;
@@ -991,6 +991,7 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		if (clip.data)
 			flags |= MOVE_READ;
 
+		assert(region == NULL || region == &clip);
 		priv = sna_pixmap_move_area_to_gpu(pixmap, &clip.extents, flags);
 		if (priv) {
 			damage(pixmap, priv, region);
@@ -1000,29 +1001,27 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		     __FUNCTION__, dst_priv->bo->handle, dst_bo->handle));
 		assert(dst_bo->refcnt);
 	} else {
-		bool changed = false;
+		RegionRec target;
+
+		scratch.x = scratch.y = 0;
+		scratch.width = dst_priv->size & 0xffff;
+		scratch.height = dst_priv->size >> 16;
+		dst_draw = &scratch;
 
 		DBG(("%s: target size %dx%d, region size %dx%d\n",
 		     __FUNCTION__,
-		     dst_priv->size & 0xffff, dst_priv->size >> 16,
-		     (region ?: &clip)->extents.x2 - (region ?: &clip)->extents.x1,
-		     (region ?: &clip)->extents.y2 - (region ?: &clip)->extents.y1));
+		     scratch.width, scratch.height,
+		     clip.extents.x2 - clip.extents.x1,
+		     clip.extents.y2 - clip.extents.y1));
 
-		assert(dx + clip.extents.x1 >= 0);
-		assert(dy + clip.extents.y1 >= 0);
+		target.extents.x1 = -dx;
+		target.extents.y1 = -dy;
+		target.extents.x2 = target.extents.x1 + scratch.width;
+		target.extents.y2 = target.extents.y1 + scratch.height;
+		target.data = NULL;
 
-		if (dx + clip.extents.x2 > (dst_priv->size & 0xffff)) {
-			clip.extents.x2 = (dst_priv->size & 0xffff) - dx;
-			changed = !!region;
-		}
-
-		if (dy + clip.extents.y2 > (dst_priv->size >> 16)) {
-			clip.extents.y2 = (dst_priv->size >> 16) - dy;
-			changed = !!region;
-		}
-
-		if (changed)
-			pixman_region_intersect(region, &clip, region);
+		assert(region == NULL || region == &clip);
+		pixman_region_intersect(&clip, &clip, &target);
 
 		sync = false;
 	}
@@ -1060,12 +1059,18 @@ fallback:
 	} else {
 		unsigned flags;
 
+		DBG(("%s: copying [(%d, %d), (%d, %d)]x%d src=(%d, %d), dst=(%d, %d)\n",
+		     __FUNCTION__,
+		     boxes[0].x1, boxes[0].y1,
+		     boxes[0].x2, boxes[0].y2,
+		     n, sx, sy, dx, dy));
+
 		flags = COPY_LAST;
 		if (sync)
 			flags |= COPY_SYNC;
 		if (!sna->render.copy_boxes(sna, GXcopy,
-					    pixmap, src_bo, sx, sy,
-					    pixmap, dst_bo, dx, dy,
+					    src_draw, src_bo, sx, sy,
+					    dst_draw, dst_bo, dx, dy,
 					    boxes, n, flags))
 			goto fallback;
 

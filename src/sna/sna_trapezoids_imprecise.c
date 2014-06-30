@@ -3526,8 +3526,8 @@ trap_mask_converter(struct sna *sna,
 	get_drawable_deltas(picture->pDrawable, pixmap, &x, &y);
 	sna = to_sna_from_screen(screen);
 	sna->render.copy_boxes(sna, GXcopy,
-			       scratch, __sna_pixmap_get_bo(scratch), -extents.x1, -extents.x1,
-			       pixmap, priv->gpu_bo, x, y,
+			       &scratch->drawable, __sna_pixmap_get_bo(scratch), -extents.x1, -extents.x1,
+			       &pixmap->drawable, priv->gpu_bo, x, y,
 			       &extents, 1, 0);
 	mark_damaged(pixmap, priv, &extents ,x, y);
 	sna_pixmap_destroy(scratch);

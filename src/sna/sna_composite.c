@@ -1026,7 +1026,7 @@ sna_composite_rectangles(CARD8		 op,
 	if (op <= PictOpSrc) {
 		b = pixman_region_rectangles(&region, &num_boxes);
 		if (!sna->render.fill_boxes(sna, op, dst->format, color,
-					    pixmap, bo, b, num_boxes)) {
+					    &pixmap->drawable, bo, b, num_boxes)) {
 			DBG(("%s: fallback - acceleration failed\n", __FUNCTION__));
 			goto fallback;
 		}
@@ -1038,7 +1038,7 @@ sna_composite_rectangles(CARD8		 op,
 			boxes[i].y2 += dst_y;
 		}
 		if (!sna->render.fill_boxes(sna, op, dst->format, color,
-					    pixmap, bo, boxes, num_boxes)) {
+					    &pixmap->drawable, bo, boxes, num_boxes)) {
 			DBG(("%s: fallback - acceleration failed\n", __FUNCTION__));
 			goto fallback;
 		}
@@ -1054,7 +1054,7 @@ sna_composite_rectangles(CARD8		 op,
 						pixman_region_translate(&tmp, dst_x, dst_y);
 
 					n = !sna->render.fill_boxes(sna, op, dst->format, color,
-								    pixmap, bo, b, n);
+								    &pixmap->drawable, bo, b, n);
 				}
 
 				pixman_region_fini(&tmp);

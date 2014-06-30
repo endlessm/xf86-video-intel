@@ -1088,6 +1088,13 @@ static bool wait_for_shadow(struct sna *sna,
 							 shadow_link);
 				if (overlap(&sna->mode.shadow_region.extents,
 					    &crtc->base->bounds)) {
+					DrawableRec draw;
+
+					draw.width = crtc->base->mode.HDisplay;
+					draw.height = crtc->base->mode.VDisplay;
+					draw.depth = sna->front->drawable.depth;
+					draw.bitsPerPixel = sna->front->drawable.bitsPerPixel;
+
 					DBG(("%s: copying replaced CRTC: (%d, %d), (%d, %d), handle=%d\n",
 					     __FUNCTION__,
 					     crtc->base->bounds.x1,
@@ -1097,8 +1104,8 @@ static bool wait_for_shadow(struct sna *sna,
 					     crtc->shadow_bo->handle));
 
 					ret &= sna->render.copy_boxes(sna, GXcopy,
-								      pixmap, crtc->shadow_bo, -crtc->base->bounds.x1, -crtc->base->bounds.y1,
-								      pixmap, priv->gpu_bo, 0, 0,
+								      &draw, crtc->shadow_bo, -crtc->base->bounds.x1, -crtc->base->bounds.y1,
+								      &pixmap->drawable, priv->gpu_bo, 0, 0,
 								      &crtc->base->bounds, 1,
 								      0);
 				}
@@ -1186,6 +1193,12 @@ static bool wait_for_shadow(struct sna *sna,
 		if (overlap(&crtc->base->bounds,
 			    &sna->mode.shadow_region.extents)) {
 			RegionRec region;
+			DrawableRec draw;
+
+			draw.width = crtc->base->mode.HDisplay;
+			draw.height = crtc->base->mode.VDisplay;
+			draw.depth = sna->front->drawable.depth;
+			draw.bitsPerPixel = sna->front->drawable.bitsPerPixel;
 
 			DBG(("%s: copying replaced CRTC: (%d, %d), (%d, %d), handle=%d\n",
 			     __FUNCTION__,
@@ -1196,8 +1209,8 @@ static bool wait_for_shadow(struct sna *sna,
 			     crtc->shadow_bo->handle));
 
 			ret = sna->render.copy_boxes(sna, GXcopy,
-						     pixmap, crtc->shadow_bo, -crtc->base->bounds.x1, -crtc->base->bounds.y1,
-						     pixmap, bo, 0, 0,
+						     &draw, crtc->shadow_bo, -crtc->base->bounds.x1, -crtc->base->bounds.y1,
+						     &pixmap->drawable, bo, 0, 0,
 						     &crtc->base->bounds, 1,
 						     0);
 
@@ -1220,8 +1233,8 @@ static bool wait_for_shadow(struct sna *sna,
 		     sna->mode.shadow_region.extents.x2,
 		     sna->mode.shadow_region.extents.y2));
 		ret = sna->render.copy_boxes(sna, GXcopy,
-					     pixmap, priv->gpu_bo, 0, 0,
-					     pixmap, bo, 0, 0,
+					     &pixmap->drawable, priv->gpu_bo, 0, 0,
+					     &pixmap->drawable, bo, 0, 0,
 					     region_rects(&sna->mode.shadow_region),
 					     region_num_rects(&sna->mode.shadow_region),
 					     0);
@@ -1376,9 +1389,16 @@ static void sna_crtc_disable_shadow(struct sna *sna, struct sna_crtc *crtc)
 
 	if (crtc->shadow_bo) {
 		if (!crtc->transform) {
+			DrawableRec tmp;
+
+			tmp.width = crtc->base->mode.HDisplay;
+			tmp.height = crtc->base->mode.VDisplay;
+			tmp.depth = sna->front->drawable.depth;
+			tmp.bitsPerPixel = sna->front->drawable.bitsPerPixel;
+
 			sna->render.copy_boxes(sna, GXcopy,
-					       sna->front, crtc->shadow_bo, -crtc->base->bounds.x1, -crtc->base->bounds.y1,
-					       sna->front, __sna_pixmap_get_bo(sna->front), 0, 0,
+					       &tmp, crtc->shadow_bo, -crtc->base->bounds.x1, -crtc->base->bounds.y1,
+					       &sna->front->drawable, __sna_pixmap_get_bo(sna->front), 0, 0,
 					       &crtc->base->bounds, 1, 0);
 			list_del(&crtc->shadow_link);
 		}
@@ -1586,8 +1606,8 @@ void sna_copy_fbcon(struct sna *sna)
 		dy = (sna->front->drawable.height - box.y2) / 2;
 
 	ok = sna->render.copy_boxes(sna, GXcopy,
-				    &scratch, bo, sx, sy,
-				    sna->front, priv->gpu_bo, dx, dy,
+				    &scratch.drawable, bo, sx, sy,
+				    &sna->front->drawable, priv->gpu_bo, dx, dy,
 				    &box, 1, 0);
 	if (!DAMAGE_IS_ALL(priv->gpu_damage))
 		sna_damage_add_box(&priv->gpu_damage, &box);
@@ -3732,8 +3752,8 @@ static void copy_front(struct sna *sna, PixmapPtr old, PixmapPtr new)
 						box.x2 = new->drawable.width - dx;
 
 					(void)sna->render.copy_boxes(sna, GXcopy,
-								     old, old_priv->gpu_bo, 0, 0,
-								     new, new_priv->gpu_bo, dx, dy,
+								     &old->drawable, old_priv->gpu_bo, 0, 0,
+								     &new->drawable, new_priv->gpu_bo, dx, dy,
 								     &box, 1, 0);
 					dx += old->drawable.width;
 				}
@@ -3767,8 +3787,8 @@ static void copy_front(struct sna *sna, PixmapPtr old, PixmapPtr new)
 							   GXclear);
 			}
 			(void)sna->render.copy_boxes(sna, GXcopy,
-						     old, old_priv->gpu_bo, sx, sy,
-						     new, new_priv->gpu_bo, dx, dy,
+						     &old->drawable, old_priv->gpu_bo, sx, sy,
+						     &new->drawable, new_priv->gpu_bo, dx, dy,
 						     &box, 1, 0);
 		}
 	}
@@ -6118,17 +6138,17 @@ sna_crtc_redisplay(xf86CrtcPtr crtc, RegionPtr region)
 	if (crtc->filter == NULL &&
 	    sna_transform_is_integer_translation(&crtc->crtc_to_framebuffer,
 						 &tx, &ty)) {
-		PixmapRec tmp;
+		DrawableRec tmp;
 
 		DBG(("%s: copy damage boxes\n", __FUNCTION__));
 
-		tmp.drawable.width = crtc->mode.HDisplay;
-		tmp.drawable.height = crtc->mode.VDisplay;
-		tmp.drawable.depth = sna->front->drawable.depth;
-		tmp.drawable.bitsPerPixel = sna->front->drawable.bitsPerPixel;
+		tmp.width = crtc->mode.HDisplay;
+		tmp.height = crtc->mode.VDisplay;
+		tmp.depth = sna->front->drawable.depth;
+		tmp.bitsPerPixel = sna->front->drawable.bitsPerPixel;
 
 		if (sna->render.copy_boxes(sna, GXcopy,
-					   sna->front, priv->gpu_bo, 0, 0,
+					   &sna->front->drawable, priv->gpu_bo, 0, 0,
 					   &tmp, sna_crtc->bo, -tx, -ty,
 					   region_rects(region), region_num_rects(region), 0))
 			return;
@@ -6341,18 +6361,21 @@ void sna_mode_redisplay(struct sna *sna)
 
 				if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_PAGE_FLIP, &arg)) {
 					BoxRec box;
+					DrawableRec tmp;
 
 					DBG(("%s: flip [fb=%d] on crtc %d [%d, pipe=%d] failed - %d\n",
 					     __FUNCTION__, arg.fb_id, i, sna_crtc->id, sna_crtc->pipe, errno));
 disable1:
 					box.x1 = 0;
 					box.y1 = 0;
-					box.x2 = crtc->mode.HDisplay;
-					box.y2 = crtc->mode.VDisplay;
+					tmp.width = box.x2 = crtc->mode.HDisplay;
+					tmp.height = box.y2 = crtc->mode.VDisplay;
+					tmp.depth = sna->front->drawable.depth;
+					tmp.bitsPerPixel = sna->front->drawable.bitsPerPixel;
 
 					if (!sna->render.copy_boxes(sna, GXcopy,
-								    sna->front, bo, 0, 0,
-								    sna->front, sna_crtc->bo, 0, 0,
+								    &sna->front->drawable, bo, 0, 0,
+								    &tmp, sna_crtc->bo, 0, 0,
 								    &box, 1, COPY_LAST)) {
 						xf86DrvMsg(crtc->scrn->scrnIndex, X_ERROR,
 							   "%s: page flipping failed, disabling CRTC:%d (pipe=%d)\n",
@@ -6404,8 +6427,8 @@ fixup_shadow:
 				box.x2 = sna->scrn->virtualX;
 				box.y2 = sna->scrn->virtualY;
 				if (sna->render.copy_boxes(sna, GXcopy,
-							   sna->front, __sna_pixmap_get_bo(sna->front), 0, 0,
-							   sna->front, old, 0, 0,
+							   &sna->front->drawable, __sna_pixmap_get_bo(sna->front), 0, 0,
+							   &sna->front->drawable, old, 0, 0,
 							   &box, 1, COPY_LAST)) {
 					kgem_submit(&sna->kgem);
 					RegionEmpty(region);
