@@ -17814,7 +17814,7 @@ restart:
 	if (sna_scanout_do_flush(sna))
 		sna_scanout_flush(sna);
 	assert(sna_accel_scanout(sna) == NULL ||
-	       sna_accel_scanout(sna)->gpu_bo->needs_flush == NULL ||
+	       !sna_accel_scanout(sna)->gpu_bo->needs_flush ||
 	       sna->timer_active & (1<<(FLUSH_TIMER)));
 
 	if (sna_accel_do_throttle(sna))
