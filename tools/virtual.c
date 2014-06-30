@@ -3260,10 +3260,8 @@ int main(int argc, char **argv)
 	}
 
 	ret = display_init_damage(ctx.display);
-	if (ret) {
-		context_cleanup(&ctx);
+	if (ret)
 		goto out;
-	}
 
 	if ((ctx.display->rr_event | ctx.display->rr_error) == 0) {
 		fprintf(stderr, "RandR extension not supported by %s\n", DisplayString(ctx.display->dpy));
