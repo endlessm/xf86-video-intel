@@ -269,7 +269,7 @@ static const struct pci_id_match intel_device_match[] = {
 
 #if KMS
 	INTEL_I830_IDS(&intel_i830_info),
-	INTEL_I845G_IDS(&intel_i830_info),
+	INTEL_I845G_IDS(&intel_i845_info),
 	INTEL_I85X_IDS(&intel_i855_info),
 	INTEL_I865G_IDS(&intel_i865_info),
 
