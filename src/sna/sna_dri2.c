@@ -962,6 +962,8 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		scratch.x = scratch.y = 0;
 		scratch.width = src_priv->size & 0xffff;
 		scratch.height = src_priv->size >> 16;
+		scratch.depth = draw->depth;
+		scratch.bitsPerPixel = draw->bitsPerPixel;
 		src_draw = &scratch;
 
 		DBG(("%s: source size %dx%d, region size %dx%d\n",
@@ -1006,6 +1008,8 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		scratch.x = scratch.y = 0;
 		scratch.width = dst_priv->size & 0xffff;
 		scratch.height = dst_priv->size >> 16;
+		scratch.depth = draw->depth;
+		scratch.bitsPerPixel = draw->bitsPerPixel;
 		dst_draw = &scratch;
 
 		DBG(("%s: target size %dx%d, region size %dx%d\n",
