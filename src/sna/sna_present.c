@@ -351,6 +351,7 @@ page_flip(ScreenPtr screen,
 static struct kgem_bo *
 get_flip_bo(PixmapPtr pixmap)
 {
+	struct sna *sna = to_sna_from_pixmap(pixmap);
 	struct sna_pixmap *priv;
 
 	DBG(("%s(pixmap=%ld)\n", __FUNCTION__, pixmap->drawable.serialNumber));
@@ -361,9 +362,16 @@ get_flip_bo(PixmapPtr pixmap)
 		return NULL;
 	}
 
+	if (sna->flags & SNA_LINEAR_FB &&
+	    priv->gpu_bo->tiling &&
+	    !sna_pixmap_change_tiling(pixmap, I915_TILING_NONE)) {
+		DBG(("%s: invalid tiling for scanout, user requires linear\n", __FUNCTION__));
+		return NULL;
+	}
+
 	if (priv->gpu_bo->tiling == I915_TILING_Y &&
 	    !sna_pixmap_change_tiling(pixmap, I915_TILING_X)) {
-		DBG(("%s: bad tiling, cannot convert\n", __FUNCTION__));
+		DBG(("%s: invalid Y-tiling, cannot convert\n", __FUNCTION__));
 		return NULL;
 	}
 

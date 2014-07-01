@@ -1666,6 +1666,9 @@ static bool use_shadow(struct sna *sna, xf86CrtcPtr crtc)
 	if (priv->gpu_bo->pitch > pitch_limit)
 		return true;
 
+	if (priv->gpu_bo->tiling && sna->flags & SNA_LINEAR_FB)
+		return true;
+
 	transform = NULL;
 	if (crtc->transformPresent)
 		transform = &crtc->transform;
@@ -1778,6 +1781,8 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 		else
 			tiled_limit = 8 * 1024 * 8;
 		if ((unsigned long)crtc->mode.HDisplay * scrn->bitsPerPixel > tiled_limit)
+			tiling = I915_TILING_NONE;
+		if (sna->flags & SNA_LINEAR_FB)
 			tiling = I915_TILING_NONE;
 
 		bo = kgem_create_2d(&sna->kgem,

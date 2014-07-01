@@ -459,7 +459,7 @@ sna_dri2_create_buffer(DrawablePtr draw,
 
 		bo = ref(bo);
 		bpp = pixmap->drawable.bitsPerPixel;
-		if (pixmap == sna->front)
+		if (pixmap == sna->front && !(sna->flags & SNA_LINEAR_FB))
 			flags |= CREATE_SCANOUT;
 		DBG(("%s: attaching to front buffer %dx%d [%p:%d], scanout? %d\n",
 		     __FUNCTION__,
@@ -474,7 +474,7 @@ sna_dri2_create_buffer(DrawablePtr draw,
 				flags |= CREATE_SCANOUT;
 			if (draw->width  == sna->front->drawable.width &&
 			    draw->height == sna->front->drawable.height &&
-			    (sna->flags & (SNA_NO_WAIT | SNA_NO_FLIP)) == 0)
+			    (sna->flags & (SNA_LINEAR_FB | SNA_NO_WAIT | SNA_NO_FLIP)) == 0)
 				flags |= CREATE_SCANOUT;
 		}
 	case DRI2BufferBackRight:
@@ -1644,11 +1644,12 @@ can_flip(struct sna * sna,
 	}
 
 	/* prevent an implicit tiling mode change */
-	if (get_private(front)->bo->tiling != get_private(back)->bo->tiling) {
-		DBG(("%s -- no, tiling mismatch: front %d, back=%d\n",
+	if (get_private(back)->bo->tiling > I915_TILING_X) {
+		DBG(("%s -- no, tiling mismatch: front %d, back=%d, want-tiled?=%d\n",
 		     __FUNCTION__,
 		     get_private(front)->bo->tiling,
-		     get_private(back)->bo->tiling));
+		     get_private(back)->bo->tiling,
+		     !!(sna->flags & SNA_LINEAR_FB)));
 		return false;
 	}
 

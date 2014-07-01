@@ -614,22 +614,8 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 		sna->kgem.wedged = true;
 	}
 
-	/* Enable tiling by default */
-	sna->tiling = SNA_TILING_ALL;
-
-	/* Allow user override if they set a value */
-	if (!xf86ReturnOptValBool(sna->Options, OPTION_TILING_2D, TRUE))
-		sna->tiling &= ~SNA_TILING_2D;
 	if (xf86ReturnOptValBool(sna->Options, OPTION_TILING_FB, FALSE))
-		sna->tiling &= ~SNA_TILING_FB;
-
-	if (sna->tiling != SNA_TILING_ALL) {
-		xf86DrvMsg(scrn->scrnIndex, X_CONFIG, "Framebuffer %s, pixmaps %s\n",
-			   sna->tiling & SNA_TILING_FB ? "tiled" : "linear",
-			   sna->tiling & SNA_TILING_2D ? "tiled" : "linear");
-		xf86DrvMsg(scrn->scrnIndex, X_WARNING,
-			   "Tiling disabled, expect poor performance and increased power consumption.\n");
-	}
+		sna->flags |= SNA_LINEAR_FB;
 
 	if (xf86ReturnOptValBool(sna->Options, OPTION_DELETE_DP12, FALSE))
 		sna->flags |= SNA_REMOVE_OUTPUTS;
@@ -665,7 +651,7 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 	}
 	scrn->currentMode = scrn->modes;
 
-	if (sna->flags & SNA_HAS_FLIP &&
+	if ((sna->flags & (SNA_HAS_FLIP | SNA_LINEAR_FB)) == SNA_HAS_FLIP &&
 	    xf86ReturnOptValBool(sna->Options, OPTION_TEAR_FREE, enable_tear_free(sna)))
 		sna->flags |= SNA_TEAR_FREE;
 	xf86DrvMsg(scrn->scrnIndex, X_CONFIG, "TearFree %sabled\n",

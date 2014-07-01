@@ -254,6 +254,7 @@ struct sna {
 #define SNA_REMOVE_OUTPUTS	0x400
 #define SNA_HAS_FLIP		0x10000
 #define SNA_HAS_ASYNC_FLIP	0x20000
+#define SNA_LINEAR_FB		0x40000
 #define SNA_REPROBE		0x80000000
 
 	unsigned cpu_features;
@@ -359,11 +360,6 @@ struct sna {
 		XvAdaptorPtr adaptors;
 		int num_adaptors;
 	} xv;
-
-	unsigned int tiling;
-#define SNA_TILING_FB		0x1
-#define SNA_TILING_2D		0x2
-#define SNA_TILING_ALL (~0)
 
 	EntityInfoPtr pEnt;
 	const struct intel_device_info *info;
