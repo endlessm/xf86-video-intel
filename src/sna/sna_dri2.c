@@ -55,6 +55,8 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define DBG_CAN_FLIP 1
 #define DBG_CAN_XCHG 1
 
+#define DBG_FORCE_COPY -1 /* KGEM_BLT or KGEM_3D */
+
 #if DRI2INFOREC_VERSION < 2
 #error DRI2 version supported by the Xserver is too old
 #endif
@@ -769,6 +771,12 @@ static void sna_dri2_select_mode(struct sna *sna, struct kgem_bo *dst, struct kg
 		kgem_set_mode(&sna->kgem,
 			      sna->kgem.gen >= 070 ? KGEM_BLT : KGEM_RENDER,
 			      dst);
+		return;
+	}
+
+	if (DBG_FORCE_COPY != -1) {
+		DBG(("%s: forcing %d\n", __FUNCTION__, DBG_FORCE_COPY));
+		kgem_set_mode(&sna->kgem, DBG_FORCE_COPY, dst);
 		return;
 	}
 
