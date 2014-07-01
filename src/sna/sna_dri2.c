@@ -820,24 +820,64 @@ static void sna_dri2_select_mode(struct sna *sna, struct kgem_bo *dst, struct kg
 	_kgem_set_mode(&sna->kgem, mode);
 }
 
+static bool can_copy_cpu(struct sna *sna,
+			 struct kgem_bo *src,
+			 struct kgem_bo *dst)
+{
+	if (src->tiling != dst->tiling)
+		return false;
+
+	if (src->pitch != dst->pitch)
+		return false;
+
+	if (!kgem_bo_can_map__cpu(&sna->kgem, src, false))
+		return false;
+
+	if (!kgem_bo_can_map__cpu(&sna->kgem, dst, true))
+		return false;
+
+	DBG(("%s -- yes, src handle=%d, dst handle=%d\n", __FUNCTION__, src->handle, dst->handle));
+	return true;
+}
+
 static void
-sna_dri2_copy_fallback(struct sna *sna, int bpp,
+sna_dri2_copy_fallback(struct sna *sna,
+		       const DrawableRec *draw,
 		       struct kgem_bo *src_bo, int sx, int sy,
 		       struct kgem_bo *dst_bo, int dx, int dy,
 		       const BoxRec *box, int n)
 {
-	void *dst = kgem_bo_map__gtt(&sna->kgem, dst_bo);
-	void *src = kgem_bo_map__gtt(&sna->kgem, src_bo);
+	void *dst, *src;
+	bool clipped;
 
-	if (dst == NULL || src == NULL)
-		return;
+	clipped = (n > 1 ||
+		   box->x1 + sx > 0 ||
+		   box->y1 + sy > 0 ||
+		   box->x2 + sx < draw->width ||
+		   box->y2 + sy < draw->height);
+
+	dst = src = NULL;
+	if (!clipped && can_copy_cpu(sna, src_bo, dst_bo)) {
+		dst = kgem_bo_map__cpu(&sna->kgem, dst_bo);
+		src = kgem_bo_map__cpu(&sna->kgem, src_bo);
+	}
+
+	if (dst == NULL || src == NULL) {
+		dst = kgem_bo_map__gtt(&sna->kgem, dst_bo);
+		src = kgem_bo_map__gtt(&sna->kgem, src_bo);
+		if (dst == NULL || src == NULL)
+			return;
+	} else {
+		kgem_bo_sync__cpu_full(&sna->kgem, dst_bo, true);
+		kgem_bo_sync__cpu_full(&sna->kgem, src_bo, false);
+	}
 
 	DBG(("%s: src(%d, %d), dst(%d, %d) x %d\n",
 	     __FUNCTION__, sx, sy, dx, dy, n));
 
 	if (sigtrap_get() == 0) {
 		do {
-			memcpy_blt(src, dst, bpp,
+			memcpy_blt(src, dst, draw->bitsPerPixel,
 				   src_bo->pitch, dst_bo->pitch,
 				   box->x1 + sx, box->y1 + sy,
 				   box->x1 + dx, box->y1 + dy,
@@ -945,6 +985,11 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 	} else
 		sync = false;
 
+	scratch.x = scratch.y = 0;
+	scratch.width = scratch.height = 0;
+	scratch.depth = draw->depth;
+	scratch.bitsPerPixel = draw->bitsPerPixel;
+
 	src_bo = src_priv->bo;
 	assert(src_bo->refcnt);
 	if (is_front(src->attachment)) {
@@ -959,11 +1004,8 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 	} else {
 		RegionRec source;
 
-		scratch.x = scratch.y = 0;
 		scratch.width = src_priv->size & 0xffff;
 		scratch.height = src_priv->size >> 16;
-		scratch.depth = draw->depth;
-		scratch.bitsPerPixel = draw->bitsPerPixel;
 		src_draw = &scratch;
 
 		DBG(("%s: source size %dx%d, region size %dx%d\n",
@@ -1005,11 +1047,8 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 	} else {
 		RegionRec target;
 
-		scratch.x = scratch.y = 0;
 		scratch.width = dst_priv->size & 0xffff;
 		scratch.height = dst_priv->size >> 16;
-		scratch.depth = draw->depth;
-		scratch.bitsPerPixel = draw->bitsPerPixel;
 		dst_draw = &scratch;
 
 		DBG(("%s: target size %dx%d, region size %dx%d\n",
@@ -1056,7 +1095,7 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 
 	if (wedged(sna)) {
 fallback:
-		sna_dri2_copy_fallback(sna, draw->bitsPerPixel,
+		sna_dri2_copy_fallback(sna, src_draw,
 				      src_bo, sx, sy,
 				      dst_bo, dx, dy,
 				      boxes, n);
