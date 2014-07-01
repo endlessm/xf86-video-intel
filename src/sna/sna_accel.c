@@ -1615,7 +1615,9 @@ static bool sna_pixmap_alloc_gpu(struct sna *sna,
 		flags |= CREATE_SCANOUT;
 		tiling = -I915_TILING_X;
 	} else
-		tiling = sna_pixmap_default_tiling(sna, pixmap),
+		tiling = sna_pixmap_default_tiling(sna, pixmap);
+
+	DBG(("%s: pixmap=%ld\n", __FUNCTION__, pixmap->drawable.serialNumber));
 
 	priv->gpu_bo = kgem_create_2d(&sna->kgem,
 				      pixmap->drawable.width,
