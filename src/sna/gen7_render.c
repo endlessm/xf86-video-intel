@@ -2195,18 +2195,21 @@ try_blt(struct sna *sna,
 	}
 
 	bo = __sna_drawable_peek_bo(dst->pDrawable);
-	if (bo && bo->rq)
+	if (bo == NULL)
+		return true;
+	if (bo->rq)
 		return RQ_IS_BLT(bo->rq);
 
-	if (sna_picture_is_solid(src, NULL) && can_switch_to_blt(sna, NULL, 0))
+	if (sna_picture_is_solid(src, NULL) && can_switch_to_blt(sna, bo, 0))
 		return true;
 
 	if (src->pDrawable) {
 		bo = __sna_drawable_peek_bo(src->pDrawable);
 		if (bo == NULL)
 			return true;
-		else if (bo->rq)
-			return RQ_IS_BLT(bo->rq);
+
+		if (prefer_blt_bo(sna, bo))
+			return true;
 	}
 
 	if (sna->kgem.ring == KGEM_BLT) {
