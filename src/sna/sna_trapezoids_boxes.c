@@ -681,8 +681,8 @@ pixsolid_opacity(struct pixman_inplace *pi,
 		*pi->bits = pi->color;
 	else
 		*pi->bits = mul_4x8_8(pi->color, opacity);
-	pixman_image_composite(pi->op, pi->source, NULL, pi->image,
-			       0, 0, 0, 0, pi->dx + x, pi->dy + y, w, h);
+	sna_image_composite(pi->op, pi->source, NULL, pi->image,
+			0, 0, 0, 0, pi->dx + x, pi->dy + y, w, h);
 }
 
 static void
@@ -936,18 +936,18 @@ pixmask_opacity(struct pixman_inplace *pi,
 		uint8_t opacity)
 {
 	if (opacity == 0xff) {
-		pixman_image_composite(pi->op, pi->source, NULL, pi->image,
-				       pi->sx + x, pi->sy + y,
-				       0, 0,
-				       pi->dx + x, pi->dy + y,
-				       w, h);
+		sna_image_composite(pi->op, pi->source, NULL, pi->image,
+				    pi->sx + x, pi->sy + y,
+				    0, 0,
+				    pi->dx + x, pi->dy + y,
+				    w, h);
 	} else {
 		*pi->bits = opacity;
-		pixman_image_composite(pi->op, pi->source, pi->mask, pi->image,
-				       pi->sx + x, pi->sy + y,
-				       0, 0,
-				       pi->dx + x, pi->dy + y,
-				       w, h);
+		sna_image_composite(pi->op, pi->source, pi->mask, pi->image,
+				    pi->sx + x, pi->sy + y,
+				    0, 0,
+				    pi->dx + x, pi->dy + y,
+				    w, h);
 	}
 }
 

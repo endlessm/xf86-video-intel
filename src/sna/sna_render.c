@@ -1699,11 +1699,11 @@ do_fixup:
 		dst = pixman_image_create_bits(channel->pict_format,
 					       w, h, ptr, channel->bo->pitch);
 		if (dst) {
-			pixman_image_composite(PictOpSrc, src, NULL, dst,
-					       0, 0,
-					       0, 0,
-					       0, 0,
-					       w, h);
+			sna_image_composite(PictOpSrc, src, NULL, dst,
+					    0, 0,
+					    0, 0,
+					    0, 0,
+					    w, h);
 			pixman_image_unref(src);
 		} else {
 			memset(ptr, 0, __kgem_buffer_size(channel->bo));
@@ -1891,11 +1891,11 @@ sna_render_picture_convert(struct sna *sna,
 		}
 
 		if (sigtrap_get() == 0) {
-			pixman_image_composite(PictOpSrc, src, NULL, dst,
-					       box.x1, box.y1,
-					       0, 0,
-					       0, 0,
-					       w, h);
+			sna_image_composite(PictOpSrc, src, NULL, dst,
+					    box.x1, box.y1,
+					    0, 0,
+					    0, 0,
+					    w, h);
 			sigtrap_put();
 		}
 		pixman_image_unref(dst);
