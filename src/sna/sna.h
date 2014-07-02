@@ -635,6 +635,7 @@ static inline bool sna_pixmap_is_scanout(struct sna *sna, PixmapPtr pixmap)
 
 static inline int sna_max_tile_copy_size(struct sna *sna, struct kgem_bo *src, struct kgem_bo *dst)
 {
+	int min_object;
 	int max_size;
 
 	max_size = sna->kgem.aperture_high * PAGE_SIZE;
@@ -646,6 +647,13 @@ static inline int sna_max_tile_copy_size(struct sna *sna, struct kgem_bo *src, s
 
 	if (max_size > sna->kgem.max_copy_tile_size)
 		max_size = sna->kgem.max_copy_tile_size;
+
+	min_object = MIN(kgem_bo_size(src), kgem_bo_size(dst)) / 2;
+	if (max_size > min_object)
+		max_size = min_object;
+	if (max_size <= 4096)
+		max_size = 0;
+
 	DBG(("%s: using max tile size of %d\n", __FUNCTION__, max_size));
 	return max_size;
 }
