@@ -218,10 +218,11 @@ static Picture source_radial_generic(struct test_display *t, struct test_target 
 	return XRenderCreateRadialGradient(t->dpy, &gradient, stops, colors, 2);
 }
 
-static XShmSegmentInfo shm;
+static XShmSegmentInfo shmref, shmout;
 
 static void setup_shm(struct test *t)
 {
+	XShmSegmentInfo shm;
 	int size;
 
 	shm.shmid = -1;
@@ -244,24 +245,28 @@ static void setup_shm(struct test *t)
 	}
 
 	shm.readOnly = False;
-	XShmAttach(t->ref.dpy, &shm);
+
+	shmref = shm;
+	XShmAttach(t->ref.dpy, &shmref);
 	XSync(t->ref.dpy, True);
 
-	XShmAttach(t->out.dpy, &shm);
+	shmout = shm;
+	XShmAttach(t->out.dpy, &shmout);
 	XSync(t->out.dpy, True);
 }
 
 static Picture source_shm(struct test_display *t, struct test_target *target)
 {
+	XShmSegmentInfo *shm = t->target == REF ? &shmref : &shmout;
 	Pixmap pixmap;
 	Picture picture;
 	int size;
 
-	if (shm.shmid == -1)
+	if (shm->shmid == -1)
 		return 0;
 
 	pixmap = XShmCreatePixmap(t->dpy, t->root,
-				  shm.shmaddr, &shm,
+				  shm->shmaddr, shm,
 				  target->width, target->height, 32);
 
 	picture = XRenderCreatePicture(t->dpy, pixmap,
@@ -270,8 +275,8 @@ static Picture source_shm(struct test_display *t, struct test_target *target)
 	XFreePixmap(t->dpy, pixmap);
 
 	size = target->width * target->height * 4;
-	memset(shm.shmaddr, 0x80, size/2);
-	memset(shm.shmaddr+size/2, 0xff, size/2);
+	memset(shm->shmaddr, 0x80, size/2);
+	memset(shm->shmaddr+size/2, 0xff, size/2);
 
 	return picture;
 }

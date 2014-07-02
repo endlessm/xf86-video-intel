@@ -136,11 +136,13 @@ static void test_get_displays(int argc, char **argv,
 	default_setup(out);
 	shm_setup(out);
 	out->root = get_root(out);
+	out->target = OUT;
 
 	ref->dpy = ref_display(out->width, out->height, out->depth);
 	default_setup(ref);
 	shm_setup(ref);
 	ref->root = get_root(ref);
+	ref->target = REF;
 }
 
 void test_init(struct test *test, int argc, char **argv)

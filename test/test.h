@@ -34,6 +34,7 @@ struct test {
 		int has_shm_pixmaps;
 		int width, height, depth;
 		XRenderPictFormat *format;
+		enum { REF, OUT } target;
 	} out, ref;
 };
 
