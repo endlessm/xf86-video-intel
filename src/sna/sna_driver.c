@@ -300,6 +300,16 @@ static Bool sna_save_screen(ScreenPtr screen, int mode)
 	return TRUE;
 }
 
+static void sna_dpms_set(ScrnInfoPtr scrn, int mode, int flags)
+{
+	DBG(("%s(mode=%d, flags=%d)\n", __FUNCTION__, mode));
+	if (!scrn->vtSema)
+		return;
+
+	xf86DPMSSet(scrn, mode, flags);
+	sna_crtc_config_notify(xf86ScrnToScreen(scrn));
+}
+
 static void sna_selftest(void)
 {
 	sna_damage_selftest();
@@ -1107,7 +1117,7 @@ sna_screen_init(SCREEN_INIT_ARGS_DECL)
 				 CMAP_PALETTED_TRUECOLOR))
 		return FALSE;
 
-	xf86DPMSInit(screen, xf86DPMSSet, 0);
+	xf86DPMSInit(screen, sna_dpms_set, 0);
 
 	sna_video_init(sna, screen);
 	sna_dri_init(sna, screen);

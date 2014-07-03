@@ -170,8 +170,9 @@ struct sna_output {
 	uint32_t *prop_ids;
 	uint64_t *prop_values;
 	struct sna_property *props;
-
 };
+
+static void sna_crtc_disable_cursor(struct sna *sna, struct sna_crtc *crtc);
 
 inline static unsigned count_to_mask(int x)
 {
@@ -972,6 +973,7 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 	DBG(("%s CRTC:%d [pipe=%d], handle=%d\n", __FUNCTION__, sna_crtc->id, sna_crtc->pipe, sna_crtc->bo->handle));
 
 	assert(sna->mode.num_real_output < ARRAY_SIZE(output_ids));
+	sna_crtc_disable_cursor(sna, sna_crtc);
 
 	if (!rotation_set(sna, &sna_crtc->primary_rotation, sna_crtc->rotation)) {
 		ERR(("%s: set-primary-rotation failed (rotation-id=%d, rotation=%d) on CRTC:%d [pipe=%d], errno=%d\n",
@@ -1430,8 +1432,8 @@ sna_crtc_disable(xf86CrtcPtr crtc)
 
 	sna_crtc->mode_serial++;
 
+	sna_crtc_disable_cursor(sna, sna_crtc);
 	rotation_set(sna, &sna_crtc->primary_rotation, RR_Rotate_0);
-
 	sna_crtc_disable_shadow(sna, sna_crtc);
 
 	if (sna_crtc->bo) {
@@ -4274,6 +4276,29 @@ sna_set_cursor_colors(ScrnInfoPtr scrn, int _bg, int _fg)
 }
 
 static void
+sna_crtc_disable_cursor(struct sna *sna, struct sna_crtc *crtc)
+{
+	struct drm_mode_cursor arg;
+
+	if (!crtc->cursor)
+		return;
+
+	DBG(("%s: CRTC:%d, handle=%d\n", __FUNCTION__, crtc->id, crtc->cursor->handle));
+	assert(crtc->cursor->ref);
+
+	VG_CLEAR(arg);
+	arg.flags = DRM_MODE_CURSOR_BO;
+	arg.crtc_id = crtc->id;
+	arg.width = arg.height = 0;
+	arg.handle = 0;
+
+	(void)drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg);
+	assert(crtc->cursor->ref > 0);
+	crtc->cursor->ref--;
+	crtc->cursor = NULL;
+}
+
+static void
 sna_hide_cursors(ScrnInfoPtr scrn)
 {
 	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
@@ -4285,27 +4310,8 @@ sna_hide_cursors(ScrnInfoPtr scrn)
 
 	sigio = sigio_block();
 	for (c = 0; c < sna->mode.num_real_crtc; c++) {
-		xf86CrtcPtr crtc = xf86_config->crtc[c];
-		struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
-		struct drm_mode_cursor arg;
-
-		assert(sna_crtc != NULL);
-		if (!sna_crtc->cursor)
-			continue;
-
-		__DBG(("%s: CRTC:%d, handle=%d\n", __FUNCTION__, sna_crtc->id, sna_crtc->cursor->handle));
-		assert(sna_crtc->cursor->ref);
-
-		VG_CLEAR(arg);
-		arg.flags = DRM_MODE_CURSOR_BO;
-		arg.crtc_id = sna_crtc->id;
-		arg.width = arg.height = 0;
-		arg.handle = 0;
-
-		(void)drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg);
-		assert(sna_crtc->cursor->ref > 0);
-		sna_crtc->cursor->ref--;
-		sna_crtc->cursor = NULL;
+		assert(to_sna_crtc(xf86_config->crtc[c]));
+		sna_crtc_disable_cursor(sna, to_sna_crtc(xf86_config->crtc[c]));
 	}
 
 	for (prev = &sna->cursor.cursors; (cursor = *prev) != NULL; ) {
