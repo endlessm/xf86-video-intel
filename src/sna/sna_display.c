@@ -4398,9 +4398,9 @@ sna_set_cursor_position(ScrnInfoPtr scrn, int x, int y)
 			if (sna_crtc->cursor != cursor) {
 				arg.flags |= DRM_MODE_CURSOR_BO;
 				arg.handle = cursor->handle;
-				arg.width = arg.height = cursor->size;
 			}
 
+			arg.width = arg.height = cursor->size;
 			arg.flags |= DRM_MODE_CURSOR_MOVE;
 			crtc->cursor_in_range = true;
 		} else {
@@ -4410,6 +4410,7 @@ disable:
 				arg.flags = DRM_MODE_CURSOR_BO;
 				arg.width = arg.height = 0;
 			}
+			cursor = NULL;
 		}
 
 		__DBG(("%s: CRTC:%d (%d, %d), handle=%d, flags=%x (old cursor handle=%d), move? %d, update handle? %d\n",
