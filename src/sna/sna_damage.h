@@ -25,6 +25,7 @@ struct sna_damage {
 #define DAMAGE_IS_ALL(ptr) (((uintptr_t)(ptr))&1)
 #define DAMAGE_MARK_ALL(ptr) ((struct sna_damage *)(((uintptr_t)(ptr))|1))
 #define DAMAGE_PTR(ptr) ((struct sna_damage *)(((uintptr_t)(ptr))&~1))
+#define DAMAGE_REGION(ptr) (&DAMAGE_PTR(ptr)->region)
 
 struct sna_damage *sna_damage_create(void);
 

@@ -4091,24 +4091,19 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 		goto active;
 	}
 
-	if (kgem_bo_discard_cache(priv->gpu_bo, flags & (MOVE_WRITE | __MOVE_FORCE))) {
-		DBG(("%s: discarding cached upload buffer\n", __FUNCTION__));
-		assert(DAMAGE_IS_ALL(priv->cpu_damage));
-		assert(priv->gpu_damage == NULL || DAMAGE_IS_ALL(priv->gpu_damage)); /* magical upload buffer */
-		assert(!priv->pinned);
-		assert(!priv->mapped);
-		sna_damage_destroy(&priv->gpu_damage);
-		kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
-		priv->gpu_bo = NULL;
-	}
-
 	if ((flags & MOVE_READ) == 0)
 		sna_damage_destroy(&priv->cpu_damage);
 
 	sna_damage_reduce(&priv->cpu_damage);
 	assert_pixmap_damage(pixmap);
 	DBG(("%s: CPU damage? %d\n", __FUNCTION__, priv->cpu_damage != NULL));
-	if (priv->gpu_bo == NULL) {
+	if (priv->gpu_bo == NULL ||
+	    kgem_bo_discard_cache(priv->gpu_bo, flags & (MOVE_WRITE | __MOVE_FORCE))) {
+		struct kgem_bo *proxy;
+
+		proxy = priv->gpu_bo;
+		priv->gpu_bo = NULL;
+
 		DBG(("%s: creating GPU bo (%dx%d@%d), create=%x\n",
 		     __FUNCTION__,
 		     pixmap->drawable.width,
@@ -4116,9 +4111,9 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 		     pixmap->drawable.bitsPerPixel,
 		     priv->create));
 		assert(!priv->mapped);
-		if (flags & __MOVE_FORCE || priv->create & KGEM_CAN_CREATE_GPU) {
-			unsigned create;
+		assert(list_is_empty(&priv->flush_list));
 
+		if (flags & __MOVE_FORCE || priv->create & KGEM_CAN_CREATE_GPU) {
 			assert(pixmap->drawable.width > 0);
 			assert(pixmap->drawable.height > 0);
 			assert(pixmap->drawable.bitsPerPixel >= 8);
@@ -4138,19 +4133,37 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 				pixmap->devPrivate.ptr = NULL;
 				sna_damage_all(&priv->gpu_damage, pixmap);
 				sna_damage_destroy(&priv->cpu_damage);
-				goto done;
+			} else {
+				unsigned create = 0;
+				if (flags & MOVE_INPLACE_HINT || (priv->cpu_damage && priv->cpu_bo == NULL))
+					create = CREATE_GTT_MAP | CREATE_INACTIVE;
+
+				sna_pixmap_alloc_gpu(sna, pixmap, priv, create);
 			}
-
-			create = 0;
-			if (flags & MOVE_INPLACE_HINT || (priv->cpu_damage && priv->cpu_bo == NULL))
-				create = CREATE_GTT_MAP | CREATE_INACTIVE;
-
-			sna_pixmap_alloc_gpu(sna, pixmap, priv, create);
 		}
+
 		if (priv->gpu_bo == NULL) {
 			DBG(("%s: not creating GPU bo\n", __FUNCTION__));
 			assert(priv->gpu_damage == NULL);
+			priv->gpu_bo = proxy;
+			if (proxy)
+				sna_damage_all(&priv->cpu_damage, pixmap);
 			return NULL;
+		}
+
+		if (proxy) {
+			DBG(("%s: promoting upload proxy handle=%d to GPU\n", __FUNCTION__, proxy->handle));
+
+			if (priv->cpu_damage &&
+			    sna->render.copy_boxes(sna, GXcopy,
+						   &pixmap->drawable, proxy, 0, 0,
+						   &pixmap->drawable, priv->gpu_bo, 0, 0,
+						   region_rects(DAMAGE_REGION(priv->cpu_damage)),
+						   region_num_rects(DAMAGE_REGION(priv->cpu_damage)),
+						   0))
+				sna_damage_destroy(&priv->cpu_damage);
+
+			kgem_bo_destroy(&sna->kgem, proxy);
 		}
 
 		if (flags & MOVE_WRITE && priv->cpu_damage == NULL) {
