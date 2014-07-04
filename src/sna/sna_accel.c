@@ -12601,6 +12601,26 @@ out_gc:
 	return ret;
 }
 
+inline static bool tile_is_solid(GCPtr gc, uint32_t *pixel)
+{
+	PixmapPtr tile = gc->tile.pixmap;
+	struct sna_pixmap *priv;
+
+	if ((tile->drawable.width | tile->drawable.height) == 1) {
+		DBG(("%s: single pixel tile pixmap, converting to solid fill\n", __FUNCTION__));
+		*pixel = get_pixel(tile);
+		return true;
+	}
+
+	priv = sna_pixmap(tile);
+	if (priv == NULL || !priv->clear)
+		return false;
+
+	DBG(("%s: tile is clear, converting to solid fill\n", __FUNCTION__));
+	*pixel = priv->clear_color;
+	return true;
+}
+
 static bool
 sna_poly_fill_rect_tiled_blt(DrawablePtr drawable,
 			     struct kgem_bo *bo,
@@ -12617,6 +12637,7 @@ sna_poly_fill_rect_tiled_blt(DrawablePtr drawable,
 	CARD32 alu = gc->alu;
 	int tile_width, tile_height;
 	int16_t dx, dy;
+	uint32_t pixel;
 
 	DBG(("%s pixmap=%ld, x %d [(%d, %d)x(%d, %d)...], clipped? %d\n",
 	     __FUNCTION__, pixmap->drawable.serialNumber,
@@ -12626,22 +12647,19 @@ sna_poly_fill_rect_tiled_blt(DrawablePtr drawable,
 	assert(tile->drawable.depth == drawable->depth);
 	assert(bo);
 
-	tile_width = tile->drawable.width;
-	tile_height = tile->drawable.height;
-	if ((tile_width | tile_height) == 1) {
-		DBG(("%s: single pixel tile pixmap ,converting to solid fill\n",
-		     __FUNCTION__));
+	if (tile_is_solid(gc, &pixel))
 		return sna_poly_fill_rect_blt(drawable, bo, damage,
-					      gc, get_pixel(tile),
+					      gc, pixel,
 					      n, rect,
 					      extents, clipped);
-	}
 
 	/* XXX [248]x[238] tiling can be reduced to a pattern fill.
 	 * Also we can do the lg2 reduction for BLT and use repeat modes for
 	 * RENDER.
 	 */
 
+	tile_width = tile->drawable.width;
+	tile_height = tile->drawable.height;
 	if ((tile_width | tile_height) == 8) {
 		bool ret;
 
