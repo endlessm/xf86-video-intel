@@ -214,8 +214,10 @@ static inline bool too_large(int width, int height)
 	return width > GEN8_MAX_SIZE || height > GEN8_MAX_SIZE;
 }
 
-static bool unaligned(struct kgem_bo *bo, int bpp)
+static inline bool unaligned(struct kgem_bo *bo, int bpp)
 {
+	/* XXX What exactly do we need to meet H_ALIGN and V_ALIGN? */
+#if 0
 	int x, y;
 
 	if (bo->proxy == NULL)
@@ -241,6 +243,9 @@ static bool unaligned(struct kgem_bo *bo, int bpp)
 	    return true;
 
 	return false;
+#else
+	return false;
+#endif
 }
 
 static uint32_t gen8_get_blend(int op,
