@@ -1021,7 +1021,7 @@ sna_composite_rectangles(CARD8		 op,
 		goto fallback;
 	}
 	if (hint & REPLACES)
-		kgem_bo_undo(&sna->kgem, bo);
+		kgem_bo_pair_undo(&sna->kgem, priv->gpu_bo, priv->cpu_bo);
 
 	if (op <= PictOpSrc) {
 		b = pixman_region_rectangles(&region, &num_boxes);
