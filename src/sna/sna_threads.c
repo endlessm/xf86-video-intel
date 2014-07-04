@@ -259,6 +259,9 @@ int sna_use_threads(int width, int height, int threshold)
 	if (max_threads <= 0)
 		return 1;
 
+	if (height <= num_threads)
+		return height;
+
 	if (width < 128)
 		height /= 128/width;
 
