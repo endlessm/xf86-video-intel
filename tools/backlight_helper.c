@@ -17,7 +17,15 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	snprintf(buf, sizeof(buf), "/sys/class/backlight/%s/brightness", argv[1]);
+	if (strchr(argv[1], '/') != NULL) {
+		fprintf(stderr, "Invalid interface name\n");
+		return 1;
+	}
+	if (snprintf(buf, sizeof(buf), "/sys/class/backlight/%s/brightness",
+		argv[1]) >= sizeof(buf)) {
+		fprintf(stderr, "Interface name is too long\n");
+		return 1;
+	}
 	fd = open(buf, O_RDWR);
 	if (fd < 0 || fstat(fd, &st) || major(st.st_dev)) {
 		fprintf(stderr, "Cannot access backlight interface '%s'\n", argv[1]);
