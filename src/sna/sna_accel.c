@@ -2198,7 +2198,7 @@ skip_inplace_map:
 		}
 	}
 
-	assert(priv->gpu_bo == NULL || priv->gpu_bo->proxy == NULL);
+	assert(priv->gpu_bo == NULL || priv->gpu_bo->proxy == NULL || (flags & MOVE_WRITE) == 0);
 
 	if (operate_inplace(priv, flags) &&
 	    pixmap_inplace(sna, pixmap, priv, flags) &&
@@ -2206,8 +2206,10 @@ skip_inplace_map:
 		void *ptr;
 
 		DBG(("%s: try to operate inplace (GTT)\n", __FUNCTION__));
+		assert(priv->gpu_bo);
 		assert(priv->cow == NULL || (flags & MOVE_WRITE) == 0);
 		assert(!priv->move_to_gpu);
+		assert(priv->gpu_bo->proxy == NULL || (flags & MOVE_WRITE) == 0);
 		assert((flags & MOVE_READ) == 0 || priv->cpu_damage == NULL);
 		/* XXX only sync for writes? */
 		kgem_bo_submit(&sna->kgem, priv->gpu_bo);
@@ -2247,8 +2249,10 @@ skip_inplace_map:
 		void *ptr;
 
 		DBG(("%s: try to operate inplace (CPU)\n", __FUNCTION__));
+		assert(priv->gpu_bo);
 		assert(priv->cow == NULL || (flags & MOVE_WRITE) == 0);
 		assert(priv->move_to_gpu == NULL || (flags & MOVE_WRITE) == 0);
+		assert(priv->gpu_bo->proxy == NULL || (flags & MOVE_WRITE) == 0);
 
 		assert(!priv->mapped);
 		assert(priv->gpu_bo->tiling == I915_TILING_NONE);
@@ -2686,6 +2690,8 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 		}
 	}
 
+	assert(priv->gpu_bo == NULL || priv->gpu_bo->proxy == NULL || (flags & MOVE_WRITE) == 0);
+
 	if (get_drawable_deltas(drawable, pixmap, &dx, &dy)) {
 		DBG(("%s: delta=(%d, %d)\n", __FUNCTION__, dx, dy));
 		RegionTranslate(region, dx, dy);
@@ -2697,8 +2703,10 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 		void *ptr;
 
 		DBG(("%s: try to operate inplace\n", __FUNCTION__));
+		assert(priv->gpu_bo);
 		assert(priv->cow == NULL || (flags & MOVE_WRITE) == 0);
 		assert(priv->move_to_gpu == NULL || (flags & MOVE_WRITE) == 0);
+		assert(priv->gpu_bo->proxy == NULL || (flags & MOVE_WRITE) == 0);
 
 		/* XXX only sync for writes? */
 		kgem_bo_submit(&sna->kgem, priv->gpu_bo);
@@ -2776,6 +2784,8 @@ move_to_cpu:
 
 		DBG(("%s: try to operate inplace (CPU), read? %d, write? %d\n",
 		     __FUNCTION__, !!(flags & MOVE_READ), !!(flags & MOVE_WRITE)));
+		assert(priv->gpu_bo);
+		assert(priv->gpu_bo->proxy == NULL || (flags & MOVE_WRITE) == 0);
 		assert(sna_damage_contains_box(&priv->gpu_damage, &region->extents) == PIXMAN_REGION_IN);
 		assert(sna_damage_contains_box(&priv->cpu_damage, &region->extents) == PIXMAN_REGION_OUT);
 
