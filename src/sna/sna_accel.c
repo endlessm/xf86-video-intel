@@ -11938,6 +11938,7 @@ static struct kgem_bo *
 sna_pixmap_get_source_bo(PixmapPtr pixmap)
 {
 	struct sna_pixmap *priv = sna_pixmap(pixmap);
+	unsigned flags;
 	BoxRec box;
 
 	box.x1 = box.y1 = 0;
@@ -11968,7 +11969,18 @@ sna_pixmap_get_source_bo(PixmapPtr pixmap)
 			return kgem_bo_reference(priv->cpu_bo);
 	}
 
-	if (!sna_pixmap_move_to_gpu(pixmap, MOVE_READ | MOVE_ASYNC_HINT)) {
+	flags = MOVE_READ | MOVE_ASYNC_HINT;
+	if (priv->gpu_bo && priv->gpu_bo->proxy) {
+		struct kgem_bo *bo = priv->gpu_bo;
+		if (bo->rq == NULL && (bo->snoop || bo->pitch >= 4096))
+			flags |= __MOVE_FORCE;
+	}
+	if (priv->gpu_bo == NULL) {
+		if (++priv->source_count > SOURCE_BIAS)
+			flags |= __MOVE_FORCE;
+	}
+
+	if (!sna_pixmap_move_to_gpu(pixmap, flags)) {
 		struct kgem_bo *upload;
 
 		if (!sna_pixmap_move_to_cpu(pixmap, MOVE_READ))
