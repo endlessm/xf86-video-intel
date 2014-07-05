@@ -2577,7 +2577,7 @@ clear:
 							   dst->format, PICT_a8r8g8b8));
 				op = PictOpSrc;
 				DBG(("%s: precomputing solid OVER (%08x, %08x) -> %08x\n",
-				     get_solid_color(src, PICT_a8r8g8b8),
+				     __FUNCTION__, get_solid_color(src, PICT_a8r8g8b8),
 				     color_convert(sna_pixmap(tmp->dst.pixmap)->clear_color,
 						   dst->format, PICT_a8r8g8b8),
 				     color));
@@ -2588,7 +2588,7 @@ clear:
 							  dst->format, PICT_a8r8g8b8));
 				op = PictOpSrc;
 				DBG(("%s: precomputing solid ADD (%08x, %08x) -> %08x\n",
-				     get_solid_color(src, PICT_a8r8g8b8),
+				     __FUNCTION__, get_solid_color(src, PICT_a8r8g8b8),
 				     color_convert(sna_pixmap(tmp->dst.pixmap)->clear_color,
 						   dst->format, PICT_a8r8g8b8),
 				     color));
