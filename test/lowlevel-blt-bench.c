@@ -63,22 +63,32 @@ static const struct format {
 };
 
 static const struct op {
+	int value;
 	const char *name;
 } ops[] = {
-	[PictOpClear] = { "Clear" },
-	[PictOpSrc] = { "Src" },
-	[PictOpDst] = { "Dst" },
-	[PictOpOver] = { "Over" },
-	[PictOpOverReverse] = { "OverReverse" },
-	[PictOpIn] = { "In" },
-	[PictOpInReverse] = { "InReverse" },
-	[PictOpOut] = { "Out" },
-	[PictOpOutReverse] = { "OutReverse" },
-	[PictOpAtop] = { "Atop" },
-	[PictOpAtopReverse] = { "AtopReverse" },
-	[PictOpXor] = { "Xor" },
-	[PictOpAdd] = { "Add" },
-	[PictOpSaturate] = { "Saturate" },
+	{ PictOpClear, "Clear" },
+	{ PictOpSrc, "Src" },
+	{ PictOpDst, "Dst" },
+	{ PictOpOver, "Over" },
+	{ PictOpOverReverse, "OverReverse" },
+	{ PictOpIn, "In" },
+	{ PictOpInReverse, "InReverse" },
+	{ PictOpOut, "Out" },
+	{ PictOpOutReverse, "OutReverse" },
+	{ PictOpAtop, "Atop" },
+	{ PictOpAtopReverse, "AtopReverse" },
+	{ PictOpXor, "Xor" },
+	{ PictOpAdd, "Add" },
+	{ PictOpSaturate, "Saturate" },
+	{ PictOpMultiply, "Multiply" },
+	{ PictOpScreen, "Screen" },
+	{ PictOpOverlay, "Overlay" },
+	{ PictOpDarken, "Darken" },
+	{ PictOpLighten, "Lighten" },
+	{ PictOpColorDodge, "Dodge" },
+	{ PictOpColorBurn, "Burn" },
+	{ PictOpHardLight, "HardLight" },
+	{ PictOpSoftLight, "SoftLight" },
 };
 
 static Picture source_pixmap(struct test_display *t, struct test_target *target, int format)
@@ -340,6 +350,8 @@ static void bench_source(struct test *t, enum target target, int op, int src)
 	fprintf(stdout, "%28s with %s: ", source[src].name, ops[op].name);
 	fflush(stdout);
 
+	op = ops[op].value;
+
 	ref = _bench_source(&t->ref, target, op, src, 1000);
 	if (ref < 0) {
 		fprintf(stdout, "SKIP\n");
@@ -402,6 +414,8 @@ static void bench_mask(struct test *t, enum target target, int op, int src, int 
 	fprintf(stdout, "%28s In %28s with %s: ",
 		source[src].name, source[mask].name, ops[op].name);
 	fflush(stdout);
+
+	op = ops[op].value;
 
 	ref = _bench_mask(&t->ref, target, op, src, mask, 1000);
 	if (ref < 0) {
