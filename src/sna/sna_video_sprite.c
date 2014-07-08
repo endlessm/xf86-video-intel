@@ -41,8 +41,27 @@
 #include <i915_drm.h>
 #include <errno.h>
 
-#ifdef  DRM_IOCTL_MODE_GETPLANERESOURCES
-#include <drm_fourcc.h>
+#define fourcc_code(a,b,c,d) ((uint32_t)(a) | ((uint32_t)(b) << 8) | ((uint32_t)(c) << 16) | ((uint32_t)(d) << 24))
+#define DRM_FORMAT_RGB565       fourcc_code('R', 'G', '1', '6') /* [15:0] R:G:B 5:6:5 little endian */
+#define DRM_FORMAT_XRGB8888     fourcc_code('X', 'R', '2', '4') /* [31:0] x:R:G:B 8:8:8:8 little endian */
+#define DRM_FORMAT_YUYV         fourcc_code('Y', 'U', 'Y', 'V') /* [31:0] Cr0:Y1:Cb0:Y0 8:8:8:8 little endian */
+#define DRM_FORMAT_UYVY         fourcc_code('U', 'Y', 'V', 'Y') /* [31:0] Y1:Cr0:Y0:Cb0 8:8:8:8 little endian */
+
+#define LOCAL_IOCTL_MODE_SETPLANE	DRM_IOWR(0xB7, struct local_mode_set_plane)
+struct local_mode_set_plane {
+	uint32_t plane_id;
+	uint32_t crtc_id;
+	uint32_t fb_id; /* fb object contains surface format type */
+	uint32_t flags;
+
+	/* Signed dest location allows it to be partially off screen */
+	int32_t crtc_x, crtc_y;
+	uint32_t crtc_w, crtc_h;
+
+	/* Source values are 16.16 fixed point */
+	uint32_t src_x, src_y;
+	uint32_t src_h, src_w;
+};
 
 #define IMAGE_MAX_WIDTH		2048
 #define IMAGE_MAX_HEIGHT	2048
@@ -63,7 +82,7 @@ static int sna_video_sprite_stop(ClientPtr client,
 				 DrawablePtr draw)
 {
 	struct sna_video *video = port->devPriv.ptr;
-	struct drm_mode_set_plane s;
+	struct local_mode_set_plane s;
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(video->sna->scrn);
 	int i;
 
@@ -80,7 +99,7 @@ static int sna_video_sprite_stop(ClientPtr client,
 
 		memset(&s, 0, sizeof(s));
 		s.plane_id = sna_crtc_to_sprite(crtc);
-		if (drmIoctl(video->sna->kgem.fd, DRM_IOCTL_MODE_SETPLANE, &s))
+		if (drmIoctl(video->sna->kgem.fd, LOCAL_IOCTL_MODE_SETPLANE, &s))
 			xf86DrvMsg(video->sna->scrn->scrnIndex, X_ERROR,
 				   "failed to disable plane\n");
 
@@ -218,7 +237,7 @@ sna_video_sprite_show(struct sna *sna,
 		      xf86CrtcPtr crtc,
 		      BoxPtr dstBox)
 {
-	struct drm_mode_set_plane s;
+	struct local_mode_set_plane s;
 	int pipe = sna_crtc_to_pipe(crtc);
 
 	/* XXX handle video spanning multiple CRTC */
@@ -227,8 +246,17 @@ sna_video_sprite_show(struct sna *sna,
 	s.plane_id = sna_crtc_to_sprite(crtc);
 
 #define DRM_I915_SET_SPRITE_COLORKEY 0x2b
+#define LOCAL_IOCTL_I915_SET_SPRITE_COLORKEY DRM_IOWR(DRM_COMMAND_BASE + DRM_I915_SET_SPRITE_COLORKEY, struct local_intel_sprite_colorkey)
+#define LOCAL_IOCTL_MODE_ADDFB2 DRM_IOWR(0xb8, struct local_mode_fb_cmd2)
+
 	if (video->color_key_changed & (1 << pipe) && video->has_color_key) {
-		struct drm_intel_sprite_colorkey set;
+		struct local_intel_sprite_colorkey {
+			uint32_t plane_id;
+			uint32_t min_value;
+			uint32_t channel_mask;
+			uint32_t max_value;
+			uint32_t flags;
+		} set;
 
 		DBG(("%s: updating color key: %x\n",
 		     __FUNCTION__, video->color_key));
@@ -239,10 +267,10 @@ sna_video_sprite_show(struct sna *sna,
 		set.channel_mask = 0x7 << 24 | 0xff << 16 | 0xff << 8 | 0xff << 0;
 		set.flags = 0;
 		if (!video->AlwaysOnTop)
-			set.flags = I915_SET_COLORKEY_DESTINATION;
+			set.flags |= 1 << 1; /* COLORKEY_DESTINATION */
 
 		if (drmIoctl(sna->kgem.fd,
-			     DRM_IOCTL_I915_SET_SPRITE_COLORKEY,
+			     LOCAL_IOCTL_I915_SET_SPRITE_COLORKEY,
 			     &set)) {
 			xf86DrvMsg(sna->scrn->scrnIndex, X_ERROR,
 				   "failed to update color key, disabling future updates\n");
@@ -263,44 +291,54 @@ sna_video_sprite_show(struct sna *sna,
 	}
 
 	if (frame->bo->delta == 0) {
-		uint32_t offsets[4], pitches[4], handles[4];
-		uint32_t pixel_format;
+		struct local_mode_fb_cmd2 {
+			uint32_t fb_id;
+			uint32_t width, height;
+			uint32_t pixel_format;
+			uint32_t flags;
+
+			uint32_t handles[4];
+			uint32_t pitches[4]; /* pitch for each plane */
+			uint32_t offsets[4]; /* offset of each plane */
+		} f;
 		bool purged = true;
 
-		handles[0] = frame->bo->handle;
-		pitches[0] = frame->pitch[0];
-		offsets[0] = 0;
+		memset(&f, 0, sizeof(f));
+		f.width = frame->width;
+		f.height = frame->height;
+		f.handles[0] = frame->bo->handle;
+		f.pitches[0] = frame->pitch[0];
 
 		switch (frame->id) {
 		case FOURCC_RGB565:
-			pixel_format = DRM_FORMAT_RGB565;
+			f.pixel_format = DRM_FORMAT_RGB565;
 			purged = sna->scrn->depth != 16;
 			break;
 		case FOURCC_RGB888:
-			pixel_format = DRM_FORMAT_XRGB8888;
+			f.pixel_format = DRM_FORMAT_XRGB8888;
 			purged = sna->scrn->depth != 24;
 			break;
 		case FOURCC_UYVY:
-			pixel_format = DRM_FORMAT_UYVY;
+			f.pixel_format = DRM_FORMAT_UYVY;
 			break;
 		case FOURCC_YUY2:
 		default:
-			pixel_format = DRM_FORMAT_YUYV;
+			f.pixel_format = DRM_FORMAT_YUYV;
 			break;
 		}
 
-		DBG(("%s: creating new fb for handle=%d, width=%d, height=%d, stride=%d\n",
-		     __FUNCTION__, frame->bo->handle,
-		     frame->width, frame->height, pitches[0]));
+		DBG(("%s: creating new fb for handle=%d, width=%d, height=%d, stride=%d, format=%x\n",
+		     __FUNCTION__, frame->bo->handle, frame->width, frame->height,
+		     f.pitches[0], f.pixel_format));
 
-		if (drmModeAddFB2(sna->kgem.fd,
-				  frame->width, frame->height, pixel_format,
-				  handles, pitches, offsets,
-				  &frame->bo->delta, 0)) {
+		if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_MODE_ADDFB2, &f)) {
+			ERR(("%s: ADDFB2 failed, errno=%d\n", __FUNCTION__, errno));
 			xf86DrvMsg(sna->scrn->scrnIndex,
-				   X_ERROR, "failed to add fb\n");
+				   X_ERROR, "failed to add fb, unable to update video\n");
 			return false;
 		}
+
+		frame->bo->delta = f.fb_id;
 
 		frame->bo->scanout = true;
 		/* Don't allow the scanout to be cached if not suitable for front */
@@ -327,11 +365,11 @@ sna_video_sprite_show(struct sna *sna,
 	     s.crtc_x, s.crtc_y, s.crtc_w, s.crtc_h,
 	     s.src_x >> 16, s.src_y >> 16, s.src_w >> 16, s.src_h >> 16));
 
-	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_SETPLANE, &s)) {
+	if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_MODE_SETPLANE, &s)) {
 		DBG(("SET_PLANE failed: ret=%d\n", errno));
 		memset(&s, 0, sizeof(s));
 		s.plane_id = video->plane;
-		(void)drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_SETPLANE, &s);
+		(void)drmIoctl(sna->kgem.fd, LOCAL_IOCTL_MODE_SETPLANE, &s);
 		if (video->bo[pipe]) {
 			kgem_bo_destroy(&sna->kgem, video->bo[pipe]);
 			video->bo[pipe] = NULL;
@@ -414,10 +452,10 @@ static int sna_video_sprite_put_image(ClientPtr client,
 		if (RegionNil(&reg)) {
 off:
 			if (video->bo[pipe]) {
-				struct drm_mode_set_plane s;
+				struct local_mode_set_plane s;
 				memset(&s, 0, sizeof(s));
 				s.plane_id = sna_crtc_to_sprite(crtc);
-				if (drmIoctl(video->sna->kgem.fd, DRM_IOCTL_MODE_SETPLANE, &s))
+				if (drmIoctl(video->sna->kgem.fd, LOCAL_IOCTL_MODE_SETPLANE, &s))
 					xf86DrvMsg(video->sna->scrn->scrnIndex, X_ERROR,
 						   "failed to disable plane\n");
 				video->bo[pipe] = NULL;
@@ -598,22 +636,34 @@ static int sna_video_sprite_color_key(struct sna *sna)
 	return color_key & ((1 << scrn->depth) - 1);
 }
 
+static bool sna_video_has_sprites(struct sna *sna)
+{
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	int i;
+
+	DBG(("%s: num_crtc=%d\n", __FUNCTION__, sna->mode.num_real_crtc));
+
+	if (sna->mode.num_real_crtc == 0)
+		return false;
+
+	for (i = 0; i < sna->mode.num_real_crtc; i++) {
+		if (!sna_crtc_to_sprite(config->crtc[i])) {
+			DBG(("%s: no sprite found on pipe %d\n", __FUNCTION__, sna_crtc_to_pipe(config->crtc[i])));
+			return false;
+		}
+	}
+
+	DBG(("%s: yes\n", __FUNCTION__));
+	return true;
+}
+
 void sna_video_sprite_setup(struct sna *sna, ScreenPtr screen)
 {
 	XvAdaptorPtr adaptor;
-	struct drm_mode_get_plane_res r;
 	struct sna_video *video;
 	XvPortPtr port;
 
-	if (sna->flags & SNA_IS_HOSTED)
-		return;
-
-	memset(&r, 0, sizeof(struct drm_mode_get_plane_res));
-	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPLANERESOURCES, &r))
-		return;
-
-	DBG(("%s: %d sprite planes\n", __FUNCTION__, r.count_planes));
-	if (r.count_planes == 0)
+	if (!sna_video_has_sprites(sna))
 		return;
 
 	adaptor = sna_xv_adaptor_alloc(sna);
@@ -699,8 +749,3 @@ void sna_video_sprite_setup(struct sna *sna, ScreenPtr screen)
 	xvAlwaysOnTop = MAKE_ATOM("XV_ALWAYS_ON_TOP");
 	xvSyncToVblank = MAKE_ATOM("XV_SYNC_TO_VBLANK");
 }
-#else
-void sna_video_sprite_setup(struct sna *sna, ScreenPtr screen)
-{
-}
-#endif
