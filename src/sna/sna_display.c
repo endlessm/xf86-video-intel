@@ -826,6 +826,33 @@ sna_crtc_force_outputs_off(xf86CrtcPtr crtc)
 	to_sna_crtc(crtc)->dpms_mode = DPMSModeOff;
 }
 
+static unsigned
+rotation_reduce(struct plane *p, unsigned rotation)
+{
+	unsigned unsupported_rotations = rotation & ~p->rotation.supported;
+
+	if (unsupported_rotations == 0)
+		return rotation;
+
+#define RR_Reflect_XY (RR_Reflect_X | RR_Reflect_Y)
+
+	if ((unsupported_rotations & RR_Reflect_XY) == RR_Reflect_XY &&
+	    p->rotation.supported& RR_Rotate_180) {
+		rotation &= ~RR_Reflect_XY;
+		rotation ^= RR_Rotate_180;
+	}
+
+	if ((unsupported_rotations & RR_Rotate_180) &&
+	    (p->rotation.supported& RR_Reflect_XY) == RR_Reflect_XY) {
+		rotation ^= RR_Reflect_XY;
+		rotation &= ~RR_Rotate_180;
+	}
+
+#undef RR_Reflect_XY
+
+	return rotation;
+}
+
 static bool
 rotation_set(struct sna *sna, struct plane *p, uint32_t desired)
 {
@@ -881,7 +908,7 @@ bool sna_crtc_set_sprite_rotation(xf86CrtcPtr crtc, uint32_t rotation)
 
 	return rotation_set(to_sna(crtc->scrn),
 			    &to_sna_crtc(crtc)->sprite,
-			    rotation);
+			    rotation_reduce(&to_sna_crtc(crtc)->sprite, rotation));
 }
 
 static bool
@@ -1607,10 +1634,11 @@ static bool use_shadow(struct sna *sna, xf86CrtcPtr crtc)
 			       &f_crtc_to_fb,
 			       &f_fb_to_crtc)) {
 		bool needs_transform = true;
+		unsigned rotation = rotation_reduce(&to_sna_crtc(crtc)->primary, crtc->rotation);
 		DBG(("%s: natively supported rotation? rotation=%x & supported=%x == %d\n",
 		     __FUNCTION__, crtc->rotation, to_sna_crtc(crtc)->primary.rotation.supported,
 		     !!(crtc->rotation & to_sna_crtc(crtc)->primary.rotation.supported)));
-		if (to_sna_crtc(crtc)->primary.rotation.supported & crtc->rotation)
+		if (to_sna_crtc(crtc)->primary.rotation.supported & rotation)
 			needs_transform = RRTransformCompute(crtc->x, crtc->y,
 							     crtc->mode.HDisplay, crtc->mode.VDisplay,
 							     RR_Rotate_0, transform,
@@ -1728,6 +1756,8 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 		sna_crtc->transform = true;
 		return bo;
 	} else {
+		unsigned rotation;
+
 		DBG(("%s: attaching to framebuffer\n", __FUNCTION__));
 		bo = sna_pixmap_pin(sna->front, PIN_SCANOUT);
 		if (bo == NULL)
@@ -1775,8 +1805,9 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 		} else
 			sna_crtc_disable_shadow(sna, sna_crtc);
 
-		assert(sna_crtc->primary.rotation.supported & crtc->rotation);
-		sna_crtc->rotation = crtc->rotation;
+		rotation = rotation_reduce(&sna_crtc->primary, crtc->rotation);
+		assert(sna_crtc->primary.rotation.supported & rotation);
+		sna_crtc->rotation = rotation;
 		return kgem_bo_reference(bo);
 	}
 }
