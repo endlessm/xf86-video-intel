@@ -1222,4 +1222,9 @@ static inline void sigtrap_put(void)
 #define RR_Rotate_All (RR_Rotate_0 | RR_Rotate_90 | RR_Rotate_180 | RR_Rotate_270)
 #define RR_Reflect_All (RR_Reflect_X | RR_Reflect_Y)
 
+#ifndef HAVE_GETLINE
+#include <stdio.h>
+extern int getline(char **line, size_t *len, FILE *file);
+#endif
+
 #endif /* _SNA_H */

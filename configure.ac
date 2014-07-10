@@ -818,6 +818,9 @@ if test "x$debug_msg" = "x"; then
 	debug_msg=" none"
 fi
 
+AC_CONFIG_LIBOBJ_DIR(libobj)
+AC_REPLACE_FUNCS(getline)
+
 DRIVER_NAME="intel"
 AC_SUBST([DRIVER_NAME])
 AC_SUBST([moduledir])
