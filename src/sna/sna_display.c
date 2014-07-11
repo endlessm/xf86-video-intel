@@ -4328,7 +4328,7 @@ sna_show_cursors(ScrnInfoPtr scrn)
 		struct sna_cursor *cursor;
 
 		assert(sna_crtc != NULL);
-		if (!crtc->enabled)
+		if (sna_crtc->bo == NULL)
 			continue;
 
 		if (!crtc->cursor_in_range)
@@ -4479,7 +4479,7 @@ sna_set_cursor_position(ScrnInfoPtr scrn, int x, int y)
 		arg.crtc_id = sna_crtc->id;
 		arg.handle = 0;
 
-		if (!crtc->enabled)
+		if (sna_crtc->bo == NULL)
 			goto disable;
 
 		if (crtc->transform_in_use) {
