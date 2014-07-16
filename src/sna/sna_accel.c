@@ -276,7 +276,6 @@ _assert_pixmap_contains_damage(PixmapPtr pixmap, struct sna_damage *damage, cons
 
 #define __assert_pixmap_damage(p) do { \
 	struct sna_pixmap *priv__ = sna_pixmap(p); \
-	assert(p->refcnt); \
 	if (priv__) { \
 		assert(priv__->gpu_damage == NULL || priv__->gpu_bo); \
 		assert(priv__->gpu_bo == NULL || priv__->gpu_bo->refcnt); \
