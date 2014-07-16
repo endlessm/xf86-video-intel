@@ -2181,7 +2181,6 @@ sna_render_copy_boxes__overlap(struct sna *sna, uint8_t alu,
 	pixman_box16_t stack_boxes[64], *boxes = stack_boxes;
 	int num_boxes, i;
 
-	assert(draw->type == DRAWABLE_PIXMAP);
 	DBG(("%s: pixmap=%ld, handle=%d, %d x [(%d, %d), (%d, %d)], dst=(%d, %d), src=(%d, %d)\n",
 	     __FUNCTION__, draw->serialNumber, bo->handle,
 	     n, extents->x1, extents->y1, extents->x2, extents->y2,

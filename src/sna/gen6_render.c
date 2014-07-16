@@ -3097,7 +3097,6 @@ gen6_render_fill_boxes(struct sna *sna,
 	     __FUNCTION__, pixel, n,
 	     box[0].x1, box[0].y1, box[0].x2, box[0].y2));
 
-	assert(dst->type == DRAWABLE_PIXMAP);
 	tmp.dst.pixmap = (PixmapPtr)dst;
 	tmp.dst.width  = dst->width;
 	tmp.dst.height = dst->height;

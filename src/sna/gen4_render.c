@@ -2732,7 +2732,6 @@ gen4_render_fill_boxes(struct sna *sna,
 
 	tmp.op = op;
 
-	assert(dst->type == DRAWABLE_PIXMAP);
 	tmp.dst.pixmap = (PixmapPtr)dst;
 	tmp.dst.width  = dst->width;
 	tmp.dst.height = dst->height;
