@@ -247,47 +247,47 @@ typedef struct box32 {
 	(((_pm) & FbFullMask((_draw)->depth)) == FbFullMask((_draw)->depth))
 
 #ifndef NDEBUG
-static bool
-pixmap_contains_damage(PixmapPtr pixmap, struct sna_damage *damage)
-{
-	if (damage == NULL)
-		return true;
-
-	damage = DAMAGE_PTR(damage);
-	return (damage->extents.x2 <= pixmap->drawable.width &&
-		damage->extents.y2 <= pixmap->drawable.height &&
-		damage->extents.x1 >= 0 &&
-		damage->extents.y1 >= 0);
-}
-#endif
-
-#define __assert_pixmap_damage(p) do { \
-	struct sna_pixmap *priv__ = sna_pixmap(p); \
-	if (priv__) { \
-		assert(priv__->gpu_damage == NULL || priv__->gpu_bo); \
-		assert(priv__->gpu_bo == NULL || priv__->gpu_bo->refcnt); \
-		assert(priv__->cpu_bo == NULL || priv__->cpu_bo->refcnt); \
-		assert(pixmap_contains_damage(p, priv__->gpu_damage)); \
-		assert(pixmap_contains_damage(p, priv__->cpu_damage)); \
-		assert_pixmap_map(p, priv__); \
-	} \
-} while (0)
-
-#ifdef DEBUG_PIXMAP
 static void _assert_pixmap_contains_box(PixmapPtr pixmap, const BoxRec *box, const char *function)
 {
 	if (box->x1 < 0 || box->y1 < 0 ||
 	    box->x2 > pixmap->drawable.width ||
 	    box->y2 > pixmap->drawable.height)
 	{
-		FatalError("%s: damage box is beyond the pixmap: box=(%d, %d), (%d, %d), pixmap=(%d, %d)\n",
-			   function,
-			   box->x1, box->y1, box->x2, box->y2,
+		FatalError("%s: damage box [(%d, %d), (%d, %d)] is beyond the pixmap=%ld size=%dx%d\n",
+			   function, box->x1, box->y1, box->x2, box->y2,
+			   pixmap->drawable.serialNumber,
 			   pixmap->drawable.width,
 			   pixmap->drawable.height);
 	}
 }
 
+static void
+_assert_pixmap_contains_damage(PixmapPtr pixmap, struct sna_damage *damage, const char *function)
+{
+	if (damage == NULL)
+		return;
+
+	_assert_pixmap_contains_box(pixmap, &DAMAGE_PTR(damage)->extents, function);
+}
+#define assert_pixmap_contains_damage(p,d) _assert_pixmap_contains_damage(p, d, __FUNCTION__)
+#else
+#define assert_pixmap_contains_damage(p,d)
+#endif
+
+#define __assert_pixmap_damage(p) do { \
+	struct sna_pixmap *priv__ = sna_pixmap(p); \
+	assert(p->refcnt); \
+	if (priv__) { \
+		assert(priv__->gpu_damage == NULL || priv__->gpu_bo); \
+		assert(priv__->gpu_bo == NULL || priv__->gpu_bo->refcnt); \
+		assert(priv__->cpu_bo == NULL || priv__->cpu_bo->refcnt); \
+		assert_pixmap_contains_damage(p, priv__->gpu_damage); \
+		assert_pixmap_contains_damage(p, priv__->cpu_damage); \
+		assert_pixmap_map(p, priv__); \
+	} \
+} while (0)
+
+#ifdef DEBUG_PIXMAP
 static void _assert_pixmap_contains_box_with_offset(PixmapPtr pixmap, const BoxRec *box, int dx, int dy, const char *function)
 {
 	BoxRec b = *box;
@@ -4222,7 +4222,7 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 	if (n) {
 		bool ok;
 
-		assert(pixmap_contains_damage(pixmap, priv->cpu_damage));
+		assert_pixmap_contains_damage(pixmap, priv->cpu_damage);
 		DBG(("%s: uploading %d damage boxes\n", __FUNCTION__, n));
 
 		ok = false;
@@ -6221,11 +6221,11 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 					   region, dx, dy,
 					   bitplane, closure);
 
-	DBG(("%s (boxes=%dx[(%d, %d), (%d, %d)...], src=+(%d, %d), dst=+(%d, %d), alu=%d, src.size=%dx%d, dst.size=%dx%d)\n",
+	DBG(("%s (boxes=%dx[(%d, %d), (%d, %d)...], src pixmap=%ld+(%d, %d), dst pixmap=%ld=+(%d, %d), alu=%d, src.size=%dx%d, dst.size=%dx%d)\n",
 	     __FUNCTION__, n,
 	     box[0].x1, box[0].y1, box[0].x2, box[0].y2,
-	     dx, dy,
-	     get_drawable_dx(dst), get_drawable_dy(dst),
+	     src_pixmap->drawable.serialNumber, dx, dy,
+	     dst_pixmap->drawable.serialNumber, get_drawable_dx(dst), get_drawable_dy(dst),
 	     alu,
 	     src_pixmap->drawable.width, src_pixmap->drawable.height,
 	     dst_pixmap->drawable.width, dst_pixmap->drawable.height));
