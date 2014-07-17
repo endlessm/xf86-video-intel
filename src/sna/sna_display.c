@@ -4842,30 +4842,30 @@ sna_crtc_flip(struct sna *sna, struct sna_crtc *crtc, struct kgem_bo *bo, int x,
 	return true;
 }
 
-static int do_page_flip(struct sna *sna, struct kgem_bo *bo,
-			sna_flip_handler_t handler, void *data)
+int
+sna_page_flip(struct sna *sna,
+	      struct kgem_bo *bo,
+	      sna_flip_handler_t handler,
+	      void *data)
 {
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
-	int width = sna->scrn->virtualX;
-	int height = sna->scrn->virtualY;
+	const int width = sna->scrn->virtualX;
+	const int height = sna->scrn->virtualY;
 	int count = 0;
 	int i;
 
+	DBG(("%s: handle %d attached\n", __FUNCTION__, bo->handle));
+	assert(bo->refcnt);
+
+	assert((sna->flags & SNA_IS_HOSTED) == 0);
 	assert((sna->flags & SNA_TEAR_FREE) == 0);
 	assert(sna->mode.flip_active == 0);
 
 	if ((sna->flags & (data ? SNA_HAS_FLIP : SNA_HAS_ASYNC_FLIP)) == 0)
 		return 0;
 
-	/*
-	 * Queue flips on all enabled CRTCs
-	 * Note that if/when we get per-CRTC buffers, we'll have to update this.
-	 * Right now it assumes a single shared fb across all CRTCs, with the
-	 * kernel fixing up the offset of each CRTC as necessary.
-	 *
-	 * Also, flips queued on disabled or incorrectly configured displays
-	 * may never complete; this is a configuration error.
-	 */
+	kgem_bo_submit(&sna->kgem, bo);
+
 	for (i = 0; i < sna->mode.num_real_crtc; i++) {
 		struct sna_crtc *crtc = config->crtc[i]->driver_private;
 		struct drm_mode_crtc_page_flip arg;
@@ -4949,35 +4949,7 @@ fixup_flip:
 		count++;
 	}
 
-	return count;
-}
-
-int
-sna_page_flip(struct sna *sna,
-	      struct kgem_bo *bo,
-	      sna_flip_handler_t handler,
-	      void *data)
-{
-	int count;
-
-	DBG(("%s: handle %d attached\n", __FUNCTION__, bo->handle));
-	assert(bo->refcnt);
-	assert((sna->flags & SNA_IS_HOSTED) == 0);
-
-	kgem_bo_submit(&sna->kgem, bo);
-
-	/*
-	 * Queue flips on all enabled CRTCs
-	 * Note that if/when we get per-CRTC buffers, we'll have to update this.
-	 * Right now it assumes a single shared fb across all CRTCs, with the
-	 * kernel fixing up the offset of each CRTC as necessary.
-	 *
-	 * Also, flips queued on disabled or incorrectly configured displays
-	 * may never complete; this is a configuration error.
-	 */
-	count = do_page_flip(sna, bo, handler, data);
 	DBG(("%s: page flipped %d crtcs\n", __FUNCTION__, count));
-
 	return count;
 }
 
