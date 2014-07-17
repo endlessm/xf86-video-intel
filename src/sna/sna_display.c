@@ -2198,6 +2198,8 @@ static int plane_details(struct sna *sna, struct plane *p)
 		if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_MODE_OBJ_GETPROPERTIES, &arg))
 			arg.count_props = 0;
 	}
+	VG(VALGRIND_MAKE_MEM_DEFINED(arg.props_ptr, sizeof(uint32_t)*arg.count_props));
+	VG(VALGRIND_MAKE_MEM_DEFINED(arg.prop_values_ptr, sizeof(uint64_t)*arg.count_props));
 
 	for (i = 0; i < arg.count_props; i++) {
 		struct drm_mode_get_property prop;
@@ -2234,6 +2236,7 @@ static int plane_details(struct sna *sna, struct plane *p)
 					/* XXX we assume that the mapping between kernel enum and
 					 * RandR remains fixed for our lifetimes.
 					 */
+					VG(VALGRIND_MAKE_MEM_DEFINED(enums, sizeof(*enums)*prop.count_enum_blobs));
 					for (j = 0; j < prop.count_enum_blobs; j++) {
 						DBG(("%s: rotation[%d] = %s [%lx]\n", __FUNCTION__,
 						     j, enums[j].name, (long)enums[j].value));
