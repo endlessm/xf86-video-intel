@@ -4924,6 +4924,7 @@ sna_page_flip(struct sna *sna,
 		if (crtc->bo == NULL)
 			continue;
 		assert(!crtc->transform);
+		assert(!crtc->slave_pixmap);
 		assert(crtc->bo->active_scanout);
 		assert(crtc->bo->refcnt >= crtc->bo->active_scanout);
 		assert(crtc->flip_bo == NULL);
