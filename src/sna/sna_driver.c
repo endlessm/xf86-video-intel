@@ -487,10 +487,8 @@ static void setup_dri(struct sna *sna)
 
 static bool enable_tear_free(struct sna *sna)
 {
-#if HAS_PIXMAP_SHARING
-	if (sna->scrn->is_gpu)
+	if (sna->flags & SNA_LINEAR_FB)
 		return false;
-#endif
 
 	/* Under certain conditions, we should enable TearFree by default,
 	 * for example when the hardware requires pageflipping to run within
@@ -500,6 +498,33 @@ static bool enable_tear_free(struct sna *sna)
 		return true;
 
 	return ENABLE_TEAR_FREE;
+}
+
+static void setup_tear_free(struct sna *sna)
+{
+	MessageType from;
+	Bool enable;
+
+	if (sna->flags & SNA_LINEAR_FB)
+		return;
+
+	if ((sna->flags & SNA_HAS_FLIP) == 0) {
+		from = X_PROBED;
+		goto done;
+	}
+
+	if (!xf86GetOptValBool(sna->Options, OPTION_TEAR_FREE, &enable)) {
+		enable = enable_tear_free(sna);
+		from = X_DEFAULT;
+	} else
+		from = X_CONFIG;
+
+	if (enable)
+		sna->flags |= SNA_TEAR_FREE;
+
+done:
+	xf86DrvMsg(sna->scrn->scrnIndex, from, "TearFree %sabled\n",
+		   sna->flags & SNA_TEAR_FREE ? "en" : "dis");
 }
 
 /**
@@ -666,11 +691,7 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 	}
 	scrn->currentMode = scrn->modes;
 
-	if ((sna->flags & (SNA_HAS_FLIP | SNA_LINEAR_FB)) == SNA_HAS_FLIP &&
-	    xf86ReturnOptValBool(sna->Options, OPTION_TEAR_FREE, enable_tear_free(sna)))
-		sna->flags |= SNA_TEAR_FREE;
-	xf86DrvMsg(scrn->scrnIndex, X_CONFIG, "TearFree %sabled\n",
-		   sna->flags & SNA_TEAR_FREE ? "en" : "dis");
+	setup_tear_free(sna);
 
 	xf86SetGamma(scrn, zeros);
 	xf86SetDpi(scrn, 0, 0);

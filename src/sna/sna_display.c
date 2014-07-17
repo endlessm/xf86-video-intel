@@ -1633,6 +1633,11 @@ static bool use_shadow(struct sna *sna, xf86CrtcPtr crtc)
 		return true;
 	}
 
+	if (sna->flags & SNA_TEAR_FREE && to_sna_crtc(crtc)->slave_pixmap) {
+		DBG(("%s: tear-free shadow required\n", __FUNCTION__));
+		return true;
+	}
+
 	if (sna->scrn->virtualX > sna->mode.max_crtc_width ||
 	    sna->scrn->virtualY > sna->mode.max_crtc_height) {
 		DBG(("%s: framebuffer too large (%dx%d) > (%dx%d)\n",
