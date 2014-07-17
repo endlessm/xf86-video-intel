@@ -4929,9 +4929,37 @@ fixup_flip:
 		}
 		arg.reserved = 0;
 
+retry_flip:
 		DBG(("%s: crtc %d id=%d, pipe=%d  --> fb %d\n",
 		     __FUNCTION__, i, crtc->id, crtc->pipe, arg.fb_id));
 		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_PAGE_FLIP, &arg)) {
+			ERR(("%s: pageflip failed with err=%d\n", __FUNCTION__, errno));
+
+			if (errno == EBUSY) {
+				struct drm_mode_crtc mode;
+
+				memset(&mode, 0, sizeof(mode));
+				mode.crtc_id = crtc->id;
+				drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETCRTC, &mode);
+
+				DBG(("%s: crtc=%d, valid?=%d, fb attached?=%d, expected=%d\n",
+				     __FUNCTION__,
+				     mode.crtc_id, mode.mode_valid,
+				     mode.fb_id, fb_id(crtc->bo)));
+
+				if (mode.fb_id != fb_id(crtc->bo))
+					goto fixup_flip;
+
+				if (count == 0)
+					return 0;
+
+				DBG(("%s: throttling on busy flip / waiting for kernel to catch up\n", __FUNCTION__));
+				drmIoctl(sna->kgem.fd, DRM_IOCTL_I915_GEM_THROTTLE, 0);
+				sna->kgem.need_throttle = false;
+
+				goto retry_flip;
+			}
+
 			xf86DrvMsg(sna->scrn->scrnIndex, X_ERROR,
 				   "page flipping failed, on CRTC:%d (pipe=%d), disabling %s page flips\n",
 				   crtc->id, crtc->pipe, data ? "synchronous": "asynchronous");
