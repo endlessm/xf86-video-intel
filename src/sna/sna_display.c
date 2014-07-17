@@ -4863,6 +4863,8 @@ sna_page_flip(struct sna *sna,
 	assert((sna->flags & SNA_IS_HOSTED) == 0);
 	assert((sna->flags & SNA_TEAR_FREE) == 0);
 	assert(sna->mode.flip_active == 0);
+	assert(sna->mode.front_active);
+	assert(sna->scrn->vtSema);
 
 	if ((sna->flags & (data ? SNA_HAS_FLIP : SNA_HAS_ASYNC_FLIP)) == 0)
 		return 0;

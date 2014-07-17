@@ -1560,10 +1560,12 @@ can_flip(struct sna * sna,
 	if (draw->type == DRAWABLE_PIXMAP)
 		return false;
 
-	if (!sna->scrn->vtSema) {
-		DBG(("%s: no, not attached to VT\n", __FUNCTION__));
+	if (!sna->mode.front_active) {
+		DBG(("%s: no, active CRTC\n", __FUNCTION__));
 		return false;
 	}
+
+	assert(sna->scrn->vtSema);
 
 	if ((sna->flags & (SNA_HAS_FLIP | SNA_HAS_ASYNC_FLIP)) == 0) {
 		DBG(("%s: no, pageflips disabled\n", __FUNCTION__));
