@@ -1372,7 +1372,7 @@ static void sna_crtc_disable_shadow(struct sna *sna, struct sna_crtc *crtc)
 
 	if (crtc->slave_damage) {
 		assert(crtc->slave_pixmap);
-		DamageUnregister(&crtc->slave_scanout->drawable, crtc->slave_damage);
+		DamageUnregister(&crtc->slave_pixmap->drawable, crtc->slave_damage);
 		DamageDestroy(crtc->slave_damage);
 		crtc->slave_damage = NULL;
 	}
