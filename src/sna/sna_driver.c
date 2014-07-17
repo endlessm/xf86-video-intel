@@ -487,6 +487,11 @@ static void setup_dri(struct sna *sna)
 
 static bool enable_tear_free(struct sna *sna)
 {
+#if HAS_PIXMAP_SHARING
+	if (sna->scrn->is_gpu)
+		return false;
+#endif
+
 	/* Under certain conditions, we should enable TearFree by default,
 	 * for example when the hardware requires pageflipping to run within
 	 * its power/performance budget.
