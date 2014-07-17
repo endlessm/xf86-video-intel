@@ -239,10 +239,21 @@ inline static void *dri2_window_get_front(WindowPtr win) { return NULL; }
 #endif
 
 #if DRI2INFOREC_VERSION < 6
-#define XORG_CAN_TRIPLE_BUFFER 0
+
+#define xorg_can_triple_buffer(ptr) 0
 #define swap_limit(d, l) false
+
 #else
-#define XORG_CAN_TRIPLE_BUFFER 1
+
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,15,99,904,0)
+#define xorg_can_triple_buffer(ptr) 1
+#else
+inline static bool xorg_can_triple_buffer(struct sna *sna)
+{
+	return screenInfo.numGPUScreens == 0;
+}
+#endif
+
 static Bool
 sna_dri2_swap_limit_validate(DrawablePtr draw, int swap_limit)
 {
@@ -2164,14 +2175,14 @@ void sna_dri2_vblank_handler(struct sna *sna, struct drm_event_vblank *event)
 		     __FUNCTION__, info->type,
 		     event->sequence, event->tv_sec, event->tv_usec));
 
-#if XORG_CAN_TRIPLE_BUFFER
-		if (!sna_dri2_blit_complete(sna, info))
-			return;
+		if (xorg_can_triple_buffer(sna)) {
+			if (!sna_dri2_blit_complete(sna, info))
+				return;
 
-		DBG(("%s: triple buffer swap complete, unblocking client (frame=%d, tv=%d.%06d)\n", __FUNCTION__,
-		     event->sequence, event->tv_sec, event->tv_usec));
-		frame_swap_complete(sna, info, DRI2_BLIT_COMPLETE);
-#endif
+			DBG(("%s: triple buffer swap complete, unblocking client (frame=%d, tv=%d.%06d)\n", __FUNCTION__,
+			     event->sequence, event->tv_sec, event->tv_usec));
+			frame_swap_complete(sna, info, DRI2_BLIT_COMPLETE);
+		}
 		break;
 
 	case WAITMSC:
@@ -2283,7 +2294,7 @@ sna_dri2_flip_continue(struct sna *sna, struct sna_dri2_event *info)
 		if (!sna_dri2_flip(sna, info))
 			return false;
 
-		if (!XORG_CAN_TRIPLE_BUFFER) {
+		if (!xorg_can_triple_buffer(sna)) {
 			sna_dri2_get_back(sna, info->draw, info->back, info);
 			DBG(("%s: fake triple buffering, unblocking client\n", __FUNCTION__));
 			frame_swap_complete(sna, info, DRI2_FLIP_COMPLETE);
@@ -2321,7 +2332,7 @@ static void chain_flip(struct sna *sna)
 						  chain->back, chain->front,
 						  true);
 
-		if (XORG_CAN_TRIPLE_BUFFER) {
+		if (xorg_can_triple_buffer(sna)) {
 			union drm_wait_vblank vbl;
 
 			VG_CLEAR(vbl);
@@ -2414,7 +2425,7 @@ get_current_msc(struct sna *sna, DrawablePtr draw, xf86CrtcPtr crtc)
 	return draw_current_msc(draw, crtc, ret);
 }
 
-#if !XORG_CAN_TRIPLE_BUFFER && XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,12,99,901,0)
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,12,99,901,0)
 static Bool find(pointer value, XID id, pointer cdata)
 {
 	return TRUE;
@@ -2434,10 +2445,12 @@ static int use_triple_buffer(struct sna *sna, ClientPtr client, bool async)
 		return sna->flags & SNA_HAS_ASYNC_FLIP ? FLIP_ASYNC : FLIP_COMPLETE;
 	}
 
-#if XORG_CAN_TRIPLE_BUFFER
-	DBG(("%s: triple buffer enabled, using FLIP_THROTTLE\n", __FUNCTION__));
-	return FLIP_THROTTLE;
-#elif XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,12,99,901,0)
+	if (xorg_can_triple_buffer(sna)) {
+		DBG(("%s: triple buffer enabled, using FLIP_THROTTLE\n", __FUNCTION__));
+		return FLIP_THROTTLE;
+	}
+
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,12,99,901,0)
 	/* Hack: Disable triple buffering for compositors */
 	{
 		struct sna_client *priv = sna_client(client);
@@ -2522,11 +2535,10 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 			} else {
 				DBG(("%s: chaining flip\n", __FUNCTION__));
 				type = FLIP_THROTTLE;
-#if XORG_CAN_TRIPLE_BUFFER
-				info->mode = -type;
-#else
-				info->mode = -FLIP_COMPLETE;
-#endif
+				if (xorg_can_triple_buffer(sna))
+					info->mode = -type;
+				else
+					info->mode = -FLIP_COMPLETE;
 				goto out;
 			}
 		}
@@ -2564,7 +2576,7 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 		swap_limit(draw, 1 + (type == FLIP_THROTTLE));
 		if (type >= FLIP_COMPLETE) {
 new_back:
-			if (!XORG_CAN_TRIPLE_BUFFER)
+			if (!xorg_can_triple_buffer(sna))
 				sna_dri2_get_back(sna, draw, back, info);
 			DBG(("%s: fake triple buffering, unblocking client\n", __FUNCTION__));
 			frame_swap_complete(sna, info, DRI2_EXCHANGE_COMPLETE);
@@ -3244,11 +3256,11 @@ bool sna_dri2_open(struct sna *sna, ScreenPtr screen)
 	driverNames[1] = info.driverName;
 #endif
 
-#if XORG_CAN_TRIPLE_BUFFER
-	info.version = 6;
-	info.SwapLimitValidate = sna_dri2_swap_limit_validate;
-	info.ReuseBufferNotify = sna_dri2_reuse_buffer;
-#endif
+	if (xorg_can_triple_buffer(sna)) {
+		info.version = 6;
+		info.SwapLimitValidate = sna_dri2_swap_limit_validate;
+		info.ReuseBufferNotify = sna_dri2_reuse_buffer;
+	}
 
 #if USE_ASYNC_SWAP
 	info.version = 10;
