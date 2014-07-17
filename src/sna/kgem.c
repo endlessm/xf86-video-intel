@@ -4046,13 +4046,15 @@ struct kgem_bo *kgem_create_for_prime(struct kgem *kgem, int name, uint32_t size
 	switch (caching.caching) {
 	case 0:
 		if (kgem->has_llc) {
-			DBG(("%s: interpreting handle=%d as a foreign scanout\n"));
+			DBG(("%s: interpreting handle=%d as a foreign scanout\n",
+			     __FUNCTION__, args.handle));
 			bo->scanout = true;
 		}
 		break;
 	case 1:
 		if (!kgem->has_llc) {
-			DBG(("%s: interpreting handle=%d as a foreign snooped buffer\n"));
+			DBG(("%s: interpreting handle=%d as a foreign snooped buffer\n",
+			     __FUNCTION__, args.handle));
 			bo->snoop = true;
 			if (bo->tiling) {
 				DBG(("%s: illegal snooped tiled buffer\n", __FUNCTION__));
@@ -4062,7 +4064,8 @@ struct kgem_bo *kgem_create_for_prime(struct kgem *kgem, int name, uint32_t size
 		}
 		break;
 	case 2:
-		DBG(("%s: interpreting handle=%d as a foreign scanout\n"));
+		DBG(("%s: interpreting handle=%d as a foreign scanout\n",
+		     __FUNCTION__, args.handle));
 		bo->scanout = true;
 		break;
 	}
