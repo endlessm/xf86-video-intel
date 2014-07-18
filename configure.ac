@@ -262,13 +262,20 @@ if test "x$shm" != "xyes"; then
 	tools="no"
 fi
 if test "x$tools" != "xno"; then
-	ivo_requires="xinerama xrandr xdamage xfixes xcursor xtst xrender xext x11 pixman-1"
+	ivo_requires="xrandr xdamage xfixes xcursor xtst xrender xext x11 pixman-1"
+	extra_cflags=""
+
+	ignore="xinerama"
+	PKG_CHECK_MODULES(IVO_EXTRA, [$ignore],
+			  [AC_CHECK_HEADERS([X11/extensions/Xinerama.h], [ivo_requires="$ignore $ivo_requires"], [],
+					    [#include <X11/Xlibint.h>
+					     #include <X11/Xproto.h>
+					    ])], [ignore=""])
+
+	ignore="xcb-dri3 xcb-sync x11-xcb xshmfence x11"
+	PKG_CHECK_MODULES(IVO_EXTRA, [$ignore], [ivo_requires="$ivo_requires $ignore"; extra_cflags="-DDRI3"], [ignore=""])
+
 	PKG_CHECK_MODULES(IVO, [$ivo_requires], [ivo="yes"], [ivo="no"])
-	PKG_CHECK_MODULES(IVO_DRI3, [xcb-dri3 xcb-sync x11-xcb xshmfence x11], [ivo_dri3="yes"], [ivo_dri3="no"])
-	if test "x$ivo_dri3" = "xyes"; then
-		IVO_CFLAGS="$IVO_CFLAGS $IVO_DRI3_CFLAGS -DDRI3"
-		IVO_LIBS="$IVO_LIBS $IVO_DRI3_LIBS"
-	fi
 	AC_CHECK_HEADER([sys/timerfd.h], [], [ivo="no"])
 	if test "x$ivo" = "xno"; then
 		if test "x$tools" = "xyes"; then
@@ -276,6 +283,8 @@ if test "x$tools" != "xno"; then
 		fi
 		tools="no"
 	fi
+
+	IVO_CFLAGS="$IVO_CFLAGS $extra_cflags"
 fi
 if test "x$tools" != "xno"; then
       tools_msg="$tools_msg intel-virtual-output"

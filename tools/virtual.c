@@ -40,7 +40,10 @@
 #error Failed to find the right header for X11 MIT-SHM protocol definitions
 #endif
 #include <X11/extensions/Xdamage.h>
+#if HAVE_X11_EXTENSIONS_XINERAMA_H
 #include <X11/extensions/Xinerama.h>
+#define USE_XINERAMA
+#endif
 #include <X11/extensions/Xrandr.h>
 #include <X11/extensions/Xrender.h>
 #include <X11/Xcursor/Xcursor.h>
@@ -2263,6 +2266,18 @@ static int clone_init_depth(struct clone *clone)
 	return 0;
 }
 
+#if defined(USE_XINERAMA)
+static int xinerama_active(struct display *display)
+{
+	int active = 0;
+	if (XineramaQueryExtension(display->dpy, &display->xinerama_event, &display->xinerama_error))
+		active = XineramaIsActive(display->dpy);
+	return active;
+}
+#else
+#define xinerama_active(d) 0
+#endif
+
 static int add_display(struct context *ctx, Display *dpy)
 {
 	struct display *display;
@@ -2315,8 +2330,7 @@ static int add_display(struct context *ctx, Display *dpy)
 	     display->rr_event,
 	     display->rr_error));
 
-	if (XineramaQueryExtension(dpy, &display->xinerama_event, &display->xinerama_error))
-		display->xinerama_active = XineramaIsActive(dpy);
+	display->xinerama_active = xinerama_active(display);
 	DBG(X11, ("%s: xinerama_active?=%d, event=%d, error=%d\n",
 	     DisplayString(dpy),
 	     display->xinerama_active,
@@ -2598,6 +2612,7 @@ static int last_display_add_clones__randr(struct context *ctx)
 	return 0;
 }
 
+#if defined(USE_XINERAMA)
 static int last_display_add_clones__xinerama(struct context *ctx)
 {
 	struct display *display = last_display(ctx);
@@ -2672,6 +2687,9 @@ static int last_display_add_clones__xinerama(struct context *ctx)
 	reverse_clone_list(display);
 	return 0;
 }
+#else
+#define last_display_add_clones__xinerama(ctx) -1
+#endif
 
 static int last_display_add_clones__display(struct context *ctx)
 {
