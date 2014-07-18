@@ -48,8 +48,9 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <xf86drm.h>
 #include <i915_drm.h>
 #include <dri2.h>
-#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,12,99,901,0)
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,12,99,901,0) && defined(COMPOSITE)
 #include <compositeext.h>
+#define CHECK_FOR_COMPOSITOR
 #endif
 
 #define DBG_CAN_FLIP 1
@@ -2425,7 +2426,7 @@ get_current_msc(struct sna *sna, DrawablePtr draw, xf86CrtcPtr crtc)
 	return draw_current_msc(draw, crtc, ret);
 }
 
-#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,12,99,901,0)
+#if defined(CHECK_FOR_COMPOSITOR)
 static Bool find(pointer value, XID id, pointer cdata)
 {
 	return TRUE;
@@ -2450,7 +2451,7 @@ static int use_triple_buffer(struct sna *sna, ClientPtr client, bool async)
 		return FLIP_THROTTLE;
 	}
 
-#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,12,99,901,0)
+#if defined(CHECK_FOR_COMPOSITOR)
 	/* Hack: Disable triple buffering for compositors */
 	{
 		struct sna_client *priv = sna_client(client);
