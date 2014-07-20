@@ -63,9 +63,6 @@ struct local_mode_set_plane {
 	uint32_t src_h, src_w;
 };
 
-#define IMAGE_MAX_WIDTH		2048
-#define IMAGE_MAX_HEIGHT	2048
-
 #define MAKE_ATOM(a) MakeAtom(a, sizeof(a) - 1, true)
 
 static Atom xvColorKey, xvAlwaysOnTop, xvSyncToVblank;
@@ -584,10 +581,10 @@ static int sna_video_sprite_query(ClientPtr client,
 	struct sna_video_frame frame;
 	int size;
 
-	if (*w > IMAGE_MAX_WIDTH)
-		*w = IMAGE_MAX_WIDTH;
-	if (*h > IMAGE_MAX_HEIGHT)
-		*h = IMAGE_MAX_HEIGHT;
+	if (*w > video->sna->mode.max_crtc_width)
+		*w = video->sna->mode.max_crtc_width;
+	if (*h > video->sna->mode.max_crtc_height)
+		*h = video->sna->mode.max_crtc_height;
 
 	if (offsets)
 		offsets[0] = 0;
@@ -687,8 +684,8 @@ void sna_video_sprite_setup(struct sna *sna, ScreenPtr screen)
 	adaptor->pEncodings[0].id = 0;
 	adaptor->pEncodings[0].pScreen = screen;
 	adaptor->pEncodings[0].name = (char *)"XV_IMAGE";
-	adaptor->pEncodings[0].width = IMAGE_MAX_WIDTH;
-	adaptor->pEncodings[0].height = IMAGE_MAX_HEIGHT;
+	adaptor->pEncodings[0].width = sna->mode.max_crtc_width;
+	adaptor->pEncodings[0].height = sna->mode.max_crtc_height;
 	adaptor->pEncodings[0].rate.numerator = 1;
 	adaptor->pEncodings[0].rate.denominator = 1;
 	adaptor->pFormats = formats;
