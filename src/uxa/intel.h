@@ -539,6 +539,11 @@ unsigned long intel_get_fence_pitch(intel_screen_private *intel, unsigned long p
 Bool intel_check_display_stride(ScrnInfoPtr scrn, int stride, Bool tiling);
 void intel_set_gem_max_sizes(ScrnInfoPtr scrn);
 
+unsigned int
+intel_compute_size(struct intel_screen_private *intel,
+                   int w, int h, int bpp, unsigned usage,
+                   uint32_t *tiling, int *stride);
+
 drm_intel_bo *intel_allocate_framebuffer(ScrnInfoPtr scrn,
 					 int width, int height, int cpp,
 					 int *out_stride,
