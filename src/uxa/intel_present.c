@@ -193,7 +193,8 @@ intel_present_queue_vblank(RRCrtcPtr                    crtc,
 		if (errno != EBUSY || !intel_present_flush_drm_events(screen))
 			return BadAlloc;
 	}
-	DebugPresent(("\t\tiq %lld seq %u msc %u (hw msc %u)\n", event_id, seq, low_msc, vbl.request.sequence));
+	DebugPresent(("\t\tiq %lld seq %u msc %llu (hw msc %u)\n",
+                      (long long) event_id, seq, (long long) msc, vbl.request.sequence));
 	return Success;
 }
 
