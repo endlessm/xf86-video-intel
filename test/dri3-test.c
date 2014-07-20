@@ -444,6 +444,7 @@ static int test_shm(Display *dpy, int device,
 	uint32_t *ptr;
 	int stride, fd;
 	int x, y;
+	int line;
 
 	if (!can_use_shm(dpy))
 		return 0;
@@ -478,16 +479,22 @@ static int test_shm(Display *dpy, int device,
 	printf("Testing write of %dx%d SHM pixmap via DRI3 fd\n", width, height);
 
 	fd = dri3_create_fd(dpy, pixmap, &stride);
-	if (fd < 0)
+	if (fd < 0) {
+		line = __LINE__;
 		goto fail;
+	}
 
 	handle = gem_import(device, fd);
 	close(fd);
-	if (handle == 0)
+	if (handle == 0) {
+		line = __LINE__;
 		goto fail;
+	}
 
-	if (gpu_fill(device, handle, width, height, stride, 32, I915_TILING_NONE, pixel))
+	if (gpu_fill(device, handle, width, height, stride, 32, I915_TILING_NONE, pixel)) {
+		line = __LINE__;
 		goto fail;
+	}
 
 	gem_sync(device, handle, CPU);
 	ptr = (uint32_t *)shm.shmaddr;
@@ -495,6 +502,7 @@ static int test_shm(Display *dpy, int device,
 		for (y = 0; y < sizeof(y_loc)/sizeof(y_loc[0]); y++)
 			if (ptr[y_loc[y]*width + x_loc[x]] != pixel) {
 				printf("pixel[%d, %d]:%d = %08x\n", x, y, 32, ptr[y_loc[y] * width + x_loc[x]]);
+				line = __LINE__;
 				goto fail;
 			}
 
@@ -502,11 +510,15 @@ static int test_shm(Display *dpy, int device,
 		for (y = 0; y < sizeof(y_loc)/sizeof(y_loc[0]); y++)
 			if (!check_pixmap(dpy, pixmap,
 					  x_loc[x], y_loc[y],
-					  pixel, 32))
+					  pixel, 32)) {
+				line = __LINE__;
 				goto fail;
+			}
 
-	if (_x_error_occurred)
+	if (_x_error_occurred) {
+		line = __LINE__;
 		goto fail;
+	}
 
 out:
 	gem_close(device, handle);
@@ -516,8 +528,8 @@ out:
 	return fd != -1;
 
 fail:
-	printf("%s failed at (%dx%d)\n",
-	       __func__, width, height);
+	printf("%s failed at (%dx%d), line %d\n",
+	       __func__, width, height, line);
 	fd = -1;
 	goto out;
 }
