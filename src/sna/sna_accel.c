@@ -1979,6 +1979,7 @@ sna_pixmap_make_cow(struct sna *sna,
 
 	assert(dst_priv->move_to_gpu == NULL);
 	assert(!dst_priv->flush);
+	assert(list_is_empty(&dst_priv->cow_list));
 
 	cow = COW(src_priv->cow);
 	if (cow == NULL) {
