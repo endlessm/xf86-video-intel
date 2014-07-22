@@ -1416,6 +1416,9 @@ static void __sna_free_pixmap(struct sna *sna,
 
 	__sna_pixmap_free_cpu(sna, priv);
 
+	if (priv->flush)
+		sna_accel_watch_flush(sna, -1);
+
 	if (priv->header) {
 		assert(pixmap->drawable.pScreen == sna->scrn->pScreen);
 		assert(!priv->shm);
