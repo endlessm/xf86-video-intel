@@ -869,8 +869,10 @@ rotation_set(struct sna *sna, struct plane *p, uint32_t desired)
 	if (desired == p->rotation.current)
 		return true;
 
-	if ((desired & p->rotation.supported) == 0)
+	if ((desired & p->rotation.supported) == 0) {
+		errno = EINVAL;
 		return false;
+	}
 
 	DBG(("%s: obj=%d, type=%x prop=%d set-rotation=%x\n",
 	     __FUNCTION__, p->id, LOCAL_MODE_OBJECT_PLANE, p->rotation.prop, desired));
@@ -961,8 +963,10 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 		       xf86IsEntityShared(crtc->scrn->entityList[0]));
 
 		output_ids[output_count] = to_connector_id(output);
-		if (++output_count == ARRAY_SIZE(output_ids))
+		if (++output_count == ARRAY_SIZE(output_ids)) {
+			errno = EINVAL;
 			return false;
+		}
 	}
 
 	VG_CLEAR(arg);
@@ -2055,6 +2059,8 @@ retry: /* Attach per-crtc pixmap or direct */
 	sna_crtc->bo = bo;
 	mode_to_kmode(&sna_crtc->kmode, mode);
 	if (!sna_crtc_apply(crtc)) {
+		int err = errno;
+
 		kgem_bo_destroy(&sna->kgem, bo);
 
 		if (!sna_crtc->shadow) {
@@ -2063,7 +2069,7 @@ retry: /* Attach per-crtc pixmap or direct */
 		}
 
 		xf86DrvMsg(crtc->scrn->scrnIndex, X_ERROR,
-			   "failed to set mode: %s\n", strerror(errno));
+			   "failed to set mode: %s [%d]\n", strerror(err), err);
 
 		sna_crtc->offset = saved_offset;
 		sna_crtc->transform = saved_transform;
