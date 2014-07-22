@@ -333,10 +333,9 @@ static int sna_dri3_fd_from_pixmap(ScreenPtr screen,
 		return -1;
 	}
 
-	if (bo == priv->gpu_bo && (priv->pinned & PIN_DRI3) == 0) {
-		list_add(&priv->cow_list, &sna->dri3.pixmaps);
+	if (bo == priv->gpu_bo)
 		priv->pinned |= PIN_DRI3;
-	}
+	list_move(&priv->cow_list, &sna->dri3.pixmaps);
 
 	*stride = (priv->pinned & PIN_DRI3) ? priv->gpu_bo->pitch : priv->cpu_bo->pitch;
 	*size = kgem_bo_size((priv->pinned & PIN_DRI3) ? priv->gpu_bo : priv->cpu_bo);
