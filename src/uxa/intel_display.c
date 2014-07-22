@@ -552,6 +552,26 @@ intel_crtc_shadow_allocate(xf86CrtcPtr crtc, int width, int height)
 }
 
 static PixmapPtr
+intel_create_pixmap_header(ScreenPtr pScreen, int width, int height, int depth,
+                           int bitsPerPixel, int devKind, void *pPixData)
+{
+        PixmapPtr pixmap;
+
+        /* width and height of 0 means don't allocate any pixmap data */
+        pixmap = (*pScreen->CreatePixmap) (pScreen, 0, 0, depth, 0);
+
+        if (pixmap) {
+                if ((*pScreen->ModifyPixmapHeader) (pixmap, width, height, depth,
+                                                    bitsPerPixel, devKind, pPixData))
+                {
+                        return pixmap;
+                }
+                (*pScreen->DestroyPixmap) (pixmap);
+        }
+        return NullPixmap;
+}
+
+static PixmapPtr
 intel_crtc_shadow_create(xf86CrtcPtr crtc, void *data, int width, int height)
 {
 	ScrnInfoPtr scrn = crtc->scrn;
@@ -573,12 +593,12 @@ intel_crtc_shadow_create(xf86CrtcPtr crtc, void *data, int width, int height)
 		return NULL;
 	}
 
-	rotate_pixmap = GetScratchPixmapHeader(scrn->pScreen,
-					       width, height,
-					       scrn->depth,
-					       scrn->bitsPerPixel,
-					       intel_crtc->rotate_pitch,
-					       NULL);
+	rotate_pixmap = intel_create_pixmap_header(scrn->pScreen,
+                                                   width, height,
+                                                   scrn->depth,
+                                                   scrn->bitsPerPixel,
+                                                   intel_crtc->rotate_pitch,
+                                                   NULL);
 
 	if (rotate_pixmap == NULL) {
 		xf86DrvMsg(scrn->scrnIndex, X_ERROR,
@@ -602,8 +622,8 @@ intel_crtc_shadow_destroy(xf86CrtcPtr crtc, PixmapPtr rotate_pixmap, void *data)
 	struct intel_mode *mode = intel_crtc->mode;
 
 	if (rotate_pixmap) {
-		intel_set_pixmap_bo(rotate_pixmap, NULL);
-		FreeScratchPixmapHeader(rotate_pixmap);
+                intel_set_pixmap_bo(rotate_pixmap, NULL);
+                rotate_pixmap->drawable.pScreen->DestroyPixmap(rotate_pixmap);
 	}
 
 	if (data) {
@@ -1549,7 +1569,6 @@ intel_xf86crtc_resize(ScrnInfoPtr scrn, int width, int height)
 	int	    i, old_width, old_height, old_pitch;
 	int pitch;
 	uint32_t tiling;
-	ScreenPtr screen;
 
 	if (scrn->virtualX == width && scrn->virtualY == height)
 		return TRUE;
@@ -1564,8 +1583,7 @@ intel_xf86crtc_resize(ScrnInfoPtr scrn, int width, int height)
 	old_front = intel->front_buffer;
 
 	if (intel->back_pixmap) {
-		screen = intel->back_pixmap->drawable.pScreen;
-		screen->DestroyPixmap(intel->back_pixmap);
+		scrn->pScreen->DestroyPixmap(intel->back_pixmap);
 		intel->back_pixmap = NULL;
 	}
 
@@ -2348,6 +2366,7 @@ Bool intel_crtc_on(xf86CrtcPtr crtc)
 
 	return ret;
 }
+
 
 static PixmapPtr
 intel_create_pixmap_for_bo(ScreenPtr pScreen, dri_bo *bo,
