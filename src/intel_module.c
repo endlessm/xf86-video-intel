@@ -50,6 +50,10 @@
 #include <xf86platformBus.h>
 #endif
 
+#ifndef XF86_ALLOCATE_GPU_SCREEN
+#define XF86_ALLOCATE_GPU_SCREEN 0
+#endif
+
 static const struct intel_device_info intel_generic_info = {
 	.gen = -1,
 };
