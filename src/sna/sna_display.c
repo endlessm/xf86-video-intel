@@ -2178,13 +2178,17 @@ sna_crtc_set_scanout_pixmap(xf86CrtcPtr crtc, PixmapPtr pixmap)
 	if (sna_crtc == NULL)
 		return FALSE;
 
+	if (pixmap == sna_crtc->slave_pixmap)
+		return TRUE;
+
 	DBG(("%s: CRTC:%d, pipe=%d setting scanout pixmap=%ld\n",
 	     __FUNCTION__, sna_crtc->id,  sna_crtc->pipe,
 	     pixmap ? pixmap->drawable.serialNumber : 0));
 
+	/* Disable first so that we can unregister the damage tracking */
+	sna_crtc_disable_shadow(to_sna(crtc->scrn), sna_crtc);
+
 	sna_crtc->slave_pixmap = pixmap;
-	if (pixmap == NULL)
-		sna_crtc_disable(crtc);
 
 	return TRUE;
 }
