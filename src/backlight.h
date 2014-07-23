@@ -38,7 +38,7 @@ enum backlight_type {
 struct backlight {
 	char *iface;
 	enum backlight_type type;
-	int original, max;
+	int max;
 	int pid, fd;
 };
 
