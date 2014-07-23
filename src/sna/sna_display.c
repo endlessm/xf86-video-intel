@@ -4892,14 +4892,13 @@ sna_crtc_flip(struct sna *sna, struct sna_crtc *crtc, struct kgem_bo *bo, int x,
 	arg.mode = crtc->kmode;
 	arg.mode_valid = 1;
 
-	DBG(("%s: applying crtc [%d, pipe=%d] mode=%dx%d+%d+%d@%d, fb=%d%s update to %d outputs [%d...]\n",
+	DBG(("%s: applying crtc [%d, pipe=%d] mode=%dx%d+%d+%d@%d, fb=%d across %d outputs [%d...]\n",
 	     __FUNCTION__, crtc->id, crtc->pipe,
 	     arg.mode.hdisplay,
 	     arg.mode.vdisplay,
 	     arg.x, arg.y,
 	     arg.mode.clock,
 	     arg.fb_id,
-	     bo != crtc->bo ? " [shadow]" : "",
 	     output_count, output_count ? output_ids[0] : 0));
 
 	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_SETCRTC, &arg))
@@ -4973,6 +4972,11 @@ fixup_flip:
 
 				crtc->bo = kgem_bo_reference(bo);
 				crtc->bo->active_scanout++;
+
+				if (data == NULL)
+					goto next_crtc;
+
+				/* queue a flip in order to send the event */
 			} else {
 				if (count && !xf86SetDesiredModes(sna->scrn)) {
 					xf86DrvMsg(sna->scrn->scrnIndex, X_ERROR,
@@ -5044,6 +5048,7 @@ retry_flip:
 			sna->mode.flip_active++;
 		}
 
+next_crtc:
 		count++;
 	}
 
