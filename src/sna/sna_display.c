@@ -6090,7 +6090,7 @@ void sna_mode_reset(struct sna *sna)
 		rotation_reset(&sna_crtc->sprite);
 	}
 
-	/* VT switching, likely to fbcon so make the backlight usable */
+	/* VT switching, likely to be fbcon so make the backlight usable */
 	for (i = 0; i < sna->mode.num_real_output; i++) {
 		struct sna_output *sna_output = to_sna_output(config->output[i]);
 
@@ -6101,7 +6101,7 @@ void sna_mode_reset(struct sna *sna)
 			continue;
 
 		sna_output_backlight_set(sna_output,
-					 sna_output->backlight.max);
+					 sna_output->backlight_active_level);
 	}
 
 	/* drain the event queue */
