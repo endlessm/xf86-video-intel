@@ -241,17 +241,18 @@ struct sna {
 	ScrnInfoPtr scrn;
 
 	unsigned flags;
-#define SNA_NO_WAIT		0x1
-#define SNA_NO_FLIP		0x2
-#define SNA_NO_VSYNC		0x4
-#define SNA_TRIPLE_BUFFER	0x8
-#define SNA_TEAR_FREE		0x10
-#define SNA_FORCE_SHADOW	0x20
-#define SNA_FLUSH_GTT		0x40
-#define SNA_IS_HOSTED		0x80
-#define SNA_PERFORMANCE		0x100
-#define SNA_POWERSAVE		0x200
-#define SNA_REMOVE_OUTPUTS	0x400
+#define SNA_IS_SLAVED		0x1
+#define SNA_IS_HOSTED		0x2
+#define SNA_NO_WAIT		0x10
+#define SNA_NO_FLIP		0x20
+#define SNA_NO_VSYNC		0x40
+#define SNA_TRIPLE_BUFFER	0x80
+#define SNA_TEAR_FREE		0x100
+#define SNA_FORCE_SHADOW	0x200
+#define SNA_FLUSH_GTT		0x400
+#define SNA_PERFORMANCE		0x1000
+#define SNA_POWERSAVE		0x2000
+#define SNA_REMOVE_OUTPUTS	0x4000
 #define SNA_HAS_FLIP		0x10000
 #define SNA_HAS_ASYNC_FLIP	0x20000
 #define SNA_LINEAR_FB		0x40000

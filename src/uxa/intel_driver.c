@@ -447,12 +447,12 @@ static Bool I830PreInit(ScrnInfoPtr scrn, int flags)
 	if (flags & PROBE_DETECT)
 		return TRUE;
 
-	if (((uintptr_t)scrn->driverPrivate) & 1) {
+	if (((uintptr_t)scrn->driverPrivate) & 3) {
 		intel = xnfcalloc(sizeof(*intel), 1);
 		if (intel == NULL)
 			return FALSE;
 
-		intel->info = (void *)((uintptr_t)scrn->driverPrivate & ~1);
+		intel->info = (void *)((uintptr_t)scrn->driverPrivate & ~3);
 		scrn->driverPrivate = intel;
 	}
 	intel = intel_get_screen_private(scrn);
@@ -1069,7 +1069,7 @@ static void I830FreeScreen(FREE_SCREEN_ARGS_DECL)
 	SCRN_INFO_PTR(arg);
 	intel_screen_private *intel = intel_get_screen_private(scrn);
 
-	if (intel && !((uintptr_t)intel & 1)) {
+	if (intel && !((uintptr_t)intel & 3)) {
 		intel_mode_fini(intel);
 		intel_bufmgr_fini(intel);
 		intel_put_device(scrn);

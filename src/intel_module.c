@@ -543,7 +543,7 @@ intel_scrn_create(DriverPtr		driver,
 	scrn->driverVersion = INTEL_VERSION;
 	scrn->driverName = (char *)INTEL_DRIVER_NAME;
 	scrn->name = (char *)INTEL_NAME;
-	scrn->driverPrivate = (void *)(match_data | 1);
+	scrn->driverPrivate = (void *)(match_data | (flags & XF86_ALLOCATE_GPU_SCREEN) | 2);
 	scrn->Probe = NULL;
 
 	if (xf86IsEntitySharable(entity_num))

@@ -540,7 +540,7 @@ done:
  * As a result, we want to set up that server initialization once rather
  * that doing it per generation.
  */
-static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
+static Bool sna_pre_init(ScrnInfoPtr scrn, int probe)
 {
 	struct sna *sna;
 	char buf[1024];
@@ -550,7 +550,7 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 	int fd;
 
 	DBG(("%s flags=%x, numEntities=%d\n",
-	     __FUNCTION__, flags, scrn->numEntities));
+	     __FUNCTION__, probe, scrn->numEntities));
 
 	if (scrn->numEntities != 1)
 		return FALSE;
@@ -566,17 +566,19 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 		)
 		return FALSE;
 
-	if (flags & PROBE_DETECT)
+	if (probe & PROBE_DETECT)
 		return TRUE;
 
 	sna_selftest();
 
-	if (((uintptr_t)scrn->driverPrivate) & 1) {
+	probe = 0;
+	if (((uintptr_t)scrn->driverPrivate) & 3) {
 		if (posix_memalign((void **)&sna, 4096, sizeof(*sna)))
 			return FALSE;
 
 		memset(sna, 0, sizeof(*sna)); /* should be unnecessary */
-		sna->info = (void *)((uintptr_t)scrn->driverPrivate & ~1);
+		probe = (uintptr_t)scrn->driverPrivate & 1;
+		sna->info = (void *)((uintptr_t)scrn->driverPrivate & ~3);
 		scrn->driverPrivate = sna;
 
 		sna->cpu_features = sna_cpu_detect();
@@ -585,7 +587,7 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 	sna = to_sna(scrn);
 	sna->scrn = scrn;
 	sna->pEnt = pEnt;
-	sna->flags = 0;
+	sna->flags = probe;
 
 	scrn->displayWidth = 640;	/* default it */
 
@@ -710,7 +712,7 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int flags)
 	return TRUE;
 
 cleanup:
-	scrn->driverPrivate = (void *)((uintptr_t)sna->info | 1);
+	scrn->driverPrivate = (void *)((uintptr_t)sna->info | (sna->flags & SNA_IS_SLAVED) | 2);
 	free(sna);
 	return FALSE;
 }
@@ -1180,7 +1182,7 @@ static void sna_free_screen(FREE_SCREEN_ARGS_DECL)
 	if ((uintptr_t)sna & 1)
 		return;
 
-	scrn->driverPrivate = (void *)((uintptr_t)sna->info | 1);
+	scrn->driverPrivate = (void *)((uintptr_t)sna->info | (sna->flags & SNA_IS_SLAVED) | 2);
 
 	sna_mode_fini(sna);
 	sna_acpi_fini(sna);

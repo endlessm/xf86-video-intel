@@ -5189,36 +5189,38 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 {
 	ScrnInfoPtr scrn = sna->scrn;
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(scrn);
-	const int user_overrides[] = {
-		OPTION_POSITION,
-		OPTION_BELOW,
-		OPTION_RIGHT_OF,
-		OPTION_ABOVE,
-		OPTION_LEFT_OF,
-		OPTION_ROTATE,
-		OPTION_PANNING,
-	};
 	int width, height;
 	int i, j;
 
 	assert((sna->flags & SNA_IS_HOSTED) == 0);
 
-	if (xf86ReturnOptValBool(sna->Options, OPTION_REPROBE, FALSE)) {
-		DBG(("%s: user requests reprobing\n", __FUNCTION__));
-		return false;
-	}
+	if ((sna->flags & SNA_IS_SLAVED) == 0) {
+		const int user_overrides[] = {
+			OPTION_POSITION,
+			OPTION_BELOW,
+			OPTION_RIGHT_OF,
+			OPTION_ABOVE,
+			OPTION_LEFT_OF,
+			OPTION_ROTATE,
+			OPTION_PANNING,
+		};
+		if (xf86ReturnOptValBool(sna->Options, OPTION_REPROBE, FALSE)) {
+			DBG(("%s: user requests reprobing\n", __FUNCTION__));
+			return false;
+		}
 
-	/* First scan through all outputs and look for user overrides */
-	for (i = 0; i < sna->mode.num_real_output; i++) {
-		xf86OutputPtr output = config->output[i];
+		/* First scan through all outputs and look for user overrides */
+		for (i = 0; i < sna->mode.num_real_output; i++) {
+			xf86OutputPtr output = config->output[i];
 
-		for (j = 0; j < ARRAY_SIZE(user_overrides); j++) {
-			if (xf86GetOptValString(output->options, user_overrides[j])) {
-				DBG(("%s: user placement [%d] for %s\n",
-				     __FUNCTION__,
-				     user_overrides[j],
-				     output->name));
-				return false;
+			for (j = 0; j < ARRAY_SIZE(user_overrides); j++) {
+				if (xf86GetOptValString(output->options, user_overrides[j])) {
+					DBG(("%s: user placement [%d] for %s\n",
+					     __FUNCTION__,
+					     user_overrides[j],
+					     output->name));
+					return false;
+				}
 			}
 		}
 	}
@@ -5263,6 +5265,8 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 
 		crtc_id = (uintptr_t)output->crtc;
 		output->crtc = NULL;
+		if (sna->flags & SNA_IS_SLAVED)
+			continue;
 
 		if (crtc_id == 0) {
 			DBG(("%s: not using output %s, disconnected\n",
@@ -5331,7 +5335,7 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 	}
 
 	width = height = 0;
-	for (i = 0; i < config->num_crtc; i++) {
+	for (i = 0; i < sna->mode.num_real_crtc; i++) {
 		xf86CrtcPtr crtc = config->crtc[i];
 		int w, h;
 
