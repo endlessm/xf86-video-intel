@@ -3253,11 +3253,13 @@ bool sna_dri2_open(struct sna *sna, ScreenPtr screen)
 	driverNames[1] = info.driverName;
 #endif
 
+#if DRI2INFOREC_VERSION >= 6
 	if (xorg_can_triple_buffer(sna)) {
 		info.version = 6;
 		info.SwapLimitValidate = sna_dri2_swap_limit_validate;
 		info.ReuseBufferNotify = sna_dri2_reuse_buffer;
 	}
+#endif
 
 #if USE_ASYNC_SWAP
 	info.version = 10;
