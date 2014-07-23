@@ -3683,6 +3683,7 @@ reset:
 	output->driver_private = sna_output;
 	sna_output->base = output;
 
+	backlight_init(&sna_output->backlight);
 	if (sna_output->is_panel)
 		sna_output_backlight_init(output);
 

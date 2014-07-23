@@ -74,6 +74,15 @@
  * If only things were as simple as on OpenBSD! :)
  */
 
+void backlight_init(struct backlight *b)
+{
+	b->type = BL_NONE;
+	b->iface = NULL;
+	b->fd = -1;
+	b->pid = -1;
+	b->max = -1;
+}
+
 #ifdef __OpenBSD__
 
 #include <dev/wscons/wsconsio.h>
@@ -384,23 +393,27 @@ int backlight_open(struct backlight *b, char *iface)
 	if (iface == NULL)
 		iface = __backlight_find();
 	if (iface == NULL)
-		return -1;
+		goto err;
 
 	b->type = __backlight_type(iface);
 
 	b->max = __backlight_read(iface, "max_brightness");
 	if (b->max <= 0)
-		return -1;
+		goto err;
 
 	level = __backlight_read(iface, "brightness");
-	if (level < 0)
-		return -1;
+	if (level)
+		goto err;
 
 	if (!__backlight_direct_init(b, iface) &&
 	    !__backlight_helper_init(b, iface))
-		return -1;
+		goto err;
 
 	return level;
+
+err:
+	backlight_init(b);
+	return -1;
 }
 
 int backlight_set(struct backlight *b, int level)

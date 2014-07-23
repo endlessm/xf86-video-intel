@@ -38,12 +38,13 @@ enum backlight_type {
 struct backlight {
 	char *iface;
 	enum backlight_type type;
-	int max;
+	int original, max;
 	int pid, fd;
 };
 
 enum backlight_type backlight_exists(const char *iface);
 
+void backlight_init(struct backlight *backlight);
 int backlight_open(struct backlight *backlight, char *iface);
 int backlight_set(struct backlight *backlight, int level);
 int backlight_get(struct backlight *backlight);
