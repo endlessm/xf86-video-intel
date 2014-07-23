@@ -1481,14 +1481,7 @@ void sna_dri2_destroy_window(WindowPtr win)
 
 		DBG(("%s: freeing chain\n", __FUNCTION__));
 
-		info = priv->chain;
-		info->draw = NULL;
-		info->client = NULL;
-
-		chain = info->chain;
-		info->chain = NULL;
-
-		assert(info->queued);
+		chain = priv->chain;
 		while ((info = chain)) {
 			info->draw = NULL;
 			info->client = NULL;
