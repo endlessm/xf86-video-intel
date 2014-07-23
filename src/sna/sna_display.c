@@ -1320,6 +1320,12 @@ static void sna_crtc_slave_damage(DamagePtr damage, RegionPtr region, void *clos
 	struct sna *sna = to_sna(crtc->base->scrn);
 	RegionPtr scr;
 
+	DBG(("%s: pushing damage [(%d, %d), (%d, %d) x %d] to CRTC [pipe=%d] (%d, %d)\n",
+	     __FUNCTION__,
+	     region->extents.x1, region->extents.y1, region->extents.x2, region->extents.y2,
+	     region_num_rects(region),
+	     crtc->pipe, crtc->base->x, crtc->base->y));
+
 	assert(crtc->slave_damage == damage);
 	assert(sna->mode.shadow_damage);
 
