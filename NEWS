@@ -1,3 +1,10 @@
+Snapshot 2.99.914 (2014-07-23)
+==============================
+And a brown paper bag to hide the rebuilding from the tarball with
+'autoreconf -fi' error that arose from not distributing the libobj/
+directory.
+
+
 Snapshot 2.99.913 (2014-07-23)
 ==============================
 This should be it... A few fixes from testing the new code, we should be
