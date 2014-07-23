@@ -839,6 +839,7 @@ AC_DEFINE_DIR([LIBEXEC_PATH], libexecdir, [libexec directory])
 AC_CONFIG_FILES([
                 Makefile
                 man/Makefile
+		libobj/Makefile
                 src/Makefile
                 src/legacy/Makefile
                 src/legacy/i810/Makefile

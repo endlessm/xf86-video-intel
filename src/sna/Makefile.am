@@ -35,7 +35,7 @@ endif
 
 noinst_LTLIBRARIES = libsna.la
 libsna_la_LDFLAGS = -pthread
-libsna_la_LIBADD = $(UDEV_LIBS) -lm $(DRM_LIBS) brw/libbrw.la fb/libfb.la
+libsna_la_LIBADD = $(UDEV_LIBS) -lm $(DRM_LIBS) brw/libbrw.la fb/libfb.la ../../libobj/libcompat.la
 
 libsna_la_SOURCES = \
 	atomic.h \
