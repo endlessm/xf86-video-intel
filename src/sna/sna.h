@@ -995,6 +995,8 @@ void sna_accel_block_handler(struct sna *sna, struct timeval **tv);
 void sna_accel_wakeup_handler(struct sna *sna);
 void sna_accel_watch_flush(struct sna *sna, int enable);
 void sna_accel_flush(struct sna *sna);
+void sna_accel_enter(struct sna *sna);
+void sna_accel_leave(struct sna *sna);
 void sna_accel_close(struct sna *sna);
 void sna_accel_free(struct sna *sna);
 

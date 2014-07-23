@@ -17790,6 +17790,32 @@ void sna_accel_watch_flush(struct sna *sna, int enable)
 	sna->watch_flush += enable;
 }
 
+void sna_accel_leave(struct sna *sna)
+{
+	DBG(("%s\n", __FUNCTION__));
+
+	/* as root we always have permission to render */
+	if (geteuid() == 0)
+		return;
+
+	/* as a user, we can only render now if we have a rendernode */
+	if (intel_has_render_node(sna->scrn))
+		return;
+
+	/* no longer authorized to use our fd */
+	DBG(("%s: dropping render privileges\n", __FUNCTION__));
+
+	kgem_submit(&sna->kgem);
+	sna->kgem.wedged |= 2;
+}
+
+void sna_accel_enter(struct sna *sna)
+{
+	DBG(("%s\n", __FUNCTION__));
+	sna->kgem.wedged &= kgem_is_wedged(&sna->kgem);
+	kgem_throttle(&sna->kgem);
+}
+
 void sna_accel_close(struct sna *sna)
 {
 	DBG(("%s\n", __FUNCTION__));

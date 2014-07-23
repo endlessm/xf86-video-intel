@@ -3378,7 +3378,7 @@ void _kgem_submit(struct kgem *kgem)
 	assert(kgem->next_request != NULL);
 }
 
-static void find_hang_state(struct kgem *kgem, char *path, int maxlen)
+static bool find_hang_state(struct kgem *kgem, char *path, int maxlen)
 {
 	int minor = kgem_get_minor(kgem);
 
@@ -3389,16 +3389,17 @@ static void find_hang_state(struct kgem *kgem, char *path, int maxlen)
 
 	snprintf(path, maxlen, "/sys/class/drm/card%d/error", minor);
 	if (access(path, R_OK) == 0)
-		return;
+		return true;
 
 	snprintf(path, maxlen, "/sys/kernel/debug/dri/%d/i915_error_state", minor);
 	if (access(path, R_OK) == 0)
-		return;
+		return true;
 
 	snprintf(path, maxlen, "/debug/dri/%d/i915_error_state", minor);
 	if (access(path, R_OK) == 0)
-		return;
+		return true;
 
+	return false;
 	path[0] = '\0';
 }
 
@@ -3409,19 +3410,25 @@ void kgem_throttle(struct kgem *kgem)
 
 	kgem->wedged = __kgem_throttle(kgem, true);
 	if (kgem->wedged) {
+		static int once;
 		char path[128];
-
-		find_hang_state(kgem, path, sizeof(path));
 
 		xf86DrvMsg(kgem_get_screen_index(kgem), X_ERROR,
 			   "Detected a hung GPU, disabling acceleration.\n");
-		if (*path != '\0')
+		if (!once && find_hang_state(kgem, path, sizeof(path))) {
 			xf86DrvMsg(kgem_get_screen_index(kgem), X_ERROR,
 				   "When reporting this, please include %s and the full dmesg.\n",
 				   path);
+			once = 1;
+		}
 
 		kgem->need_throttle = false;
 	}
+}
+
+int kgem_is_wedged(struct kgem *kgem)
+{
+	return __kgem_throttle(kgem, true);
 }
 
 static void kgem_purge_cache(struct kgem *kgem)

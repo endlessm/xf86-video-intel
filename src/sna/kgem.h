@@ -121,7 +121,7 @@ enum {
 
 struct kgem {
 	int fd;
-	int wedged;
+	unsigned wedged;
 	unsigned gen;
 
 	uint32_t unique_id;
@@ -761,6 +761,7 @@ struct kgem_bo *kgem_create_buffer_2d(struct kgem *kgem,
 bool kgem_buffer_is_inplace(struct kgem_bo *bo);
 void kgem_buffer_read_sync(struct kgem *kgem, struct kgem_bo *bo);
 
+int kgem_is_wedged(struct kgem *kgem);
 void kgem_throttle(struct kgem *kgem);
 #define MAX_INACTIVE_TIME 10
 bool kgem_expire_cache(struct kgem *kgem);

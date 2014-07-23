@@ -892,10 +892,12 @@ static void sna_uevent_fini(struct sna *sna) { }
 static void sna_leave_vt(VT_FUNC_ARGS_DECL)
 {
 	SCRN_INFO_PTR(arg);
+	struct sna *sna = to_sna(scrn);
 
 	DBG(("%s\n", __FUNCTION__));
 
-	sna_mode_reset(to_sna(scrn));
+	sna_accel_leave(sna);
+	sna_mode_reset(sna);
 
 	if (intel_put_master(scrn))
 		xf86DrvMsg(scrn->scrnIndex, X_WARNING,
@@ -1208,7 +1210,13 @@ static Bool sna_enter_vt(VT_FUNC_ARGS_DECL)
 		sna->flags &= ~SNA_REPROBE;
 	}
 
-	return sna_set_desired_mode(sna);
+	if (!sna_set_desired_mode(sna)) {
+		intel_put_master(scrn);
+		return FALSE;
+	}
+
+	sna_accel_enter(sna);
+	return TRUE;
 }
 
 static Bool sna_switch_mode(SWITCH_MODE_ARGS_DECL)

@@ -528,6 +528,17 @@ int __intel_peek_fd(ScrnInfoPtr scrn)
 	return dev->fd;
 }
 
+int intel_has_render_node(ScrnInfoPtr scrn)
+{
+	struct intel_device *dev;
+	struct stat st;
+
+	dev = intel_device(scrn);
+	assert(dev && dev->fd != -1);
+
+	return is_render_node(dev->fd, &st);
+}
+
 int intel_get_device(ScrnInfoPtr scrn)
 {
 	struct intel_device *dev;
