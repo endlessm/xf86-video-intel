@@ -186,12 +186,12 @@ intel_glamor_create_textured_pixmap(PixmapPtr pixmap)
 {
 	ScrnInfoPtr scrn = xf86ScreenToScrn(pixmap->drawable.pScreen);
 	intel_screen_private *intel = intel_get_screen_private(scrn);
-	struct intel_pixmap *priv;
+	struct intel_uxa_pixmap *priv;
 
 	if ((intel->uxa_flags & UXA_USE_GLAMOR) == 0)
 		return TRUE;
 
-	priv = intel_get_pixmap_private(pixmap);
+	priv = intel_uxa_get_pixmap_private(pixmap);
 	if (glamor_egl_create_textured_pixmap(pixmap, priv->bo->handle,
 					      intel_pixmap_pitch(pixmap))) {
 		drm_intel_bo_disable_reuse(priv->bo);

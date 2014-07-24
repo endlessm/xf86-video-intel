@@ -169,6 +169,18 @@ static Bool i830CreateScreenResources(ScreenPtr screen)
 	return TRUE;
 }
 
+void
+intel_set_pixmap_bo(PixmapPtr pixmap, dri_bo *bo)
+{
+        intel_uxa_set_pixmap_bo(pixmap, bo);
+}
+
+dri_bo *
+intel_get_pixmap_bo(PixmapPtr pixmap)
+{
+        return intel_uxa_get_pixmap_bo(pixmap);
+}
+
 static void PreInitCleanup(ScrnInfoPtr scrn)
 {
 	if (!scrn || !scrn->driverPrivate)
@@ -612,29 +624,6 @@ static Bool I830PreInit(ScrnInfoPtr scrn, int flags)
 	return TRUE;
 }
 
-/**
- * Intialiazes the hardware for the 3D pipeline use in the 2D driver.
- *
- * Some state caching is performed to avoid redundant state emits.  This
- * function is also responsible for marking the state as clobbered for DRI
- * clients.
- */
-void IntelEmitInvarientState(ScrnInfoPtr scrn)
-{
-	intel_screen_private *intel = intel_get_screen_private(scrn);
-
-	/* If we've emitted our state since the last clobber by another client,
-	 * skip it.
-	 */
-	if (intel->last_3d != LAST_3D_OTHER)
-		return;
-
-	if (IS_GEN2(intel))
-		I830EmitInvarientState(scrn);
-	else if IS_GEN3(intel)
-		I915EmitInvarientState(scrn);
-}
-
 #ifdef INTEL_PIXMAP_SHARING
 static void
 redisplay_dirty(ScreenPtr screen, PixmapDirtyUpdatePtr dirty)
@@ -660,7 +649,7 @@ redisplay_dirty(ScreenPtr screen, PixmapDirtyUpdatePtr dirty)
 
 	intel_batch_submit(scrn);
 	if (!intel->has_prime_vmap_flush) {
-		drm_intel_bo *bo = intel_get_pixmap_bo(dirty->slave_dst->master_pixmap);
+		drm_intel_bo *bo = intel_uxa_get_pixmap_bo(dirty->slave_dst->master_pixmap);
 		was_blocked = xf86BlockSIGIO();
 		drm_intel_bo_map(bo, FALSE);
 		drm_intel_bo_unmap(bo);
@@ -1002,7 +991,7 @@ I830ScreenInit(SCREEN_INIT_ARGS_DECL)
 #endif
 	/* Init video */
 	if (intel->XvEnabled)
-		I830InitVideo(screen);
+		intel_video_init(screen);
 
 #if HAVE_DRI2
 	switch (intel->dri2) {

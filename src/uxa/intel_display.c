@@ -2568,3 +2568,81 @@ restart_destroy:
 out:
 	RRGetInfo(xf86ScrnToScreen(scrn), TRUE);
 }
+
+void intel_box_intersect(BoxPtr dest, BoxPtr a, BoxPtr b)
+{
+	dest->x1 = a->x1 > b->x1 ? a->x1 : b->x1;
+	dest->x2 = a->x2 < b->x2 ? a->x2 : b->x2;
+	if (dest->x1 >= dest->x2) {
+		dest->x1 = dest->x2 = dest->y1 = dest->y2 = 0;
+		return;
+	}
+
+	dest->y1 = a->y1 > b->y1 ? a->y1 : b->y1;
+	dest->y2 = a->y2 < b->y2 ? a->y2 : b->y2;
+	if (dest->y1 >= dest->y2)
+		dest->x1 = dest->x2 = dest->y1 = dest->y2 = 0;
+}
+
+void intel_crtc_box(xf86CrtcPtr crtc, BoxPtr crtc_box)
+{
+	if (crtc->enabled) {
+		crtc_box->x1 = crtc->x;
+		crtc_box->x2 =
+		    crtc->x + xf86ModeWidth(&crtc->mode, crtc->rotation);
+		crtc_box->y1 = crtc->y;
+		crtc_box->y2 =
+		    crtc->y + xf86ModeHeight(&crtc->mode, crtc->rotation);
+	} else
+		crtc_box->x1 = crtc_box->x2 = crtc_box->y1 = crtc_box->y2 = 0;
+}
+
+static int intel_box_area(BoxPtr box)
+{
+	return (int)(box->x2 - box->x1) * (int)(box->y2 - box->y1);
+}
+
+/*
+ * Return the crtc covering 'box'. If two crtcs cover a portion of
+ * 'box', then prefer 'desired'. If 'desired' is NULL, then prefer the crtc
+ * with greater coverage
+ */
+
+xf86CrtcPtr
+intel_covering_crtc(ScrnInfoPtr scrn,
+		    BoxPtr box, xf86CrtcPtr desired, BoxPtr crtc_box_ret)
+{
+	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
+	xf86CrtcPtr crtc, best_crtc;
+	int coverage, best_coverage;
+	int c;
+	BoxRec crtc_box, cover_box;
+
+	best_crtc = NULL;
+	best_coverage = 0;
+	crtc_box_ret->x1 = 0;
+	crtc_box_ret->x2 = 0;
+	crtc_box_ret->y1 = 0;
+	crtc_box_ret->y2 = 0;
+	for (c = 0; c < xf86_config->num_crtc; c++) {
+		crtc = xf86_config->crtc[c];
+
+		/* If the CRTC is off, treat it as not covering */
+		if (!intel_crtc_on(crtc))
+			continue;
+
+		intel_crtc_box(crtc, &crtc_box);
+		intel_box_intersect(&cover_box, &crtc_box, box);
+		coverage = intel_box_area(&cover_box);
+		if (coverage && crtc == desired) {
+			*crtc_box_ret = crtc_box;
+			return crtc;
+		}
+		if (coverage > best_coverage) {
+			*crtc_box_ret = crtc_box;
+			best_crtc = crtc;
+			best_coverage = coverage;
+		}
+	}
+	return best_crtc;
+}

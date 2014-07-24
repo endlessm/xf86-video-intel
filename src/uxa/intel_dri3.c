@@ -57,7 +57,7 @@ static PixmapPtr intel_dri3_pixmap_from_fd(ScreenPtr screen,
 {
 	ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
 	intel_screen_private *intel = intel_get_screen_private(scrn);
-	struct intel_pixmap *priv;
+	struct intel_uxa_pixmap *priv;
 	PixmapPtr pixmap;
 	dri_bo *bo;
 
@@ -89,10 +89,10 @@ static PixmapPtr intel_dri3_pixmap_from_fd(ScreenPtr screen,
 	if (bo == NULL)
 		goto free_pixmap;
 
-	intel_set_pixmap_bo(pixmap, bo);
+	intel_uxa_set_pixmap_bo(pixmap, bo);
 	dri_bo_unreference(bo);
 
-	priv = intel_get_pixmap_private(pixmap);
+	priv = intel_uxa_get_pixmap_private(pixmap);
 	if (priv == NULL)
 		goto free_pixmap;
 
@@ -110,14 +110,14 @@ static int intel_dri3_fd_from_pixmap(ScreenPtr screen,
 				     CARD16 *stride,
 				     CARD32 *size)
 {
-	struct intel_pixmap *priv;
+	struct intel_uxa_pixmap *priv;
 	int fd;
 
         fd = intel_glamor_fd_from_pixmap(screen, pixmap, stride, size);
         if (fd >= 0)
                 return fd;
 
-	priv = intel_get_pixmap_private(pixmap);
+	priv = intel_uxa_get_pixmap_private(pixmap);
 	if (!priv)
 		return -1;
 

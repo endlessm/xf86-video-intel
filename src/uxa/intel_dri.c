@@ -82,7 +82,7 @@ static int i830_client_key;
 
 static uint32_t pixmap_flink(PixmapPtr pixmap)
 {
-	struct intel_pixmap *priv = intel_get_pixmap_private(pixmap);
+	struct intel_uxa_pixmap *priv = intel_uxa_get_pixmap_private(pixmap);
 	uint32_t name;
 
 	if (priv == NULL || priv->bo == NULL)
@@ -113,7 +113,7 @@ static PixmapPtr fixup_glamor(DrawablePtr drawable, PixmapPtr pixmap)
 	ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
 	intel_screen_private *intel = intel_get_screen_private(scrn);
 	PixmapPtr old = get_drawable_pixmap(drawable);
-	struct intel_pixmap *priv = intel_get_pixmap_private(pixmap);
+	struct intel_uxa_pixmap *priv = intel_uxa_get_pixmap_private(pixmap);
 	GCPtr gc;
 
 	/* With a glamor pixmap, 2D pixmaps are created in texture
@@ -140,12 +140,12 @@ static PixmapPtr fixup_glamor(DrawablePtr drawable, PixmapPtr pixmap)
 		FreeScratchGC(gc);
 	}
 
-	intel_set_pixmap_private(pixmap, NULL);
+	intel_uxa_set_pixmap_private(pixmap, NULL);
 
 	/* Exchange the underlying texture/image. */
 	intel_glamor_exchange_buffers(intel, old, pixmap);
 	/* And redirect the pixmap to the new bo (for 3D). */
-	intel_set_pixmap_private(old, priv);
+	intel_uxa_set_pixmap_private(old, priv);
 	old->refcnt++;
 
 	screen->ModifyPixmapHeader(old,
@@ -739,10 +739,10 @@ i830_dri2_del_frame_event(DRI2FrameEventPtr info)
 	free(info);
 }
 
-static struct intel_pixmap *
+static struct intel_uxa_pixmap *
 intel_exchange_pixmap_buffers(struct intel_screen_private *intel, PixmapPtr front, PixmapPtr back)
 {
-	struct intel_pixmap *new_front, *new_back;
+	struct intel_uxa_pixmap *new_front = NULL, *new_back;
 	RegionRec region;
 
 	/* Post damage on the front buffer so that listeners, such
@@ -755,10 +755,10 @@ intel_exchange_pixmap_buffers(struct intel_screen_private *intel, PixmapPtr fron
 	region.data = NULL;
 	DamageRegionAppend(&front->drawable, &region);
 
-	new_front = intel_get_pixmap_private(back);
-	new_back = intel_get_pixmap_private(front);
-	intel_set_pixmap_private(front, new_front);
-	intel_set_pixmap_private(back, new_back);
+	new_front = intel_uxa_get_pixmap_private(back);
+	new_back = intel_uxa_get_pixmap_private(front);
+	intel_uxa_set_pixmap_private(front, new_front);
+	intel_uxa_set_pixmap_private(back, new_back);
 	new_front->busy = 1;
 	new_back->busy = -1;
 
@@ -774,7 +774,7 @@ I830DRI2ExchangeBuffers(struct intel_screen_private *intel, DRI2BufferPtr front,
 {
 	I830DRI2BufferPrivatePtr front_priv, back_priv;
 	int tmp;
-	struct intel_pixmap *new_front;
+	struct intel_uxa_pixmap *new_front;
 
 	front_priv = front->driverPrivate;
 	back_priv = back->driverPrivate;
@@ -967,8 +967,8 @@ can_exchange(DrawablePtr drawable, DRI2BufferPtr front, DRI2BufferPtr back)
 	I830DRI2BufferPrivatePtr back_priv = back->driverPrivate;
 	PixmapPtr front_pixmap = front_priv->pixmap;
 	PixmapPtr back_pixmap = back_priv->pixmap;
-	struct intel_pixmap *front_intel = intel_get_pixmap_private(front_pixmap);
-	struct intel_pixmap *back_intel = intel_get_pixmap_private(back_pixmap);
+	struct intel_uxa_pixmap *front_intel = intel_uxa_get_pixmap_private(front_pixmap);
+	struct intel_uxa_pixmap *back_intel = intel_uxa_get_pixmap_private(back_pixmap);
 
 	if (!pScrn->vtSema)
 		return FALSE;
