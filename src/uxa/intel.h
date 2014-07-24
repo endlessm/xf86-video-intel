@@ -536,4 +536,7 @@ intel_get_pixmap_bo(PixmapPtr pixmap);
 void
 intel_set_pixmap_bo(PixmapPtr pixmap, dri_bo *bo);
 
+void
+intel_flush(intel_screen_private *intel);
+
 #endif /* _I830_H_ */

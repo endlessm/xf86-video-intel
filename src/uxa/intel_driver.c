@@ -181,6 +181,12 @@ intel_get_pixmap_bo(PixmapPtr pixmap)
         return intel_uxa_get_pixmap_bo(pixmap);
 }
 
+void
+intel_flush(intel_screen_private *intel)
+{
+        intel_batch_submit(intel->scrn);
+}
+
 static void PreInitCleanup(ScrnInfoPtr scrn)
 {
 	if (!scrn || !scrn->driverPrivate)
@@ -647,7 +653,7 @@ redisplay_dirty(ScreenPtr screen, PixmapDirtyUpdatePtr dirty)
 	PixmapSyncDirtyHelper(dirty, &pixregion);
 	RegionUninit(&pixregion);
 
-	intel_batch_submit(scrn);
+        intel_flush(intel);
 	if (!intel->has_prime_vmap_flush) {
 		drm_intel_bo *bo = intel_uxa_get_pixmap_bo(dirty->slave_dst->master_pixmap);
 		was_blocked = xf86BlockSIGIO();
@@ -732,10 +738,8 @@ intel_flush_callback(CallbackListPtr *list,
 		     pointer user_data, pointer call_data)
 {
 	ScrnInfoPtr scrn = user_data;
-	if (scrn->vtSema) {
-		intel_batch_submit(scrn);
-		intel_glamor_flush(intel_get_screen_private(scrn));
-	}
+	if (scrn->vtSema)
+                intel_flush(intel_get_screen_private(scrn));
 }
 
 #if HAVE_UDEV

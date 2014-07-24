@@ -439,8 +439,7 @@ intel_crtc_set_mode_major(xf86CrtcPtr crtc, DisplayModePtr mode,
 	crtc->y = y;
 	crtc->rotation = rotation;
 
-	intel_glamor_flush(intel);
-	intel_batch_submit(crtc->scrn);
+        intel_flush(intel);
 
 	mode_to_kmode(crtc->scrn, &intel_crtc->kmode, mode);
 	ret = intel_crtc_apply(crtc);
@@ -1573,8 +1572,7 @@ intel_xf86crtc_resize(ScrnInfoPtr scrn, int width, int height)
 	if (scrn->virtualX == width && scrn->virtualY == height)
 		return TRUE;
 
-	intel_glamor_flush(intel);
-	intel_batch_submit(scrn);
+        intel_flush(intel);
 
 	old_width = scrn->virtualX;
 	old_height = scrn->virtualY;
@@ -1688,8 +1686,7 @@ intel_do_pageflip(intel_screen_private *intel,
 		goto error_out;
 
 	drm_intel_bo_disable_reuse(new_front);
-	intel_glamor_flush(intel);
-	intel_batch_submit(scrn);
+        intel_flush(intel);
 
 	mode->pageflip_data = pageflip_data;
 	mode->pageflip_handler = pageflip_handler;
