@@ -3759,6 +3759,25 @@ static void sna_output_del(xf86OutputPtr output)
 	to_sna(scrn)->mode.num_real_output--;
 }
 
+static int output_rank(const void *A, const void *B)
+{
+	const xf86OutputPtr *a = A;
+	const xf86OutputPtr *b = B;
+	struct sna_output *sa = to_sna_output(*a);
+	struct sna_output *sb = to_sna_output(*b);
+
+	if (sa->is_panel != sb->is_panel)
+		return sb->is_panel - sa->is_panel;
+
+	return strcmp((*a)->name, (*b)->name);
+}
+
+static void sort_config_outputs(struct sna *sna)
+{
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	qsort(config->output, sna->mode.num_real_output, sizeof(*config->output), output_rank);
+}
+
 static void sort_randr_outputs(struct sna *sna, ScreenPtr screen)
 {
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
@@ -3879,6 +3898,7 @@ void sna_mode_discover(struct sna *sna)
 		sna_mode_compute_possible_outputs(sna);
 
 		/* Reorder user visible listing */
+		sort_config_outputs(sna);
 		sort_randr_outputs(sna, screen);
 
 		if (changed & 2)
@@ -5522,6 +5542,7 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 		sna->mode.num_real_output = xf86_config->num_output;
 
 		sna_mode_compute_possible_outputs(sna);
+		sort_config_outputs(sna);
 
 		sna->mode.max_crtc_width  = res->max_width;
 		sna->mode.max_crtc_height = res->max_height;
