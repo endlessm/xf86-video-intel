@@ -5386,6 +5386,33 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 			height = h;
 	}
 
+	/* Prefer the native panel size if any */
+	if (!width || !height) {
+		for (i = 0; i < sna->mode.num_real_output; i++) {
+			xf86OutputPtr output = config->output[i];
+			struct sna_output *sna_output = to_sna_output(output);
+
+			if (!sna_output->is_panel)
+				continue;
+
+			DBG(("%s: querying panel '%s' for preferred unattached size\n",
+			     __FUNCTION__, output->name));
+
+			if (sna_output_detect(output) != XF86OutputStatusConnected)
+				continue;
+
+			if (sna_output->num_modes == 0)
+				continue;
+
+			width = sna_output->modes[0].hdisplay;
+			height= sna_output->modes[0].vdisplay;
+
+			DBG(("%s: panel '%s' is %dx%d\n",
+			     __FUNCTION__, output->name, width, height));
+			break;
+		}
+	}
+
 	if (!width || !height) {
 		width = 1024;
 		height = 768;
