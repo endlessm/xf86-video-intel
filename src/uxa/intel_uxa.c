@@ -1421,6 +1421,17 @@ intel_limits_init(intel_screen_private *intel)
 	}
 }
 
+static Bool intel_option_accel_none(intel_screen_private *intel)
+{
+	const char *s;
+
+	s = xf86GetOptValString(intel->Options, OPTION_ACCEL_METHOD);
+	if (s == NULL)
+		return IS_DEFAULT_ACCEL_METHOD(NONE);
+
+	return strcasecmp(s, "none") == 0;
+}
+
 static Bool intel_option_accel_blt(intel_screen_private *intel)
 {
 	const char *s;
@@ -1541,6 +1552,9 @@ Bool intel_uxa_init(ScreenPtr screen)
 		free(intel->uxa_driver);
 		return FALSE;
 	}
+
+	if (intel_option_accel_none(intel))
+		intel->force_fallback = true;
 
 	uxa_set_fallback_debug(screen, intel->fallback_debug);
 	uxa_set_force_fallback(screen, intel->force_fallback);

@@ -646,7 +646,7 @@ fi
 
 AC_ARG_WITH(default-accel,
 	    AS_HELP_STRING([--with-default-accel],
-			   [Select the default acceleration method [default=sna if enabled, otherwise uxa]]),
+			   [Select the default acceleration method out of glamor, none, sna, or uxa  [default is sna if enabled, otherwise uxa]]),
 			   [accel="$withval"],
 			   [accel="auto"])
 if test "x$accel" = "xyes"; then
@@ -698,7 +698,11 @@ fi
 
 if test "x$have_accel" = "xnone"; then
 	if test "x$KMS" = "xyes"; then
-		AC_MSG_ERROR([Invalid default acceleration option])
+		if test "x$SNA" != "xno" -o "x$UXA" != "xno"; then
+			AC_DEFINE(DEFAULT_ACCEL_METHOD, NONE, [Default acceleration method])
+		else
+			AC_MSG_ERROR([Invalid default acceleration option])
+		fi
 	fi
 	accel="none"
 fi
@@ -865,6 +869,11 @@ test -e `pwd $0`/README && cat `pwd $0`/README
 
 accel_msg=""
 if test "x$SNA" != "xno"; then
+	if test "$accel" = "none"; then
+		accel_msg="$accel_msg *none"
+	else
+		accel_msg="$accel_msg none"
+	fi
 	if test "$accel" = "sna"; then
 		accel_msg="$accel_msg *sna"
 	else
@@ -872,6 +881,13 @@ if test "x$SNA" != "xno"; then
 	fi
 fi
 if test "x$UXA" != "xno"; then
+	if test "x$SNA" = "xno"; then
+		if test "$accel" = "none"; then
+			accel_msg="$accel_msg *none"
+		else
+			accel_msg="$accel_msg none"
+		fi
+	fi
 	if test "$accel" = "uxa"; then
 		accel_msg="$accel_msg *uxa"
 	else

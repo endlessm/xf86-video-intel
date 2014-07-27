@@ -17625,7 +17625,7 @@ static bool sna_option_accel_none(struct sna *sna)
 
 	s = xf86GetOptValString(sna->Options, OPTION_ACCEL_METHOD);
 	if (s == NULL)
-		return false;
+		return IS_DEFAULT_ACCEL_METHOD(NONE);
 
 	return strcasecmp(s, "none") == 0;
 }

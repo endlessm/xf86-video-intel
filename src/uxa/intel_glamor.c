@@ -87,12 +87,11 @@ intel_glamor_create_screen_resources(ScreenPtr screen)
 static Bool
 intel_glamor_enabled(intel_screen_private *intel)
 {
-	enum { SNA, UXA, GLAMOR } default_accel_method = DEFAULT_ACCEL_METHOD;
 	const char *s;
 
 	s = xf86GetOptValString(intel->Options, OPTION_ACCEL_METHOD);
 	if (s == NULL)
-		return default_accel_method == GLAMOR;
+		return IS_DEFAULT_ACCEL_METHOD(GLAMOR);
 
 	return strcasecmp(s, "glamor") == 0;
 }
