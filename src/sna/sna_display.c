@@ -6349,7 +6349,7 @@ free_pixmap:
 }
 
 static void
-sna_crtc_redisplay(xf86CrtcPtr crtc, RegionPtr region)
+sna_crtc_redisplay(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo *bo)
 {
 	int16_t tx, ty, sx, sy;
 	struct sna *sna = to_sna(crtc->scrn);
@@ -6367,11 +6367,21 @@ sna_crtc_redisplay(xf86CrtcPtr crtc, RegionPtr region)
 	assert(!wedged(sna));
 
 	if (priv->clear) {
+		RegionRec whole;
+
 		DBG(("%s: clear damage boxes\n", __FUNCTION__));
 
-		RegionTranslate(region, -crtc->bounds.x1, -crtc->bounds.y1);
+		if (sna_transform_is_integer_translation(&crtc->crtc_to_framebuffer,
+							 &tx, &ty)) {
+			RegionTranslate(region, -tx, -ty);
+		} else {
+			whole.extents = region->extents;
+			whole.data = NULL;
+			transformed_box(&whole.extents, crtc);
+			region = &whole;
+		}
 		sna_blt_fill_boxes(sna, GXcopy,
-				   sna_crtc->bo, draw->bitsPerPixel,
+				   bo, draw->bitsPerPixel,
 				   priv->clear_color,
 				   region_rects(region), region_num_rects(region));
 		return;
@@ -6391,15 +6401,15 @@ sna_crtc_redisplay(xf86CrtcPtr crtc, RegionPtr region)
 
 		if (sna->render.copy_boxes(sna, GXcopy,
 					   draw, priv->gpu_bo, sx, sy,
-					   &tmp, sna_crtc->bo, -tx, -ty,
+					   &tmp, bo, -tx, -ty,
 					   region_rects(region), region_num_rects(region), 0))
 			return;
 	}
 
 	if (can_render(sna))
-		sna_crtc_redisplay__composite(crtc, region, sna_crtc->bo);
+		sna_crtc_redisplay__composite(crtc, region, bo);
 	else
-		sna_crtc_redisplay__fallback(crtc, region, sna_crtc->bo);
+		sna_crtc_redisplay__fallback(crtc, region, bo);
 }
 
 #define shadow_flip_handler (sna_flip_handler_t)sna_mode_redisplay
@@ -6590,7 +6600,7 @@ void sna_mode_redisplay(struct sna *sna)
 				if (bo == NULL)
 					goto disable1;
 
-				sna_crtc_redisplay__composite(crtc, &damage, bo);
+				sna_crtc_redisplay(crtc, &damage, bo);
 				kgem_bo_submit(&sna->kgem, bo);
 
 				arg.crtc_id = sna_crtc->id;
@@ -6642,7 +6652,7 @@ disable1:
 
 				sna_crtc->shadow_bo = kgem_bo_reference(sna_crtc->bo);
 			} else {
-				sna_crtc_redisplay(crtc, &damage);
+				sna_crtc_redisplay(crtc, &damage, sna_crtc->bo);
 				kgem_scanout_flush(&sna->kgem, sna_crtc->bo);
 			}
 		}
