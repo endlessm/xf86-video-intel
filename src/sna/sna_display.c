@@ -4294,7 +4294,7 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 		image = sna->cursor.scratch;
 		cursor->last_width = cursor->last_height = size;
 	}
-	if (width < cursor->last_width || height < cursor->last_height)
+	if (width < cursor->last_width || height < cursor->last_height || rotation != cursor->rotation)
 		memset(image, 0, 4*size*size);
 	if (rotation == RR_Rotate_0) {
 		if (argb == NULL) {
