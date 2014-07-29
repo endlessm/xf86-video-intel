@@ -144,6 +144,9 @@ sna_dri2_get_back(struct sna *sna,
 	uint32_t name;
 	bool reuse;
 
+	DBG(("%s: draw size=%dx%d, buffer size=%dx%d\n",
+	     __FUNCTION__, draw->width, draw->height,
+	     get_private(back)->size & 0xffff, get_private(back)->size >> 16));
 	reuse = (draw->height << 16 | draw->width) == get_private(back)->size;
 	if (reuse) {
 		bo = get_private(back)->bo;
@@ -461,10 +464,7 @@ sna_dri2_create_buffer(DrawablePtr draw,
 			assert(private->pixmap == pixmap);
 			assert(sna_pixmap(pixmap)->flush);
 			assert(sna_pixmap(pixmap)->pinned & PIN_DRI2);
-			assert(private->proxy != NULL || sna_pixmap(pixmap)->gpu_bo == private->bo);
 			assert(kgem_bo_flink(&sna->kgem, private->bo) == buffer->name);
-
-			buffer->attachment = DRI2BufferFrontLeft;
 
 			private->refcnt++;
 			return buffer;
@@ -1714,6 +1714,14 @@ can_xchg(struct sna * sna,
 	}
 
 	pixmap = get_window_pixmap(win);
+	if (sna_pixmap_get_buffer(pixmap) != front) {
+		DBG(("%s: no, stale buffer, front->handle=%d, pixmap->front->handle=%d\n",
+		     __FUNCTION__,
+		     get_private(front)->bo->handle,
+		     get_private(sna_pixmap_get_buffer(pixmap))->bo->handle));
+		return false;
+	}
+	assert(get_private(front)->pixmap == pixmap);
 
 	DBG(("%s: window size: %dx%d, clip=(%d, %d), (%d, %d) x %d, pixmap size=%dx%d\n",
 	     __FUNCTION__,
@@ -1827,6 +1835,15 @@ can_xchg_crtc(struct sna *sna,
 	}
 
 	pixmap = get_window_pixmap(win);
+	if (sna_pixmap_get_buffer(pixmap) != front) {
+		DBG(("%s: no, stale buffer, front->handle=%d, pixmap->front->handle=%d\n",
+		     __FUNCTION__,
+		     get_private(front)->bo->handle,
+		     get_private(sna_pixmap_get_buffer(pixmap))->bo->handle));
+		return false;
+	}
+	assert(get_private(front)->pixmap == pixmap);
+
 	if (pixmap != sna->front) {
 		DBG(("%s: no, not attached to front buffer\n", __FUNCTION__));
 		return false;
