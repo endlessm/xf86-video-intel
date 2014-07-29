@@ -6700,35 +6700,13 @@ disable1:
 		struct kgem_bo *new = __sna_pixmap_get_bo(sna->front);
 		struct kgem_bo *old = sna->mode.shadow;
 		struct drm_mode_crtc_page_flip arg;
-		uint32_t fb;
+		uint32_t fb = 0;
 
 		DBG(("%s: flipping tear-free outputs, current scanout handle=%d [active?=%d], new handle=%d [active=%d]\n",
 		     __FUNCTION__, old->handle, old->active_scanout, new->handle, new->active_scanout));
 
 		assert(new != old);
 		assert(new->refcnt);
-
-		fb = get_fb(sna, new, sna->scrn->virtualX, sna->scrn->virtualY);
-		if (fb == 0) {
-fixup_shadow:
-			if (sna_pixmap_move_to_gpu(sna->front, MOVE_READ | MOVE_ASYNC_HINT)) {
-				BoxRec box;
-
-				box.x1 = 0;
-				box.y1 = 0;
-				box.x2 = sna->scrn->virtualX;
-				box.y2 = sna->scrn->virtualY;
-				if (sna->render.copy_boxes(sna, GXcopy,
-							   &sna->front->drawable, __sna_pixmap_get_bo(sna->front), 0, 0,
-							   &sna->front->drawable, old, 0, 0,
-							   &box, 1, COPY_LAST)) {
-					kgem_submit(&sna->kgem);
-					RegionEmpty(region);
-				}
-			}
-
-			return;
-		}
 
 		arg.flags = DRM_MODE_PAGE_FLIP_EVENT;
 		arg.reserved = 0;
@@ -6759,9 +6737,33 @@ fixup_shadow:
 				arg.fb_id = get_fb(sna, crtc->shadow_bo,
 						   crtc->base->mode.HDisplay,
 						   crtc->base->mode.VDisplay);
+				assert(arg.fb_id != fb);
 				flip_bo = crtc->shadow_bo;
 				x = y = 0;
 			} else {
+				if (fb == 0)
+					fb = get_fb(sna, new, sna->scrn->virtualX, sna->scrn->virtualY);
+				if (fb == 0) {
+fixup_shadow:
+					if (sna_pixmap_move_to_gpu(sna->front, MOVE_READ | MOVE_ASYNC_HINT)) {
+						BoxRec box;
+
+						box.x1 = 0;
+						box.y1 = 0;
+						box.x2 = sna->scrn->virtualX;
+						box.y2 = sna->scrn->virtualY;
+						if (sna->render.copy_boxes(sna, GXcopy,
+									   &sna->front->drawable, __sna_pixmap_get_bo(sna->front), 0, 0,
+									   &sna->front->drawable, old, 0, 0,
+									   &box, 1, COPY_LAST)) {
+							kgem_submit(&sna->kgem);
+							RegionEmpty(region);
+						}
+					}
+
+					return;
+				}
+
 				arg.fb_id = fb;
 				flip_bo = new;
 				x = crtc->base->x;
