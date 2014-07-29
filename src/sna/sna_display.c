@@ -1371,6 +1371,29 @@ static bool sna_crtc_enable_shadow(struct sna *sna, struct sna_crtc *crtc)
 	return true;
 }
 
+static void sna_crtc_disable_override(struct sna *sna, struct sna_crtc *crtc)
+{
+	if (crtc->shadow_bo == NULL)
+		return;
+
+	if (!crtc->transform) {
+		DrawableRec tmp;
+
+		tmp.width = crtc->base->mode.HDisplay;
+		tmp.height = crtc->base->mode.VDisplay;
+		tmp.depth = sna->front->drawable.depth;
+		tmp.bitsPerPixel = sna->front->drawable.bitsPerPixel;
+
+		sna->render.copy_boxes(sna, GXcopy,
+				       &tmp, crtc->shadow_bo, -crtc->base->bounds.x1, -crtc->base->bounds.y1,
+				       &sna->front->drawable, __sna_pixmap_get_bo(sna->front), 0, 0,
+				       &crtc->base->bounds, 1, 0);
+		list_del(&crtc->shadow_link);
+	}
+	kgem_bo_destroy(&sna->kgem, crtc->shadow_bo);
+	crtc->shadow_bo = NULL;
+}
+
 static void sna_crtc_disable_shadow(struct sna *sna, struct sna_crtc *crtc)
 {
 	crtc->fallback_shadow = false;
@@ -1387,24 +1410,7 @@ static void sna_crtc_disable_shadow(struct sna *sna, struct sna_crtc *crtc)
 		crtc->slave_damage = NULL;
 	}
 
-	if (crtc->shadow_bo) {
-		if (!crtc->transform) {
-			DrawableRec tmp;
-
-			tmp.width = crtc->base->mode.HDisplay;
-			tmp.height = crtc->base->mode.VDisplay;
-			tmp.depth = sna->front->drawable.depth;
-			tmp.bitsPerPixel = sna->front->drawable.bitsPerPixel;
-
-			sna->render.copy_boxes(sna, GXcopy,
-					       &tmp, crtc->shadow_bo, -crtc->base->bounds.x1, -crtc->base->bounds.y1,
-					       &sna->front->drawable, __sna_pixmap_get_bo(sna->front), 0, 0,
-					       &crtc->base->bounds, 1, 0);
-			list_del(&crtc->shadow_link);
-		}
-		kgem_bo_destroy(&sna->kgem, crtc->shadow_bo);
-		crtc->shadow_bo = NULL;
-	}
+	sna_crtc_disable_override(sna, crtc);
 
 	if (!--sna->mode.shadow_active)
 		sna_mode_disable_shadow(sna);
@@ -1853,6 +1859,8 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 				sna->mode.shadow = shadow;
 				set_shadow(sna, &region);
 			}
+
+			sna_crtc_disable_override(sna, sna_crtc);
 		} else
 			sna_crtc_disable_shadow(sna, sna_crtc);
 
@@ -4404,7 +4412,7 @@ sna_show_cursors(ScrnInfoPtr scrn)
 	struct sna *sna = to_sna(scrn);
 	int sigio, c;
 
-	__DBG(("%s\n", __FUNCTION__));
+	DBG(("%s\n", __FUNCTION__));
 	if (sna->cursor.ref == NULL)
 		return;
 
@@ -4429,8 +4437,8 @@ sna_show_cursors(ScrnInfoPtr scrn)
 		if (cursor == NULL)
 			continue;
 
-		__DBG(("%s: CRTC:%d, handle->%d\n", __FUNCTION__,
-		       sna_crtc->id, cursor->handle));
+		DBG(("%s: CRTC:%d, handle->%d\n", __FUNCTION__,
+		     sna_crtc->id, cursor->handle));
 
 		VG_CLEAR(arg);
 		arg.flags = DRM_MODE_CURSOR_BO;
@@ -4506,7 +4514,7 @@ sna_hide_cursors(ScrnInfoPtr scrn)
 	struct sna_cursor *cursor, **prev;
 	int sigio, c;
 
-	__DBG(("%s\n", __FUNCTION__));
+	DBG(("%s\n", __FUNCTION__));
 
 	sigio = sigio_block();
 	for (c = 0; c < sna->mode.num_real_crtc; c++) {
@@ -4696,8 +4704,8 @@ sna_use_hw_cursor(ScreenPtr screen, CursorPtr cursor)
 {
 	struct sna *sna = to_sna_from_screen(screen);
 
-	__DBG(("%s (%dx%d)\n", __FUNCTION__,
-	       cursor->bits->width, cursor->bits->height));
+	DBG(("%s (%dx%d)?\n", __FUNCTION__,
+	     cursor->bits->width, cursor->bits->height));
 
 	/* cursors are invariant */
 	if (cursor == sna->cursor.ref)
@@ -4719,13 +4727,12 @@ sna_use_hw_cursor(ScreenPtr screen, CursorPtr cursor)
 	cursor->refcnt++;
 	sna->cursor.serial++;
 
-	__DBG(("%s(%dx%d): ARGB?=%d, serial->%d, size->%d\n", __FUNCTION__,
+	DBG(("%s(%dx%d): ARGB?=%d, serial->%d, size->%d\n", __FUNCTION__,
 	       cursor->bits->width,
 	       cursor->bits->height,
 	       get_cursor_argb(cursor) != NULL,
 	       sna->cursor.serial,
 	       sna->cursor.size));
-
 	return TRUE;
 }
 
