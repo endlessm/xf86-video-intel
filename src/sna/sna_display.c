@@ -6387,7 +6387,6 @@ sna_crtc_redisplay(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo *bo)
 {
 	int16_t tx, ty, sx, sy;
 	struct sna *sna = to_sna(crtc->scrn);
-	struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
 	DrawablePtr draw = crtc_source(crtc, &sx, &sy);
 	struct sna_pixmap *priv = sna_pixmap((PixmapPtr)draw);
 
