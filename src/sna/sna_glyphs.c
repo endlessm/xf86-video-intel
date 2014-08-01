@@ -800,7 +800,7 @@ glyphs0_to_dst(struct sna *sna,
 								   0, 0, 0, 0, 0, 0,
 								   0, 0,
 								   COMPOSITE_PARTIAL, &tmp))
-						goto next_glyph_N;
+						return false;
 
 					glyph_atlas = p->atlas;
 				}
@@ -892,7 +892,7 @@ next_glyph_N:
 							   0, 0, 0, 0, 0, 0,
 							   0, 0,
 							   COMPOSITE_PARTIAL, &tmp))
-					goto next_glyph_0;
+					return false;
 
 				glyph_atlas = p->atlas;
 			}
