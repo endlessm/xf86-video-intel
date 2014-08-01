@@ -615,7 +615,7 @@ glyphs_to_dst(struct sna *sna,
 	src_x -= list->xOff + x;
 	src_y -= list->yOff + y;
 
-	glyph_atlas = NULL;
+	glyph_atlas = NO_ATLAS;
 	while (nlist--) {
 		int n = list->len;
 		x += list->xOff;
@@ -626,22 +626,18 @@ glyphs_to_dst(struct sna *sna,
 			int i;
 
 			p = sna_glyph(glyph);
-			if (unlikely(p->atlas == NULL)) {
+			if (unlikely(p->atlas != glyph_atlas)) {
 				if (unlikely(!glyph_valid(glyph)))
 					goto next_glyph;
 
-				if (glyph_atlas) {
+				if (glyph_atlas != NO_ATLAS) {
 					tmp.done(sna, &tmp);
-					glyph_atlas = NULL;
+					glyph_atlas = NO_ATLAS;
 				}
 
-				if (!glyph_cache(screen, &sna->render, glyph))
+				if (p->atlas == NULL &&
+				    !glyph_cache(screen, &sna->render, glyph))
 					goto next_glyph;
-			}
-
-			if (p->atlas != glyph_atlas) {
-				if (glyph_atlas)
-					tmp.done(sna, &tmp);
 
 				if (!sna->render.composite(sna,
 							   op, src, p->atlas, dst,
@@ -748,8 +744,6 @@ glyphs0_to_dst(struct sna *sna,
 	struct sna_composite_op tmp;
 	ScreenPtr screen = dst->pDrawable->pScreen;
 	PicturePtr glyph_atlas = NO_ATLAS;
-	const BoxRec *rects;
-	int nrect;
 	int x, y;
 
 	if (NO_GLYPHS_TO_DST)
@@ -767,8 +761,8 @@ glyphs0_to_dst(struct sna *sna,
 	src_y -= list->yOff + y;
 
 	if (clipped_glyphs(dst, nlist, list, glyphs)) {
-		rects = region_rects(dst->pCompositeClip);
-		nrect = region_num_rects(dst->pCompositeClip);
+		const BoxRec *rects = region_rects(dst->pCompositeClip);
+		int nrect = region_num_rects(dst->pCompositeClip);
 		if (nrect == 0)
 			return true;
 
