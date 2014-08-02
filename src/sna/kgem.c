@@ -1421,6 +1421,10 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 	DBG(("%s: aperture mappable=%d [%d MiB]\n", __FUNCTION__,
 	     kgem->aperture_mappable, kgem->aperture_mappable / (1024*1024)));
 
+	kgem->aperture_fenceable = MIN(256*1024*1024, kgem->aperture_mappable);
+	DBG(("%s: aperture fenceable=%d [%d MiB]\n", __FUNCTION__,
+	     kgem->aperture_fenceable, kgem->aperture_fenceable / (1024*1024)));
+
 	kgem->buffer_size = 64 * 1024;
 	while (kgem->buffer_size < kgem->aperture_mappable >> 10)
 		kgem->buffer_size *= 2;
@@ -1466,7 +1470,7 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 	if (kgem->has_llc)
 		kgem->max_upload_tile_size = kgem->max_copy_tile_size;
 	else
-		kgem->max_upload_tile_size = kgem->aperture_mappable / 4;
+		kgem->max_upload_tile_size = kgem->aperture_fenceable / 4;
 	if (kgem->max_upload_tile_size > half_gpu_max)
 		kgem->max_upload_tile_size = half_gpu_max;
 	if (kgem->max_upload_tile_size > kgem->aperture_high/2)
@@ -1505,6 +1509,7 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 
 	/* Convert the aperture thresholds to pages */
 	kgem->aperture_mappable /= PAGE_SIZE;
+	kgem->aperture_fenceable /= PAGE_SIZE;
 	kgem->aperture_low /= PAGE_SIZE;
 	kgem->aperture_high /= PAGE_SIZE;
 	kgem->aperture_total /= PAGE_SIZE;
@@ -4319,7 +4324,7 @@ unsigned kgem_can_create_2d(struct kgem *kgem,
 				fence_size <<= 1;
 			if (fence_size > kgem->max_gpu_size)
 				flags &= ~KGEM_CAN_CREATE_GPU;
-			if (fence_size > PAGE_SIZE*kgem->aperture_mappable/4)
+			if (fence_size > PAGE_SIZE*kgem->aperture_fenceable/4)
 				flags &= ~KGEM_CAN_CREATE_GTT;
 		}
 	}
@@ -5325,6 +5330,8 @@ static bool aperture_check(struct kgem *kgem, unsigned num_pages)
 	DBG(("%s: num_pages=%d, holding %d pages in reserve, total aperture %d\n",
 	     __FUNCTION__, num_pages, reserve, kgem->aperture_total));
 	num_pages += reserve;
+	if (kgem->gen < 040 && num_pages > kgem->aperture_fenceable)
+		return false;
 
 	VG_CLEAR(aperture);
 	aperture.aper_available_size = kgem->aperture_total;
@@ -5433,7 +5440,7 @@ bool kgem_check_bo_fenced(struct kgem *kgem, struct kgem_bo *bo)
 				size = 3*kgem->aperture_fenced;
 				if (kgem->aperture_total == kgem->aperture_mappable)
 					size += kgem->aperture;
-				if (size > kgem->aperture_mappable &&
+				if (size > kgem->aperture_fenceable &&
 				    kgem_ring_is_idle(kgem, kgem->ring)) {
 					DBG(("%s: opportunistic fence flush\n", __FUNCTION__));
 					return false;
@@ -5448,9 +5455,9 @@ bool kgem_check_bo_fenced(struct kgem *kgem, struct kgem_bo *bo)
 				size = 2 * kgem->aperture_max_fence;
 			if (kgem->aperture_total == kgem->aperture_mappable)
 				size += kgem->aperture;
-			if (size > kgem->aperture_mappable) {
-				DBG(("%s: estimated fence space required %d (fenced=%d, max_fence=%d, aperture=%d) exceeds aperture %d\n",
-				     __FUNCTION__, size, kgem->aperture_fenced, kgem->aperture_max_fence, kgem->aperture, kgem->aperture_mappable));
+			if (size > kgem->aperture_fenceable) {
+				DBG(("%s: estimated fence space required %d (fenced=%d, max_fence=%d, aperture=%d) exceeds fenceable aperture %d\n",
+				     __FUNCTION__, size, kgem->aperture_fenced, kgem->aperture_max_fence, kgem->aperture, kgem->aperture_fenceable));
 				return false;
 			}
 		}
@@ -5477,7 +5484,7 @@ bool kgem_check_bo_fenced(struct kgem *kgem, struct kgem_bo *bo)
 			size = 3*kgem->aperture_fenced;
 			if (kgem->aperture_total == kgem->aperture_mappable)
 				size += kgem->aperture;
-			if (size > kgem->aperture_mappable &&
+			if (size > kgem->aperture_fenceable &&
 			    kgem_ring_is_idle(kgem, kgem->ring)) {
 				DBG(("%s: opportunistic fence flush\n", __FUNCTION__));
 				return false;
@@ -5492,9 +5499,9 @@ bool kgem_check_bo_fenced(struct kgem *kgem, struct kgem_bo *bo)
 			size = 2 * kgem->aperture_max_fence;
 		if (kgem->aperture_total == kgem->aperture_mappable)
 			size += kgem->aperture;
-		if (size > kgem->aperture_mappable) {
-			DBG(("%s: estimated fence space required %d (fenced=%d, max_fence=%d, aperture=%d) exceeds aperture %d\n",
-			     __FUNCTION__, size, kgem->aperture_fenced, kgem->aperture_max_fence, kgem->aperture, kgem->aperture_mappable));
+		if (size > kgem->aperture_fenceable) {
+			DBG(("%s: estimated fence space required %d (fenced=%d, max_fence=%d, aperture=%d) exceeds fenceable aperture %d\n",
+			     __FUNCTION__, size, kgem->aperture_fenced, kgem->aperture_max_fence, kgem->aperture, kgem->aperture_fenceable));
 			return false;
 		}
 	}
@@ -5571,7 +5578,7 @@ bool kgem_check_many_bo_fenced(struct kgem *kgem, ...)
 			size = 3*kgem->aperture_fenced;
 			if (kgem->aperture_total == kgem->aperture_mappable)
 				size += kgem->aperture;
-			if (size > kgem->aperture_mappable &&
+			if (size > kgem->aperture_fenceable &&
 			    kgem_ring_is_idle(kgem, kgem->ring)) {
 				DBG(("%s: opportunistic fence flush\n", __FUNCTION__));
 				return false;
@@ -5584,9 +5591,9 @@ bool kgem_check_many_bo_fenced(struct kgem *kgem, ...)
 			size = 2 * kgem->aperture_max_fence;
 		if (kgem->aperture_total == kgem->aperture_mappable)
 			size += kgem->aperture;
-		if (size > kgem->aperture_mappable) {
-			DBG(("%s: estimated fence space required %d (fenced=%d, max_fence=%d, aperture=%d) exceeds aperture %d\n",
-			     __FUNCTION__, size, kgem->aperture_fenced, kgem->aperture_max_fence, kgem->aperture, kgem->aperture_mappable));
+		if (size > kgem->aperture_fenceable) {
+			DBG(("%s: estimated fence space required %d (fenced=%d, max_fence=%d, aperture=%d) exceeds fenceable aperture %d\n",
+			     __FUNCTION__, size, kgem->aperture_fenced, kgem->aperture_max_fence, kgem->aperture, kgem->aperture_fenceable));
 			return false;
 		}
 	}
