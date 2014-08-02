@@ -6390,7 +6390,6 @@ sna_crtc_redisplay(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo *bo)
 	DrawablePtr draw = crtc_source(crtc, &sx, &sy);
 	struct sna_pixmap *priv = sna_pixmap((PixmapPtr)draw);
 
-	assert(sna_crtc);
 	DBG(("%s: crtc %d [pipe=%d], damage (%d, %d), (%d, %d) x %d\n",
 	     __FUNCTION__, sna_crtc->id, sna_crtc->pipe,
 	     region->extents.x1, region->extents.y1,
