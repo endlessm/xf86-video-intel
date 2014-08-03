@@ -5330,8 +5330,6 @@ static bool aperture_check(struct kgem *kgem, unsigned num_pages)
 	DBG(("%s: num_pages=%d, holding %d pages in reserve, total aperture %d\n",
 	     __FUNCTION__, num_pages, reserve, kgem->aperture_total));
 	num_pages += reserve;
-	if (kgem->gen < 040 && num_pages > kgem->aperture_fenceable)
-		return false;
 
 	VG_CLEAR(aperture);
 	aperture.aper_available_size = kgem->aperture_total;
