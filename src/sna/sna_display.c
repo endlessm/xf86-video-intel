@@ -4215,6 +4215,7 @@ static struct sna_cursor *__sna_create_cursor(struct sna *sna, int size)
 
 	c->ref = 0;
 	c->serial = 0;
+	c->rotation = 0;
 	c->last_width = c->last_height = 0; /* all clear */
 
 	sna->cursor.num_stash--;
@@ -4286,8 +4287,10 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 
 	if (cursor == NULL) {
 		cursor = __sna_create_cursor(sna, 4*size*size);
-		if (cursor == NULL)
+		if (cursor == NULL) {
+			DBG(("%s: failed to allocate cursor\n", __FUNCTION__));
 			return NULL;
+		}
 	}
 
 	width = sna->cursor.ref->bits->width;
@@ -4412,7 +4415,7 @@ sna_show_cursors(ScrnInfoPtr scrn)
 	struct sna *sna = to_sna(scrn);
 	int sigio, c;
 
-	DBG(("%s\n", __FUNCTION__));
+	DBG(("%s: cursor?=%d\n", __FUNCTION__, sna->cursor.ref != NULL));
 	if (sna->cursor.ref == NULL)
 		return;
 
@@ -4427,18 +4430,21 @@ sna_show_cursors(ScrnInfoPtr scrn)
 		if (sna_crtc->bo == NULL)
 			continue;
 
-		if (!crtc->cursor_in_range)
+		if (!crtc->cursor_in_range) {
+			DBG(("%s: skipping cursor outside CRTC (pipe=%d)\n",
+			     __FUNCTION__, sna_crtc->pipe));
 			continue;
-
-		if (sna_crtc->cursor)
-			continue;
+		}
 
 		cursor = __sna_get_cursor(sna, crtc);
-		if (cursor == NULL)
+		if (cursor == NULL || sna_crtc->cursor == cursor) {
+			DBG(("%s: skipping cursor already show on CRTC (pipe=%d)\n",
+			     __FUNCTION__, sna_crtc->pipe));
 			continue;
+		}
 
-		DBG(("%s: CRTC:%d, handle->%d\n", __FUNCTION__,
-		     sna_crtc->id, cursor->handle));
+		DBG(("%s: CRTC pipe=%d, handle->%d\n", __FUNCTION__,
+		     sna_crtc->pipe, cursor->handle));
 
 		VG_CLEAR(arg);
 		arg.flags = DRM_MODE_CURSOR_BO;
@@ -6391,7 +6397,7 @@ sna_crtc_redisplay(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo *bo)
 	struct sna_pixmap *priv = sna_pixmap((PixmapPtr)draw);
 
 	DBG(("%s: crtc %d [pipe=%d], damage (%d, %d), (%d, %d) x %d\n",
-	     __FUNCTION__, sna_crtc->id, sna_crtc->pipe,
+	     __FUNCTION__, to_sna_crtc(crtc)->id, to_sna_crtc(crtc)->pipe,
 	     region->extents.x1, region->extents.y1,
 	     region->extents.x2, region->extents.y2,
 	     region_num_rects(region)));
