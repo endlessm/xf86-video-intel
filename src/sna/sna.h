@@ -188,6 +188,8 @@ static inline WindowPtr get_root_window(ScreenPtr screen)
 
 static inline PixmapPtr get_window_pixmap(WindowPtr window)
 {
+	assert(window);
+	assert(window->drawable.type != DRAWABLE_PIXMAP);
 	return fbGetWindowPixmap(window);
 }
 
