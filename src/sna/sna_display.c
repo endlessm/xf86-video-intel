@@ -2801,8 +2801,10 @@ sna_output_get_modes(xf86OutputPtr output)
 
 			if (mode.mode_valid && mode.mode.clock) {
 				current = calloc(1, sizeof(DisplayModeRec));
-				if (current)
+				if (current) {
 					mode_from_kmode(output->scrn, &mode.mode, current);
+					current->type |= M_T_DRIVER | M_T_PREFERRED;
+				}
 			}
 		}
 	}
@@ -2825,6 +2827,8 @@ sna_output_get_modes(xf86OutputPtr output)
 			free(current);
 			current = NULL;
 		}
+		if (current && mode->type & M_T_PREFERRED)
+			current->type &= ~M_T_PREFERRED;
 	}
 
 	if (current)
