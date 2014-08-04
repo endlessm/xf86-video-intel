@@ -2778,7 +2778,7 @@ static DisplayModePtr
 sna_output_get_modes(xf86OutputPtr output)
 {
 	struct sna_output *sna_output = output->driver_private;
-	DisplayModePtr Modes = NULL, Mode, current = NULL;
+	DisplayModePtr Modes = NULL, current = NULL;
 	int i;
 
 	DBG(("%s(%s:%d)\n", __FUNCTION__, output->name, sna_output->id));
@@ -2801,36 +2801,34 @@ sna_output_get_modes(xf86OutputPtr output)
 
 			if (mode.mode_valid && mode.mode.clock) {
 				current = calloc(1, sizeof(DisplayModeRec));
-				if (current) {
+				if (current)
 					mode_from_kmode(output->scrn, &mode.mode, current);
-					Modes = xf86ModesAdd(Modes, current);
-				}
 			}
 		}
 	}
 
 	DBG(("%s: adding %d probed modes\n", __FUNCTION__, sna_output->num_modes));
 
-	Mode = NULL;
 	for (i = 0; i < sna_output->num_modes; i++) {
-		if (Mode == NULL)
-			Mode = calloc(1, sizeof(DisplayModeRec));
-		if (Mode) {
-			Mode = mode_from_kmode(output->scrn,
-					       &sna_output->modes[i],
-					       Mode);
+		DisplayModePtr mode;
 
-			if (!current || !xf86ModesEqual(Mode, current)) {
-				Modes = xf86ModesAdd(Modes, Mode);
-				Mode = NULL;
-			} else {
-				free((void *)current->name);
-				current->name = strdup(Mode->name);
-				current->type = Mode->type;
-			}
+		mode = calloc(1, sizeof(DisplayModeRec));
+		if (mode == NULL)
+			continue;
+
+		mode = mode_from_kmode(output->scrn,
+				       &sna_output->modes[i],
+				       mode);
+		Modes = xf86ModesAdd(Modes, mode);
+		if (current && xf86ModesEqual(mode, current)) {
+			free(current->name);
+			free(current);
+			current = NULL;
 		}
 	}
-	free(Mode);
+
+	if (current)
+		Modes = xf86ModesAdd(current, Modes);
 
 	/*
 	 * If the connector type is a panel, we will traverse the kernel mode to
