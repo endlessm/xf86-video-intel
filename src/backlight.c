@@ -402,7 +402,7 @@ int backlight_open(struct backlight *b, char *iface)
 		goto err;
 
 	level = __backlight_read(iface, "brightness");
-	if (level)
+	if (level < 0)
 		goto err;
 
 	if (!__backlight_direct_init(b, iface) &&
