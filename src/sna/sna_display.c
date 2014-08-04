@@ -130,6 +130,9 @@ struct sna_output {
 	uint64_t *prop_values;
 	struct sna_property *props;
 
+	int underscan;
+	int underscan_hborder;
+	int underscan_vborder;
 };
 
 static inline struct sna_output *to_sna_output(xf86OutputPtr output)
@@ -1139,6 +1142,21 @@ void sna_copy_fbcon(struct sna *sna)
 #endif
 }
 
+static struct sna_output *crtc_get_sna_output(xf86CrtcPtr crtc)
+{
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(crtc->scrn);
+	int i;
+
+	for (i = 0; i < config->num_output; i++) {
+		xf86OutputPtr output = config->output[i];
+
+		if (output->crtc == crtc)
+			return to_sna_output(output);
+	}
+
+	return NULL;
+}
+
 static bool use_shadow(struct sna *sna, xf86CrtcPtr crtc)
 {
 	RRTransformPtr transform;
@@ -1150,7 +1168,7 @@ static bool use_shadow(struct sna *sna, xf86CrtcPtr crtc)
 
 	assert(sna->scrn->virtualX && sna->scrn->virtualY);
 
-	if (sna->underscan)
+	if (crtc_get_sna_output(crtc)->underscan)
 		return true;
 
 	if (sna->flags & SNA_FORCE_SHADOW) {
@@ -1249,6 +1267,7 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 		unsigned long tiled_limit;
 		int tiling;
 		int xu = 0, yu = 0;
+		struct sna_output *sna_output = crtc_get_sna_output(crtc);
 
 		if (!sna_crtc_enable_shadow(sna, sna_crtc))
 			return NULL;
@@ -1268,9 +1287,9 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 		if ((unsigned long)crtc->mode.HDisplay * scrn->bitsPerPixel > tiled_limit)
 			tiling = I915_TILING_NONE;
 
-		if (sna->underscan) {
-			xu = sna->underscan_hborder;
-			yu = sna->underscan_vborder;
+		if (sna_output->underscan) {
+			xu = sna_output->underscan_hborder;
+			yu = sna_output->underscan_vborder;
 		}
 
 		bo = kgem_create_2d(&sna->kgem,
@@ -1283,7 +1302,7 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 		/* With overscan compensation enabled, we might end up with
 		   stale data being displayed in the borders we add. We avoid
 		   this by starting with an entirely black pixmap. */
-		if (sna->underscan)
+		if (sna_output->underscan)
 			(void)sna->render.fill_one(sna, sna->front, bo,
 						   0, 0, 0,
 						   crtc->mode.HDisplay + 2*xu,
@@ -2076,7 +2095,6 @@ sna_output_panel_edid(xf86OutputPtr output, DisplayModePtr modes)
 static DisplayModePtr
 sna_output_get_modes(xf86OutputPtr output)
 {
-	struct sna *sna = to_sna(output->scrn);
 	struct sna_output *sna_output = output->driver_private;
 	DisplayModePtr Modes = NULL;
 	int i;
@@ -2090,8 +2108,8 @@ sna_output_get_modes(xf86OutputPtr output)
 
 		Mode = calloc(1, sizeof(DisplayModeRec));
 		if (Mode) {
-			if (sna->underscan)
-				sna_output->modes[i].hskew = (sna->underscan_hborder << 8) + sna->underscan_vborder;
+			if (sna_output->underscan)
+				sna_output->modes[i].hskew = (sna_output->underscan_hborder << 8) + sna_output->underscan_vborder;
 
 			Mode = mode_from_kmode(output->scrn,
 					       &sna_output->modes[i],
@@ -2399,9 +2417,9 @@ sna_output_set_property(xf86OutputPtr output, Atom property,
 			return FALSE;
 
 		if (!strcmp(name, "crop"))
-			sna->underscan = 1;
+			sna_output->underscan = 1;
 		else
-			sna->underscan = 0;
+			sna_output->underscan = 0;
 
 		return TRUE;
 	}
@@ -2410,7 +2428,7 @@ sna_output_set_property(xf86OutputPtr output, Atom property,
 		if (value->type != XA_INTEGER || value->format != 32 || value->size != 1)
 			return FALSE;
 
-		sna->underscan_vborder = *(uint32_t *)value->data;
+		sna_output->underscan_vborder = *(uint32_t *)value->data;
 		return TRUE;
 	}
 
@@ -2418,7 +2436,7 @@ sna_output_set_property(xf86OutputPtr output, Atom property,
 		if (value->type != XA_INTEGER || value->format != 32 || value->size != 1)
 			return FALSE;
 
-		sna->underscan_hborder = *(uint32_t *)value->data;
+		sna_output->underscan_hborder = *(uint32_t *)value->data;
 		return TRUE;
 	}
 
@@ -2906,10 +2924,15 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 	ScreenPtr screen = scrn->pScreen;
 	PixmapPtr new_front;
 	int i, xu = 0, yu = 0;
+	struct sna_output *sna_output;
 
-	if (sna->underscan) {
-		xu = sna->underscan_hborder;
-		yu = sna->underscan_vborder;
+	/* We have to assume that each Scrn has a single CRTC, so we can know
+	   what border to apply */
+	sna_output = crtc_get_sna_output(config->crtc[0]);
+
+	if (sna_output != NULL && sna_output->underscan) {
+		xu = sna_output->underscan_hborder;
+		yu = sna_output->underscan_vborder;
 	}
 
 	DBG(("%s (%d, %d) -> (%d, %d)\n", __FUNCTION__,
