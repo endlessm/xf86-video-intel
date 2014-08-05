@@ -166,6 +166,7 @@ struct sna_output {
 	unsigned attached_encoders;
 
 	unsigned int is_panel : 1;
+	unsigned int has_scaler : 1;
 
 	uint32_t edid_idx;
 	uint32_t edid_blob_id;
@@ -2845,7 +2846,7 @@ sna_output_get_modes(xf86OutputPtr output)
 	 * If it is incorrect, please fix me.
 	 */
 	sna_output->has_panel_limits = false;
-	if (sna_output->is_panel) {
+	if (sna_output->has_scaler) {
 		sna_output->panel_hdisplay = sna_output->panel_vdisplay = 0;
 		for (i = 0; i < sna_output->num_modes; i++) {
 			struct drm_mode_modeinfo *m;
@@ -3674,6 +3675,7 @@ reset:
 	sna_output->id = compat_conn.conn.connector_id;
 	sna_output->is_panel = is_panel(compat_conn.conn.connector_type);
 	sna_output->edid_idx = find_property(sna, sna_output, "EDID");
+	sna_output->has_scaler = find_property(sna, sna_output, "scaling mode") != -1;
 	i = find_property(sna, sna_output, "DPMS");
 	if (i != -1) {
 		sna_output->dpms_id = sna_output->prop_ids[i];
