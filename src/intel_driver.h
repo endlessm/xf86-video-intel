@@ -136,7 +136,7 @@ int intel_put_master(ScrnInfoPtr scrn);
 void intel_put_device(ScrnInfoPtr scrn);
 
 #define IS_DEFAULT_ACCEL_METHOD(x) ({ \
-	enum { SNA, UXA, GLAMOR, NONE } default_accel_method__ = DEFAULT_ACCEL_METHOD; \
+	enum { NOACCEL, SNA, UXA, GLAMOR } default_accel_method__ = DEFAULT_ACCEL_METHOD; \
 	default_accel_method__ == x; \
 })
 

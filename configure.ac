@@ -699,7 +699,7 @@ fi
 if test "x$have_accel" = "xnone"; then
 	if test "x$KMS" = "xyes"; then
 		if test "x$SNA" != "xno" -o "x$UXA" != "xno"; then
-			AC_DEFINE(DEFAULT_ACCEL_METHOD, NONE, [Default acceleration method])
+			AC_DEFINE(DEFAULT_ACCEL_METHOD, NOACCEL, [Default acceleration method])
 		else
 			AC_MSG_ERROR([Invalid default acceleration option])
 		fi

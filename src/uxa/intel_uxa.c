@@ -1427,7 +1427,7 @@ static Bool intel_option_accel_none(intel_screen_private *intel)
 
 	s = xf86GetOptValString(intel->Options, OPTION_ACCEL_METHOD);
 	if (s == NULL)
-		return IS_DEFAULT_ACCEL_METHOD(NONE);
+		return IS_DEFAULT_ACCEL_METHOD(NOACCEL);
 
 	return strcasecmp(s, "none") == 0;
 }
