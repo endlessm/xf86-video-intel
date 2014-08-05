@@ -2514,8 +2514,12 @@ sna_crtc_add(ScrnInfoPtr scrn, int id)
 static bool
 is_panel(int type)
 {
+#define DRM_MODE_CONNECTOR_LVDS 7
+#define DRM_MODE_CONNECTOR_eDP 14
+#define DRM_MODE_CONNECTOR_DSI 16
 	return (type == DRM_MODE_CONNECTOR_LVDS ||
-		type == DRM_MODE_CONNECTOR_eDP);
+		type == DRM_MODE_CONNECTOR_eDP ||
+		type == DRM_MODE_CONNECTOR_DSI);
 }
 
 static int
