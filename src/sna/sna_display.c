@@ -3921,6 +3921,7 @@ void sna_mode_discover(struct sna *sna)
 		DBG(("%s: outputs changed, broadcasting\n", __FUNCTION__));
 
 		sna_mode_compute_possible_outputs(sna);
+		sna_mode_set_primary(sna);
 
 		/* Reorder user visible listing */
 		sort_config_outputs(sna);
@@ -5649,6 +5650,31 @@ sna_mode_wants_tear_free(struct sna *sna)
 	}
 
 	return false;
+}
+
+void
+sna_mode_set_primary(struct sna *sna)
+{
+#ifdef RANDR_12_INTERFACE
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	rrScrPrivPtr rr = rrGetScrPriv(xf86ScrnToScreen(sna->scrn));
+	int i;
+
+	if (rr->primaryOutput)
+		return;
+
+	for (i = 0; i < sna->mode.num_real_output; i++) {
+		xf86OutputPtr output = config->output[i];
+
+		if (!xf86ReturnOptValBool(output->options, OPTION_PRIMARY, FALSE))
+			continue;
+
+		rr->primaryOutput = output->randr_output;
+		RROutputChanged(rr->primaryOutput, 0);
+		rr->layoutChanged = TRUE;
+		break;
+	}
+#endif
 }
 
 void

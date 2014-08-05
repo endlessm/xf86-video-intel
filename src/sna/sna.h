@@ -432,6 +432,7 @@ extern void sna_shadow_set_crtc(struct sna *sna, xf86CrtcPtr crtc, struct kgem_b
 extern void sna_shadow_unset_crtc(struct sna *sna, xf86CrtcPtr crtc);
 extern bool sna_pixmap_discard_shadow_damage(struct sna_pixmap *priv,
 					     const RegionRec *region);
+extern void sna_mode_set_primary(struct sna *sna);
 extern void sna_mode_close(struct sna *sna);
 extern void sna_mode_fini(struct sna *sna);
 
