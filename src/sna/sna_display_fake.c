@@ -300,6 +300,9 @@ static bool add_fake_output(struct sna *sna, bool late)
 	}
 
 	sna->mode.num_fake++;
+	xf86DrvMsg(scrn->scrnIndex, X_INFO,
+		   "Enabled output %s\n",
+		   output->name);
 	return true;
 
 err:

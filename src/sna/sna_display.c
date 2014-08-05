@@ -2823,7 +2823,7 @@ sna_output_get_modes(xf86OutputPtr output)
 				       mode);
 		Modes = xf86ModesAdd(Modes, mode);
 		if (current && xf86ModesEqual(mode, current)) {
-			free(current->name);
+			free((void*)current->name);
 			free(current);
 			current = NULL;
 		}
@@ -3726,6 +3726,9 @@ reset:
 	     (unsigned long)(uintptr_t)output->crtc));
 	assert(sna_output->id == id);
 
+	xf86DrvMsg(scrn->scrnIndex, X_INFO,
+		   "Enabled output %s\n",
+		   output->name);
 	return 1;
 
 cleanup:
@@ -3893,8 +3896,14 @@ void sna_mode_discover(struct sna *sna)
 		DBG(("%s: removing output %s (id=%d), serial=%u [now %u]\n",
 		     __FUNCTION__, output->name, to_sna_output(output)->id,
 		    to_sna_output(output)->serial, serial));
+
+		xf86DrvMsg(sna->scrn->scrnIndex, X_INFO,
+			   "%s output %s\n",
+			   sna->flags & SNA_REMOVE_OUTPUTS ? "Removed" : "Disabled",
+			   output->name);
 		if (sna->flags & SNA_REMOVE_OUTPUTS) {
-			sna_output_del(output); i--;
+			sna_output_del(output);
+			i--;
 		} else {
 			to_sna_output(output)->id = 0;
 			output->crtc = NULL;
