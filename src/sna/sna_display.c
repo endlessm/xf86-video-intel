@@ -2223,7 +2223,6 @@ static const xf86CrtcFuncsRec sna_crtc_funcs = {
 
 inline static bool prop_is_rotation(struct drm_mode_get_property *prop)
 {
-#if USE_ROTATION
 	if ((prop->flags & (1 << 5)) == 0)
 		return false;
 
@@ -2231,9 +2230,6 @@ inline static bool prop_is_rotation(struct drm_mode_get_property *prop)
 		return false;
 
 	return true;
-#else
-	return false;
-#endif
 }
 
 static int plane_details(struct sna *sna, struct plane *p)
