@@ -6,6 +6,7 @@ basic-lines
 basic-stress
 basic-stippledrect
 basic-tiledrect
+cursor-test
 render-fill
 render-trapezoid
 render-trapezoid-image

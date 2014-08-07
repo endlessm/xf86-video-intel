@@ -9,6 +9,7 @@ stress_TESTS = \
 	basic-putimage \
 	basic-lines \
 	basic-stress \
+	cursor-test \
 	render-fill \
 	render-trapezoid \
 	render-trapezoid-image \
