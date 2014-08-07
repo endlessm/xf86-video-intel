@@ -1554,7 +1554,7 @@ Bool intel_uxa_init(ScreenPtr screen)
 	}
 
 	if (intel_option_accel_none(intel))
-		intel->force_fallback = true;
+		intel->force_fallback = 1;
 
 	uxa_set_fallback_debug(screen, intel->fallback_debug);
 	uxa_set_force_fallback(screen, intel->force_fallback);
