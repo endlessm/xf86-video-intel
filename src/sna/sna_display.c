@@ -122,6 +122,7 @@ struct sna_crtc {
 	DamagePtr slave_damage;
 	struct kgem_bo *bo, *shadow_bo;
 	struct sna_cursor *cursor;
+	unsigned int last_cursor_size;
 	uint32_t offset;
 	bool shadow;
 	bool fallback_shadow;
@@ -4274,11 +4275,12 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 		return cursor;
 	}
 
-	__DBG(("%s: cursor=%dx%d, serial=%d, argb?=%d\n", __FUNCTION__,
+	__DBG(("%s: cursor=%dx%d, pitch=%d, serial=%d, argb?=%d\n", __FUNCTION__,
 	       sna->cursor.ref->bits->width,
 	       sna->cursor.ref->bits->height,
+	       get_cursor_argb(sna->cursor.ref) ? 4*sna->cursor.ref->bits->width : BitmapBytePad(sna->cursor.ref->bits->width),
 	       sna->cursor.serial,
-	       get_cursor_argb(c) != NULL));
+	       get_cursor_argb(sna->cursor.ref) != NULL));
 
 	rotation = crtc->transform_in_use ? crtc->rotation : RR_Rotate_0;
 
@@ -4315,10 +4317,8 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 	pitch = BitmapBytePad(width);
 
 	image = cursor->image;
-	if (image == NULL) {
+	if (image == NULL)
 		image = sna->cursor.scratch;
-		cursor->last_width = cursor->last_height = size;
-	}
 	if (width < cursor->last_width || height < cursor->last_height || rotation != cursor->rotation)
 		memset(image, 0, 4*size*size);
 	if (rotation == RR_Rotate_0) {
@@ -4327,15 +4327,17 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 				uint32_t *p = image + y*size;
 				for (x = 0; x < width; x++) {
 					int byte = x / 8;
-					int bit = x & 7;
+					uint8_t bit = 1 << (x & 7);
 					uint32_t pixel;
-					if (mask[byte] & (1 << bit)) {
-						if (source[byte] & (1 << bit))
+
+					if (mask[byte] & bit) {
+						if (source[byte] & bit)
 							pixel = sna->cursor.fg;
 						else
 							pixel = sna->cursor.bg;
 					} else
 						pixel = 0;
+
 					*p++ = pixel;
 				}
 				mask += pitch;
@@ -4451,7 +4453,8 @@ sna_show_cursors(ScrnInfoPtr scrn)
 		}
 
 		cursor = __sna_get_cursor(sna, crtc);
-		if (cursor == NULL || sna_crtc->cursor == cursor) {
+		if (cursor == NULL ||
+		    (sna_crtc->cursor == cursor && sna_crtc->last_cursor_size == cursor->size)) {
 			DBG(("%s: skipping cursor already show on CRTC (pipe=%d)\n",
 			     __FUNCTION__, sna_crtc->pipe));
 			continue;
@@ -4467,8 +4470,13 @@ sna_show_cursors(ScrnInfoPtr scrn)
 		arg.handle = cursor->handle;
 
 		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg) == 0) {
+			if (sna_crtc->cursor) {
+				assert(sna_crtc->cursor->ref > 0);
+				sna_crtc->cursor->ref--;
+			}
 			cursor->ref++;
 			sna_crtc->cursor = cursor;
+			sna_crtc->last_cursor_size = cursor->size;
 		}
 	}
 	sigio_unblock(sigio);
@@ -4480,7 +4488,7 @@ sna_set_cursor_colors(ScrnInfoPtr scrn, int _bg, int _fg)
 	struct sna *sna = to_sna(scrn);
 	uint32_t fg = _fg, bg = _bg;
 
-	__DBG(("%s(%08x, %08x)\n", __FUNCTION__, bg, fg));
+	__DBG(("%s(bg=%08x, fg=%08x)\n", __FUNCTION__, bg, fg));
 
 	/* Save ARGB versions of these colors */
 	fg |= 0xff000000;
@@ -4524,6 +4532,7 @@ sna_crtc_disable_cursor(struct sna *sna, struct sna_crtc *crtc)
 	assert(crtc->cursor->ref > 0);
 	crtc->cursor->ref--;
 	crtc->cursor = NULL;
+	crtc->last_cursor_size = 0;
 }
 
 static void
@@ -4623,13 +4632,13 @@ sna_set_cursor_position(ScrnInfoPtr scrn, int x, int y)
 			cursor = __sna_get_cursor(sna, crtc);
 			if (cursor == NULL)
 				cursor = sna_crtc->cursor;
-			if (cursor == NULL || cursor->size > sna->cursor.size) {
+			if (cursor == NULL) {
 				__DBG(("%s: failed to grab cursor, disabling\n",
 				       __FUNCTION__));
 				goto disable;
 			}
 
-			if (sna_crtc->cursor != cursor) {
+			if (sna_crtc->cursor != cursor || sna_crtc->last_cursor_size != cursor->size) {
 				arg.flags |= DRM_MODE_CURSOR_BO;
 				arg.handle = cursor->handle;
 			}
@@ -4659,8 +4668,11 @@ disable:
 					sna_crtc->cursor->ref--;
 				}
 				sna_crtc->cursor = cursor;
-				if (cursor)
+				if (cursor) {
+					sna_crtc->last_cursor_size = cursor->size;
 					cursor->ref++;
+				} else
+					sna_crtc->last_cursor_size = 0;
 			}
 		}
 	}
