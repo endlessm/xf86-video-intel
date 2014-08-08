@@ -4232,6 +4232,7 @@ static struct sna_cursor *__sna_create_cursor(struct sna *sna, int size)
 	c->serial = 0;
 	c->rotation = 0;
 	c->last_width = c->last_height = 0; /* all clear */
+	c->size = size;
 
 	sna->cursor.num_stash--;
 	sna->cursor.stash = c->next;
@@ -4317,8 +4318,10 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 	pitch = BitmapBytePad(width);
 
 	image = cursor->image;
-	if (image == NULL)
+	if (image == NULL) {
 		image = sna->cursor.scratch;
+		cursor->last_width = cursor->last_height = size;
+	}
 	if (size > cursor->size ||
 	    width < cursor->last_width ||
 	    height < cursor->last_height ||
