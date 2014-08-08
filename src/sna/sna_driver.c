@@ -1184,7 +1184,7 @@ static void sna_free_screen(FREE_SCREEN_ARGS_DECL)
 	struct sna *sna = to_sna(scrn);
 
 	DBG(("%s\n", __FUNCTION__));
-	if ((uintptr_t)sna & 1)
+	if ((uintptr_t)sna & 3)
 		return;
 
 	scrn->driverPrivate = (void *)((uintptr_t)sna->info | (sna->flags & SNA_IS_SLAVED) | 2);
