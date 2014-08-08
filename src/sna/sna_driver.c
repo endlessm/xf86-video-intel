@@ -874,6 +874,7 @@ static Bool sna_late_close_screen(CLOSE_SCREEN_ARGS_DECL)
 	DBG(("%s\n", __FUNCTION__));
 
 	sna_accel_close(sna);
+	sna_video_close(sna);
 
 	depths = screen->allowedDepths;
 	for (d = 0; d < screen->numDepths; d++)
