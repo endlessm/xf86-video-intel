@@ -192,6 +192,27 @@ struct sna_output {
 	struct sna_property *props;
 };
 
+enum { /* XXX copied from hw/xfree86/modes/xf86Crtc.c */
+	OPTION_PREFERRED_MODE,
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,14,99,1,0)
+	OPTION_ZOOM_MODES,
+#endif
+	OPTION_POSITION,
+	OPTION_BELOW,
+	OPTION_RIGHT_OF,
+	OPTION_ABOVE,
+	OPTION_LEFT_OF,
+	OPTION_ENABLE,
+	OPTION_DISABLE,
+	OPTION_MIN_CLOCK,
+	OPTION_MAX_CLOCK,
+	OPTION_IGNORE,
+	OPTION_ROTATE,
+	OPTION_PANNING,
+	OPTION_PRIMARY,
+	OPTION_DEFAULT_MODES,
+};
+
 static void sna_crtc_disable_cursor(struct sna *sna, struct sna_crtc *crtc);
 
 inline static unsigned count_to_mask(int x)
@@ -3655,7 +3676,11 @@ sna_output_add(struct sna *sna, unsigned id, unsigned serial)
 		assert(outputs[i]->driver_private == NULL);
 		outputs[i]->possible_clones <<= 1;
 	}
-	outputs[i] = output;
+	if (xf86ReturnOptValBool(output->options, OPTION_PRIMARY, FALSE)) {
+		memmove(outputs + 1, outputs, sizeof(output)*config->num_output);
+		outputs[0] = output;
+	} else
+		outputs[i] = output;
 	sna->mode.num_real_output++;
 	config->num_output++;
 	config->output = outputs;
@@ -5135,27 +5160,6 @@ static void set_size_range(struct sna *sna)
 	xf86CrtcSetSizeRange(sna->scrn, 8, 8, INT16_MAX, INT16_MAX);
 }
 
-enum { /* XXX copied from hw/xfree86/modes/xf86Crtc.c */
-	OPTION_PREFERRED_MODE,
-#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,14,99,1,0)
-	OPTION_ZOOM_MODES,
-#endif
-	OPTION_POSITION,
-	OPTION_BELOW,
-	OPTION_RIGHT_OF,
-	OPTION_ABOVE,
-	OPTION_LEFT_OF,
-	OPTION_ENABLE,
-	OPTION_DISABLE,
-	OPTION_MIN_CLOCK,
-	OPTION_MAX_CLOCK,
-	OPTION_IGNORE,
-	OPTION_ROTATE,
-	OPTION_PANNING,
-	OPTION_PRIMARY,
-	OPTION_DEFAULT_MODES,
-};
-
 #if HAS_GAMMA
 static void set_gamma(uint16_t *curve, int size, double value)
 {
@@ -5614,7 +5618,6 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 		sna->mode.num_real_output = xf86_config->num_output;
 
 		sna_mode_compute_possible_outputs(sna);
-		sort_config_outputs(sna);
 
 		sna->mode.max_crtc_width  = res->max_width;
 		sna->mode.max_crtc_height = res->max_height;
@@ -5638,10 +5641,17 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 		return false;
 
 	if (!sna_probe_initial_configuration(sna)) {
+		xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(scrn);
+
 		sanitize_outputs(sna);
-		if (XF86_CRTC_CONFIG_PTR(scrn)->num_crtc)
+		if (config->num_crtc && config->num_output) {
+			if (!xf86ReturnOptValBool(config->output[0]->options,
+						  OPTION_PRIMARY, FALSE))
+				sort_config_outputs(sna);
 			xf86InitialConfiguration(scrn, TRUE);
+		}
 	}
+	sort_config_outputs(sna);
 
 	sna_setup_provider(scrn);
 	return scrn->modes != NULL;
