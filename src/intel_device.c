@@ -30,6 +30,7 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/mount.h>
 #include <assert.h>
 #include <string.h>
 #include <unistd.h>
@@ -141,6 +142,13 @@ static void dump_debugfs(ScrnInfoPtr scrn, int fd, const char *name)
 	sprintf(path, "/debug/dri/%d/%s", minor, name);
 	if (dump_file(scrn, path))
 		return;
+
+	if (mount("X-debug", "/sys/kernel/debug", "debugfs", 0, 0) == 0) {
+		sprintf(path, "/sys/kernel/debug/dri/%d/%s", minor, name);
+		dump_file(scrn, path);
+		umount("X-debug");
+		return;
+	}
 }
 
 static void dump_clients_info(ScrnInfoPtr scrn, int fd)
