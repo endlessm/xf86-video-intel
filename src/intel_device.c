@@ -74,6 +74,80 @@ struct intel_device {
 
 static int intel_device_key = -1;
 
+static int dump_file(ScrnInfoPtr scrn, const char *path)
+{
+	FILE *file;
+	size_t len = 0;
+	char *line = NULL;
+
+	file = fopen(path, "r");
+	if (file == NULL)
+		return 0;
+
+	xf86DrvMsg(scrn->scrnIndex, X_INFO, "[drm] Contents of '%s':\n", path);
+	while (getline(&line, &len, file) != -1)
+		xf86DrvMsg(scrn->scrnIndex, X_INFO, "[drm] %s", line);
+
+	free(line);
+	fclose(file);
+	return 1;
+}
+
+static int __find_debugfs(void)
+{
+	int i;
+
+	for (i = 0; i < DRM_MAX_MINOR; i++) {
+		char path[80];
+
+		sprintf(path, "/sys/kernel/debug/dri/%d/i915_wedged", i);
+		if (access(path, R_OK) == 0)
+			return i;
+
+		sprintf(path, "/debug/dri/%d/i915_wedged", i);
+		if (access(path, R_OK) == 0)
+			return i;
+	}
+
+	return -1;
+}
+
+static int drm_get_minor(int fd)
+{
+	struct stat st;
+
+	if (fstat(fd, &st))
+		return __find_debugfs();
+
+	if (!S_ISCHR(st.st_mode))
+		return __find_debugfs();
+
+	return st.st_rdev & 0x63;
+}
+
+static void dump_debugfs(ScrnInfoPtr scrn, int fd, const char *name)
+{
+	char path[80];
+	int minor;
+
+	minor = drm_get_minor(fd);
+	if (minor < 0)
+		return;
+
+	sprintf(path, "/sys/kernel/debug/dri/%d/%s", minor, name);
+	if (dump_file(scrn, path))
+		return;
+
+	sprintf(path, "/debug/dri/%d/%s", minor, name);
+	if (dump_file(scrn, path))
+		return;
+}
+
+static void dump_clients_info(ScrnInfoPtr scrn, int fd)
+{
+	dump_debugfs(scrn, fd, "clients");
+}
+
 static int __intel_get_device_id(int fd)
 {
 	struct drm_i915_getparam gp;
@@ -572,6 +646,7 @@ int intel_get_device(ScrnInfoPtr scrn)
 			xf86DrvMsg(scrn->scrnIndex, X_ERROR,
 				   "[drm] failed to set drm interface version: %s [%d].\n",
 				   strerror(errno), errno);
+			dump_clients_info(scrn, dev->fd);
 			dev->open_count--;
 			return -1;
 		}
