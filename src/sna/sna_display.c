@@ -3670,12 +3670,22 @@ sna_output_add(struct sna *sna, unsigned id, unsigned serial)
 		goto cleanup;
 	}
 
+	output->scrn = scrn;
+	output->funcs = &sna_output_funcs;
+	output->name = (char *)(output + 1);
+	memcpy(output->name, name, len + 1);
+
+	output->use_screen_monitor = config->num_output != 1;
+	xf86OutputUseScreenMonitor(output, !output->use_screen_monitor);
+	assert(output->options);
+
 	DBG(("%s: inserting output #%d of %d\n", __FUNCTION__, sna->mode.num_real_output, config->num_output));
 	for (i = config->num_output; i > sna->mode.num_real_output; i--) {
 		outputs[i] = outputs[i-1];
 		assert(outputs[i]->driver_private == NULL);
 		outputs[i]->possible_clones <<= 1;
 	}
+
 	if (xf86ReturnOptValBool(output->options, OPTION_PRIMARY, FALSE)) {
 		memmove(outputs + 1, outputs, sizeof(output)*config->num_output);
 		outputs[0] = output;
@@ -3684,14 +3694,6 @@ sna_output_add(struct sna *sna, unsigned id, unsigned serial)
 	sna->mode.num_real_output++;
 	config->num_output++;
 	config->output = outputs;
-
-	output->scrn = scrn;
-	output->funcs = &sna_output_funcs;
-	output->name = (char *)(output + 1);
-	memcpy(output->name, name, len + 1);
-
-	output->use_screen_monitor = config->num_output != 1;
-	xf86OutputUseScreenMonitor(output, !output->use_screen_monitor);
 
 reset:
 	sna_output->id = compat_conn.conn.connector_id;
