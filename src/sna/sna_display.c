@@ -2046,16 +2046,70 @@ static const char *reflection_to_str(Rotation rotation)
 }
 
 static Bool
+__sna_crtc_set_mode(xf86CrtcPtr crtc)
+{
+	struct sna *sna = to_sna(crtc->scrn);
+	struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
+	struct kgem_bo *saved_bo, *bo;
+	uint32_t saved_offset;
+	bool saved_transform;
+
+	saved_bo = sna_crtc->bo;
+	saved_transform = sna_crtc->transform;
+	saved_offset = sna_crtc->offset;
+
+	sna_crtc->fallback_shadow = false;
+retry: /* Attach per-crtc pixmap or direct */
+	bo = sna_crtc_attach(crtc);
+	if (bo == NULL)
+		return FALSE;
+
+	kgem_bo_submit(&sna->kgem, bo);
+
+	sna_crtc->bo = bo;
+	if (!sna_crtc_apply(crtc)) {
+		int err = errno;
+
+		kgem_bo_destroy(&sna->kgem, bo);
+
+		if (!sna_crtc->shadow) {
+			sna_crtc->fallback_shadow = true;
+			goto retry;
+		}
+
+		xf86DrvMsg(crtc->scrn->scrnIndex, X_ERROR,
+			   "failed to set mode: %s [%d]\n", strerror(err), err);
+
+		sna_crtc->offset = saved_offset;
+		sna_crtc->transform = saved_transform;
+		sna_crtc->bo = saved_bo;
+		return FALSE;
+	}
+
+	bo->active_scanout++;
+	if (saved_bo) {
+		assert(saved_bo->active_scanout);
+		assert(saved_bo->refcnt >= saved_bo->active_scanout);
+		saved_bo->active_scanout--;
+		kgem_bo_destroy(&sna->kgem, saved_bo);
+	}
+
+	sna_crtc_randr(crtc);
+	if (sna_crtc->transform)
+		sna_crtc_damage(crtc);
+	sna->mode.front_active += saved_bo == NULL;
+	sna->mode.dirty = true;
+
+	return TRUE;
+}
+
+static Bool
 sna_crtc_set_mode_major(xf86CrtcPtr crtc, DisplayModePtr mode,
 			Rotation rotation, int x, int y)
 {
-	ScrnInfoPtr scrn = crtc->scrn;
-	struct sna *sna = to_sna(scrn);
+	struct sna *sna = to_sna(crtc->scrn);
 	struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
-	struct kgem_bo *saved_bo, *bo;
 	struct drm_mode_modeinfo saved_kmode;
-	uint32_t saved_offset;
-	bool saved_transform;
 	char outputs[256];
 
 	if (mode->HDisplay == 0 || mode->VDisplay == 0)
@@ -2081,54 +2135,12 @@ sna_crtc_set_mode_major(xf86CrtcPtr crtc, DisplayModePtr mode,
 #endif
 
 	saved_kmode = sna_crtc->kmode;
-	saved_bo = sna_crtc->bo;
-	saved_transform = sna_crtc->transform;
-	saved_offset = sna_crtc->offset;
-
-	sna_crtc->fallback_shadow = false;
-retry: /* Attach per-crtc pixmap or direct */
-	bo = sna_crtc_attach(crtc);
-	if (bo == NULL)
-		return FALSE;
-
-	kgem_bo_submit(&sna->kgem, bo);
-
-	sna_crtc->bo = bo;
 	mode_to_kmode(&sna_crtc->kmode, mode);
-	if (!sna_crtc_apply(crtc)) {
-		int err = errno;
+	if (__sna_crtc_set_mode(crtc))
+		return TRUE;
 
-		kgem_bo_destroy(&sna->kgem, bo);
-
-		if (!sna_crtc->shadow) {
-			sna_crtc->fallback_shadow = true;
-			goto retry;
-		}
-
-		xf86DrvMsg(crtc->scrn->scrnIndex, X_ERROR,
-			   "failed to set mode: %s [%d]\n", strerror(err), err);
-
-		sna_crtc->offset = saved_offset;
-		sna_crtc->transform = saved_transform;
-		sna_crtc->bo = saved_bo;
-		sna_crtc->kmode = saved_kmode;
-		return FALSE;
-	}
-	bo->active_scanout++;
-	if (saved_bo) {
-		assert(saved_bo->active_scanout);
-		assert(saved_bo->refcnt >= saved_bo->active_scanout);
-		saved_bo->active_scanout--;
-		kgem_bo_destroy(&sna->kgem, saved_bo);
-	}
-
-	sna_crtc_randr(crtc);
-	if (sna_crtc->transform)
-		sna_crtc_damage(crtc);
-	sna->mode.front_active += saved_bo == NULL;
-	sna->mode.dirty = true;
-
-	return TRUE;
+	sna_crtc->kmode = saved_kmode;
+	return FALSE;
 }
 
 static void
@@ -2146,9 +2158,7 @@ sna_crtc_dpms(xf86CrtcPtr crtc, int mode)
 
 	if (mode == DPMSModeOn &&
 	    priv->bo == NULL &&
-	    !sna_crtc_set_mode_major(crtc,
-				     &crtc->mode, crtc->rotation,
-				     crtc->x, crtc->y))
+	    !__sna_crtc_set_mode(crtc))
 		mode = DPMSModeOff;
 
 	if (mode != DPMSModeOn)
@@ -2176,9 +2186,7 @@ void sna_mode_adjust_frame(struct sna *sna, int x, int y)
 
 	crtc->x = x;
 	crtc->y = y;
-	if (to_sna_crtc(crtc) &&
-	    !sna_crtc_set_mode_major(crtc, &crtc->mode,
-				     crtc->rotation, x, y)) {
+	if (to_sna_crtc(crtc) && !__sna_crtc_set_mode(crtc)) {
 		crtc->x = saved_x;
 		crtc->y = saved_y;
 	}
@@ -4129,9 +4137,7 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 		if (!crtc->enabled)
 			continue;
 
-		if (!sna_crtc_set_mode_major(crtc,
-					     &crtc->mode, crtc->rotation,
-					     crtc->x, crtc->y))
+		if (!__sna_crtc_set_mode(crtc))
 			sna_crtc_disable(crtc);
 	}
 
