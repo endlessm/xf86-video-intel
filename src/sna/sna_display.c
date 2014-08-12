@@ -2157,6 +2157,7 @@ sna_crtc_dpms(xf86CrtcPtr crtc, int mode)
 	priv->dpms_mode = mode;
 
 	if (mode == DPMSModeOn &&
+	    crtc->enabled &&
 	    priv->bo == NULL &&
 	    !__sna_crtc_set_mode(crtc))
 		mode = DPMSModeOff;
