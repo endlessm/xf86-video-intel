@@ -2864,7 +2864,7 @@ sna_output_get_modes(xf86OutputPtr output)
 	 * If it is incorrect, please fix me.
 	 */
 	sna_output->has_panel_limits = false;
-	if (sna_output->add_default_modes) {
+	if (sna_output->is_panel) {
 		sna_output->panel_hdisplay = sna_output->panel_vdisplay = 0;
 		for (i = 0; i < sna_output->num_modes; i++) {
 			struct drm_mode_modeinfo *m;
@@ -2878,10 +2878,10 @@ sna_output_get_modes(xf86OutputPtr output)
 		sna_output->has_panel_limits =
 			sna_output->panel_hdisplay &&
 			sna_output->panel_vdisplay;
-
-		Modes = sna_output_panel_edid(output, Modes);
 	}
 
+	if (sna_output->add_default_modes)
+		Modes = sna_output_panel_edid(output, Modes);
 
 	return Modes;
 }
