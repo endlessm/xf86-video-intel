@@ -4836,11 +4836,10 @@ sna_cursor_pre_init(struct sna *sna)
 	if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_GET_CAP, &cap) == 0)
 		sna->cursor.max_size = cap.value;
 
-#if HAS_DEBUG_FULL
 	cap.name = DRM_CAP_CURSOR_HEIGHT;
-	if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_GET_CAP, &cap) == 0)
-		assert(sna->cursor.max_size == cap.value);
-#endif
+	if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_GET_CAP, &cap) == 0 &&
+	    cap.value < sna->cursor.max_size)
+		sna->cursor.max_size = cap.value;
 
 	v = -1; /* No param uses the sign bit, reserve it for errors */
 	if (sna->kgem.gen >= 033) {
