@@ -4478,8 +4478,10 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 
 	size = kgem_surface_size(kgem, kgem->has_relaxed_fencing, flags,
 				 width, height, bpp, tiling, &pitch);
-	if (size == 0)
+	if (size == 0) {
+		DBG(("%s: invalid surface size (too large?)\n", __FUNCTION__));
 		return NULL;
+	}
 
 	size /= PAGE_SIZE;
 	bucket = cache_bucket(size);
@@ -5058,17 +5060,22 @@ no_retire:
 	}
 
 create:
-	if (flags & CREATE_CACHED)
+	if (flags & CREATE_CACHED) {
+		DBG(("%s: no cached bo found, requested not to create a new bo\n", __FUNCTION__));
 		return NULL;
+	}
 
 	if (bucket >= NUM_CACHE_BUCKETS)
 		size = ALIGN(size, 1024);
 	handle = gem_create(kgem->fd, size);
-	if (handle == 0)
+	if (handle == 0) {
+		DBG(("%s: kernel allocation (gem_create) failure\n", __FUNCTION__));
 		return NULL;
+	}
 
 	bo = __kgem_bo_alloc(handle, size);
 	if (!bo) {
+		DBG(("%s: malloc failed\n", __FUNCTION__));
 		gem_close(kgem->fd, handle);
 		return NULL;
 	}
@@ -5082,6 +5089,7 @@ create:
 			__kgem_bo_make_scanout(kgem, bo, width, height);
 	} else {
 		if (flags & CREATE_EXACT) {
+			DBG(("%s: failed to set exact tiling (gem_set_tiling)\n", __FUNCTION__));
 			gem_close(kgem->fd, handle);
 			free(bo);
 			return NULL;
