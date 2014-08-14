@@ -2066,8 +2066,11 @@ __sna_crtc_set_mode(xf86CrtcPtr crtc)
 	sna_crtc->fallback_shadow = false;
 retry: /* Attach per-crtc pixmap or direct */
 	bo = sna_crtc_attach(crtc);
-	if (bo == NULL)
-		return FALSE;
+	if (bo == NULL) {
+		xf86DrvMsg(crtc->scrn->scrnIndex, X_ERROR,
+			   "unable to attach scanout\n");
+		goto error;
+	}
 
 	kgem_bo_submit(&sna->kgem, bo);
 
@@ -2084,11 +2087,7 @@ retry: /* Attach per-crtc pixmap or direct */
 
 		xf86DrvMsg(crtc->scrn->scrnIndex, X_ERROR,
 			   "failed to set mode: %s [%d]\n", strerror(err), err);
-
-		sna_crtc->offset = saved_offset;
-		sna_crtc->transform = saved_transform;
-		sna_crtc->bo = saved_bo;
-		return FALSE;
+		goto error;
 	}
 
 	bo->active_scanout++;
@@ -2106,6 +2105,12 @@ retry: /* Attach per-crtc pixmap or direct */
 	sna->mode.dirty = true;
 
 	return TRUE;
+
+error:
+	sna_crtc->offset = saved_offset;
+	sna_crtc->transform = saved_transform;
+	sna_crtc->bo = saved_bo;
+	return FALSE;
 }
 
 static Bool
