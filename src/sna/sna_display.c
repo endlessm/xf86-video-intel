@@ -1792,8 +1792,10 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 		unsigned long tiled_limit;
 		int tiling;
 
-		if (!sna_crtc_enable_shadow(sna, sna_crtc))
+		if (!sna_crtc_enable_shadow(sna, sna_crtc)) {
+			DBG(("%s: failed to enable crtc shadow\n"));
 			return NULL;
+		}
 
 		DBG(("%s: attaching to per-crtc pixmap %dx%d\n",
 		     __FUNCTION__, crtc->mode.HDisplay, crtc->mode.VDisplay));
@@ -1816,10 +1818,13 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 				    crtc->mode.HDisplay, crtc->mode.VDisplay,
 				    scrn->bitsPerPixel,
 				    tiling, CREATE_SCANOUT);
-		if (bo == NULL)
+		if (bo == NULL) {
+			DBG(("%s: failed to allocate crtc scanout\n"));
 			return NULL;
+		}
 
 		if (!get_fb(sna, bo, crtc->mode.HDisplay, crtc->mode.VDisplay)) {
+			DBG(("%s: failed to bind fb for crtc scanout\n"));
 			kgem_bo_destroy(&sna->kgem, bo);
 			return NULL;
 		}
@@ -1830,13 +1835,17 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 		if (sna_crtc->slave_pixmap) {
 			DBG(("%s: attaching to scanout pixmap\n", __FUNCTION__));
 			bo = sna_pixmap_pin(sna_crtc->slave_pixmap, PIN_SCANOUT);
-			if (bo == NULL)
+			if (bo == NULL) {
+				DBG(("%s: failed to pin crtc scanout\n"));
 				return NULL;
+			}
 
 			if (!get_fb(sna, bo,
 				    sna_crtc->slave_pixmap->drawable.width,
-				    sna_crtc->slave_pixmap->drawable.height))
+				    sna_crtc->slave_pixmap->drawable.height)) {
+				DBG(("%s: failed to bind fb for crtc scanout\n"));
 				return NULL;
+			}
 		} else {
 			DBG(("%s: attaching to framebuffer\n", __FUNCTION__));
 			bo = sna_pixmap_pin(sna->front, PIN_SCANOUT);
@@ -1845,16 +1854,20 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 				return NULL;
 			}
 
-			if (!get_fb(sna, bo, scrn->virtualX, scrn->virtualY))
+			if (!get_fb(sna, bo, scrn->virtualX, scrn->virtualY)) {
+				DBG(("%s: failed to bind fb for crtc scanout\n"));
 				return NULL;
+			}
 		}
 
 		if (sna->flags & SNA_TEAR_FREE) {
 			assert(sna_crtc->slave_pixmap == NULL);
 
 			DBG(("%s: enabling TearFree shadow\n", __FUNCTION__));
-			if (!sna_crtc_enable_shadow(sna, sna_crtc))
+			if (!sna_crtc_enable_shadow(sna, sna_crtc)) {
+				DBG(("%s: failed to enable crtc shadow\n"));
 				return NULL;
+			}
 
 			if (sna->mode.shadow == NULL) {
 				RegionRec region;
@@ -1874,12 +1887,15 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 							scrn->bitsPerPixel,
 							I915_TILING_X,
 							CREATE_SCANOUT);
-				if (shadow == NULL)
+				if (shadow == NULL) {
+					DBG(("%s: failed to allocate TearFree shadow bo\n", __FUNCTION__));
 					return NULL;
+				}
 
 				if (!get_fb(sna, shadow,
 					    region.extents.x2,
 					    region.extents.y2)) {
+					DBG(("%s: failed to bind fb for TearFeee shadow\n"));
 					kgem_bo_destroy(&sna->kgem, shadow);
 					return NULL;
 				}
