@@ -1885,7 +1885,11 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 							region.extents.x2,
 							region.extents.y2,
 							scrn->bitsPerPixel,
-							I915_TILING_X,
+							kgem_choose_tiling(&sna->kgem,
+									   I915_TILING_X,
+									   region.extents.x2,
+									   region.extents.y2,
+									   sna->scrn->bitsPerPixel),
 							CREATE_SCANOUT);
 				if (shadow == NULL) {
 					DBG(("%s: failed to allocate TearFree shadow bo\n", __FUNCTION__));
