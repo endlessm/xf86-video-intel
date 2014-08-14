@@ -1655,15 +1655,21 @@ static uint32_t kgem_surface_size(struct kgem *kgem,
 
 	/* If it is too wide for the blitter, don't even bother.  */
 	if (tiling != I915_TILING_NONE) {
-		if (*pitch > 8192)
+		if (*pitch > 8192) {
+			DBG(("%s: too wide for tiled surface (pitch=%d, limit=%d)\n",
+			     __FUNCTION__, *pitch, 8192));
 			return 0;
+		}
 
 		for (size = tile_width; size < *pitch; size <<= 1)
 			;
 		*pitch = size;
 	} else {
-		if (*pitch >= 32768)
+		if (*pitch >= 32768) {
+			DBG(("%s: too wide for linear surface (pitch=%d, limit=%d)\n",
+			     __FUNCTION__, *pitch, 32767));
 			return 0;
+		}
 	}
 
 	size = *pitch * height;
