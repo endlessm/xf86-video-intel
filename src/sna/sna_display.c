@@ -1700,11 +1700,18 @@ static bool use_shadow(struct sna *sna, xf86CrtcPtr crtc)
 		pitch_limit = priv->gpu_bo->tiling ? 8 * 1024 : 16 * 1024;
 	else
 		pitch_limit = 8 * 1024;
+	DBG(("%s: gpu bo handle=%d tiling=%d pitch=%d, limit=%d\n", __FUNCTION__, priv->gpu_bo->handle, priv->gpu_bo->tiling, priv->gpu_bo->pitch, pitch_limit));
 	if (priv->gpu_bo->pitch > pitch_limit)
 		return true;
 
-	if (priv->gpu_bo->tiling && sna->flags & SNA_LINEAR_FB)
+	if (priv->gpu_bo->tiling && sna->flags 	& SNA_LINEAR_FB) {
+		DBG(("%s: gpu bo is tiled, needlinear, forcing shadow\n", __FUNCTION__));
 		return true;
+	}
+	if (!priv->gpu_bo->tiling && !(sna->flags & SNA_LINEAR_FB)) {
+		DBG(("%s: gpu bo is linear, forcing shadow\n", __FUNCTION__));
+		return true;
+	}
 
 	transform = NULL;
 	if (crtc->transformPresent)
@@ -1837,8 +1844,10 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 		} else {
 			DBG(("%s: attaching to framebuffer\n", __FUNCTION__));
 			bo = sna_pixmap_pin(sna->front, PIN_SCANOUT);
-			if (bo == NULL)
+			if (bo == NULL) {
+				DBG(("%s: failed to pin framebuffer\n", __FUNCTION__));
 				return NULL;
+			}
 
 			if (!get_fb(sna, bo, scrn->virtualX, scrn->virtualY))
 				return NULL;
