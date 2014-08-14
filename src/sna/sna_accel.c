@@ -4114,12 +4114,19 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 		assert(list_is_empty(&priv->flush_list));
 
 		if (flags & __MOVE_FORCE || priv->create & KGEM_CAN_CREATE_GPU) {
+			bool is_linear;
+
 			assert(pixmap->drawable.width > 0);
 			assert(pixmap->drawable.height > 0);
 			assert(pixmap->drawable.bitsPerPixel >= 8);
 
-			if (sna_pixmap_default_tiling(sna, pixmap) == I915_TILING_NONE &&
-			    priv->cpu_bo && !priv->shm &&
+			is_linear = sna_pixmap_default_tiling(sna, pixmap) == I915_TILING_NONE;
+			if (is_linear && flags & __MOVE_TILED) {
+				DBG(("%s: not creating linear GPU bo\n", __FUNCTION__));
+				return NULL;
+			}
+
+			if (is_linear && priv->cpu_bo && !priv->shm &&
 			    kgem_bo_convert_to_gpu(&sna->kgem, priv->cpu_bo, flags)) {
 				assert(!priv->mapped);
 				assert(!IS_STATIC_PTR(priv->ptr));

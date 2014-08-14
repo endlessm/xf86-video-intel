@@ -1704,12 +1704,8 @@ static bool use_shadow(struct sna *sna, xf86CrtcPtr crtc)
 	if (priv->gpu_bo->pitch > pitch_limit)
 		return true;
 
-	if (priv->gpu_bo->tiling && sna->flags 	& SNA_LINEAR_FB) {
-		DBG(("%s: gpu bo is tiled, needlinear, forcing shadow\n", __FUNCTION__));
-		return true;
-	}
-	if (!priv->gpu_bo->tiling && !(sna->flags & SNA_LINEAR_FB)) {
-		DBG(("%s: gpu bo is linear, forcing shadow\n", __FUNCTION__));
+	if (priv->gpu_bo->tiling && sna->flags & SNA_LINEAR_FB) {
+		DBG(("%s: gpu bo is tiled, need linear, forcing shadow\n", __FUNCTION__));
 		return true;
 	}
 

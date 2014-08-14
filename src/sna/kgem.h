@@ -273,6 +273,7 @@ unsigned kgem_can_create_2d(struct kgem *kgem, int width, int height, int depth)
 #define KGEM_CAN_CREATE_CPU	0x2
 #define KGEM_CAN_CREATE_LARGE	0x4
 #define KGEM_CAN_CREATE_GTT	0x8
+#define KGEM_CAN_CREATE_TILED	0x10
 
 bool kgem_check_surface_size(struct kgem *kgem,
 			     uint32_t width,

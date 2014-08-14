@@ -4306,7 +4306,7 @@ unsigned kgem_can_create_2d(struct kgem *kgem,
 					 &pitch);
 		DBG(("%s: tiled[%d] size=%d\n", __FUNCTION__, tiling, size));
 		if (size > 0 && size <= kgem->max_gpu_size)
-			flags |= KGEM_CAN_CREATE_GPU;
+			flags |= KGEM_CAN_CREATE_GPU | KGEM_CAN_CREATE_TILED;
 		if (size > 0 && size <= PAGE_SIZE*kgem->aperture_mappable/4)
 			flags |= KGEM_CAN_CREATE_GTT;
 		if (size > PAGE_SIZE*kgem->aperture_mappable/4)
@@ -4323,7 +4323,7 @@ unsigned kgem_can_create_2d(struct kgem *kgem,
 			while (fence_size < size)
 				fence_size <<= 1;
 			if (fence_size > kgem->max_gpu_size)
-				flags &= ~KGEM_CAN_CREATE_GPU;
+				flags &= ~KGEM_CAN_CREATE_GPU | KGEM_CAN_CREATE_TILED;
 			if (fence_size > PAGE_SIZE*kgem->aperture_fenceable/4)
 				flags &= ~KGEM_CAN_CREATE_GTT;
 		}
