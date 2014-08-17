@@ -211,6 +211,7 @@ static Bool I830GetEarlyOptions(ScrnInfoPtr scrn)
 	if (!intel->Options)
 		return FALSE;
 
+#if USE_UXA
 	intel->fallback_debug = xf86ReturnOptValBool(intel->Options,
 						     OPTION_FALLBACKDEBUG,
 						     FALSE);
@@ -232,6 +233,7 @@ static Bool I830GetEarlyOptions(ScrnInfoPtr scrn)
 				 FALSE))
 		intel->debug_flush |= DEBUG_FLUSH_WAIT;
 
+#endif
 	return TRUE;
 }
 

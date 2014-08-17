@@ -127,6 +127,7 @@ typedef struct intel_screen_private {
 
 	dri_bufmgr *bufmgr;
 
+#if USE_UXA
 	uint32_t batch_ptr[4096];
 	/** Byte offset in batch_ptr for the next dword to be emitted. */
 	unsigned int batch_used;
@@ -142,6 +143,7 @@ typedef struct intel_screen_private {
 	struct list batch_pixmaps;
 	drm_intel_bo *wa_scratch_bo;
 	OsTimerPtr cache_expire;
+#endif
 
 	/* For Xvideo */
 	Bool use_overlay;
@@ -178,8 +180,10 @@ typedef struct intel_screen_private {
 	void (*batch_flush) (struct intel_screen_private *intel);
 	void (*batch_commit_notify) (struct intel_screen_private *intel);
 
+#if USE_UXA
 	struct _UxaDriver *uxa_driver;
 	int uxa_flags;
+#endif
 	Bool need_sync;
 	int accel_pixmap_offset_alignment;
 	int accel_max_x;
@@ -212,6 +216,7 @@ typedef struct intel_screen_private {
 		drm_intel_bo *gen6_depth_stencil_bo;
 	} video;
 
+#if USE_UXA
 	/* Render accel state */
 	float scale_units[2][2];
 	/** Transform pointers for src/mask, or NULL if identity */
@@ -269,6 +274,7 @@ typedef struct intel_screen_private {
 
 	/* 965 render acceleration state */
 	struct gen4_render_state *gen4_render_state;
+#endif
 
 	/* DRI enabled this generation. */
 	enum dri_type dri2, dri3;
