@@ -184,7 +184,7 @@ intel_output_backlight_init(xf86OutputPtr output)
 {
 	struct intel_output *intel_output = output->driver_private;
 	intel_screen_private *intel = intel_get_screen_private(output->scrn);
-	char *str;
+	const char *str;
 
 #if !USE_BACKLIGHT
 	return;
