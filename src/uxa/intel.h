@@ -98,7 +98,6 @@ struct intel_pixmap {
 
 	struct list batch;
 
-	uint16_t stride;
 	uint8_t tiling;
 	int8_t busy :2;
 	uint8_t dirty :1;
@@ -501,9 +500,9 @@ intel_get_screen_private(ScrnInfoPtr scrn)
 #define MIN(a,b)	((a) < (b) ? (a) : (b))
 #endif
 
-static inline unsigned long intel_pixmap_pitch(PixmapPtr pixmap)
+static inline int intel_pixmap_pitch(PixmapPtr pixmap)
 {
-	return (unsigned long)pixmap->devKind;
+	return pixmap->devKind;
 }
 
 /* Batchbuffer support macros and functions */

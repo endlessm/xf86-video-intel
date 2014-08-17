@@ -733,7 +733,6 @@ free_priv:
 
 		dri_bo_reference(bo);
 		priv->bo = bo;
-		priv->stride = intel_pixmap_pitch(pixmap);
 
 		if (drm_intel_bo_get_tiling(bo, &tiling, &swizzle_mode)) {
 			bo = NULL;
@@ -748,12 +747,12 @@ free_priv:
 		tile_width = intel_get_tile_width(intel, tiling, stride);
 		stride = ALIGN(stride, tile_width);
 
-		if (priv->stride < stride ||
-		    priv->stride & (tile_width - 1) ||
-		    priv->stride >= KB(32)) {
+		if (intel_pixmap_pitch(pixmap) < stride ||
+		    intel_pixmap_pitch(pixmap) & (tile_width - 1) ||
+		    intel_pixmap_pitch(pixmap) >= KB(32)) {
 			xf86DrvMsg(scrn->scrnIndex, X_ERROR,
 				   "%s: stride on buffer object does not match constraints: stride=%d, must be greater than %d, but less than %d, and have alignment at least %d\n",
-				   __FUNCTION__, priv->stride, stride, KB(32), tile_width);
+				   __FUNCTION__, intel_pixmap_pitch(pixmap), stride, KB(32), tile_width);
 			bo = NULL;
 			goto free_priv;
 		}
@@ -769,9 +768,9 @@ free_priv:
 				height = 32;
 
 			height = ALIGN(pixmap->drawable.height, height);
-			size = intel_get_fence_size(intel, priv->stride * height);
+			size = intel_get_fence_size(intel, intel_pixmap_pitch(pixmap) * height);
 		} else
-			size = priv->stride * pixmap->drawable.height;
+			size = intel_pixmap_pitch(pixmap) * pixmap->drawable.height;
 
 		if (bo->size < size || bo->size > intel->max_bo_size) {
 			xf86DrvMsg(scrn->scrnIndex, X_ERROR,
@@ -917,7 +916,6 @@ static Bool intel_uxa_put_image(PixmapPtr pixmap,
 
 			if (tiling != I915_TILING_NONE)
 				drm_intel_bo_set_tiling(bo, &tiling, stride);
-			priv->stride = stride;
 			priv->tiling = tiling;
 
 			screen->ModifyPixmapHeader(pixmap,
@@ -1197,7 +1195,6 @@ intel_uxa_create_pixmap(ScreenPtr screen, int w, int h, int depth,
 
 		if (tiling != I915_TILING_NONE)
 			drm_intel_bo_set_tiling(priv->bo, &tiling, stride);
-		priv->stride = stride;
 		priv->tiling = tiling;
 		priv->offscreen = 1;
 
@@ -1333,7 +1330,6 @@ intel_uxa_share_pixmap_backing(PixmapPtr ppix, ScreenPtr slave, void **fd_handle
 
 		if (tiling != I915_TILING_NONE)
 			drm_intel_bo_set_tiling(newbo, &tiling, stride);
-		priv->stride = stride;
 		priv->tiling = tiling;
 		intel_set_pixmap_bo(ppix, newbo);
 

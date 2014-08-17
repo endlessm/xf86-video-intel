@@ -152,7 +152,7 @@ static PixmapPtr fixup_glamor(DrawablePtr drawable, PixmapPtr pixmap)
 				   drawable->width,
 				   drawable->height,
 				   0, 0,
-				   priv->stride,
+				   intel_pixmap_pitch(pixmap),
 				   NULL);
 	screen->DestroyPixmap(pixmap);
 	intel_get_screen_private(xf86ScreenToScrn(screen))->needs_flush = TRUE;

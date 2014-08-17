@@ -121,7 +121,7 @@ static int intel_dri3_fd_from_pixmap(ScreenPtr screen,
 	if (!priv)
 		return -1;
 
-	if (priv->stride > UINT16_MAX)
+	if (intel_pixmap_pitch(pixmap) > UINT16_MAX)
 		return -1;
 
 	if (drm_intel_bo_gem_export_to_prime(priv->bo, &fd) < 0)
@@ -129,7 +129,7 @@ static int intel_dri3_fd_from_pixmap(ScreenPtr screen,
 
 	priv->pinned |= PIN_DRI3;
 
-	*stride = priv->stride;
+	*stride = intel_pixmap_pitch(pixmap);
 	*size = priv->bo->size;
 	return fd;
 }

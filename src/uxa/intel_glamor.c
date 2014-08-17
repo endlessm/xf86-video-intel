@@ -193,7 +193,7 @@ intel_glamor_create_textured_pixmap(PixmapPtr pixmap)
 
 	priv = intel_get_pixmap_private(pixmap);
 	if (glamor_egl_create_textured_pixmap(pixmap, priv->bo->handle,
-					      priv->stride)) {
+					      intel_pixmap_pitch(pixmap))) {
 		drm_intel_bo_disable_reuse(priv->bo);
 		priv->pinned |= PIN_GLAMOR;
 		return TRUE;
