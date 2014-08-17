@@ -1326,6 +1326,11 @@ Bool intel_uxa_init(ScreenPtr screen)
 	ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
 	intel_screen_private *intel = intel_get_screen_private(scrn);
 
+	intel_batch_init(scrn);
+
+	if (INTEL_INFO(intel)->gen >= 040 && INTEL_INFO(intel)->gen < 0100)
+		gen4_render_state_init(scrn);
+
 #if HAS_DIXREGISTERPRIVATEKEY
 	if (!dixRegisterPrivateKey(&uxa_pixmap_index, PRIVATE_PIXMAP, 0))
 #else

@@ -874,11 +874,6 @@ I830ScreenInit(SCREEN_INIT_ARGS_DECL)
 	if (!intel_init_initial_framebuffer(scrn))
 		return FALSE;
 
-	intel_batch_init(scrn);
-
-	if (INTEL_INFO(intel)->gen >= 040 && INTEL_INFO(intel)->gen < 0100)
-		gen4_render_state_init(scrn);
-
 	miClearVisualTypes();
 	if (!miSetVisualTypes(scrn->depth,
 			      miGetDefaultVisualMask(scrn->depth),
