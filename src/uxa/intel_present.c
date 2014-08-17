@@ -54,9 +54,6 @@
 
 #include "present.h"
 
-#include "intel_glamor.h"
-#include "uxa.h"
-
 struct intel_present_vblank_event {
 	uint64_t        event_id;
 };
