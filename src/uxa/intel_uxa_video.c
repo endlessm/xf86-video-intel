@@ -63,7 +63,7 @@
 #include "windowstr.h"
 #include "damage.h"
 #include "intel.h"
-#include "intel_video.h"
+#include "intel_uxa.h"
 #include "i830_reg.h"
 #include "xf86xv.h"
 #include <X11/extensions/Xv.h>

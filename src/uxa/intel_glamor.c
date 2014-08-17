@@ -39,7 +39,7 @@
 #include "intel.h"
 #include "i915_drm.h"
 #include "intel_glamor.h"
-#include "uxa.h"
+#include "intel_uxa.h"
 #include "intel_options.h"
 
 void

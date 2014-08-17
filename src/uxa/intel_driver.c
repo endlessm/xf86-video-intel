@@ -68,12 +68,13 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "intel_xvmc.h"
 #endif
 
-#include "uxa.h"
-
-#include "i915_drm.h"
+#if USE_UXA
+#include "intel_uxa.h"
+#endif
 
 #include "intel_glamor.h"
 #include "intel_options.h"
+#include "i915_drm.h"
 
 static void i830AdjustFrame(ADJUST_FRAME_ARGS_DECL);
 static Bool I830CloseScreen(CLOSE_SCREEN_ARGS_DECL);

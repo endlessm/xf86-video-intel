@@ -38,7 +38,7 @@
 
 #include "intel.h"
 #include "intel_xvmc.h"
-#include "intel_video.h"
+#include "intel_uxa.h"
 #include "i830_reg.h"
 #include "i965_reg.h"
 #include "brw_defines.h"

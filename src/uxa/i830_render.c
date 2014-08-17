@@ -33,6 +33,7 @@
 #include "xorg-server.h"
 #include "xf86.h"
 #include "intel.h"
+#include "intel_uxa.h"
 #include "i830_reg.h"
 
 struct blendinfo {

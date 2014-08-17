@@ -24,6 +24,7 @@
 #define _INTEL_UXA_H_
 
 #include "intel_video.h"
+#include "uxa.h"
 
 struct intel_uxa_pixmap {
 	dri_bo *bo;

@@ -29,6 +29,9 @@
 #include "fb.h"
 
 #include "intel.h"
+#if USE_UXA
+#include "intel_uxa.h"
+#endif
 #include "dri3.h"
 #include "intel_glamor.h"
 

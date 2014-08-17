@@ -534,8 +534,6 @@ Bool intel_present_screen_init(ScreenPtr screen);
 static inline Bool intel_present_screen_init(ScreenPtr screen) { return 0; }
 #endif
 
-#include "intel_uxa.h"
-
 dri_bo *
 intel_get_pixmap_bo(PixmapPtr pixmap);
 

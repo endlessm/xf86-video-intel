@@ -41,7 +41,7 @@
 #include "i915_drm.h"
 #include "i965_reg.h"
 
-#include "uxa.h"
+#include "intel_uxa.h"
 
 #define DUMP_BATCHBUFFERS NULL // "/tmp/i915-batchbuffers.dump"
 

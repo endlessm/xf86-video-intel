@@ -66,8 +66,10 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "dri2.h"
 
+#if USE_UXA
+#include "intel_uxa.h"
+#endif
 #include "intel_glamor.h"
-#include "uxa.h"
 
 typedef struct {
 	int refcnt;

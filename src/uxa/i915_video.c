@@ -37,7 +37,7 @@
 #include "gcstruct.h"
 
 #include "intel.h"
-#include "intel_video.h"
+#include "intel_uxa.h"
 #include "i915_reg.h"
 #include "i915_3d.h"
 

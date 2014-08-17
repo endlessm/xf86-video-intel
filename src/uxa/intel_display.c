@@ -55,7 +55,10 @@
 #endif
 #include "xf86DDC.h"
 #include "fb.h"
-#include "uxa.h"
+
+#if USE_UXA
+#include "intel_uxa.h"
+#endif
 
 #include "intel_glamor.h"
 
