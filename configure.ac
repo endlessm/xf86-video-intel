@@ -246,6 +246,7 @@ if test "x$shm" = "xyes"; then
 		  AC_MSG_RESULT(yes),
 		  AC_MSG_RESULT(no),
 		  AC_MSG_RESULT(assuming no))
+	AC_DEFINE([HAVE_MIT_SHM], 1, [Define to 1 if MIT-SHM is available])
 fi
 
 PKG_CHECK_MODULES(X11_DRI3, [xcb-dri3 xcb-sync xcb-present x11-xcb xshmfence x11 xrender xext libdrm], [x11_dri3="yes"], [x11_dri3="no"])

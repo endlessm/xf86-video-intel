@@ -37,6 +37,7 @@
 #include <X11/Xutil.h> /* for XDestroyImage */
 #include <X11/Xlibint.h>
 #include <X11/extensions/Xrender.h>
+#if HAVE_MIT_SHM
 #include <X11/extensions/XShm.h>
 #if HAVE_X11_EXTENSIONS_SHMPROTO_H
 #include <X11/extensions/shmproto.h>
@@ -45,9 +46,10 @@
 #else
 #error Failed to find the right header for X11 MIT-SHM protocol definitions
 #endif
-#include <pixman.h> /* for pixman blt functions */
 #include <sys/ipc.h>
 #include <sys/shm.h>
+#endif
+#include <pixman.h> /* for pixman blt functions */
 
 #include "test.h"
 
@@ -228,6 +230,7 @@ static Picture source_radial_generic(struct test_display *t, struct test_target 
 	return XRenderCreateRadialGradient(t->dpy, &gradient, stops, colors, 2);
 }
 
+#if HAVE_MIT_SHM
 static XShmSegmentInfo shmref, shmout;
 
 static void setup_shm(struct test *t)
@@ -290,6 +293,10 @@ static Picture source_shm(struct test_display *t, struct test_target *target)
 
 	return picture;
 }
+#else
+static void setup_shm(struct test *t) { }
+static Picture source_shm(struct test_display *t, struct test_target *target) { return 0; }
+#endif
 
 static const struct {
 	Picture (*create)(struct test_display *, struct test_target *);
