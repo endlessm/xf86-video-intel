@@ -558,15 +558,19 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int probe)
 		return FALSE;
 
 	pEnt = xf86GetEntityInfo(scrn->entityList[0]);
-	if (pEnt == NULL)
+	if (pEnt == NULL) {
+		ERR(("%s: no EntityInfo found for scrn\n", __FUNCTION__));
 		return FALSE;
+	}
 
 	if (pEnt->location.type != BUS_PCI
 #ifdef XSERVER_PLATFORM_BUS
 	    && pEnt->location.type != BUS_PLATFORM
 #endif
-		)
+		) {
+		ERR(("%s: invalid EntityInfo found for scrn, location=%d\n", __FUNCTION__, pEnt->location.type));
 		return FALSE;
+	}
 
 	if (probe & PROBE_DETECT)
 		return TRUE;
@@ -1183,7 +1187,7 @@ static void sna_free_screen(FREE_SCREEN_ARGS_DECL)
 	SCRN_INFO_PTR(arg);
 	struct sna *sna = to_sna(scrn);
 
-	DBG(("%s\n", __FUNCTION__));
+	DBG(("%s [scrn=%p, sna=%p]\n", __FUNCTION__, scrn, sna));
 	if ((uintptr_t)sna & 3)
 		return;
 
