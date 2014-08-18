@@ -128,6 +128,7 @@ static int drm_get_minor(int fd)
 
 static void dump_debugfs(ScrnInfoPtr scrn, int fd, const char *name)
 {
+#if __linux__
 	char path[80];
 	int minor;
 
@@ -149,6 +150,7 @@ static void dump_debugfs(ScrnInfoPtr scrn, int fd, const char *name)
 		umount("X-debug");
 		return;
 	}
+#endif
 }
 
 static void dump_clients_info(ScrnInfoPtr scrn, int fd)
