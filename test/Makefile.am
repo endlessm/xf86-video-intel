@@ -40,7 +40,10 @@ stress_TESTS += \
 endif
 check_PROGRAMS = $(stress_TESTS)
 
-noinst_PROGRAMS = lowlevel-blt-bench
+noinst_PROGRAMS =
+if X11_SHM
+noinst_PROGRAMS += lowlevel-blt-bench
+endif
 
 AM_CFLAGS = @CWARNFLAGS@ $(X11_CFLAGS) $(DRM_CFLAGS)
 LDADD = libtest.la $(X11_LIBS) $(DRM_LIBS) $(CLOCK_GETTIME_LIBS)
