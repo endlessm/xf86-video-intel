@@ -510,15 +510,17 @@ sna_backlight_uevent(int fd, void *closure)
 
 		sna_output->backlight_active_level = val;
 
-		DBG(("%s(%s): sending change notification\n", __FUNCTION__, output->name));
-		RRChangeOutputProperty(output->randr_output,
-				       backlight_atom, XA_INTEGER,
-				       32, PropModeReplace, 1, &val,
-				       TRUE, FALSE);
-		RRChangeOutputProperty(output->randr_output,
-				       backlight_deprecated_atom, XA_INTEGER,
-				       32, PropModeReplace, 1, &val,
-				       TRUE, FALSE);
+		if (output->randr_output) {
+			DBG(("%s(%s): sending change notification\n", __FUNCTION__, output->name));
+			RRChangeOutputProperty(output->randr_output,
+					       backlight_atom, XA_INTEGER,
+					       32, PropModeReplace, 1, &val,
+					       TRUE, FALSE);
+			RRChangeOutputProperty(output->randr_output,
+					       backlight_deprecated_atom, XA_INTEGER,
+					       32, PropModeReplace, 1, &val,
+					       TRUE, FALSE);
+		}
 	}
 }
 
