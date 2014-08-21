@@ -595,10 +595,11 @@ static void sna_backlight_drain_uevents(struct sna *sna) { }
 static void sna_backlight_close(struct sna *sna) { }
 #endif
 
-static void
+static int
 sna_output_backlight_set(struct sna_output *sna_output, int level)
 {
 	xf86OutputPtr output = sna_output->base;
+	int ret = 0;
 
 	DBG(("%s(%s) level=%d, max=%d\n", __FUNCTION__,
 	     output->name, level, sna_output->backlight.max));
@@ -612,6 +613,7 @@ sna_output_backlight_set(struct sna_output *sna_output, int level)
 			RRDeleteOutputProperty(output->randr_output, backlight_atom);
 			RRDeleteOutputProperty(output->randr_output, backlight_deprecated_atom);
 		}
+		ret = -1;
 	}
 
 	/* Consume the uevent notification now so that we don't misconstrue
@@ -619,6 +621,7 @@ sna_output_backlight_set(struct sna_output *sna_output, int level)
 	 * state.
 	 */
 	sna_backlight_drain_uevents(to_sna(output->scrn));
+	return ret;
 }
 
 static int
@@ -3156,6 +3159,7 @@ sna_output_set_property(xf86OutputPtr output, Atom property,
 
 	if (property == backlight_atom || property == backlight_deprecated_atom) {
 		INT32 val;
+		int ret = 0;
 
 		if (value->type != XA_INTEGER || value->format != 32 ||
 		    value->size != 1)
@@ -3171,8 +3175,8 @@ sna_output_set_property(xf86OutputPtr output, Atom property,
 
 		sna_output->backlight_active_level = val;
 		if (sna_output->dpms_mode == DPMSModeOn)
-			sna_output_backlight_set(sna_output, val);
-		return TRUE;
+			ret = sna_output_backlight_set(sna_output, val);
+		return ret == 0;
 	}
 
 	if (!sna_output->id)
