@@ -27,6 +27,7 @@
 #ifndef FD_H
 #define FD_H
 
+int fd_move_cloexec(int fd);
 int fd_set_cloexec(int fd);
 int fd_set_nonblock(int fd);
 

@@ -271,7 +271,7 @@ enum backlight_type backlight_exists(const char *iface)
 
 static int __backlight_init(struct backlight *b, char *iface, int fd)
 {
-	b->fd = fd_set_cloexec(fd_set_nonblock(fd));
+	b->fd = fd_move_cloexec(fd_set_nonblock(fd));
 	b->iface = iface;
 	return 1;
 }
