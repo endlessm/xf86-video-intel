@@ -67,7 +67,7 @@
 #else
 static inline void sna_video_xvmc_setup(struct sna *sna, ScreenPtr ptr)
 {
-	DBG(("%s: XvMC not compiled in\n"));
+	DBG(("%s: XvMC not compiled in\n", __FUNCTION__));
 }
 #endif
 
