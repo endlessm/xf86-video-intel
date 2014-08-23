@@ -2330,6 +2330,7 @@ sna_dri2_flip_continue(struct sna *sna, struct sna_dri2_event *info)
 
 		assert(sna->dri2.flip_pending == NULL || sna->dri2.flip_pending == info);
 		sna->dri2.flip_pending = info;
+		assert(info->queued);
 	} else {
 		info->type = -info->mode;
 
@@ -2612,6 +2613,7 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 			     __FUNCTION__));
 			info->type = type = FLIP;
 			sna->dri2.flip_pending = info;
+			assert(info->queued);
 			current_msc++;
 		} else {
 			info->type = type = use_triple_buffer(sna, client, *target_msc == 0);
