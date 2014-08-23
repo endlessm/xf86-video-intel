@@ -1392,6 +1392,7 @@ sna_dri2_client_gone(CallbackListPtr *list, void *closure, void *data)
 		assert(event->client == client);
 
 		if (event->queued) {
+			sna_dri2_remove_event((WindowPtr)event->draw, event);
 			event->client = NULL;
 			event->draw = NULL;
 			list_del(&event->link);
