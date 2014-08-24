@@ -3209,7 +3209,8 @@ retry:
 	if (kgem_cleanup_cache(kgem))
 		goto retry;
 
-	return ret;
+	/* last gasp */
+	return do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_EXECBUFFER2, execbuf);
 }
 
 void _kgem_submit(struct kgem *kgem)
