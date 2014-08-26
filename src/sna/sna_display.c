@@ -5677,12 +5677,12 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 
 		sna_cursor_pre_init(sna);
 		sna_backlight_pre_init(sna);
+
+		set_size_range(sna);
 	} else {
 		if (num_fake == 0)
 			num_fake = 1;
 	}
-
-	set_size_range(sna);
 
 	if (!sna_mode_fake_init(sna, num_fake))
 		return false;
@@ -5740,6 +5740,7 @@ sna_mode_set_primary(struct sna *sna)
 		if (!xf86ReturnOptValBool(output->options, OPTION_PRIMARY, FALSE))
 			continue;
 
+		DBG(("%s: setting PrimaryOutput %s\n", __FUNCTION__, output->name));
 		rr->primaryOutput = output->randr_output;
 		RROutputChanged(rr->primaryOutput, 0);
 		rr->layoutChanged = TRUE;

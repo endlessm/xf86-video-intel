@@ -445,7 +445,13 @@ static Bool fb_supports_depth(int fd, int depth)
 {
 	struct drm_i915_gem_create create;
 	struct drm_mode_fb_cmd fb;
+	struct drm_mode_card_res res;
 	Bool ret;
+
+	memset(&res, 0, sizeof(res));
+	(void)drmIoctl(fd, DRM_IOCTL_MODE_GETRESOURCES, &res);
+	if (res.count_crtcs == 0)
+		return TRUE;
 
 	VG_CLEAR(create);
 	create.handle = 0;
