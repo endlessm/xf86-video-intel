@@ -367,7 +367,7 @@ static int __intel_open_device__pci(const struct pci_device *pci)
 			if (fd == -1)
 				break;
 
-			base = read(fd, path, 256);
+			base = read(fd, path, sizeof(path) - 1);
 			close(fd);
 
 			fd = -1;
