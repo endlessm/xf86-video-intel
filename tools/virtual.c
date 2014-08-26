@@ -2387,8 +2387,10 @@ static int bumblebee_open(struct context *ctx)
 	}
 
 	addr.sun_family = AF_UNIX;
-	strncpy(addr.sun_path, sizeof(addr.sun_path),
-		optarg && *optarg ? optarg : "/var/run/bumblebee.socket");
+	strncpy(addr.sun_path,
+		optarg && *optarg ? optarg : "/var/run/bumblebee.socket",
+		sizeof(addr.sun_path)-1);
+	addr.sun_path[sizeof(addr.sun_path)-1] = '\0';
 	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
 		DBG(X11, ("%s unable to create a socket: %d\n", __func__, errno));
 		goto err;
