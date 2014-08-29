@@ -17225,6 +17225,7 @@ static void sna_accel_post_damage(struct sna *sna)
 		RegionRec region, *damage;
 		PixmapPtr src, dst;
 		const BoxRec *box;
+		int16_t dx, dy;
 		int n;
 
 		assert(dirty->src == sna->front);
@@ -17254,7 +17255,13 @@ static void sna_accel_post_damage(struct sna *sna)
 		if (RegionNil(&region))
 			goto skip;
 
-		RegionTranslate(&region, -dirty->x, -dirty->y);
+		dx = -dirty->x;
+		dy = -dirty->y;
+#if HAS_DIRTYTRACKING2
+		dx += dirty->dst_x;
+		dy += dirty->dst_y;
+#endif
+		RegionTranslate(&region, dx, dy);
 		DamageRegionAppend(&dirty->slave_dst->drawable, &region);
 
 		DBG(("%s: slave:  ((%d, %d), (%d, %d))x%d\n", __FUNCTION__,
@@ -17277,17 +17284,17 @@ fallback:
 				do {
 					DBG(("%s: copy box (%d, %d)->(%d, %d)x(%d, %d)\n",
 					     __FUNCTION__,
-					     box->x1 + dirty->x, box->y1 + dirty->y,
+					     box->x1 - dx, box->y1 - dy,
 					     box->x1, box->y1,
 					     box->x2 - box->x1, box->y2 - box->y1));
 
 					assert(box->x2 > box->x1);
 					assert(box->y2 > box->y1);
 
-					assert(box->x1 + dirty->x >= 0);
-					assert(box->y1 + dirty->y >= 0);
-					assert(box->x2 + dirty->x <= src->drawable.width);
-					assert(box->y2 + dirty->y <= src->drawable.height);
+					assert(box->x1 - dx >= 0);
+					assert(box->y1 - dy >= 0);
+					assert(box->x2 - dx <= src->drawable.width);
+					assert(box->y2 - dy <= src->drawable.height);
 
 					assert(box->x1 >= 0);
 					assert(box->y1 >= 0);
@@ -17302,12 +17309,9 @@ fallback:
 						   dst->devPrivate.ptr,
 						   src->drawable.bitsPerPixel,
 						   src->devKind, dst->devKind,
-						   box->x1 + dirty->x,
-						   box->y1 + dirty->y,
-						   box->x1,
-						   box->y1,
-						   box->x2 - box->x1,
-						   box->y2 - box->y1);
+						   box->x1 - dx,      box->y1 - dy,
+						   box->x1,           box->y1,
+						   box->x2 - box->x1, box->y2 - box->y1);
 					box++;
 				} while (--n);
 				sigtrap_put();
@@ -17320,8 +17324,8 @@ fallback:
 				goto fallback;
 
 			if (!sna->render.copy_boxes(sna, GXcopy,
-						    &src->drawable, __sna_pixmap_get_bo(src), dirty->x, dirty->y,
-						    &dst->drawable, __sna_pixmap_get_bo(dst),0, 0,
+						    &src->drawable, __sna_pixmap_get_bo(src), -dx, -dy,
+						    &dst->drawable, __sna_pixmap_get_bo(dst),   0,   0,
 						    box, n, COPY_LAST))
 				goto fallback;
 
