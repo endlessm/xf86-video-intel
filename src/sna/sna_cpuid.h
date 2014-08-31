@@ -30,9 +30,7 @@
 #ifndef SNA_CPUID_H
 #define SNA_CPUID_H
 
-#include "compiler.h"
-
-#if HAS_GCC(4, 4) /* for __cpuid_count() */
+#ifdef HAVE_CPUID_H
 #include <cpuid.h>
 #else
 #define __get_cpuid_max(x, y) 0
