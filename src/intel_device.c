@@ -30,7 +30,6 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/mount.h>
 #include <assert.h>
 #include <string.h>
 #include <unistd.h>
@@ -126,9 +125,11 @@ static int drm_get_minor(int fd)
 	return st.st_rdev & 0x63;
 }
 
+#if __linux__
+#include <sys/mount.h>
+
 static void dump_debugfs(ScrnInfoPtr scrn, int fd, const char *name)
 {
-#if __linux__
 	char path[80];
 	int minor;
 
@@ -150,8 +151,10 @@ static void dump_debugfs(ScrnInfoPtr scrn, int fd, const char *name)
 		umount("X-debug");
 		return;
 	}
-#endif
 }
+#else
+static void dump_debugfs(ScrnInfoPtr scrn, int fd, const char *name) { }
+#endif
 
 static void dump_clients_info(ScrnInfoPtr scrn, int fd)
 {
