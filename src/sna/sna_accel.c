@@ -6880,6 +6880,14 @@ sna_do_copy(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	if (region.extents.y2 > src->y + (int) src->height)
 		region.extents.y2 = src->y + (int) src->height;
 
+	DBG(("%s: clipped src extents (%d, %d), (%d, %d)\n", __FUNCTION__,
+	     region.extents.x1, region.extents.y1,
+	     region.extents.x2, region.extents.y2));
+	if (box_empty(&region.extents)) {
+		DBG(("%s: src clipped out\n", __FUNCTION__));
+		return NULL;
+	}
+
 	/* Compute source clip region */
 	if (src->type == DRAWABLE_PIXMAP) {
 		if (src == dst && gc->clientClipType == CT_NONE) {
@@ -6921,10 +6929,12 @@ sna_do_copy(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	RegionTranslate(&region, dx-sx, dy-sy);
 	if (gc->pCompositeClip->data)
 		RegionIntersect(&region, &region, gc->pCompositeClip);
-	DBG(("%s: copy region (%d, %d), (%d, %d) x %d\n", __FUNCTION__,
+	DBG(("%s: copy region (%d, %d), (%d, %d) x %d + (%d, %d)\n",
+	     __FUNCTION__,
 	     region.extents.x1, region.extents.y1,
 	     region.extents.x2, region.extents.y2,
-	     region_num_rects(&region)));
+	     region_num_rects(&region),
+	     sx-dx, sy-dy));
 
 	if (!box_empty(&region.extents))
 		copy(src, dst, gc, &region, sx-dx, sy-dy, bitPlane, closure);
