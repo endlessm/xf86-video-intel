@@ -6533,11 +6533,12 @@ sna_crtc_redisplay(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo *bo)
 			transformed_box(&whole.extents, crtc);
 			region = &whole;
 		}
-		sna_blt_fill_boxes(sna, GXcopy,
-				   bo, draw->bitsPerPixel,
-				   priv->clear_color,
-				   region_rects(region), region_num_rects(region));
-		return;
+		if (sna_blt_fill_boxes(sna, GXcopy,
+				       bo, draw->bitsPerPixel,
+				       priv->clear_color,
+				       region_rects(region),
+				       region_num_rects(region)))
+			return;
 	}
 
 	if (crtc->filter == NULL &&
