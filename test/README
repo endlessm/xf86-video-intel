@@ -5,7 +5,7 @@ drawing commands and more explicit checking of the acceleration paths.
 Useful tools:
 
 # Packed YUV Xv tester
-gst-launch-1.0 videotestsrc pattern=snow ! 'video/x-raw,format=UYVY,width=640,height=360' ! xvimagesin
+gst-launch-1.0 videotestsrc pattern=snow ! 'video/x-raw,format=UYVY,width=640,height=360' ! xvimagesink
 
 # Planar YUV Xv tester
-gst-launch-1.0 videotestsrc pattern=snow ! 'video/x-raw,format=I420,width=640,height=360' ! xvimagesin
+gst-launch-1.0 videotestsrc pattern=snow ! 'video/x-raw,format=I420,width=640,height=360' ! xvimagesink
