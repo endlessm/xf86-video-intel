@@ -358,4 +358,9 @@ overlaps(struct sna *sna,
 		extents->y1 + src_dy < extents->y2 + dst_dy);
 }
 
+static inline long get_picture_id(PicturePtr picture)
+{
+	return picture && picture->pDrawable ? get_drawable_pixmap(picture->pDrawable)->drawable.serialNumber : 0;
+}
+
 #endif /* SNA_RENDER_INLINE_H */

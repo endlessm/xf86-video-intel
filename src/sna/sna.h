@@ -715,7 +715,7 @@ static inline struct sna_pixmap *
 sna_pixmap_force_to_gpu(PixmapPtr pixmap, unsigned flags)
 {
 	/* Unlike move-to-gpu, we ignore wedged and always create the GPU bo */
-	DBG(("%s(pixmap=%p, flags=%x)\n", __FUNCTION__, pixmap, flags));
+	DBG(("%s(pixmap=%ld, flags=%x)\n", __FUNCTION__, pixmap->drawable.serialNumber, flags));
 	return sna_pixmap_move_to_gpu(pixmap, flags | __MOVE_FORCE);
 }
 bool must_check _sna_pixmap_move_to_cpu(PixmapPtr pixmap, unsigned flags);

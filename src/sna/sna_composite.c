@@ -643,11 +643,12 @@ sna_composite(CARD8 op,
 	RegionRec region;
 	int dx, dy;
 
-	DBG(("%s(%d src=(%d, %d), mask=(%d, %d), dst=(%d, %d)+(%d, %d), size=(%d, %d)\n",
+	DBG(("%s(%d src=%ld+(%d, %d), mask=%ld+(%d, %d), dst=%ld+(%d, %d)+(%d, %d), size=(%d, %d)\n",
 	     __FUNCTION__, op,
-	     src_x, src_y,
-	     mask_x, mask_y,
-	     dst_x, dst_y, dst->pDrawable->x, dst->pDrawable->y,
+	     get_picture_id(src), src_x, src_y,
+	     get_picture_id(mask), mask_x, mask_y,
+	     get_picture_id(dst), dst_x, dst_y,
+	     dst->pDrawable->x, dst->pDrawable->y,
 	     width, height));
 
 	if (region_is_empty(dst->pCompositeClip)) {
