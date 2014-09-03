@@ -981,6 +981,13 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 		if (output->crtc != crtc)
 			continue;
 
+		/* Skip over any hotunplugged outputs so that we can
+		 * recover in cases where the previous mode is now
+		 * only partially valid.
+		 */
+		if (!to_sna_output(output)->id)
+			continue;
+
 		DBG(("%s: attaching output '%s' %d [%d] to crtc:%d (pipe %d) (possible crtc:%x, possible clones:%x)\n",
 		     __FUNCTION__, output->name, i, to_connector_id(output),
 		     sna_crtc->id, sna_crtc->pipe,
