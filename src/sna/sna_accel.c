@@ -2682,6 +2682,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 	}
 
 	if (priv->move_to_gpu) {
+		DBG(("%s: applying move-to-gpu override\n", __FUNCTION__));
 		if ((flags & MOVE_READ) == 0)
 			sna_pixmap_discard_shadow_damage(priv, region);
 		if (!priv->move_to_gpu(sna, priv, MOVE_READ)) {
@@ -3240,6 +3241,7 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 	if (priv->move_to_gpu) {
 		unsigned int hint;
 
+		DBG(("%s: applying move-to-gpu override\n", __FUNCTION__));
 		hint = flags | MOVE_READ;
 		if ((flags & MOVE_READ) == 0) {
 			RegionRec region;
@@ -3778,6 +3780,7 @@ use_gpu_bo:
 
 		sna = to_sna_from_pixmap(pixmap);
 
+		DBG(("%s: applying move-to-gpu override\n", __FUNCTION__));
 		if (flags & IGNORE_DAMAGE) {
 			region.extents = *box;
 			region.data = NULL;
@@ -6228,7 +6231,7 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 					   region, dx, dy,
 					   bitplane, closure);
 
-	DBG(("%s (boxes=%dx[(%d, %d), (%d, %d)...], src pixmap=%ld+(%d, %d), dst pixmap=%ld=+(%d, %d), alu=%d, src.size=%dx%d, dst.size=%dx%d)\n",
+	DBG(("%s (boxes=%dx[(%d, %d), (%d, %d)...], src pixmap=%ld+(%d, %d), dst pixmap=%ld+(%d, %d), alu=%d, src.size=%dx%d, dst.size=%dx%d)\n",
 	     __FUNCTION__, n,
 	     box[0].x1, box[0].y1, box[0].x2, box[0].y2,
 	     src_pixmap->drawable.serialNumber, dx, dy,
