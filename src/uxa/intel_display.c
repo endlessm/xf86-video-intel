@@ -80,7 +80,6 @@ static struct list intel_drm_queue;
 struct intel_mode {
 	int fd;
 	uint32_t fb_id;
-	drmModeResPtr mode_res;
 	int cpp;
 
 	drmEventContext event_context;
@@ -706,7 +705,7 @@ static const xf86CrtcFuncsRec intel_crtc_funcs = {
 };
 
 static void
-intel_crtc_init(ScrnInfoPtr scrn, struct intel_mode *mode, int num)
+intel_crtc_init(ScrnInfoPtr scrn, struct intel_mode *mode, drmModeResPtr mode_res, int num)
 {
 	intel_screen_private *intel = intel_get_screen_private(scrn);
 	xf86CrtcPtr crtc;
@@ -723,7 +722,7 @@ intel_crtc_init(ScrnInfoPtr scrn, struct intel_mode *mode, int num)
 	}
 
 	intel_crtc->mode_crtc = drmModeGetCrtc(mode->fd,
-					       mode->mode_res->crtcs[num]);
+					       mode_res->crtcs[num]);
 	if (intel_crtc->mode_crtc == NULL) {
 		free(intel_crtc);
 		return;
@@ -1340,7 +1339,7 @@ static const char *output_names[] = {
 };
 
 static void
-intel_output_init(ScrnInfoPtr scrn, struct intel_mode *mode, int num)
+intel_output_init(ScrnInfoPtr scrn, struct intel_mode *mode, drmModeResPtr mode_res, int num)
 {
 	xf86OutputPtr output;
 	drmModeConnectorPtr koutput;
@@ -1350,7 +1349,7 @@ intel_output_init(ScrnInfoPtr scrn, struct intel_mode *mode, int num)
 	char name[32];
 
 	koutput = drmModeGetConnector(mode->fd,
-				      mode->mode_res->connectors[num]);
+				      mode_res->connectors[num]);
 	if (!koutput)
 		return;
 
@@ -1381,7 +1380,7 @@ intel_output_init(ScrnInfoPtr scrn, struct intel_mode *mode, int num)
 		return;
 	}
 
-	intel_output->output_id = mode->mode_res->connectors[num];
+	intel_output->output_id = mode_res->connectors[num];
 	intel_output->mode_output = koutput;
 	intel_output->mode_encoder = kencoder;
 	intel_output->mode = mode;
@@ -1964,10 +1963,10 @@ intel_mode_read_drm_events(struct intel_screen_private *intel)
 }
 
 static drmModeEncoderPtr
-intel_get_kencoder(struct intel_mode *mode, int num)
+intel_get_kencoder(struct intel_mode *mode, drmModeResPtr mode_res, int num)
 {
 	struct intel_output *iterator;
-	int id = mode->mode_res->encoders[num];
+	int id = mode_res->encoders[num];
 
 	list_for_each_entry(iterator, &mode->outputs, link)
 		if (iterator->mode_encoder->encoder_id == id)
@@ -1982,7 +1981,7 @@ intel_get_kencoder(struct intel_mode *mode, int num)
  * values read from libdrm.
  */
 static void
-intel_compute_possible_clones(ScrnInfoPtr scrn, struct intel_mode *mode)
+intel_compute_possible_clones(ScrnInfoPtr scrn, struct intel_mode *mode, drmModeResPtr mode_res)
 {
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(scrn);
 	struct intel_output *intel_output, *clone;
@@ -2001,7 +2000,7 @@ intel_compute_possible_clones(ScrnInfoPtr scrn, struct intel_mode *mode)
 			if ((mask & 1) == 0)
 				continue;
 
-			cloned_encoder = intel_get_kencoder(mode, j);
+			cloned_encoder = intel_get_kencoder(mode, mode_res, j);
 			if (!cloned_encoder)
 				continue;
 
@@ -2024,6 +2023,7 @@ Bool intel_mode_pre_init(ScrnInfoPtr scrn, int fd, int cpp)
 	struct intel_mode *mode;
 	unsigned int i;
 	int has_flipping;
+	drmModeResPtr mode_res;
 
 	mode = calloc(1, sizeof *mode);
 	if (!mode)
@@ -2037,23 +2037,23 @@ Bool intel_mode_pre_init(ScrnInfoPtr scrn, int fd, int cpp)
 	xf86CrtcConfigInit(scrn, &intel_xf86crtc_config_funcs);
 
 	mode->cpp = cpp;
-	mode->mode_res = drmModeGetResources(mode->fd);
-	if (!mode->mode_res) {
+	mode_res = drmModeGetResources(mode->fd);
+	if (!mode_res) {
 		xf86DrvMsg(scrn->scrnIndex, X_ERROR,
 			   "failed to get resources: %s\n", strerror(errno));
 		free(mode);
 		return FALSE;
 	}
 
-	xf86CrtcSetSizeRange(scrn, 320, 200, mode->mode_res->max_width,
-			     mode->mode_res->max_height);
-	for (i = 0; i < mode->mode_res->count_crtcs; i++)
-		intel_crtc_init(scrn, mode, i);
+	xf86CrtcSetSizeRange(scrn, 320, 200, mode_res->max_width,
+			     mode_res->max_height);
+	for (i = 0; i < mode_res->count_crtcs; i++)
+		intel_crtc_init(scrn, mode, mode_res, i);
 
-	for (i = 0; i < mode->mode_res->count_connectors; i++)
-		intel_output_init(scrn, mode, i);
+	for (i = 0; i < mode_res->count_connectors; i++)
+		intel_output_init(scrn, mode, mode_res, i);
 
-	intel_compute_possible_clones(scrn, mode);
+	intel_compute_possible_clones(scrn, mode, mode_res);
 
 #ifdef INTEL_PIXMAP_SHARING
 	xf86ProviderSetup(scrn, NULL, "Intel");
@@ -2081,6 +2081,7 @@ Bool intel_mode_pre_init(ScrnInfoPtr scrn, int fd, int cpp)
 	}
 
 	intel->modes = mode;
+	drmModeFreeResources(mode_res);
 	return TRUE;
 }
 
