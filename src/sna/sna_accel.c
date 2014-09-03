@@ -6307,10 +6307,8 @@ discard_cow:
 				hint |= IGNORE_DAMAGE;
 			if (dst_priv->cpu_damage &&
 			    region_subsumes_damage(region,
-						   dst_priv->cpu_damage)) {
+						   dst_priv->cpu_damage))
 				discard_cpu_damage(sna, dst_priv);
-				hint |= IGNORE_DAMAGE;
-			}
 		}
 		bo = sna_drawable_use_bo(&dst_pixmap->drawable, hint,
 					 &region->extents, &damage);
