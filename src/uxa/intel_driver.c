@@ -779,7 +779,9 @@ I830HandleUEvents(int fd, void *closure)
 
 	if (memcmp(&s.st_rdev, &udev_devnum, sizeof (dev_t)) == 0 &&
 			hotplug && atoi(hotplug) == 1)
-		RRGetInfo(xf86ScrnToScreen(scrn), TRUE);
+	{
+		intel_mode_hotplug(intel);
+	}
 
 	udev_device_unref(dev);
 }

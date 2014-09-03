@@ -408,6 +408,7 @@ extern void intel_mode_remove_fb(intel_screen_private *intel);
 extern void intel_mode_close(intel_screen_private *intel);
 extern void intel_mode_fini(intel_screen_private *intel);
 extern int intel_mode_read_drm_events(intel_screen_private *intel);
+extern void intel_mode_hotplug(intel_screen_private *intel);
 
 typedef void (*intel_drm_handler_proc)(ScrnInfoPtr scrn,
                                        xf86CrtcPtr crtc,
