@@ -3874,6 +3874,7 @@ static void sort_config_outputs(struct sna *sna)
 {
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
 	qsort(config->output, sna->mode.num_real_output, sizeof(*config->output), output_rank);
+	sna_mode_compute_possible_outputs(sna);
 }
 
 static void sort_randr_outputs(struct sna *sna, ScreenPtr screen)
@@ -3999,7 +4000,6 @@ void sna_mode_discover(struct sna *sna)
 	if (changed) {
 		DBG(("%s: outputs changed, broadcasting\n", __FUNCTION__));
 
-		sna_mode_compute_possible_outputs(sna);
 		sna_mode_set_primary(sna);
 
 		/* Reorder user visible listing */
@@ -5670,8 +5670,6 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 				return false;
 
 		sna->mode.num_real_output = xf86_config->num_output;
-
-		sna_mode_compute_possible_outputs(sna);
 
 		sna->mode.max_crtc_width  = res->max_width;
 		sna->mode.max_crtc_height = res->max_height;
