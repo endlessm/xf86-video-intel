@@ -3118,6 +3118,15 @@ out_16384:
 		if (bo)
 			return bo;
 
+		/* Nothing available for reuse, rely on the kernel wa */
+		if (kgem->has_pinned_batches) {
+			bo = kgem_create_linear(kgem, size, CREATE_CACHED | CREATE_TEMPORARY);
+			if (bo) {
+				kgem->batch_flags &= ~LOCAL_I915_EXEC_IS_PINNED;
+				return bo;
+			}
+		}
+
 		if (size < 16384) {
 			bo = list_first_entry(&kgem->pinned_batches[size > 4096],
 					      struct kgem_bo,
