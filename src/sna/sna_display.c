@@ -6245,6 +6245,39 @@ void sna_mode_check(struct sna *sna)
 	update_flush_interval(sna);
 }
 
+static bool
+sna_crtc_hide_planes(struct sna *sna, struct sna_crtc *crtc)
+{
+#define LOCAL_IOCTL_MODE_SETPLANE DRM_IOWR(0xB7, struct local_mode_set_plane)
+	struct local_mode_set_plane {
+		uint32_t plane_id;
+		uint32_t crtc_id;
+		uint32_t fb_id; /* fb object contains surface format type */
+		uint32_t flags;
+
+		/* Signed dest location allows it to be partially off screen */
+		int32_t crtc_x, crtc_y;
+		uint32_t crtc_w, crtc_h;
+
+		/* Source values are 16.16 fixed point */
+		uint32_t src_x, src_y;
+		uint32_t src_h, src_w;
+	} s;
+
+	if (crtc->primary.id == 0)
+		return false;
+
+	memset(&s, 0, sizeof(s));
+	s.plane_id = crtc->primary.id;
+	if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_MODE_SETPLANE, &s))
+		return false;
+
+	s.plane_id = crtc->sprite.id;
+	(void)drmIoctl(sna->kgem.fd, LOCAL_IOCTL_MODE_SETPLANE, &s);
+
+	return true;
+}
+
 void sna_mode_reset(struct sna *sna)
 {
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
@@ -6257,7 +6290,8 @@ void sna_mode_reset(struct sna *sna)
 
 	sna_hide_cursors(sna->scrn);
 	for (i = 0; i < sna->mode.num_real_crtc; i++)
-		sna_crtc_disable(config->crtc[i]);
+		if (!sna_crtc_hide_planes(sna, to_sna_crtc(config->crtc[i])))
+			sna_crtc_disable(config->crtc[i]);
 	assert(sna->mode.front_active == 0);
 
 	for (i = 0; i < sna->mode.num_real_crtc; i++) {
