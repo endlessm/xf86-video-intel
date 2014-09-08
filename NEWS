@@ -1,3 +1,9 @@
+Snapshot 2.99.916 (2014-09-08)
+==============================
+Quick update for MST in UXA - we need to hook up the RandR outputs for
+dynamicaly added connectors.
+
+
 Snapshot 2.99.915 (2014-09-08)
 ==============================
 A significant change to UXA to enable MST and to keep it working on recent
