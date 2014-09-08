@@ -232,6 +232,7 @@ static bool sna_blt_fill_init(struct sna *sna,
 		sna->blt_state.fill_alu = alu;
 	}
 
+	assert(sna->kgem.mode == KGEM_BLT);
 	return true;
 }
 
@@ -1102,12 +1103,13 @@ inline static void _sna_blt_fill_boxes(struct sna *sna,
 
 	do {
 		uint32_t *b = kgem->batch + kgem->nbatch;
-		int nbox_this_time;
+		int nbox_this_time, rem;
 
 		assert(sna->kgem.mode == KGEM_BLT);
 		nbox_this_time = nbox;
-		if (3*nbox_this_time > kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED)
-			nbox_this_time = (kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED) / 3;
+		rem = kgem_batch_space(kgem);
+		if (3*nbox_this_time > rem)
+			nbox_this_time = rem / 3;
 		assert(nbox_this_time);
 		nbox -= nbox_this_time;
 
@@ -1198,12 +1200,13 @@ static void blt_composite_fill_boxes_no_offset__thread(struct sna *sna,
 
 	do {
 		uint32_t *b = kgem->batch + kgem->nbatch;
-		int nbox_this_time;
+		int nbox_this_time, rem;
 
 		assert(sna->kgem.mode == KGEM_BLT);
 		nbox_this_time = nbox;
-		if (3*nbox_this_time > kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED)
-			nbox_this_time = (kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED) / 3;
+		rem = kgem_batch_space(kgem);
+		if (3*nbox_this_time > rem)
+			nbox_this_time = rem / 3;
 		assert(nbox_this_time);
 		nbox -= nbox_this_time;
 
@@ -1310,12 +1313,13 @@ static void blt_composite_fill_boxes__thread(struct sna *sna,
 
 	do {
 		uint32_t *b = kgem->batch + kgem->nbatch;
-		int nbox_this_time;
+		int nbox_this_time, rem;
 
 		assert(sna->kgem.mode == KGEM_BLT);
 		nbox_this_time = nbox;
-		if (3*nbox_this_time > kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED)
-			nbox_this_time = (kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED) / 3;
+		rem = kgem_batch_space(kgem);
+		if (3*nbox_this_time > rem)
+			nbox_this_time = rem / 3;
 		assert(nbox_this_time);
 		nbox -= nbox_this_time;
 
@@ -1386,6 +1390,7 @@ static bool
 begin_blt(struct sna *sna,
 	  struct sna_composite_op *op)
 {
+	assert(sna->kgem.mode == KGEM_BLT);
 	if (!kgem_check_bo_fenced(&sna->kgem, op->dst.bo)) {
 		kgem_submit(&sna->kgem);
 		if (!kgem_check_bo_fenced(&sna->kgem, op->dst.bo))
@@ -1603,11 +1608,12 @@ static void blt_composite_copy_boxes__thread(struct sna *sna,
 	if ((dst_dx | dst_dy) == 0) {
 		uint64_t hdr = (uint64_t)br13 << 32 | cmd;
 		do {
-			int nbox_this_time;
+			int nbox_this_time, rem;
 
 			nbox_this_time = nbox;
-			if (8*nbox_this_time > kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED)
-				nbox_this_time = (kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED) / 8;
+			rem = kgem_batch_space(kgem);
+			if (8*nbox_this_time > rem)
+				nbox_this_time = rem / 8;
 			if (2*nbox_this_time > KGEM_RELOC_SIZE(kgem) - kgem->nreloc)
 				nbox_this_time = (KGEM_RELOC_SIZE(kgem) - kgem->nreloc)/2;
 			assert(nbox_this_time);
@@ -1656,11 +1662,12 @@ static void blt_composite_copy_boxes__thread(struct sna *sna,
 		} while (1);
 	} else {
 		do {
-			int nbox_this_time;
+			int nbox_this_time, rem;
 
 			nbox_this_time = nbox;
-			if (8*nbox_this_time > kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED)
-				nbox_this_time = (kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED) / 8;
+			rem = kgem_batch_space(kgem);
+			if (8*nbox_this_time > rem)
+				nbox_this_time = rem / 8;
 			if (2*nbox_this_time > KGEM_RELOC_SIZE(kgem) - kgem->nreloc)
 				nbox_this_time = (KGEM_RELOC_SIZE(kgem) - kgem->nreloc)/2;
 			assert(nbox_this_time);
@@ -1733,11 +1740,12 @@ static void blt_composite_copy_boxes__thread64(struct sna *sna,
 	if ((dst_dx | dst_dy) == 0) {
 		uint64_t hdr = (uint64_t)br13 << 32 | cmd;
 		do {
-			int nbox_this_time;
+			int nbox_this_time, rem;
 
 			nbox_this_time = nbox;
-			if (10*nbox_this_time > kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED)
-				nbox_this_time = (kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED) / 10;
+			rem = kgem_batch_space(kgem);
+			if (10*nbox_this_time > rem)
+				nbox_this_time = rem / 10;
 			if (2*nbox_this_time > KGEM_RELOC_SIZE(kgem) - kgem->nreloc)
 				nbox_this_time = (KGEM_RELOC_SIZE(kgem) - kgem->nreloc)/2;
 			assert(nbox_this_time);
@@ -1788,11 +1796,11 @@ static void blt_composite_copy_boxes__thread64(struct sna *sna,
 		} while (1);
 	} else {
 		do {
-			int nbox_this_time;
+			int nbox_this_time, rem;
 
 			nbox_this_time = nbox;
-			if (10*nbox_this_time > kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED)
-				nbox_this_time = (kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED) / 10;
+			if (10*nbox_this_time > rem)
+				nbox_this_time = rem / 10;
 			if (2*nbox_this_time > KGEM_RELOC_SIZE(kgem) - kgem->nreloc)
 				nbox_this_time = (KGEM_RELOC_SIZE(kgem) - kgem->nreloc)/2;
 			assert(nbox_this_time);
@@ -3124,12 +3132,13 @@ fastcall static void sna_blt_fill_op_points(struct sna *sna,
 
 	do {
 		uint32_t *b = kgem->batch + kgem->nbatch;
-		int n_this_time;
+		int n_this_time, rem;
 
 		assert(sna->kgem.mode == KGEM_BLT);
 		n_this_time = n;
-		if (2*n_this_time > kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED)
-			n_this_time = (kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED) / 2;
+		rem = kgem_batch_space(kgem);
+		if (2*n_this_time > rem)
+			n_this_time = rem / 2;
 		assert(n_this_time);
 		n -= n_this_time;
 
@@ -3226,6 +3235,7 @@ bool sna_blt_fill(struct sna *sna, uint8_t alu,
 			       bo, bpp, alu, pixel))
 		return false;
 
+	assert(sna->kgem.mode == KGEM_BLT);
 	fill->blt   = sna_blt_fill_op_blt;
 	fill->box   = sna_blt_fill_op_box;
 	fill->boxes = sna_blt_fill_op_boxes;
@@ -3543,11 +3553,11 @@ bool sna_blt_fill_boxes(struct sna *sna, uint8_t alu,
 	}
 
 	do {
-		int nbox_this_time;
+		int nbox_this_time, rem;
 
 		nbox_this_time = nbox;
-		if (3*nbox_this_time > kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED)
-			nbox_this_time = (kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED) / 3;
+		if (3*nbox_this_time > rem)
+			nbox_this_time = rem / 3;
 		assert(nbox_this_time);
 		nbox -= nbox_this_time;
 
@@ -3728,11 +3738,12 @@ bool sna_blt_copy_boxes(struct sna *sna, uint8_t alu,
 		if (kgem->gen >= 0100) {
 			uint64_t hdr = (uint64_t)br13 << 32 | cmd | 8;
 			do {
-				int nbox_this_time;
+				int nbox_this_time, rem;
 
 				nbox_this_time = nbox;
-				if (10*nbox_this_time > kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED)
-					nbox_this_time = (kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED) / 8;
+				rem = kgem_batch_space(kgem);
+				if (10*nbox_this_time > rem)
+					nbox_this_time = rem / 8;
 				if (2*nbox_this_time > KGEM_RELOC_SIZE(kgem) - kgem->nreloc)
 					nbox_this_time = (KGEM_RELOC_SIZE(kgem) - kgem->nreloc)/2;
 				assert(nbox_this_time);
@@ -3784,11 +3795,12 @@ bool sna_blt_copy_boxes(struct sna *sna, uint8_t alu,
 		} else {
 			uint64_t hdr = (uint64_t)br13 << 32 | cmd | 6;
 			do {
-				int nbox_this_time;
+				int nbox_this_time, rem;
 
 				nbox_this_time = nbox;
-				if (8*nbox_this_time > kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED)
-					nbox_this_time = (kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED) / 8;
+				rem = kgem_batch_space(kgem);
+				if (8*nbox_this_time > rem)
+					nbox_this_time = rem / 8;
 				if (2*nbox_this_time > KGEM_RELOC_SIZE(kgem) - kgem->nreloc)
 					nbox_this_time = (KGEM_RELOC_SIZE(kgem) - kgem->nreloc)/2;
 				assert(nbox_this_time);
@@ -3840,11 +3852,12 @@ bool sna_blt_copy_boxes(struct sna *sna, uint8_t alu,
 		if (kgem->gen >= 0100) {
 			cmd |= 8;
 			do {
-				int nbox_this_time;
+				int nbox_this_time, rem;
 
 				nbox_this_time = nbox;
-				if (10*nbox_this_time > kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED)
-					nbox_this_time = (kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED) / 8;
+				rem = kgem_batch_space(kgem);
+				if (10*nbox_this_time > rem)
+					nbox_this_time = rem / 8;
 				if (2*nbox_this_time > KGEM_RELOC_SIZE(kgem) - kgem->nreloc)
 					nbox_this_time = (KGEM_RELOC_SIZE(kgem) - kgem->nreloc)/2;
 				assert(nbox_this_time);
@@ -3896,11 +3909,12 @@ bool sna_blt_copy_boxes(struct sna *sna, uint8_t alu,
 		} else {
 			cmd |= 6;
 			do {
-				int nbox_this_time;
+				int nbox_this_time, rem;
 
 				nbox_this_time = nbox;
-				if (8*nbox_this_time > kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED)
-					nbox_this_time = (kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED) / 8;
+				rem = kgem_batch_space(kgem);
+				if (8*nbox_this_time > rem)
+					nbox_this_time = rem / 8;
 				if (2*nbox_this_time > KGEM_RELOC_SIZE(kgem) - kgem->nreloc)
 					nbox_this_time = (KGEM_RELOC_SIZE(kgem) - kgem->nreloc)/2;
 				assert(nbox_this_time);

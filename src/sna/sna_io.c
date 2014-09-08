@@ -484,11 +484,12 @@ fallback:
 	if (sna->kgem.gen >= 0100) {
 		cmd |= 8;
 		do {
-			int nbox_this_time;
+			int nbox_this_time, rem;
 
 			nbox_this_time = tmp_nbox;
-			if (10*nbox_this_time > kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED)
-				nbox_this_time = (kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED) / 8;
+			rem = kgem_batch_space(kgem);
+			if (10*nbox_this_time > rem)
+				nbox_this_time = rem / 8;
 			if (2*nbox_this_time > KGEM_RELOC_SIZE(kgem) - kgem->nreloc)
 				nbox_this_time = (KGEM_RELOC_SIZE(kgem) - kgem->nreloc) / 2;
 			assert(nbox_this_time);
@@ -543,11 +544,11 @@ fallback:
 	} else {
 		cmd |= 6;
 		do {
-			int nbox_this_time;
+			int nbox_this_time, rem;
 
 			nbox_this_time = tmp_nbox;
-			if (8*nbox_this_time > kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED)
-				nbox_this_time = (kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED) / 8;
+			if (8*nbox_this_time > rem)
+				nbox_this_time = rem / 8;
 			if (2*nbox_this_time > KGEM_RELOC_SIZE(kgem) - kgem->nreloc)
 				nbox_this_time = (KGEM_RELOC_SIZE(kgem) - kgem->nreloc) / 2;
 			assert(nbox_this_time);
@@ -1029,11 +1030,12 @@ tile:
 	if (kgem->gen >= 0100) {
 		cmd |= 8;
 		do {
-			int nbox_this_time;
+			int nbox_this_time, rem;
 
 			nbox_this_time = nbox;
-			if (10*nbox_this_time > kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED)
-				nbox_this_time = (kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED) / 8;
+			rem = kgem_batch_space(kgem);
+			if (10*nbox_this_time > rem)
+				nbox_this_time = rem / 8;
 			if (2*nbox_this_time > KGEM_RELOC_SIZE(kgem) - kgem->nreloc)
 				nbox_this_time = (KGEM_RELOC_SIZE(kgem) - kgem->nreloc) / 2;
 			assert(nbox_this_time);
@@ -1122,11 +1124,12 @@ tile:
 	} else {
 		cmd |= 6;
 		do {
-			int nbox_this_time;
+			int nbox_this_time, rem;
 
 			nbox_this_time = nbox;
-			if (8*nbox_this_time > kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED)
-				nbox_this_time = (kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED) / 8;
+			rem = kgem_batch_space(kgem);
+			if (8*nbox_this_time > rem)
+				nbox_this_time = rem / 8;
 			if (2*nbox_this_time > KGEM_RELOC_SIZE(kgem) - kgem->nreloc)
 				nbox_this_time = (KGEM_RELOC_SIZE(kgem) - kgem->nreloc) / 2;
 			assert(nbox_this_time);
@@ -1530,11 +1533,12 @@ tile:
 	if (sna->kgem.gen >= 0100) {
 		cmd |= 8;
 		do {
-			int nbox_this_time;
+			int nbox_this_time, rem;
 
 			nbox_this_time = nbox;
-			if (10*nbox_this_time > kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED)
-				nbox_this_time = (kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED) / 8;
+			rem = kgem_batch_space(kgem);
+			if (10*nbox_this_time > rem)
+				nbox_this_time = rem / 8;
 			if (2*nbox_this_time > KGEM_RELOC_SIZE(kgem) - kgem->nreloc)
 				nbox_this_time = (KGEM_RELOC_SIZE(kgem) - kgem->nreloc) / 2;
 			assert(nbox_this_time);
@@ -1627,11 +1631,12 @@ tile:
 	} else {
 		cmd |= 6;
 		do {
-			int nbox_this_time;
+			int nbox_this_time, rem;
 
 			nbox_this_time = nbox;
-			if (8*nbox_this_time > kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED)
-				nbox_this_time = (kgem->surface - kgem->nbatch - KGEM_BATCH_RESERVED) / 8;
+			rem = kgem_batch_space(kgem);
+			if (8*nbox_this_time > rem)
+				nbox_this_time = rem / 8;
 			if (2*nbox_this_time > KGEM_RELOC_SIZE(kgem) - kgem->nreloc)
 				nbox_this_time = (KGEM_RELOC_SIZE(kgem) - kgem->nreloc) / 2;
 			assert(nbox_this_time);

@@ -428,6 +428,13 @@ static inline void _kgem_set_mode(struct kgem *kgem, enum kgem_mode mode)
 	kgem->mode = mode;
 }
 
+static inline int kgem_batch_space(struct kgem *kgem)
+{
+	int rem = kgem->surface - kgem->nbatch;
+	assert(rem > 0);
+	return rem - KGEM_BATCH_RESERVED;
+}
+
 static inline bool kgem_check_batch(struct kgem *kgem, int num_dwords)
 {
 	assert(num_dwords > 0);

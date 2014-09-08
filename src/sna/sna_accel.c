@@ -12156,7 +12156,7 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 				sna->kgem.nbatch += 6;
 			}
 		} else do {
-			int n_this_time;
+			int n_this_time, rem;
 
 			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
@@ -12199,8 +12199,9 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 			}
 
 			n_this_time = n;
-			if (3*n_this_time > sna->kgem.surface - sna->kgem.nbatch - KGEM_BATCH_RESERVED)
-				n_this_time = (sna->kgem.surface - sna->kgem.nbatch - KGEM_BATCH_RESERVED) / 3;
+			rem = kgem_batch_space(&sna->kgem);
+			if (3*n_this_time > rem)
+				n_this_time = rem / 3;
 			assert(n_this_time);
 			n -= n_this_time;
 
@@ -13061,7 +13062,7 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 				sna->kgem.nbatch += 9;
 			}
 		} else do {
-			int n_this_time;
+			int n_this_time, rem;
 
 			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
@@ -13099,8 +13100,9 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 			}
 
 			n_this_time = n;
-			if (3*n_this_time > sna->kgem.surface - sna->kgem.nbatch - KGEM_BATCH_RESERVED)
-				n_this_time = (sna->kgem.surface - sna->kgem.nbatch - KGEM_BATCH_RESERVED) / 3;
+			rem = kgem_batch_space(&sna->kgem);
+			if (3*n_this_time > rem)
+				n_this_time = rem / 3;
 			assert(n_this_time);
 			n -= n_this_time;
 
