@@ -6310,7 +6310,8 @@ void sna_mode_reset(struct sna *sna)
 		struct sna_output *sna_output = to_sna_output(config->output[i]);
 
 		assert(sna_output != NULL);
-		assert(sna_output->dpms_mode == DPMSModeOff);
+		if (sna_output->dpms_mode != DPMSModeOff)
+			continue;
 
 		if (!sna_output->backlight.iface)
 			continue;
