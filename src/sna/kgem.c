@@ -3420,8 +3420,8 @@ static bool find_hang_state(struct kgem *kgem, char *path, int maxlen)
 	if (access(path, R_OK) == 0)
 		return true;
 
-	return false;
 	path[0] = '\0';
+	return false;
 }
 
 void kgem_throttle(struct kgem *kgem)
