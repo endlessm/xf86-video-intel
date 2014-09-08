@@ -1,3 +1,42 @@
+Snapshot 2.99.915 (2014-09-08)
+==============================
+A significant change to UXA to enable MST and to keep it working on recent
+kernels needs some soaking before a major release, and the usual
+plethora of bugfixes. One other feature is the support for hardware
+rotations on very recent kernels.
+
+ * Handle rotated scanouts that are all clear correctly. The region to
+   update was not being computed correctly, overdrawing the wrong CRTC.
+   https://bugs.freedesktop.org/show_bug.cgi?id=81820
+
+ * Reset cursor images after rotation and size changes
+   https://bugs.freedesktop.org/show_bug.cgi?id=81886
+   https://bugs.freedesktop.org/show_bug.cgi?id=82273
+   https://bugs.freedesktop.org/show_bug.cgi?id=82337
+
+ * Handle stale DRI2 buffers and Client errors more gracefully
+
+ * Fallback if we fail to render a glyph onto a too-large surface, e.g.
+   direct rendering of glyphs onto extended desktops with gen2/gen3.
+   https://bugs.archlinux.org/task/40949
+
+ * Further work to enable tiled rendering onto large surfaces in
+   severely aperture and memory constrained devices (e.g. gen2/gen3)
+
+ * Honour the Primary option from xorg.conf and mark that as the RandR
+   primary.
+   https://bugs.freedesktop.org/show_bug.cgi?id=82193
+   https://bugs.freedesktop.org/show_bug.cgi?id=82205
+
+ * Fix another Client-Window DRI2 close race
+   https://bugs.freedesktop.org/show_bug.cgi?id=82979
+
+ * Fix incorrect discarding of GPU damage when copying over the TearFree
+   scanout - which caused a flicker in rapidly updated elements (like
+   simple video panes).
+   https://bugs.freedesktop.org/show_bug.cgi?id=81973
+
+
 Snapshot 2.99.914 (2014-07-23)
 ==============================
 And a brown paper bag to hide the rebuilding from the tarball with
