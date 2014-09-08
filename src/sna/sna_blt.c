@@ -176,7 +176,8 @@ static bool sna_blt_fill_init(struct sna *sna,
 	{
 		uint32_t *b;
 
-		if (!kgem_check_reloc(kgem, 1)) {
+		if (!kgem_check_batch(kgem, 24) ||
+		    !kgem_check_reloc(kgem, 1)) {
 			_kgem_submit(kgem);
 			if (!kgem_check_bo_fenced(kgem, bo))
 				return false;
@@ -1799,6 +1800,7 @@ static void blt_composite_copy_boxes__thread64(struct sna *sna,
 			int nbox_this_time, rem;
 
 			nbox_this_time = nbox;
+			rem = kgem_batch_space(kgem);
 			if (10*nbox_this_time > rem)
 				nbox_this_time = rem / 10;
 			if (2*nbox_this_time > KGEM_RELOC_SIZE(kgem) - kgem->nreloc)
@@ -3496,7 +3498,8 @@ bool sna_blt_fill_boxes(struct sna *sna, uint8_t alu,
 	{
 		uint32_t *b;
 
-		if (!kgem_check_reloc(kgem, 1)) {
+		if (!kgem_check_batch(kgem, 24) ||
+		    !kgem_check_reloc(kgem, 1)) {
 			_kgem_submit(kgem);
 			if (!kgem_check_bo_fenced(&sna->kgem, bo))
 				return false;
@@ -3556,6 +3559,7 @@ bool sna_blt_fill_boxes(struct sna *sna, uint8_t alu,
 		int nbox_this_time, rem;
 
 		nbox_this_time = nbox;
+		rem = kgem_batch_space(kgem);
 		if (3*nbox_this_time > rem)
 			nbox_this_time = rem / 3;
 		assert(nbox_this_time);
@@ -3632,6 +3636,7 @@ bool sna_blt_fill_boxes(struct sna *sna, uint8_t alu,
 				kgem->nbatch += 9;
 			}
 			assert(kgem->nbatch < kgem->surface);
+			assert(kgem_check_batch(kgem, 3));
 		}
 	} while (nbox);
 
