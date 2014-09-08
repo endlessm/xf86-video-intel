@@ -1524,6 +1524,12 @@ intel_output_init(ScrnInfoPtr scrn, struct intel_mode *mode, drmModeResPtr mode_
 	output->interlaceAllowed = TRUE;
 
 	intel_output->output = output;
+
+	if (dynamic) {
+		output->randr_output = RROutputCreate(xf86ScrnToScreen(scrn), output->name, strlen(output->name), output);
+		intel_output_create_resources(output);
+	}
+
 	list_add(&intel_output->link, &mode->outputs);
 	return;
 
