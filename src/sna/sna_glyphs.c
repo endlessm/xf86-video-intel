@@ -727,7 +727,7 @@ next_glyph:
 		}
 		list++;
 	}
-	if (glyph_atlas)
+	if (glyph_atlas != NO_ATLAS)
 		tmp.done(sna, &tmp);
 
 	return true;
