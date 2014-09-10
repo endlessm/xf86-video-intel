@@ -2635,7 +2635,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 						discard_gpu = false;
 					}
 				}
-				sna_damage_add(&priv->cpu_damage, region);
+				sna_damage_add_to_pixmap(&priv->cpu_damage, region, pixmap);
 
 				if (dx | dy)
 					RegionTranslate(region, -dx, -dy);
@@ -2723,7 +2723,7 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 			if (flags & MOVE_WRITE) {
 				if (!DAMAGE_IS_ALL(priv->gpu_damage)) {
 					assert(!priv->clear);
-					sna_damage_add(&priv->gpu_damage, region);
+					sna_damage_add_to_pixmap(&priv->gpu_damage, region, pixmap);
 					if (sna_damage_is_all(&priv->gpu_damage,
 							      pixmap->drawable.width,
 							      pixmap->drawable.height)) {
@@ -2800,7 +2800,7 @@ move_to_cpu:
 			if (flags & MOVE_WRITE) {
 				if (!DAMAGE_IS_ALL(priv->gpu_damage)) {
 					assert(!priv->clear);
-					sna_damage_add(&priv->gpu_damage, region);
+					sna_damage_add_to_pixmap(&priv->gpu_damage, region, pixmap);
 					if (sna_damage_is_all(&priv->gpu_damage,
 							      pixmap->drawable.width,
 							      pixmap->drawable.height)) {
@@ -3040,7 +3040,7 @@ done:
 		DBG(("%s: applying cpu damage\n", __FUNCTION__));
 		assert(!DAMAGE_IS_ALL(priv->cpu_damage));
 		assert_pixmap_contains_box(pixmap, RegionExtents(region));
-		sna_damage_add(&priv->cpu_damage, region);
+		sna_damage_add_to_pixmap(&priv->cpu_damage, region, pixmap);
 		sna_damage_reduce_all(&priv->cpu_damage, pixmap);
 		if (DAMAGE_IS_ALL(priv->cpu_damage)) {
 			DBG(("%s: replaced entire pixmap\n", __FUNCTION__));
@@ -4828,7 +4828,7 @@ done:
 		if (replaces) {
 			sna_damage_all(&priv->gpu_damage, pixmap);
 		} else {
-			sna_damage_add(&priv->gpu_damage, region);
+			sna_damage_add_to_pixmap(&priv->gpu_damage, region, pixmap);
 			sna_damage_reduce_all(&priv->gpu_damage, pixmap);
 		}
 		if (DAMAGE_IS_ALL(priv->gpu_damage))
@@ -4916,7 +4916,7 @@ try_upload__blt(PixmapPtr pixmap, RegionRec *region,
 		if (region_subsumes_drawable(region, &pixmap->drawable)) {
 			sna_damage_all(&priv->gpu_damage, pixmap);
 		} else {
-			sna_damage_add(&priv->gpu_damage, region);
+			sna_damage_add_to_pixmap(&priv->gpu_damage, region, pixmap);
 			sna_damage_reduce_all(&priv->gpu_damage, pixmap);
 		}
 		if (DAMAGE_IS_ALL(priv->gpu_damage))
@@ -5121,7 +5121,7 @@ sna_put_xybitmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 
 	assert_pixmap_contains_box(pixmap, RegionExtents(region));
 	if (damage)
-		sna_damage_add(damage, region);
+		sna_damage_add_to_pixmap(damage, region, pixmap);
 	assert_pixmap_damage(pixmap);
 
 	DBG(("%s: upload(%d, %d, %d, %d)\n", __FUNCTION__, x, y, w, h));
@@ -5281,7 +5281,7 @@ sna_put_xypixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 
 	assert_pixmap_contains_box(pixmap, RegionExtents(region));
 	if (damage)
-		sna_damage_add(damage, region);
+		sna_damage_add_to_pixmap(damage, region, pixmap);
 	assert_pixmap_damage(pixmap);
 
 	DBG(("%s: upload(%d, %d, %d, %d)\n", __FUNCTION__, x, y, w, h));
@@ -5759,7 +5759,7 @@ sna_self_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 				sna_damage_all(&priv->gpu_damage, pixmap);
 			} else {
 				RegionTranslate(region, tx, ty);
-				sna_damage_add(&priv->gpu_damage, region);
+				sna_damage_add_to_pixmap(&priv->gpu_damage, region, pixmap);
 			}
 		}
 		assert_pixmap_damage(pixmap);
@@ -6118,7 +6118,7 @@ upload_inplace:
 
 	if (!DAMAGE_IS_ALL(dst_priv->gpu_damage)) {
 		assert(!dst_priv->clear);
-		sna_damage_add(&dst_priv->gpu_damage, region);
+		sna_damage_add_to_pixmap(&dst_priv->gpu_damage, region, dst_pixmap);
 		if (sna_damage_is_all(&dst_priv->gpu_damage,
 				      dst_pixmap->drawable.width,
 				      dst_pixmap->drawable.height)) {
@@ -6369,7 +6369,7 @@ discard_cow:
 			}
 
 			if (damage)
-				sna_damage_add(damage, region);
+				sna_damage_add_to_pixmap(damage, region, dst_pixmap);
 			return;
 		}
 
@@ -6406,7 +6406,7 @@ discard_cow:
 			}
 
 			if (damage)
-				sna_damage_add(damage, region);
+				sna_damage_add_to_pixmap(damage, region, dst_pixmap);
 			return;
 		}
 
@@ -6443,7 +6443,7 @@ discard_cow:
 			}
 
 			if (damage)
-				sna_damage_add(damage, region);
+				sna_damage_add_to_pixmap(damage, region, dst_pixmap);
 			return;
 		}
 
@@ -6486,7 +6486,7 @@ discard_cow:
 			}
 
 			if (damage)
-				sna_damage_add(damage, region);
+				sna_damage_add_to_pixmap(damage, region, dst_pixmap);
 			return;
 		}
 
@@ -6540,7 +6540,7 @@ discard_cow:
 
 			if (ok) {
 				if (damage)
-					sna_damage_add(damage, region);
+					sna_damage_add_to_pixmap(damage, region, dst_pixmap);
 				return;
 			}
 		}
@@ -6618,7 +6618,7 @@ discard_cow:
 			tmp->drawable.pScreen->DestroyPixmap(tmp);
 
 			if (damage)
-				sna_damage_add(damage, region);
+				sna_damage_add_to_pixmap(damage, region, dst_pixmap);
 			return;
 		} else {
 			DBG(("%s: dst is on the GPU, src is on the CPU, uploading into dst\n",
@@ -8294,7 +8294,7 @@ sna_copy_bitmap_blt(DrawablePtr _bitmap, DrawablePtr drawable, GCPtr gc,
 
 	if (arg->damage) {
 		RegionTranslate(region, dx, dy);
-		sna_damage_add(arg->damage, region);
+		sna_damage_add_to_pixmap(arg->damage, region, pixmap);
 	}
 	assert_pixmap_damage(pixmap);
 	sna->blt_state.fill_bo = 0;
@@ -8526,7 +8526,7 @@ sna_copy_plane_blt(DrawablePtr source, DrawablePtr drawable, GCPtr gc,
 
 	if (arg->damage) {
 		RegionTranslate(region, dx, dy);
-		sna_damage_add(arg->damage, region);
+		sna_damage_add_to_pixmap(arg->damage, region, dst_pixmap);
 	}
 	assert_pixmap_damage(dst_pixmap);
 	sna->blt_state.fill_bo = 0;
@@ -9917,7 +9917,7 @@ spans_fallback:
 			if (data.dx | data.dy)
 				pixman_region_translate(&data.region, data.dx, data.dy);
 			assert_pixmap_contains_box(data.pixmap, &data.region.extents);
-			sna_damage_add(data.damage, &data.region);
+			sna_damage_add_to_pixmap(data.damage, &data.region, data.pixmap);
 			assert_pixmap_damage(data.pixmap);
 		}
 		RegionUninit(&data.region);
@@ -10765,7 +10765,7 @@ spans_fallback:
 			if (data.dx | data.dy)
 				pixman_region_translate(&data.region, data.dx, data.dy);
 			assert_pixmap_contains_box(data.pixmap, &data.region.extents);
-			sna_damage_add(data.damage, &data.region);
+			sna_damage_add_to_pixmap(data.damage, &data.region, data.pixmap);
 		}
 		assert_pixmap_damage(data.pixmap);
 		RegionUninit(&data.region);
@@ -11576,7 +11576,7 @@ sna_poly_arc(DrawablePtr drawable, GCPtr gc, int n, xArc *arc)
 				if (data.dx | data.dy)
 					pixman_region_translate(&data.region, data.dx, data.dy);
 				assert_pixmap_contains_box(data.pixmap, &data.region.extents);
-				sna_damage_add(data.damage, &data.region);
+				sna_damage_add_to_pixmap(data.damage, &data.region, data.pixmap);
 			}
 			assert_pixmap_damage(data.pixmap);
 			RegionUninit(&data.region);
@@ -11932,7 +11932,7 @@ sna_poly_fill_polygon(DrawablePtr draw, GCPtr gc,
 			if (data.dx | data.dy)
 				pixman_region_translate(&data.region, data.dx, data.dy);
 			assert_pixmap_contains_box(data.pixmap, &data.region.extents);
-			sna_damage_add(data.damage, &data.region);
+			sna_damage_add_to_pixmap(data.damage, &data.region, data.pixmap);
 		}
 		assert_pixmap_damage(data.pixmap);
 		RegionUninit(&data.region);
@@ -14987,7 +14987,7 @@ sna_poly_fill_arc(DrawablePtr draw, GCPtr gc, int n, xArc *arc)
 			if (data.dx | data.dy)
 				pixman_region_translate(&data.region, data.dx, data.dy);
 			assert_pixmap_contains_box(data.pixmap, &data.region.extents);
-			sna_damage_add(data.damage, &data.region);
+			sna_damage_add_to_pixmap(data.damage, &data.region, data.pixmap);
 		}
 		assert_pixmap_damage(data.pixmap);
 		RegionUninit(&data.region);
@@ -16307,7 +16307,7 @@ sna_push_pixels_solid_blt(GCPtr gc,
 
 	assert_pixmap_contains_box(pixmap, RegionExtents(region));
 	if (damage)
-		sna_damage_add(damage, region);
+		sna_damage_add_to_pixmap(damage, region, pixmap);
 	assert_pixmap_damage(pixmap);
 
 	DBG(("%s: upload(%d, %d, %d, %d)\n", __FUNCTION__,
