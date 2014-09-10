@@ -264,26 +264,20 @@ static Bool sna_create_screen_resources(ScreenPtr screen)
 	assert(sna->front == new_front);
 	screen->DestroyPixmap(new_front); /* transfer ownership to screen */
 
-	if (intel_get_master(sna->scrn)) {
-		xf86DrvMsg(screen->myNum, X_ERROR,
-			   "[intel] Failed to become DRM master\n");
-		screen->DestroyPixmap(sna->front);
-		sna->front = NULL;
-		return FALSE;
-	}
-
 	sna_mode_set_primary(sna);
 
-	/* Only preserve the fbcon, not any subsequent server regens */
-	if (serverGeneration == 1 && (sna->flags & SNA_IS_HOSTED) == 0)
-		sna_copy_fbcon(sna);
+	/* Try to become master and copy the current fbcon before the
+	 * actual VT switch. If we fail here, we will try to reset the
+	 * mode in the eventual VT switch. This can fail if systemd has
+	 * already revoked our KMS privileges, so just carry on regardless,
+	 * and hope that everything is sorted after the VT switch.
+	 */
+	if (intel_get_master(sna->scrn) == 0) {
+		/* Only preserve the fbcon, not any subsequent server regens */
+		if (serverGeneration == 1 && (sna->flags & SNA_IS_HOSTED) == 0)
+			sna_copy_fbcon(sna);
 
-	if (!sna_set_desired_mode(sna)) {
-		xf86DrvMsg(screen->myNum, X_ERROR,
-			   "[intel] Failed to set initial mode\n");
-		screen->DestroyPixmap(sna->front);
-		sna->front = NULL;
-		return FALSE;
+		(void)sna_set_desired_mode(sna);
 	}
 
 	return TRUE;
