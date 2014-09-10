@@ -106,6 +106,7 @@ libsna_la_SOURCES = \
 	gen8_render.h \
 	gen8_vertex.c \
 	gen8_vertex.h \
+	xassert.h \
 	$(NULL)
 
 if DRI2

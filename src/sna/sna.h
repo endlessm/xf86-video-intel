@@ -76,6 +76,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <signal.h>
 #include <setjmp.h>
 
+#include "xassert.h"
 #include "compiler.h"
 
 #if HAS_DEBUG_FULL
