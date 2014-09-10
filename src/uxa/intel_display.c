@@ -71,9 +71,6 @@ struct intel_drm_queue {
         intel_drm_abort_proc abort;
 };
 
-static void
-intel_drm_abort_scrn(ScrnInfoPtr scrn);
-
 static uint32_t intel_drm_seq;
 static struct list intel_drm_queue;
 
@@ -398,7 +395,6 @@ intel_crtc_apply(xf86CrtcPtr crtc)
 
 	if (scrn->pScreen)
 		xf86_reload_cursors(scrn->pScreen);
-        intel_drm_abort_scrn(scrn);
 
 done:
 	free(output_ids);
