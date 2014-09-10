@@ -3492,7 +3492,7 @@ static int name_from_path(struct sna *sna,
 			  char *name)
 {
 	struct drm_mode_get_blob blob;
-	char buf[32], *path = buf;
+	char *path;
 	int id;
 
 	id = find_property(sna, sna_output, "PATH");
@@ -3502,20 +3502,19 @@ static int name_from_path(struct sna *sna,
 
 	VG_CLEAR(blob);
 	blob.blob_id = sna_output->prop_values[id];
-	blob.length = sizeof(buf)-1;
-	blob.data = (uintptr_t)path;
-	VG(memset(path, 0, blob.length));
+	blob.length = 0;
 	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPBLOB, &blob))
 		return 0;
 
-	if (blob.length >= sizeof(buf)) {
-		path = alloca(blob.length + 1);
+	do {
+		id = blob.length;
+		path = alloca(id + 1);
 		blob.data = (uintptr_t)path;
-		VG(memset(path, 0, blob.length));
-		DBG(("%s: reading %d bytes for path blob\n", __FUNCTION__, blob.length));
+		VG(memset(path, 0, id));
+		DBG(("%s: reading %d bytes for path blob\n", __FUNCTION__, id));
 		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPBLOB, &blob))
 			return 0;
-	}
+	} while (id != blob.length);
 
 	path[blob.length] = '\0'; /* paranoia */
 	DBG(("%s: PATH='%s'\n", __FUNCTION__, path));
@@ -3540,7 +3539,8 @@ static int name_from_path(struct sna *sna,
 
 		for (n = 0; n < sna->mode.num_real_output; n++) {
 			if (to_sna_output(config->output[n])->id == id)
-				return snprintf(name, 32, "%s-%s", config->output[n]->name, c + 1);
+				return snprintf(name, 32, "%s-%s",
+						config->output[n]->name, c + 1);
 		}
 	}
 
