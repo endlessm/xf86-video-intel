@@ -14873,17 +14873,17 @@ sna_poly_fill_rect__gpu(DrawablePtr draw, GCPtr gc, int n, xRectangle *r)
 
 	if (gc_is_solid(gc, &color)) {
 		(void)sna_poly_fill_rect_blt(draw,
-					     data->bo, data->damage,
+					     data->bo, NULL,
 					     gc, color, n, r,
 					     &data->region.extents, true);
 	} else if (gc->fillStyle == FillTiled) {
 		(void)sna_poly_fill_rect_tiled_blt(draw,
-						   data->bo, data->damage,
+						   data->bo, NULL,
 						   gc, n, r,
 						   &data->region.extents, true);
 	} else {
 		(void)sna_poly_fill_rect_stippled_blt(draw,
-						    data->bo, data->damage,
+						    data->bo, NULL,
 						    gc, n, r,
 						    &data->region.extents, true);
 	}
