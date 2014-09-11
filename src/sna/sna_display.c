@@ -624,6 +624,31 @@ sna_output_backlight_set(struct sna_output *sna_output, int level)
 	return ret;
 }
 
+static void
+sna_output_backlight_off(struct sna_output *sna_output)
+{
+	DBG(("%s(%s)\n", __FUNCTION__, output->name));
+	backlight_off(&sna_output->backlight);
+	sna_output_backlight_set(sna_output, 0);
+}
+
+static void
+sna_output_backlight_on(struct sna_output *sna_output)
+{
+	DBG(("%s(%s)\n", __FUNCTION__, output->name));
+	sna_output_backlight_set(sna_output,
+				 sna_output->backlight_active_level);
+	if (backlight_on(&sna_output->backlight) < 0) {
+		xf86OutputPtr output = sna_output->base;
+
+		backlight_disable(&sna_output->backlight);
+		if (output->randr_output) {
+			RRDeleteOutputProperty(output->randr_output, backlight_atom);
+			RRDeleteOutputProperty(output->randr_output, backlight_deprecated_atom);
+		}
+	}
+}
+
 static int
 sna_output_backlight_get(xf86OutputPtr output)
 {
@@ -3001,7 +3026,7 @@ sna_output_dpms(xf86OutputPtr output, int dpms)
 			     __FUNCTION__, sna_output->backlight_active_level));
 		}
 		sna_output->dpms_mode = dpms;
-		sna_output_backlight_set(sna_output, 0);
+		sna_output_backlight_off(sna_output);
 	}
 
 	if (output->crtc &&
@@ -3014,8 +3039,7 @@ sna_output_dpms(xf86OutputPtr output, int dpms)
 	if (sna_output->backlight.iface && dpms == DPMSModeOn) {
 		DBG(("%s: restoring previous backlight %d\n",
 		     __FUNCTION__, sna_output->backlight_active_level));
-		sna_output_backlight_set(sna_output,
-					 sna_output->backlight_active_level);
+		sna_output_backlight_on(sna_output);
 	}
 
 	sna_output->dpms_mode = dpms;
