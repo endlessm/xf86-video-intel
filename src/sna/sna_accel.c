@@ -112,6 +112,10 @@
 #define MAKE_COW_OWNER(ptr) ((void*)((uintptr_t)(ptr) | 1))
 #define COW(ptr) (void *)((uintptr_t)(ptr) & ~1)
 
+#define IS_CLIPPED	0x2
+#define RECTILINEAR	0x4
+#define OVERWRITES	0x8
+
 #if 0
 static void __sna_fallback_flush(DrawablePtr d)
 {
@@ -595,6 +599,7 @@ static bool sna_pixmap_free_cpu(struct sna *sna, struct sna_pixmap *priv, bool a
 	if (priv->ptr == NULL)
 		return true;
 
+	DBG(("%s(pixmap=%ld)\n", __FUNCTION__, priv->pixmap->drawable.serialNumber));
 	__sna_pixmap_free_cpu(sna, priv);
 
 	priv->cpu_bo = NULL;
@@ -3454,12 +3459,15 @@ done:
 		    priv->cpu_damage == NULL &&
 		    (box_covers_pixmap(pixmap, &r.extents) ||
 		     box_inplace(pixmap, &r.extents))) {
-			DBG(("%s: large operation on undamaged, promoting to full GPU\n",
+			DBG(("%s: large operation on undamaged, discarding CPU shadow\n",
 			     __FUNCTION__));
 			assert(priv->gpu_bo);
 			assert(priv->gpu_bo->proxy == NULL);
-			if (sna_pixmap_free_cpu(sna, priv, priv->cpu))
+			if (sna_pixmap_free_cpu(sna, priv, priv->cpu)) {
+				DBG(("%s: large operation on undamaged, promoting to full GPU\n",
+				     __FUNCTION__));
 				sna_damage_all(&priv->gpu_damage, pixmap);
+			}
 		}
 		if (DAMAGE_IS_ALL(priv->gpu_damage)) {
 			sna_pixmap_free_cpu(sna, priv, priv->cpu);
@@ -7972,7 +7980,7 @@ sna_fill_spans(DrawablePtr drawable, GCPtr gc, int n,
 			sna_fill_spans_blt(drawable,
 					   bo, damage,
 					   gc, color, n, pt, width, sorted,
-					   &region.extents, flags & 2);
+					   &region.extents, flags & IS_CLIPPED);
 		} else {
 			/* Try converting these to a set of rectangles instead */
 			xRectangle *rect;
@@ -7995,12 +8003,12 @@ sna_fill_spans(DrawablePtr drawable, GCPtr gc, int n,
 				i = sna_poly_fill_rect_tiled_blt(drawable,
 								 bo, damage,
 								 gc, n, rect,
-								 &region.extents, flags & 2);
+								 &region.extents, flags & IS_CLIPPED);
 			} else {
 				i = sna_poly_fill_rect_stippled_blt(drawable,
 								    bo, damage,
 								    gc, n, rect,
-								    &region.extents, flags & 2);
+								    &region.extents, flags & IS_CLIPPED);
 			}
 			free (rect);
 
@@ -8863,7 +8871,7 @@ sna_poly_point(DrawablePtr drawable, GCPtr gc,
 		if ((bo = sna_drawable_use_bo(drawable, PREFER_GPU,
 					      &region.extents, &damage)) &&
 		    sna_poly_point_blt(drawable, bo, damage,
-				       gc, mode, n, pt, flags & 2))
+				       gc, mode, n, pt, flags & IS_CLIPPED))
 			return;
 	}
 
@@ -9651,7 +9659,7 @@ sna_poly_line(DrawablePtr drawable, GCPtr gc,
 	     gc->lineStyle, gc->lineStyle == LineSolid,
 	     gc->lineWidth,
 	     gc->planemask, PM_IS_SOLID(drawable, gc->planemask),
-	     data.flags & 4));
+	     data.flags & RECTILINEAR));
 
 	if (!PM_IS_SOLID(drawable, gc->planemask))
 		goto fallback;
@@ -9679,7 +9687,7 @@ sna_poly_line(DrawablePtr drawable, GCPtr gc,
 		DBG(("%s: trying solid fill [%08x]\n",
 		     __FUNCTION__, (unsigned)color));
 
-		if (data.flags & 4) {
+		if (data.flags & RECTILINEAR) {
 			data.bo = sna_drawable_use_bo(drawable, PREFER_GPU,
 						      &data.region.extents,
 						      &data.damage);
@@ -9688,7 +9696,7 @@ sna_poly_line(DrawablePtr drawable, GCPtr gc,
 					      data.bo, data.damage,
 					      gc, color, mode, n, pt,
 					      &data.region.extents,
-					      data.flags & 2))
+					      data.flags & IS_CLIPPED))
 				return;
 		} else { /* !rectilinear */
 			if ((data.bo = sna_drawable_use_bo(drawable,
@@ -9699,11 +9707,11 @@ sna_poly_line(DrawablePtr drawable, GCPtr gc,
 						   data.bo, data.damage,
 						   gc, mode, n, pt,
 						   &data.region.extents,
-						   data.flags & 2))
+						   data.flags & IS_CLIPPED))
 				return;
 
 		}
-	} else if (data.flags & 4) {
+	} else if (data.flags & RECTILINEAR) {
 		/* Try converting these to a set of rectangles instead */
 		data.bo = sna_drawable_use_bo(drawable, PREFER_GPU,
 					      &data.region.extents, &data.damage);
@@ -9761,13 +9769,13 @@ sna_poly_line(DrawablePtr drawable, GCPtr gc,
 								 data.bo, data.damage,
 								 gc, n - 1, rect + 1,
 								 &data.region.extents,
-								 data.flags & 2);
+								 data.flags & IS_CLIPPED);
 			} else {
 				i = sna_poly_fill_rect_stippled_blt(drawable,
 								    data.bo, data.damage,
 								    gc, n - 1, rect + 1,
 								    &data.region.extents,
-								    data.flags & 2);
+								    data.flags & IS_CLIPPED);
 			}
 			free (rect);
 
@@ -9796,7 +9804,7 @@ spans_fallback:
 
 				data.op = &fill;
 
-				if ((data.flags & 2) == 0) {
+				if ((data.flags & IS_CLIPPED) == 0) {
 					if (data.dx | data.dy)
 						sna_gc_ops__tmp.FillSpans = sna_fill_spans__fill_offset;
 					else
@@ -9824,7 +9832,7 @@ spans_fallback:
 			} else {
 				data.op = &fill;
 
-				if ((data.flags & 2) == 0) {
+				if ((data.flags & IS_CLIPPED) == 0) {
 					if (data.dx | data.dy)
 						sna_gc_ops__tmp.FillSpans = sna_fill_spans__dash_offset;
 					else
@@ -9847,7 +9855,7 @@ spans_fallback:
 
 				DBG(("%s: miZeroLine (solid dash, clipped? %d (complex? %d)), fg pass [%08x]\n",
 				     __FUNCTION__,
-				     !!(data.flags & 2), data.flags & 2 && !region_is_singular(&data.region),
+				     !!(data.flags & IS_CLIPPED), data.flags & IS_CLIPPED && !region_is_singular(&data.region),
 				     gc->fgPixel));
 
 				if (!sna_fill_init_blt(&fill,
@@ -9863,7 +9871,7 @@ spans_fallback:
 
 				DBG(("%s: miZeroLine (solid dash, clipped? %d (complex? %d)), bg pass [%08x]\n",
 				     __FUNCTION__,
-				     !!(data.flags & 2), data.flags & 2 && !region_is_singular(&data.region),
+				     !!(data.flags & IS_CLIPPED), data.flags & IS_CLIPPED && !region_is_singular(&data.region),
 				     gc->bgPixel));
 
 				if (sna_fill_init_blt(&fill,
@@ -9933,7 +9941,7 @@ fallback:
 		goto out;
 	if (!sna_drawable_move_region_to_cpu(drawable, &data.region,
 					     drawable_gc_flags(drawable, gc,
-							       !(data.flags & 4 && n == 2))))
+							       !(data.flags & RECTILINEAR && n == 2))))
 		goto out;
 
 	if (sigtrap_get() == 0) {
@@ -10581,7 +10589,7 @@ sna_poly_segment(DrawablePtr drawable, GCPtr gc, int n, xSegment *seg)
 	     gc->lineStyle, gc->lineStyle == LineSolid,
 	     gc->lineWidth,
 	     gc->planemask, PM_IS_SOLID(drawable, gc->planemask),
-	     data.flags & 4));
+	     data.flags & RECTILINEAR));
 	if (!PM_IS_SOLID(drawable, gc->planemask))
 		goto fallback;
 
@@ -10591,7 +10599,7 @@ sna_poly_segment(DrawablePtr drawable, GCPtr gc, int n, xSegment *seg)
 		DBG(("%s: trying blt solid fill [%08x, flags=%x] paths\n",
 		     __FUNCTION__, (unsigned)color, data.flags));
 
-		if (data.flags & 4) {
+		if (data.flags & RECTILINEAR) {
 			if ((data.bo = sna_drawable_use_bo(drawable, PREFER_GPU,
 							   &data.region.extents,
 							   &data.damage)) &&
@@ -10599,7 +10607,7 @@ sna_poly_segment(DrawablePtr drawable, GCPtr gc, int n, xSegment *seg)
 						 data.bo, data.damage,
 						 gc, color, n, seg,
 						 &data.region.extents,
-						 data.flags & 2))
+						 data.flags & IS_CLIPPED))
 				return;
 		} else {
 			if ((data.bo = sna_drawable_use_bo(drawable,
@@ -10610,10 +10618,10 @@ sna_poly_segment(DrawablePtr drawable, GCPtr gc, int n, xSegment *seg)
 						      data.bo, data.damage,
 						      gc, n, seg,
 						      &data.region.extents,
-						      data.flags & 2))
+						      data.flags & IS_CLIPPED))
 				return;
 		}
-	} else if (data.flags & 4) {
+	} else if (data.flags & RECTILINEAR) {
 		/* Try converting these to a set of rectangles instead */
 		xRectangle *rect;
 		int i;
@@ -10666,13 +10674,13 @@ sna_poly_segment(DrawablePtr drawable, GCPtr gc, int n, xSegment *seg)
 							 data.bo, data.damage,
 							 gc, n, rect,
 							 &data.region.extents,
-							 data.flags & 2);
+							 data.flags);
 		} else {
 			i = sna_poly_fill_rect_stippled_blt(drawable,
 							    data.bo, data.damage,
 							    gc, n, rect,
 							    &data.region.extents,
-							    data.flags & 2);
+							    data.flags);
 		}
 		free (rect);
 
@@ -10723,7 +10731,7 @@ spans_fallback:
 
 			data.op = &fill;
 
-			if ((data.flags & 2) == 0) {
+			if ((data.flags & IS_CLIPPED) == 0) {
 				if (data.dx | data.dy)
 					sna_gc_ops__tmp.FillSpans = sna_fill_spans__fill_offset;
 				else
@@ -10781,7 +10789,7 @@ fallback:
 		goto out;
 	if (!sna_drawable_move_region_to_cpu(drawable, &data.region,
 					     drawable_gc_flags(drawable, gc,
-							       !(data.flags & 4 && n == 1))))
+							       !(data.flags & RECTILINEAR && n == 1))))
 		goto out;
 
 	if (sigtrap_get() == 0) {
@@ -11364,7 +11372,7 @@ sna_poly_rectangle(DrawablePtr drawable, GCPtr gc, int n, xRectangle *r)
 	if (!PM_IS_SOLID(drawable, gc->planemask))
 		goto fallback;
 
-	if (flags & 4 && gc->fillStyle == FillSolid && gc->lineStyle == LineSolid && gc->joinStyle == JoinMiter) {
+	if (flags & RECTILINEAR && gc->fillStyle == FillSolid && gc->lineStyle == LineSolid && gc->joinStyle == JoinMiter) {
 		DBG(("%s: trying blt solid fill [%08lx] paths\n",
 		     __FUNCTION__, gc->fgPixel));
 		if ((bo = sna_drawable_use_bo(drawable, PREFER_GPU,
@@ -11527,7 +11535,7 @@ sna_poly_arc(DrawablePtr drawable, GCPtr gc, int n, xArc *arc)
 						       FILL_POINTS | FILL_SPANS))
 					goto fallback;
 
-				if ((data.flags & 2) == 0) {
+				if ((data.flags & IS_CLIPPED) == 0) {
 					if (data.dx | data.dy)
 						sna_gc_ops__tmp.FillSpans = sna_fill_spans__fill_offset;
 					else
@@ -11620,7 +11628,7 @@ sna_poly_fill_rect_blt(DrawablePtr drawable,
 		       GCPtr gc, uint32_t pixel,
 		       int n, const xRectangle *rect,
 		       const BoxRec *extents,
-		       bool clipped)
+		       unsigned flags)
 {
 	PixmapPtr pixmap = get_drawable_pixmap(drawable);
 	struct sna *sna = to_sna_from_pixmap(pixmap);
@@ -11632,7 +11640,7 @@ sna_poly_fill_rect_blt(DrawablePtr drawable,
 	     __FUNCTION__, pixmap->drawable.serialNumber, n,
 	     rect->x, rect->y, rect->width, rect->height,
 	     drawable->x, drawable->y,
-	     clipped));
+	     flags&2));
 
 	if (n == 1 && region_is_singular(gc->pCompositeClip)) {
 		BoxRec r;
@@ -11647,38 +11655,37 @@ sna_poly_fill_rect_blt(DrawablePtr drawable,
 				r.x1 += dx; r.y1 += dy;
 				r.x2 += dx; r.y2 += dy;
 			}
-			DBG(("%s: using fill_one() fast path: (%d, %d), (%d, %d). alu=%d, pixel=%08x\n",
-			     __FUNCTION__, r.x1, r.y1, r.x2, r.y2, gc->alu, pixel));
+			DBG(("%s: using fill_one() fast path: (%d, %d), (%d, %d). alu=%d, pixel=%08x, damage?=%d\n",
+			     __FUNCTION__, r.x1, r.y1, r.x2, r.y2, gc->alu, pixel, damage != NULL));
 
+			assert_pixmap_contains_box(pixmap, &r);
 			if (sna->render.fill_one(sna, pixmap, bo, pixel,
 						 r.x1, r.y1, r.x2, r.y2,
 						 gc->alu)) {
-				if (damage) {
-					assert_pixmap_contains_box(pixmap, &r);
-					if (r.x2 - r.x1 == pixmap->drawable.width &&
-					    r.y2 - r.y1 == pixmap->drawable.height)
-						sna_damage_all(damage, pixmap);
-					else
-						sna_damage_add_box(damage, &r);
-				}
-				assert_pixmap_damage(pixmap);
-
-				if (alu_overwrites(gc->alu) &&
-				    r.x2 - r.x1 == pixmap->drawable.width &&
+				if (r.x2 - r.x1 == pixmap->drawable.width &&
 				    r.y2 - r.y1 == pixmap->drawable.height) {
-					struct sna_pixmap *priv = sna_pixmap(pixmap);
-					if (bo == priv->gpu_bo) {
-						assert(priv->gpu_bo->proxy == NULL);
-						sna_damage_all(&priv->gpu_damage, pixmap);
-						sna_damage_destroy(&priv->cpu_damage);
-						list_del(&priv->flush_list);
-						priv->clear = true;
-						priv->clear_color = gc->alu == GXcopyInverted ? ~pixel & ((1 << gc->depth) - 1) : pixel;
+					if (damage) {
+						sna_damage_all(damage, pixmap);
+						damage = NULL;
+					}
+					if (flags & OVERWRITES) {
+						struct sna_pixmap *priv = sna_pixmap(pixmap);
+						if (bo == priv->gpu_bo) {
+							assert(damage == NULL || damage == &priv->gpu_damage);
+							assert(priv->gpu_bo->proxy == NULL);
+							sna_damage_destroy(&priv->cpu_damage);
+							list_del(&priv->flush_list);
+							priv->clear = true;
+							priv->clear_color = gc->alu == GXcopyInverted ? ~pixel & ((1 << gc->depth) - 1) : pixel;
 
-						DBG(("%s: pixmap=%ld, marking clear [%08x]\n",
-						     __FUNCTION__, pixmap->drawable.serialNumber, priv->clear_color));
+							DBG(("%s: pixmap=%ld, marking clear [%08x]\n",
+							     __FUNCTION__, pixmap->drawable.serialNumber, priv->clear_color));
+						}
 					}
 				}
+				if (damage)
+					sna_damage_add_box(damage, &r);
+				assert_pixmap_damage(pixmap);
 			} else
 				success = false;
 		}
@@ -11692,7 +11699,7 @@ sna_poly_fill_rect_blt(DrawablePtr drawable,
 	}
 
 	get_drawable_deltas(drawable, pixmap, &dx, &dy);
-	if (!clipped) {
+	if ((flags & IS_CLIPPED) == 0) {
 		dx += drawable->x;
 		dy += drawable->y;
 
@@ -11900,7 +11907,7 @@ sna_poly_fill_polygon(DrawablePtr draw, GCPtr gc,
 
 			data.op = &fill;
 
-			if ((data.flags & 2) == 0) {
+			if ((data.flags & IS_CLIPPED) == 0) {
 				if (data.dx | data.dy)
 					sna_gc_ops__tmp.FillSpans = sna_fill_spans__fill_offset;
 				else
@@ -14740,11 +14747,14 @@ sna_poly_fill_rect(DrawablePtr draw, GCPtr gc, int n, xRectangle *rect)
 		goto fallback;
 	}
 
+	if (alu_overwrites(gc->alu))
+		flags |= OVERWRITES;
+
 	/* Clear the cpu damage so that we refresh the GPU status of the
 	 * pixmap upon a redraw after a period of inactivity.
 	 */
 	hint = PREFER_GPU;
-	if (n == 1 && gc->fillStyle != FillStippled && alu_overwrites(gc->alu)) {
+	if (n == 1 && gc->fillStyle != FillStippled && flags & OVERWRITES) {
 		int16_t dx, dy;
 
 		region.data = NULL;
@@ -14754,7 +14764,7 @@ sna_poly_fill_rect(DrawablePtr draw, GCPtr gc, int n, xRectangle *rect)
 			RegionTranslate(&region, dx, dy);
 		}
 
-		if ((flags & 2) == 0) {
+		if ((flags & IS_CLIPPED) == 0) {
 			hint |= IGNORE_DAMAGE;
 			if (region_subsumes_drawable(&region, &pixmap->drawable)) {
 				discard_cpu_damage(sna, priv);
@@ -14805,21 +14815,21 @@ sna_poly_fill_rect(DrawablePtr draw, GCPtr gc, int n, xRectangle *rect)
 		if (sna_poly_fill_rect_blt(draw,
 					   bo, damage,
 					   gc, color, n, rect,
-					   &region.extents, flags & 2))
+					   &region.extents, flags))
 			return;
 	} else if (gc->fillStyle == FillTiled) {
 		DBG(("%s: tiled fill, testing for blt\n", __FUNCTION__));
 
 		if (sna_poly_fill_rect_tiled_blt(draw, bo, damage,
 						 gc, n, rect,
-						 &region.extents, flags & 2))
+						 &region.extents, flags))
 			return;
 	} else {
 		DBG(("%s: stippled fill, testing for blt\n", __FUNCTION__));
 
 		if (sna_poly_fill_rect_stippled_blt(draw, bo, damage,
 						    gc, n, rect,
-						    &region.extents, flags & 2))
+						    &region.extents, flags))
 			return;
 	}
 
@@ -14875,17 +14885,20 @@ sna_poly_fill_rect__gpu(DrawablePtr draw, GCPtr gc, int n, xRectangle *r)
 		(void)sna_poly_fill_rect_blt(draw,
 					     data->bo, NULL,
 					     gc, color, n, r,
-					     &data->region.extents, true);
+					     &data->region.extents,
+					     IS_CLIPPED);
 	} else if (gc->fillStyle == FillTiled) {
 		(void)sna_poly_fill_rect_tiled_blt(draw,
 						   data->bo, NULL,
 						   gc, n, r,
-						   &data->region.extents, true);
+						   &data->region.extents,
+						   IS_CLIPPED);
 	} else {
 		(void)sna_poly_fill_rect_stippled_blt(draw,
 						    data->bo, NULL,
 						    gc, n, r,
-						    &data->region.extents, true);
+						    &data->region.extents,
+						    IS_CLIPPED);
 	}
 }
 
@@ -14955,7 +14968,7 @@ sna_poly_fill_arc(DrawablePtr draw, GCPtr gc, int n, xArc *arc)
 
 			data.op = &fill;
 
-			if ((data.flags & 2) == 0) {
+			if ((data.flags & IS_CLIPPED) == 0) {
 				if (data.dx | data.dy)
 					sna_gc_ops__tmp.FillSpans = sna_fill_spans__fill_offset;
 				else
@@ -17032,7 +17045,7 @@ void sna_accel_flush(struct sna *sna)
 			assert(priv->flush);
 			if (sna_pixmap_move_to_gpu(priv->pixmap,
 						   MOVE_READ | __MOVE_FORCE)) {
-				if (priv->flush & 2) {
+				if (priv->flush & IS_CLIPPED) {
 					kgem_bo_unclean(&sna->kgem, priv->gpu_bo);
 					sna_damage_all(&priv->gpu_damage, priv->pixmap);
 					assert(priv->cpu_damage == NULL);
