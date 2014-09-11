@@ -39,6 +39,7 @@ struct backlight {
 	char *iface;
 	enum backlight_type type;
 	int max;
+	int has_power;
 	int pid, fd;
 };
 
@@ -48,6 +49,8 @@ void backlight_init(struct backlight *backlight);
 int backlight_open(struct backlight *backlight, char *iface);
 int backlight_set(struct backlight *backlight, int level);
 int backlight_get(struct backlight *backlight);
+int backlight_on(struct backlight *b);
+int backlight_off(struct backlight *b);
 void backlight_disable(struct backlight *backlight);
 void backlight_close(struct backlight *backlight);
 
