@@ -3751,7 +3751,7 @@ sna_output_add(struct sna *sna, unsigned id, unsigned serial)
 	output->name = (char *)(output + 1);
 	memcpy(output->name, name, len + 1);
 
-	output->use_screen_monitor = config->num_output != 1;
+	output->use_screen_monitor = config->num_output != 0;
 	xf86OutputUseScreenMonitor(output, !output->use_screen_monitor);
 	assert(output->options);
 
