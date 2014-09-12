@@ -1479,24 +1479,8 @@ static void sna_crtc_disable_shadow(struct sna *sna, struct sna_crtc *crtc)
 }
 
 static void
-sna_crtc_disable(xf86CrtcPtr crtc)
+__sna_crtc_disable(struct sna *sna, struct sna_crtc *sna_crtc)
 {
-	struct sna *sna = to_sna(crtc->scrn);
-	struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
-	struct drm_mode_crtc arg;
-
-	if (sna_crtc == NULL)
-		return;
-
-	DBG(("%s: disabling crtc [%d, pipe=%d]\n", __FUNCTION__,
-	     sna_crtc->id, sna_crtc->pipe));
-
-	sna_crtc_force_outputs_off(crtc);
-
-	memset(&arg, 0, sizeof(arg));
-	arg.crtc_id = sna_crtc->id;
-	(void)drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_SETCRTC, &arg);
-
 	sna_crtc->mode_serial++;
 
 	sna_crtc_disable_cursor(sna, sna_crtc);
@@ -1517,8 +1501,30 @@ sna_crtc_disable(xf86CrtcPtr crtc)
 
 	sna_crtc->transform = false;
 
-	assert(sna_crtc->dpms_mode == DPMSModeOff);
 	assert(!sna_crtc->shadow);
+}
+
+static void
+sna_crtc_disable(xf86CrtcPtr crtc)
+{
+	struct sna *sna = to_sna(crtc->scrn);
+	struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
+	struct drm_mode_crtc arg;
+
+	if (sna_crtc == NULL)
+		return;
+
+	DBG(("%s: disabling crtc [%d, pipe=%d]\n", __FUNCTION__,
+	     sna_crtc->id, sna_crtc->pipe));
+
+	sna_crtc_force_outputs_off(crtc);
+	assert(sna_crtc->dpms_mode == DPMSModeOff);
+
+	memset(&arg, 0, sizeof(arg));
+	arg.crtc_id = sna_crtc->id;
+	(void)drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_SETCRTC, &arg);
+
+	__sna_crtc_disable(sna, sna_crtc);
 }
 
 static void update_flush_interval(struct sna *sna)
@@ -6299,6 +6305,7 @@ sna_crtc_hide_planes(struct sna *sna, struct sna_crtc *crtc)
 	s.plane_id = crtc->sprite.id;
 	(void)drmIoctl(sna->kgem.fd, LOCAL_IOCTL_MODE_SETPLANE, &s);
 
+	__sna_crtc_disable(sna, crtc);
 	return true;
 }
 
