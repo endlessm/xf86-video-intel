@@ -5179,6 +5179,7 @@ struct kgem_bo *kgem_create_cpu_2d(struct kgem *kgem,
 		assert(bo->tiling == I915_TILING_NONE);
 		assert_tiling(kgem, bo);
 
+		assert(!__kgem_busy(kgem, bo->handle));
 		if (!gem_set_caching(kgem->fd, bo->handle, SNOOPED)) {
 			kgem_bo_destroy(kgem, bo);
 			return NULL;
@@ -6456,6 +6457,7 @@ create_snoopable_buffer(struct kgem *kgem, unsigned alloc)
 		assert(bo->base.refcnt == 1);
 		assert(bo->mmapped == MMAPPED_CPU);
 		assert(bo->need_io == false);
+		assert(!__kgem_busy(kgem, bo->base.handle));
 
 		if (!gem_set_caching(kgem->fd, bo->base.handle, SNOOPED))
 			goto free_caching;
@@ -7214,7 +7216,8 @@ bool kgem_bo_convert_to_gpu(struct kgem *kgem,
 			    struct kgem_bo *bo,
 			    unsigned flags)
 {
-	DBG(("%s: converting handle=%d from CPU to GPU, flags=%x\n", __FUNCTION__, bo->handle));
+	DBG(("%s: converting handle=%d from CPU to GPU, flags=%x, busy?=%d\n",
+	     __FUNCTION__, bo->handle, flags, __kgem_bo_is_busy(kgem, bo)));
 	assert(bo->tiling == I915_TILING_NONE);
 
 	if (kgem->has_llc)

@@ -461,7 +461,7 @@ move_to_gpu(PixmapPtr pixmap, const BoxRec *box, bool blt)
 
 	if (DBG_FORCE_UPLOAD < 0) {
 		if (!sna_pixmap_force_to_gpu(pixmap,
-					     blt ? MOVE_READ : MOVE_SOURCE_HINT | MOVE_READ))
+					     blt ? MOVE_READ : MOVE_SOURCE_HINT | MOVE_ASYNC_HINT | MOVE_READ))
 			return NULL;
 
 		return priv->gpu_bo;
@@ -506,7 +506,7 @@ upload:
 			return NULL;
 	} else {
 		if (!sna_pixmap_move_to_gpu(pixmap,
-					    __MOVE_FORCE | MOVE_SOURCE_HINT | MOVE_READ))
+					    __MOVE_FORCE | MOVE_ASYNC_HINT | MOVE_SOURCE_HINT | MOVE_READ))
 			return NULL;
 	}
 
@@ -774,7 +774,7 @@ static int sna_render_picture_downsample(struct sna *sna,
 	priv = sna_pixmap(tmp);
 	assert(priv && priv->gpu_bo);
 
-	if (!sna_pixmap_move_to_gpu(pixmap, MOVE_SOURCE_HINT | MOVE_READ)) {
+	if (!sna_pixmap_move_to_gpu(pixmap, MOVE_ASYNC_HINT | MOVE_SOURCE_HINT | MOVE_READ)) {
 fixup:
 		DBG(("%s: unable to create GPU bo for target or temporary pixmaps\n",
 		     __FUNCTION__));
@@ -1037,7 +1037,7 @@ sna_render_picture_partial(struct sna *sna,
 		struct sna_pixmap *priv;
 
 		priv = sna_pixmap_force_to_gpu(pixmap,
-					       MOVE_READ | MOVE_SOURCE_HINT);
+					       MOVE_READ | MOVE_ASYNC_HINT | MOVE_SOURCE_HINT);
 		if (priv == NULL)
 			return false;
 

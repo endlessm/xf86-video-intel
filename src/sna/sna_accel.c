@@ -3664,7 +3664,7 @@ sna_drawable_use_bo(DrawablePtr drawable, unsigned flags, const BoxRec *box,
 		}
 
 create_gpu_bo:
-		move = MOVE_WRITE | MOVE_READ;
+		move = MOVE_WRITE | MOVE_READ | MOVE_ASYNC_HINT;
 		if (flags & FORCE_GPU)
 			move |= __MOVE_FORCE;
 		if (!sna_pixmap_move_to_gpu(pixmap, move))
@@ -3697,7 +3697,7 @@ create_gpu_bo:
 				if (flags & IGNORE_DAMAGE)
 					move = MOVE_WRITE;
 				else
-					move = MOVE_WRITE | MOVE_READ;
+					move = MOVE_WRITE | MOVE_READ | MOVE_ASYNC_HINT;
 
 				if (sna_pixmap_move_to_gpu(pixmap, move))
 					goto use_gpu_bo;
@@ -3905,7 +3905,7 @@ prefer_gpu_bo:
 					}
 				}
 
-				if (!sna_pixmap_move_to_gpu(pixmap, MOVE_WRITE | MOVE_READ | __MOVE_FORCE))
+				if (!sna_pixmap_move_to_gpu(pixmap, MOVE_WRITE | MOVE_READ | MOVE_ASYNC_HINT | __MOVE_FORCE))
 					return NULL;
 
 				sna_damage_all(&priv->gpu_damage, pixmap);
