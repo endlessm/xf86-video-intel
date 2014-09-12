@@ -21,7 +21,7 @@
  * SOFTWARE.
  */
 
-#ifndef __XASSERT_H___
+#ifndef __XASSERT_H__
 #define __XASSERT_H__
 
 /* Rewrap the traditional assert so that we can capture the error message
