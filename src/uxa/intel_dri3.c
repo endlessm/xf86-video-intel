@@ -30,6 +30,7 @@
 
 #include "intel.h"
 #include "dri3.h"
+#include "intel_glamor.h"
 
 static int
 intel_dri3_open(ScreenPtr screen,
@@ -59,6 +60,10 @@ static PixmapPtr intel_dri3_pixmap_from_fd(ScreenPtr screen,
 	struct intel_pixmap *priv;
 	PixmapPtr pixmap;
 	dri_bo *bo;
+
+        pixmap = intel_glamor_pixmap_from_fd(screen, fd, width, height, stride, depth, bpp);
+        if (pixmap)
+                return pixmap;
 
 	if (depth < 8)
 		return NULL;
@@ -107,6 +112,10 @@ static int intel_dri3_fd_from_pixmap(ScreenPtr screen,
 {
 	struct intel_pixmap *priv;
 	int fd;
+
+        fd = intel_glamor_fd_from_pixmap(screen, pixmap, stride, size);
+        if (fd >= 0)
+                return fd;
 
 	priv = intel_get_pixmap_private(pixmap);
 	if (!priv)

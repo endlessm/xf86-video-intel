@@ -48,6 +48,20 @@ PixmapPtr intel_glamor_create_pixmap(ScreenPtr screen, int w, int h,
 				     int depth, unsigned int usage);
 void intel_glamor_exchange_buffers(struct intel_screen_private *intel, PixmapPtr src, PixmapPtr dst);
 XF86VideoAdaptorPtr intel_glamor_xv_init(ScreenPtr screen, int num_ports);
+
+int
+intel_glamor_fd_from_pixmap(ScreenPtr screen,
+                            PixmapPtr pixmap, CARD16 *stride, CARD32 *size);
+
+PixmapPtr
+intel_glamor_pixmap_from_fd(ScreenPtr screen,
+                            int fd,
+                            CARD16 width,
+                            CARD16 height,
+                            CARD16 stride,
+                            CARD8 depth,
+                            CARD8 bpp);
+
 #else
 
 static inline Bool intel_glamor_pre_init(ScrnInfoPtr scrn) { return TRUE; }
@@ -66,6 +80,17 @@ static inline PixmapPtr intel_glamor_create_pixmap(ScreenPtr screen, int w, int 
 
 static inline void intel_glamor_exchange_buffers(struct intel_screen_private *intel, PixmapPtr src, PixmapPtr dst) {}
 static inline XF86VideoAdaptorPtr intel_glamor_xv_init(ScreenPtr screen, int num_ports) { return NULL; }
+static inline PixmapPtr intel_glamor_pixmap_from_fd(ScreenPtr screen,
+                                                    int fd,
+                                                    CARD16 width,
+                                                    CARD16 height,
+                                                    CARD16 stride,
+                                                    CARD8 depth,
+                                                    CARD8 bpp) { return NULL; }
+
+static int
+intel_glamor_fd_from_pixmap(ScreenPtr screen,
+                            PixmapPtr pixmap, CARD16 *stride, CARD32 *size) { return -1; }
 #endif
 
 #endif /* INTEL_GLAMOR_H */

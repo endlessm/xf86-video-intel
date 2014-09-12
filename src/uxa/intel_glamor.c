@@ -138,6 +138,37 @@ intel_glamor_pre_init(ScrnInfoPtr scrn)
 }
 
 PixmapPtr
+intel_glamor_pixmap_from_fd(ScreenPtr screen,
+                            int fd,
+                            CARD16 width,
+                            CARD16 height,
+                            CARD16 stride,
+                            CARD8 depth,
+                            CARD8 bpp)
+{
+	ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
+	intel_screen_private *intel = intel_get_screen_private(scrn);
+
+	if (intel->uxa_flags & UXA_USE_GLAMOR)
+		return glamor_pixmap_from_fd(screen, fd, width, height, stride, depth, bpp);
+	else
+		return NULL;
+}
+
+int
+intel_glamor_fd_from_pixmap(ScreenPtr screen,
+                            PixmapPtr pixmap, CARD16 *stride, CARD32 *size)
+{
+	ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
+	intel_screen_private *intel = intel_get_screen_private(scrn);
+
+	if (intel->uxa_flags & UXA_USE_GLAMOR)
+                return glamor_fd_from_pixmap(screen, pixmap, stride, size);
+        else
+                return -1;
+}
+
+PixmapPtr
 intel_glamor_create_pixmap(ScreenPtr screen, int w, int h,
 			   int depth, unsigned int usage)
 {
