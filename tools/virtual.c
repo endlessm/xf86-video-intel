@@ -1079,8 +1079,8 @@ static int clone_init_xfer(struct clone *clone)
 	int width, height;
 
 	if (clone->dst.mode.id == 0) {
-		clone->width = 0;
-		clone->height = 0;
+		width = 0;
+		height = 0;
 	} else if (clone->dri3.xid) {
 		width = clone->dst.display->width;
 		height = clone->dst.display->height;
