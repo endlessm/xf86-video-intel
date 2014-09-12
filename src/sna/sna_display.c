@@ -627,7 +627,7 @@ sna_output_backlight_set(struct sna_output *sna_output, int level)
 static void
 sna_output_backlight_off(struct sna_output *sna_output)
 {
-	DBG(("%s(%s)\n", __FUNCTION__, output->name));
+	DBG(("%s(%s)\n", __FUNCTION__, sna_output->base->name));
 	backlight_off(&sna_output->backlight);
 	sna_output_backlight_set(sna_output, 0);
 }
@@ -635,7 +635,7 @@ sna_output_backlight_off(struct sna_output *sna_output)
 static void
 sna_output_backlight_on(struct sna_output *sna_output)
 {
-	DBG(("%s(%s)\n", __FUNCTION__, output->name));
+	DBG(("%s(%s)\n", __FUNCTION__, sna_output->base->name));
 	sna_output_backlight_set(sna_output,
 				 sna_output->backlight_active_level);
 	if (backlight_on(&sna_output->backlight) < 0) {
