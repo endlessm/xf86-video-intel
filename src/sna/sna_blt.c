@@ -3764,7 +3764,7 @@ bool sna_blt_copy_boxes(struct sna *sna, uint8_t alu,
 				nbox_this_time = nbox;
 				rem = kgem_batch_space(kgem);
 				if (10*nbox_this_time > rem)
-					nbox_this_time = rem / 8;
+					nbox_this_time = rem / 10;
 				if (2*nbox_this_time > KGEM_RELOC_SIZE(kgem) - kgem->nreloc)
 					nbox_this_time = (KGEM_RELOC_SIZE(kgem) - kgem->nreloc)/2;
 				DBG(("%s: emitting %d boxes out of %d (batch space %d)\n",
@@ -3882,7 +3882,7 @@ bool sna_blt_copy_boxes(struct sna *sna, uint8_t alu,
 				nbox_this_time = nbox;
 				rem = kgem_batch_space(kgem);
 				if (10*nbox_this_time > rem)
-					nbox_this_time = rem / 8;
+					nbox_this_time = rem / 10;
 				if (2*nbox_this_time > KGEM_RELOC_SIZE(kgem) - kgem->nreloc)
 					nbox_this_time = (KGEM_RELOC_SIZE(kgem) - kgem->nreloc)/2;
 				DBG(("%s: emitting %d boxes out of %d (batch space %d)\n",
