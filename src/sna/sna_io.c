@@ -547,6 +547,7 @@ fallback:
 			int nbox_this_time, rem;
 
 			nbox_this_time = tmp_nbox;
+			rem = kgem_batch_space(kgem);
 			if (8*nbox_this_time > rem)
 				nbox_this_time = rem / 8;
 			if (2*nbox_this_time > KGEM_RELOC_SIZE(kgem) - kgem->nreloc)
