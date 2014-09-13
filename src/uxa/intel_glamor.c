@@ -146,12 +146,14 @@ intel_glamor_pixmap_from_fd(ScreenPtr screen,
                             CARD8 depth,
                             CARD8 bpp)
 {
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,15,99,902,0)
 	ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
 	intel_screen_private *intel = intel_get_screen_private(scrn);
 
 	if (intel->uxa_flags & UXA_USE_GLAMOR)
 		return glamor_pixmap_from_fd(screen, fd, width, height, stride, depth, bpp);
 	else
+#endif
 		return NULL;
 }
 
@@ -159,12 +161,14 @@ int
 intel_glamor_fd_from_pixmap(ScreenPtr screen,
                             PixmapPtr pixmap, CARD16 *stride, CARD32 *size)
 {
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,15,99,902,0)
 	ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
 	intel_screen_private *intel = intel_get_screen_private(scrn);
 
 	if (intel->uxa_flags & UXA_USE_GLAMOR)
                 return glamor_fd_from_pixmap(screen, pixmap, stride, size);
         else
+#endif
                 return -1;
 }
 
