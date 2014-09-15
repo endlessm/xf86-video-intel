@@ -2173,6 +2173,7 @@ error:
 	sna_crtc->offset = saved_offset;
 	sna_crtc->transform = saved_transform;
 	sna_crtc->bo = saved_bo;
+	sna_mode_discover(sna);
 	return FALSE;
 }
 
