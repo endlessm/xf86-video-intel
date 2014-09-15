@@ -516,6 +516,9 @@ intel_pixmap_pitch(PixmapPtr pixmap)
 #if HAVE_DRI3
 Bool intel_sync_init(ScreenPtr screen);
 void intel_sync_close(ScreenPtr screen);
+#else
+static inline Bool intel_sync_init(ScreenPtr screen) { return 0; }
+static inline void intel_sync_close(ScreenPtr screen) { }
 #endif
 
 /*
