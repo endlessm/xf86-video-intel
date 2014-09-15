@@ -1771,6 +1771,7 @@ indirect_replace(struct sna *sna,
 	if (!src_bo)
 		return false;
 
+	ret = false;
 	if (sigtrap_get() == 0) {
 		memcpy_blt(src, ptr, pixmap->drawable.bitsPerPixel,
 			   stride, src_bo->pitch,
@@ -1788,8 +1789,7 @@ indirect_replace(struct sna *sna,
 					     &pixmap->drawable, bo, 0, 0,
 					     &box, 1, 0);
 		sigtrap_put();
-	} else
-		ret = false;
+	}
 
 	kgem_bo_destroy(kgem, src_bo);
 
