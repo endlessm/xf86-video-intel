@@ -3200,7 +3200,7 @@ static void dump_fence_regs(struct kgem *kgem)
 
 static int do_execbuf(struct kgem *kgem, struct drm_i915_gem_execbuffer2 *execbuf)
 {
-	int ret;
+	int ret, err;
 
 retry:
 	ret = do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_EXECBUFFER2, execbuf);
@@ -3216,7 +3216,28 @@ retry:
 		goto retry;
 
 	/* last gasp */
-	return do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_EXECBUFFER2, execbuf);
+	ret = do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_EXECBUFFER2, execbuf);
+	if (ret == 0)
+		return 0;
+
+	xf86DrvMsg(kgem_get_screen_index(kgem), X_WARNING,
+		   "Failed to submit rendering commands, trying again with outputs disabled.\n");
+
+	/* One last trick up our sleeve for when we run out of space.
+	 * We turn everything off to free up our pinned framebuffers,
+	 * sprites and cursors, and try one last time.
+	 */
+	err = errno;
+	if (sna_mode_disable(container_of(kgem, struct sna, kgem))) {
+		kgem_cleanup_cache(kgem);
+		ret = do_ioctl(kgem->fd,
+			       DRM_IOCTL_I915_GEM_EXECBUFFER2,
+			       execbuf);
+		sna_mode_enable(container_of(kgem, struct sna, kgem));
+	}
+	errno = err;
+
+	return ret;
 }
 
 void _kgem_submit(struct kgem *kgem)

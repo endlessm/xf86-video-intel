@@ -5785,6 +5785,52 @@ sna_mode_set_primary(struct sna *sna)
 #endif
 }
 
+bool
+sna_mode_disable(struct sna *sna)
+{
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	int i;
+
+	if (sna->flags & SNA_IS_HOSTED)
+		return false;
+
+	if (!sna->scrn->vtSema)
+		return false;
+
+	sna_hide_cursors(sna->scrn);
+	for (i = 0; i < sna->mode.num_real_crtc; i++)
+		sna_crtc_disable(config->crtc[i]);
+
+	while (sna_mode_has_pending_events(sna))
+		sna_mode_wakeup(sna);
+
+	kgem_clean_scanout_cache(&sna->kgem);
+	return true;
+}
+
+void
+sna_mode_enable(struct sna *sna)
+{
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	int i;
+
+	if (sna->flags & SNA_IS_HOSTED)
+		return;
+
+	if (!sna->scrn->vtSema)
+		return;
+
+	for (i = 0; i < sna->mode.num_real_crtc; i++) {
+		xf86CrtcPtr crtc = config->crtc[i];
+
+		assert(to_sna_crtc(crtc) != NULL);
+		if (!crtc->enabled)
+			continue;
+
+		__sna_crtc_set_mode(crtc);
+	}
+}
+
 void
 sna_mode_close(struct sna *sna)
 {

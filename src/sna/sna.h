@@ -426,6 +426,8 @@ bool sna_mode_wants_tear_free(struct sna *sna);
 void sna_mode_adjust_frame(struct sna *sna, int x, int y);
 extern void sna_mode_discover(struct sna *sna);
 extern void sna_mode_check(struct sna *sna);
+extern bool sna_mode_disable(struct sna *sna);
+extern void sna_mode_enable(struct sna *sna);
 extern void sna_mode_reset(struct sna *sna);
 extern void sna_mode_wakeup(struct sna *sna);
 extern void sna_mode_redisplay(struct sna *sna);
