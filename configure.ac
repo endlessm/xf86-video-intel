@@ -424,6 +424,9 @@ if test "x$UXA" != "xno"; then
 	UXA=yes
 fi
 
+PKG_CHECK_MODULES(XORG, [xorg-server >= $required_xorg_server_version xproto fontsproto pixman-1 >= $required_pixman_version $REQUIRED_MODULES])
+ABI_VERSION=`$PKG_CONFIG --variable=abi_videodrv xorg-server`
+
 AC_ARG_ENABLE(glamor,
 	      AS_HELP_STRING([--enable-glamor],
 			     [Enable glamor, a new GL-based acceleration [default=no]]),
@@ -434,7 +437,13 @@ if test "x$GLAMOR" != "xno"; then
 		AC_MSG_ERROR([Glamor acceleration requested but UXA is not enabled])
 	fi
 	if pkg-config --exists "xorg-server >= 1.15.99.901"; then
-		GLAMOR="yes (using Xorg glamor module)"
+		save_CPPFLAGS=$CPPFLAGS
+		CPPFLAGS="$XORG_CFLAGS"
+		AC_CHECK_HEADER([glamor.h],
+				[GLAMOR="yes (using Xorg glamor module)"],
+				[test "x$GLAMOR" != "xauto" && AC_MSG_ERROR("failed to find required Xorg headers for glamor")
+				GLAMOR="no"], [#include <xorg-server.h>])
+		CPPFLAGS=$save_CPPFLAGS
 	else
 		PKG_CHECK_MODULES(LIBGLAMOR, [glamor >= 0.6.0])
 		PKG_CHECK_MODULES(LIBGLAMOR_EGL, [glamor-egl])
@@ -442,9 +451,6 @@ if test "x$GLAMOR" != "xno"; then
 	fi
 	AC_DEFINE(USE_GLAMOR, 1, [Enable glamor acceleration])
 fi
-
-PKG_CHECK_MODULES(XORG, [xorg-server >= $required_xorg_server_version xproto fontsproto pixman-1 >= $required_pixman_version $REQUIRED_MODULES])
-ABI_VERSION=`$PKG_CONFIG --variable=abi_videodrv xorg-server`
 
 if test "x$ONLY_UMS" = "xyes"; then
 	UMS="yes"
