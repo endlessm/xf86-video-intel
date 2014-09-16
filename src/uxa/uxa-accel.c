@@ -675,6 +675,43 @@ uxa_poly_lines(DrawablePtr pDrawable, GCPtr pGC, int mode, int npt,
 	free(prect);
 }
 
+static BoxRec box_from_seg(const xSegment *seg, GCPtr gc)
+{
+	BoxRec b;
+
+	if (seg->x1 == seg->x2) {
+		if (seg->y1 > seg->y2) {
+			b.y2 = seg->y1 + 1;
+			b.y1 = seg->y2 + 1;
+			if (gc->capStyle != CapNotLast)
+				b.y1--;
+		} else {
+			b.y1 = seg->y1;
+			b.y2 = seg->y2;
+			if (gc->capStyle != CapNotLast)
+				b.y2++;
+		}
+		b.x1 = seg->x1;
+		b.x2 = seg->x1 + 1;
+	} else {
+		if (seg->x1 > seg->x2) {
+			b.x2 = seg->x1 + 1;
+			b.x1 = seg->x2 + 1;
+			if (gc->capStyle != CapNotLast)
+				b.x1--;
+		} else {
+			b.x1 = seg->x1;
+			b.x2 = seg->x2;
+			if (gc->capStyle != CapNotLast)
+				b.x2++;
+		}
+		b.y1 = seg->y1;
+		b.y2 = seg->y1 + 1;
+	}
+
+	return b;
+}
+
 /**
  * uxa_poly_segment() checks if it can accelerate the lines as a group of
  * horizontal or vertical lines (rectangles), and uses existing rectangle fill
@@ -718,28 +755,11 @@ uxa_poly_segment(DrawablePtr pDrawable, GCPtr pGC, int nseg, xSegment * pSeg)
 	if (!prect)
 		return;
 	for (i = 0; i < nseg; i++) {
-		if (pSeg[i].x1 < pSeg[i].x2) {
-			prect[i].x = pSeg[i].x1;
-			prect[i].width = pSeg[i].x2 - pSeg[i].x1 + 1;
-		} else {
-			prect[i].x = pSeg[i].x2;
-			prect[i].width = pSeg[i].x1 - pSeg[i].x2 + 1;
-		}
-		if (pSeg[i].y1 < pSeg[i].y2) {
-			prect[i].y = pSeg[i].y1;
-			prect[i].height = pSeg[i].y2 - pSeg[i].y1 + 1;
-		} else {
-			prect[i].y = pSeg[i].y2;
-			prect[i].height = pSeg[i].y1 - pSeg[i].y2 + 1;
-		}
-
-		/* don't paint last pixel */
-		if (pGC->capStyle == CapNotLast) {
-			if (prect[i].width == 1)
-				prect[i].height--;
-			else
-				prect[i].width--;
-		}
+		BoxRec b = box_from_seg(&pSeg[i], pGC);
+		prect[i].x = b.x1;
+		prect[i].y = b.y1;
+		prect[i].width  = b.x2 - b.x1;
+		prect[i].height = b.y2 - b.y1;
 	}
 	pGC->ops->PolyFillRect(pDrawable, pGC, nseg, prect);
 	free(prect);
