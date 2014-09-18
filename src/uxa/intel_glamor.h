@@ -88,7 +88,7 @@ static inline PixmapPtr intel_glamor_pixmap_from_fd(ScreenPtr screen,
                                                     CARD8 depth,
                                                     CARD8 bpp) { return NULL; }
 
-static int
+static inline int
 intel_glamor_fd_from_pixmap(ScreenPtr screen,
                             PixmapPtr pixmap, CARD16 *stride, CARD32 *size) { return -1; }
 #endif
