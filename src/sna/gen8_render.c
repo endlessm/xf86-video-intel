@@ -1396,8 +1396,8 @@ gen8_bind_bo(struct sna *sna,
 
 	kgem_bo_set_binding(bo, format | is_dst << 30 | is_scanout << 31, offset);
 
-	DBG(("[%x] bind bo(handle=%d, addr=%d), format=%d, width=%d, height=%d, pitch=%d, tiling=%d -> %s\n",
-	     offset, bo->handle, ss[1],
+	DBG(("[%x] bind bo(handle=%d, addr=%lx), format=%d, width=%d, height=%d, pitch=%d, tiling=%d -> %s\n",
+	     offset, bo->handle, *(uint64_t *)(ss+8),
 	     format, width, height, bo->pitch, bo->tiling,
 	     domains & 0xffff ? "render" : "sampler"));
 
