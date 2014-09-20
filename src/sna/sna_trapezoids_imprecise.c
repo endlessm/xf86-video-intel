@@ -600,6 +600,8 @@ polygon_add_line(struct polygon *polygon,
 	if (e->height_left <= 0)
 		return;
 
+	__DBG(("%s: edge height=%d\n", __FUNCTION__, e->dir * e->height_left));
+
 	if (dx == 0) {
 		e->x.quo = p1->x;
 		e->x.rem = -dy;
@@ -740,7 +742,7 @@ static struct edge *filter(struct edge *edges)
 	struct edge *e;
 
 	e = edges;
-	do {
+	while (e->next) {
 		struct edge *n = e->next;
 		if (e->dir == -n->dir &&
 		    e->height_left == n->height_left &&
@@ -754,11 +756,10 @@ static struct edge *filter(struct edge *edges)
 				n->next->prev = e->prev;
 			else
 				break;
-
 			e = n->next;
 		} else
-			e = e->next;
-	} while (e->next);
+			e = n;
+	}
 
 	return edges;
 }
@@ -809,6 +810,7 @@ fill_buckets(struct active_list *active,
 	while (edge) {
 		struct edge *next = edge->next;
 		struct edge **b = &buckets[edge->ytop & (FAST_SAMPLES_Y-1)];
+		__DBG(("%s: ytop %d -> bucket %d\n", __FUNCTION__,  edge->ytop, edge->ytop & (FAST_SAMPLES_Y-1)));
 		if (*b)
 			(*b)->prev = edge;
 		edge->next = *b;
@@ -1097,9 +1099,9 @@ tor_blt(struct sna *sna,
 
 		assert(x >= converter->extents.x1);
 		assert(x < converter->extents.x2);
-		__DBG(("%s: cell=(%d, %d, %d), cover=%d, max=%d\n", __FUNCTION__,
+		__DBG(("%s: cell=(%d, %d, %d), cover=%d\n", __FUNCTION__,
 		       cell->x, cell->covered_height, cell->uncovered_area,
-		       cover, xmax));
+		       cover));
 
 		if (cell->covered_height || cell->uncovered_area) {
 			box.x2 = x;
@@ -1192,9 +1194,9 @@ tor_render(struct sna *sna,
 			do_full_step = can_full_step(active);
 		}
 
-		__DBG(("%s: y=%d [%d], do_full_step=%d, new edges=%d, min_height=%d, vertical=%d\n",
+		__DBG(("%s: y=%d-%d, do_full_step=%d, new edges=%d\n",
 		       __FUNCTION__,
-		       i, i+ymin, do_full_step,
+		       i, j, do_full_step,
 		       polygon->y_buckets[i] != NULL));
 		if (do_full_step) {
 			nonzero_row(active, coverages);
@@ -3541,6 +3543,11 @@ project_point_onto_grid(const xPointFixed *in,
 {
 	out->x = dx + pixman_fixed_to_fast(in->x);
 	out->y = dy + pixman_fixed_to_fast(in->y);
+	__DBG(("%s: (%f, %f) -> (%d, %d)\n",
+	       __FUNCTION__,
+	       pixman_fixed_to_double(in->x),
+	       pixman_fixed_to_double(in->y),
+	       out->x, out->y));
 }
 
 #if HAS_PIXMAN_TRIANGLES
@@ -3805,6 +3812,68 @@ triangles_mask_converter(CARD8 op, PicturePtr src, PicturePtr dst,
 	return true;
 }
 
+struct tristrip_thread {
+	struct sna *sna;
+	const struct sna_composite_spans_op *op;
+	const xPointFixed *points;
+	RegionPtr clip;
+	span_func_t span;
+	BoxRec extents;
+	int dx, dy, draw_y;
+	int count;
+	bool unbounded;
+};
+
+static void
+tristrip_thread(void *arg)
+{
+	struct tristrip_thread *thread = arg;
+	struct span_thread_boxes boxes;
+	struct tor tor;
+	xPointFixed p[4];
+	int n, cw, ccw;
+
+	if (!tor_init(&tor, &thread->extents, 2*thread->count))
+		return;
+
+	boxes.op = thread->op;
+	boxes.num_boxes = 0;
+
+	cw = ccw = 0;
+	project_point_onto_grid(&thread->points[0], thread->dx, thread->dy, &p[cw]);
+	project_point_onto_grid(&thread->points[1], thread->dx, thread->dy, &p[2+ccw]);
+	polygon_add_line(tor.polygon, &p[2+ccw], &p[cw]);
+	n = 2;
+	do {
+		cw = !cw;
+		project_point_onto_grid(&thread->points[n], thread->dx, thread->dy, &p[cw]);
+		polygon_add_line(tor.polygon, &p[!cw], &p[cw]);
+		if (++n == thread->count)
+			break;
+
+		ccw = !ccw;
+		project_point_onto_grid(&thread->points[n], thread->dx, thread->dy, &p[2+ccw]);
+		polygon_add_line(tor.polygon, &p[2+ccw], &p[2+!ccw]);
+		if (++n == thread->count)
+			break;
+	} while (1);
+	polygon_add_line(tor.polygon, &p[cw], &p[2+ccw]);
+	assert(tor.polygon->num_edges <= 2*thread->count);
+
+	tor_render(thread->sna, &tor,
+		   (struct sna_composite_spans_op *)&boxes, thread->clip,
+		   thread->span, thread->unbounded);
+
+	tor_fini(&tor);
+
+	if (boxes.num_boxes) {
+		DBG(("%s: flushing %d boxes\n", __FUNCTION__, boxes.num_boxes));
+		assert(boxes.num_boxes <= SPAN_THREAD_MAX_BOXES);
+		thread->op->thread_boxes(thread->sna, thread->op,
+					 boxes.boxes, boxes.num_boxes);
+	}
+}
+
 bool
 tristrip_span_converter(struct sna *sna,
 			CARD8 op, PicturePtr src, PicturePtr dst,
@@ -3812,13 +3881,10 @@ tristrip_span_converter(struct sna *sna,
 			int count, xPointFixed *points)
 {
 	struct sna_composite_spans_op tmp;
-	struct tor tor;
 	BoxRec extents;
 	pixman_region16_t clip;
-	xPointFixed p[4];
 	int16_t dst_x, dst_y;
-	int dx, dy;
-	int cw, ccw, n;
+	int dx, dy, num_threads;
 	bool was_clear;
 
 	if (NO_SCAN_CONVERTER)
@@ -3907,35 +3973,88 @@ tristrip_span_converter(struct sna *sna,
 
 	dx *= FAST_SAMPLES_X;
 	dy *= FAST_SAMPLES_Y;
-	if (!tor_init(&tor, &extents, 2*count))
-		goto skip;
 
-	cw = ccw = 0;
-	project_point_onto_grid(&points[0], dx, dy, &p[cw]);
-	project_point_onto_grid(&points[1], dx, dy, &p[2+ccw]);
-	polygon_add_line(tor.polygon, &p[cw], &p[2+ccw]);
-	n = 2;
-	do {
-		cw = !cw;
-		project_point_onto_grid(&points[n], dx, dy, &p[cw]);
-		polygon_add_line(tor.polygon, &p[!cw], &p[cw]);
-		if (++n == count)
-			break;
+	num_threads = 1;
+	if (!NO_GPU_THREADS &&
+	    tmp.thread_boxes &&
+	    thread_choose_span(&tmp, dst, maskFormat, &clip))
+		num_threads = sna_use_threads(extents.x2 - extents.x1,
+					      extents.y2 - extents.y1,
+					      16);
+	if (num_threads == 1) {
+		struct tor tor;
+		xPointFixed p[4];
+		int cw, ccw, n;
 
-		ccw = !ccw;
-		project_point_onto_grid(&points[n], dx, dy, &p[2+ccw]);
-		polygon_add_line(tor.polygon, &p[2+ccw], &p[2+!ccw]);
-		if (++n == count)
-			break;
-	} while (1);
-	polygon_add_line(tor.polygon, &p[2+ccw], &p[cw]);
-	assert(tor.polygon->num_edges <= 2*count);
+		if (!tor_init(&tor, &extents, 2*count))
+			goto skip;
 
-	tor_render(sna, &tor, &tmp, &clip,
-		   choose_span(&tmp, dst, maskFormat, &clip),
-		   !was_clear && maskFormat && !operator_is_bounded(op));
+		cw = ccw = 0;
+		project_point_onto_grid(&points[0], dx, dy, &p[cw]);
+		project_point_onto_grid(&points[1], dx, dy, &p[2+ccw]);
+		polygon_add_line(tor.polygon, &p[2+ccw], &p[cw]);
+		n = 2;
+		do {
+			cw = !cw;
+			project_point_onto_grid(&points[n], dx, dy, &p[cw]);
+			polygon_add_line(tor.polygon, &p[!cw], &p[cw]);
+			if (++n == count)
+				break;
 
-	tor_fini(&tor);
+			ccw = !ccw;
+			project_point_onto_grid(&points[n], dx, dy, &p[2+ccw]);
+			polygon_add_line(tor.polygon, &p[2+ccw], &p[2+!ccw]);
+			if (++n == count)
+				break;
+		} while (1);
+		polygon_add_line(tor.polygon, &p[cw], &p[2+ccw]);
+		assert(tor.polygon->num_edges <= 2*count);
+
+		tor_render(sna, &tor, &tmp, &clip,
+			   choose_span(&tmp, dst, maskFormat, &clip),
+			   !was_clear && maskFormat && !operator_is_bounded(op));
+
+		tor_fini(&tor);
+	} else {
+		struct tristrip_thread threads[num_threads];
+		int y, h, n;
+
+		DBG(("%s: using %d threads for tristrip compositing %dx%d\n",
+		     __FUNCTION__, num_threads,
+		     clip.extents.x2 - clip.extents.x1,
+		     clip.extents.y2 - clip.extents.y1));
+
+		threads[0].sna = sna;
+		threads[0].op = &tmp;
+		threads[0].points = points;
+		threads[0].count = count;
+		threads[0].extents = clip.extents;
+		threads[0].clip = &clip;
+		threads[0].dx = dx;
+		threads[0].dy = dy;
+		threads[0].draw_y = dst->pDrawable->y;
+		threads[0].unbounded = !was_clear && maskFormat && !operator_is_bounded(op);
+		threads[0].span = thread_choose_span(&tmp, dst, maskFormat, &clip);
+
+		y = clip.extents.y1;
+		h = clip.extents.y2 - clip.extents.y1;
+		h = (h + num_threads - 1) / num_threads;
+		num_threads -= (num_threads-1) * h >= clip.extents.y2 - clip.extents.y1;
+
+		for (n = 1; n < num_threads; n++) {
+			threads[n] = threads[0];
+			threads[n].extents.y1 = y;
+			threads[n].extents.y2 = y += h;
+
+			sna_threads_run(n, tristrip_thread, &threads[n]);
+		}
+
+		assert(y < threads[0].extents.y2);
+		threads[0].extents.y1 = y;
+		tristrip_thread(&threads[0]);
+
+		sna_threads_wait();
+	}
 skip:
 	tmp.done(sna, &tmp);
 
