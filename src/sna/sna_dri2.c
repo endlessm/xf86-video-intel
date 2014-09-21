@@ -1494,6 +1494,7 @@ void sna_dri2_destroy_window(WindowPtr win)
 		while ((info = chain)) {
 			info->draw = NULL;
 			info->client = NULL;
+			list_del(&info->link);
 
 			chain = info->chain;
 			info->chain = NULL;
