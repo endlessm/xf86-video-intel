@@ -416,7 +416,7 @@ sna_present_unflip(ScreenPtr screen, uint64_t event_id)
 	struct kgem_bo *bo;
 
 	DBG(("%s(event=%lld)\n", __FUNCTION__, (long long)event_id));
-	if (sna->mode.front_active == 0) {
+	if (sna->mode.front_active == 0 || sna->mode.shadow_active) {
 		const struct ust_msc *swap;
 
 		DBG(("%s: no CRTC active, perform no-op flip\n", __FUNCTION__));
