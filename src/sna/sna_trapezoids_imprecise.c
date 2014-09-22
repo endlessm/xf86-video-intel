@@ -42,8 +42,8 @@
 #undef SAMPLES_X
 #undef SAMPLES_Y
 
-#if 0
-#define __DBG(x) LogF x
+#if 1
+#define __DBG DBG
 #else
 #define __DBG(x)
 #endif
@@ -265,7 +265,7 @@ floored_divrem(int a, int b)
 	struct quorem qr;
 	assert(b>0);
 	qr.quo = a/b;
-	qr.rem = a%b;
+	qr.rem = a - qr.quo*b;
 	if (qr.rem < 0) {
 		qr.quo -= 1;
 		qr.rem += b;
@@ -282,7 +282,7 @@ floored_muldivrem(int32_t x, int32_t a, int32_t b)
 	int64_t xa = (int64_t)x*a;
 	assert(b>0);
 	qr.quo = xa/b;
-	qr.rem = xa%b;
+	qr.rem = xa - qr.quo*b;
 	if (qr.rem < 0) {
 		qr.quo -= 1;
 		qr.rem += b;
@@ -551,8 +551,8 @@ polygon_add_edge(struct polygon *polygon,
 			e->x = floored_muldivrem(ytop - y1, dx, dy);
 			e->x.quo += x1;
 		}
+		e->x.rem -= dy; /* Bias for faster edge advancement. */
 	}
-	e->x.rem -= dy; /* Bias the remainder for faster edge advancement. */
 
 	_polygon_insert_edge_into_its_y_bucket(polygon, e);
 	polygon->num_edges++;
@@ -847,6 +847,7 @@ nonzero_subrow(struct active_list *active, struct cell_list *coverages)
 				if (edge->x.rem >= 0) {
 					++edge->x.quo;
 					edge->x.rem -= edge->dy;
+					assert(edge->x.rem < 0);
 				}
 			}
 
@@ -854,9 +855,9 @@ nonzero_subrow(struct active_list *active, struct cell_list *coverages)
 				struct edge *pos = edge->prev;
 				pos->next = next;
 				next->prev = pos;
-				do {
+				do
 					pos = pos->prev;
-				} while (edge->x.quo < pos->x.quo);
+				while (edge->x.quo < pos->x.quo);
 				pos->next->prev = edge;
 				edge->next = pos->next;
 				edge->prev = pos;
@@ -1939,7 +1940,7 @@ imprecise_trapezoid_span_converter(struct sna *sna,
 	dy *= FAST_SAMPLES_Y;
 
 	num_threads = 1;
-	if (!NO_GPU_THREADS &&
+	if (!NO_GPU_THREADS && 0 &&
 	    (flags & COMPOSITE_SPANS_RECTILINEAR) == 0 &&
 	    tmp.thread_boxes &&
 	    thread_choose_span(&tmp, dst, maskFormat, &clip))
