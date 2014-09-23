@@ -239,8 +239,10 @@ void intel_video_init(ScreenPtr screen)
 		intel->XvEnabled = FALSE;
 	}
 
+#ifdef INTEL_XVMC
         if (texturedAdaptor)
                 intel_xvmc_adaptor_init(screen);
+#endif
 
 	free(adaptors);
 }
