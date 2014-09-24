@@ -120,7 +120,7 @@ struct sna_crtc {
 	int dpms_mode;
 	PixmapPtr slave_pixmap;
 	DamagePtr slave_damage;
-	struct kgem_bo *bo, *shadow_bo;
+	struct kgem_bo *bo, *shadow_bo, *client_bo;
 	struct sna_cursor *cursor;
 	unsigned int last_cursor_size;
 	uint32_t offset;
@@ -129,6 +129,8 @@ struct sna_crtc {
 	bool transform;
 	uint8_t id;
 	uint8_t pipe;
+
+	uint16_t shadow_bo_width, shadow_bo_height;
 
 	uint32_t rotation;
 	struct plane {
@@ -1121,17 +1123,17 @@ static bool wait_for_shadow(struct sna *sna,
 					     crtc->base->bounds.y1,
 					     crtc->base->bounds.x2,
 					     crtc->base->bounds.y2,
-					     crtc->shadow_bo->handle));
+					     crtc->client_bo->handle));
 
 					ret &= sna->render.copy_boxes(sna, GXcopy,
-								      &draw, crtc->shadow_bo, -crtc->base->bounds.x1, -crtc->base->bounds.y1,
+								      &draw, crtc->client_bo, -crtc->base->bounds.x1, -crtc->base->bounds.y1,
 								      &pixmap->drawable, priv->gpu_bo, 0, 0,
 								      &crtc->base->bounds, 1,
 								      0);
 				}
 
-				kgem_bo_destroy(&sna->kgem, crtc->shadow_bo);
-				crtc->shadow_bo = NULL;
+				kgem_bo_destroy(&sna->kgem, crtc->client_bo);
+				crtc->client_bo = NULL;
 				list_del(&crtc->shadow_link);
 			}
 		}
@@ -1226,10 +1228,10 @@ static bool wait_for_shadow(struct sna *sna,
 			     crtc->base->bounds.y1,
 			     crtc->base->bounds.x2,
 			     crtc->base->bounds.y2,
-			     crtc->shadow_bo->handle));
+			     crtc->client_bo->handle));
 
 			ret = sna->render.copy_boxes(sna, GXcopy,
-						     &draw, crtc->shadow_bo, -crtc->base->bounds.x1, -crtc->base->bounds.y1,
+						     &draw, crtc->client_bo, -crtc->base->bounds.x1, -crtc->base->bounds.y1,
 						     &pixmap->drawable, bo, 0, 0,
 						     &crtc->base->bounds, 1,
 						     0);
@@ -1240,8 +1242,8 @@ static bool wait_for_shadow(struct sna *sna,
 			RegionSubtract(&sna->mode.shadow_region, &sna->mode.shadow_region, &region);
 		}
 
-		kgem_bo_destroy(&sna->kgem, crtc->shadow_bo);
-		crtc->shadow_bo = NULL;
+		kgem_bo_destroy(&sna->kgem, crtc->client_bo);
+		crtc->client_bo = NULL;
 		list_del(&crtc->shadow_link);
 	}
 
@@ -1433,7 +1435,7 @@ static bool sna_crtc_enable_shadow(struct sna *sna, struct sna_crtc *crtc)
 
 static void sna_crtc_disable_override(struct sna *sna, struct sna_crtc *crtc)
 {
-	if (crtc->shadow_bo == NULL)
+	if (crtc->client_bo == NULL)
 		return;
 
 	if (!crtc->transform) {
@@ -1445,13 +1447,13 @@ static void sna_crtc_disable_override(struct sna *sna, struct sna_crtc *crtc)
 		tmp.bitsPerPixel = sna->front->drawable.bitsPerPixel;
 
 		sna->render.copy_boxes(sna, GXcopy,
-				       &tmp, crtc->shadow_bo, -crtc->base->bounds.x1, -crtc->base->bounds.y1,
+				       &tmp, crtc->client_bo, -crtc->base->bounds.x1, -crtc->base->bounds.y1,
 				       &sna->front->drawable, __sna_pixmap_get_bo(sna->front), 0, 0,
 				       &crtc->base->bounds, 1, 0);
 		list_del(&crtc->shadow_link);
 	}
-	kgem_bo_destroy(&sna->kgem, crtc->shadow_bo);
-	crtc->shadow_bo = NULL;
+	kgem_bo_destroy(&sna->kgem, crtc->client_bo);
+	crtc->client_bo = NULL;
 }
 
 static void sna_crtc_disable_shadow(struct sna *sna, struct sna_crtc *crtc)
@@ -1499,6 +1501,10 @@ __sna_crtc_disable(struct sna *sna, struct sna_crtc *sna_crtc)
 		sna->mode.dirty = true;
 	}
 
+	if (sna_crtc->shadow_bo) {
+		kgem_bo_destroy(&sna->kgem, sna_crtc->shadow_bo);
+		sna_crtc->shadow_bo = NULL;
+	}
 	sna_crtc->transform = false;
 
 	assert(!sna_crtc->shadow);
@@ -1843,6 +1849,19 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 		DBG(("%s: attaching to per-crtc pixmap %dx%d\n",
 		     __FUNCTION__, crtc->mode.HDisplay, crtc->mode.VDisplay));
 
+		bo = sna_crtc->shadow_bo;
+		if (bo) {
+			if (sna_crtc->shadow_bo_width == crtc->mode.HDisplay &&
+			    sna_crtc->shadow_bo_height == crtc->mode.VDisplay) {
+				DBG(("%s: reusing current shadow bo handle=%d\n",
+				     __FUNCTION__, bo->handle));
+				goto out_shadow;
+			}
+
+			kgem_bo_destroy(&sna->kgem, bo);
+			sna_crtc->shadow_bo = NULL;
+		}
+
 		tiling = I915_TILING_X;
 		if (sna->kgem.gen == 071)
 			tiled_limit = 16 * 1024 * 8;
@@ -1862,25 +1881,29 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 				    scrn->bitsPerPixel,
 				    tiling, CREATE_SCANOUT);
 		if (bo == NULL) {
-			DBG(("%s: failed to allocate crtc scanout\n"));
+			DBG(("%s: failed to allocate crtc scanout\n", __FUNCTION__));
 			return NULL;
 		}
 
 		if (!get_fb(sna, bo, crtc->mode.HDisplay, crtc->mode.VDisplay)) {
-			DBG(("%s: failed to bind fb for crtc scanout\n"));
+			DBG(("%s: failed to bind fb for crtc scanout\n", __FUNCTION__));
 			kgem_bo_destroy(&sna->kgem, bo);
 			return NULL;
 		}
 
-		if (__sna_pixmap_get_bo(sna->front)) {
+		if (__sna_pixmap_get_bo(sna->front) && !crtc->transformPresent) {
 			DrawableRec tmp;
+			BoxRec b;
 
-			DBG(("%s: copying onto shadow CRTC: (%d, %d), (%d, %d), handle=%d\n",
+			b.x1 = crtc->x;
+			b.y1 = crtc->y;
+			b.x2 = crtc->x + crtc->mode.HDisplay;
+			b.y2 = crtc->y + crtc->mode.VDisplay;
+
+			DBG(("%s: copying onto shadow CRTC: (%d, %d)x(%d, %d), handle=%d\n",
 			     __FUNCTION__,
-			     crtc->bounds.x1,
-			     crtc->bounds.y1,
-			     crtc->bounds.x2,
-			     crtc->bounds.y2,
+			     b.x1, b.y1,
+			     b.x2, b.y2,
 			     bo->handle));
 
 			tmp.width = crtc->mode.HDisplay;
@@ -1890,26 +1913,34 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 
 			(void)sna->render.copy_boxes(sna, GXcopy,
 						     &sna->front->drawable, __sna_pixmap_get_bo(sna->front), 0, 0,
-						     &tmp, bo, -crtc->bounds.x1, -crtc->bounds.y1,
-						     &crtc->bounds, 1,
-						     0);
+						     &tmp, bo, -b.x1, -b.y1,
+						     &b, 1, 0);
 		}
 
+		sna_crtc->shadow_bo_width = crtc->mode.HDisplay;
+		sna_crtc->shadow_bo_height = crtc->mode.VDisplay;
+		sna_crtc->shadow_bo = bo;
+out_shadow:
 		sna_crtc->transform = true;
-		return bo;
+		return kgem_bo_reference(bo);
 	} else {
+		if (sna_crtc->shadow_bo) {
+			kgem_bo_destroy(&sna->kgem, sna_crtc->shadow_bo);
+			sna_crtc->shadow_bo = NULL;
+		}
+
 		if (sna_crtc->slave_pixmap) {
 			DBG(("%s: attaching to scanout pixmap\n", __FUNCTION__));
 			bo = sna_pixmap_pin(sna_crtc->slave_pixmap, PIN_SCANOUT);
 			if (bo == NULL) {
-				DBG(("%s: failed to pin crtc scanout\n"));
+				DBG(("%s: failed to pin crtc scanout\n", __FUNCTION__));
 				return NULL;
 			}
 
 			if (!get_fb(sna, bo,
 				    sna_crtc->slave_pixmap->drawable.width,
 				    sna_crtc->slave_pixmap->drawable.height)) {
-				DBG(("%s: failed to bind fb for crtc scanout\n"));
+				DBG(("%s: failed to bind fb for crtc scanout\n", __FUNCTION__));
 				return NULL;
 			}
 		} else {
@@ -1921,7 +1952,7 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 			}
 
 			if (!get_fb(sna, bo, scrn->virtualX, scrn->virtualY)) {
-				DBG(("%s: failed to bind fb for crtc scanout\n"));
+				DBG(("%s: failed to bind fb for crtc scanout\n", __FUNCTION__));
 				return NULL;
 			}
 		}
@@ -1931,7 +1962,7 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 
 			DBG(("%s: enabling TearFree shadow\n", __FUNCTION__));
 			if (!sna_crtc_enable_shadow(sna, sna_crtc)) {
-				DBG(("%s: failed to enable crtc shadow\n"));
+				DBG(("%s: failed to enable crtc shadow\n", __FUNCTION__));
 				return NULL;
 			}
 
@@ -1965,7 +1996,7 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 				if (!get_fb(sna, shadow,
 					    region.extents.x2,
 					    region.extents.y2)) {
-					DBG(("%s: failed to bind fb for TearFeee shadow\n"));
+					DBG(("%s: failed to bind fb for TearFeee shadow\n", __FUNCTION__));
 					kgem_bo_destroy(&sna->kgem, shadow);
 					return NULL;
 				}
@@ -2144,6 +2175,8 @@ __sna_crtc_set_mode(xf86CrtcPtr crtc)
 	struct kgem_bo *saved_bo, *bo;
 	uint32_t saved_offset;
 	bool saved_transform;
+
+	DBG(("%s\n", __FUNCTION__));
 
 	saved_bo = sna_crtc->bo;
 	saved_transform = sna_crtc->transform;
@@ -5169,6 +5202,11 @@ fixup_flip:
 				crtc->bo->active_scanout--;
 				kgem_bo_destroy(&sna->kgem, crtc->bo);
 
+				if (crtc->shadow_bo) {
+					kgem_bo_destroy(&sna->kgem, crtc->shadow_bo);
+					crtc->shadow_bo = NULL;
+				}
+
 				crtc->bo = kgem_bo_reference(bo);
 				crtc->bo->active_scanout++;
 
@@ -6723,11 +6761,11 @@ void sna_shadow_set_crtc(struct sna *sna,
 	assert(sna_crtc);
 	assert(!sna_crtc->transform);
 
-	if (sna_crtc->shadow_bo != bo) {
-		if (sna_crtc->shadow_bo)
-			kgem_bo_destroy(&sna->kgem, sna_crtc->shadow_bo);
+	if (sna_crtc->client_bo != bo) {
+		if (sna_crtc->client_bo)
+			kgem_bo_destroy(&sna->kgem, sna_crtc->client_bo);
 
-		sna_crtc->shadow_bo = kgem_bo_reference(bo);
+		sna_crtc->client_bo = kgem_bo_reference(bo);
 		sna_crtc_damage(crtc);
 	}
 
@@ -6748,11 +6786,11 @@ void sna_shadow_unset_crtc(struct sna *sna,
 	DBG(("%s: clearin shadow override for CRTC:%d\n",
 	     __FUNCTION__, sna_crtc->id));
 
-	if (sna_crtc->shadow_bo == NULL)
+	if (sna_crtc->client_bo == NULL)
 		return;
 
-	kgem_bo_destroy(&sna->kgem, sna_crtc->shadow_bo);
-	sna_crtc->shadow_bo = NULL;
+	kgem_bo_destroy(&sna->kgem, sna_crtc->client_bo);
+	sna_crtc->client_bo = NULL;
 	list_del(&sna_crtc->shadow_link);
 	sna->mode.shadow_dirty = true;
 
@@ -6884,7 +6922,7 @@ void sna_mode_redisplay(struct sna *sna)
 				damage.extents = crtc->bounds;
 				damage.data = NULL;
 
-				bo = sna_crtc->shadow_bo;
+				bo = sna_crtc->client_bo;
 				if (bo == NULL)
 					bo = kgem_create_2d(&sna->kgem,
 							    crtc->mode.HDisplay,
@@ -6934,7 +6972,7 @@ disable1:
 					}
 
 					kgem_bo_destroy(&sna->kgem, bo);
-					sna_crtc->shadow_bo = NULL;
+					sna_crtc->client_bo = NULL;
 					continue;
 				}
 				sna->mode.flip_active++;
@@ -6945,7 +6983,7 @@ disable1:
 				sna_crtc->flip_bo->active_scanout++;
 				sna_crtc->flip_serial = sna_crtc->mode_serial;
 
-				sna_crtc->shadow_bo = kgem_bo_reference(sna_crtc->bo);
+				sna_crtc->client_bo = kgem_bo_reference(sna_crtc->bo);
 			} else {
 				sna_crtc_redisplay(crtc, &damage, sna_crtc->bo);
 				kgem_scanout_flush(&sna->kgem, sna_crtc->bo);
@@ -6992,14 +7030,14 @@ disable1:
 			arg.crtc_id = crtc->id;
 			arg.user_data = (uintptr_t)crtc;
 
-			if (crtc->shadow_bo) {
+			if (crtc->client_bo) {
 				DBG(("%s: apply shadow override bo for CRTC:%d on pipe=%d, handle=%d\n",
-				     __FUNCTION__, crtc->id, crtc->pipe, crtc->shadow_bo->handle));
-				arg.fb_id = get_fb(sna, crtc->shadow_bo,
+				     __FUNCTION__, crtc->id, crtc->pipe, crtc->client_bo->handle));
+				arg.fb_id = get_fb(sna, crtc->client_bo,
 						   crtc->base->mode.HDisplay,
 						   crtc->base->mode.VDisplay);
 				assert(arg.fb_id != fb);
-				flip_bo = crtc->shadow_bo;
+				flip_bo = crtc->client_bo;
 				x = y = 0;
 			} else {
 				if (fb == 0)
@@ -7046,6 +7084,11 @@ fixup_flip:
 					assert(crtc->bo->refcnt >= crtc->bo->active_scanout);
 					crtc->bo->active_scanout--;
 					kgem_bo_destroy(&sna->kgem, crtc->bo);
+
+					if (crtc->shadow_bo) {
+						kgem_bo_destroy(&sna->kgem, crtc->shadow_bo);
+						crtc->shadow_bo = NULL;
+					}
 
 					crtc->bo = kgem_bo_reference(flip_bo);
 					crtc->bo->active_scanout++;
@@ -7151,6 +7194,11 @@ void sna_mode_wakeup(struct sna *sna)
 					assert(crtc->bo->refcnt >= crtc->bo->active_scanout);
 					crtc->bo->active_scanout--;
 					kgem_bo_destroy(&sna->kgem, crtc->bo);
+
+					if (crtc->shadow_bo) {
+						kgem_bo_destroy(&sna->kgem, crtc->shadow_bo);
+						crtc->shadow_bo = NULL;
+					}
 
 					crtc->bo = crtc->flip_bo;
 					crtc->flip_bo = NULL;
