@@ -1977,6 +1977,14 @@ sna_render_composite_redirect(struct sna *sna,
 			box.x1 = box.x1 & ~(tile_width * 8 / op->dst.pixmap->drawable.bitsPerPixel - 1);
 			box.x2 = ALIGN(box.x2, tile_width * 8 / op->dst.pixmap->drawable.bitsPerPixel);
 
+			if (box.x1 > sna->render.max_3d_size &&
+			    box.x2 <= 2*sna->render.max_3d_size)
+				box.x1 = sna->render.max_3d_size;
+
+			if (box.y1 > sna->render.max_3d_size &&
+			    box.y2 <= 2*sna->render.max_3d_size)
+				box.y1 = sna->render.max_3d_size;
+
 			offset = box.x1 * op->dst.pixmap->drawable.bitsPerPixel / 8 / tile_width * tile_size;
 		} else {
 			if (sna->kgem.gen < 040) {
@@ -1992,6 +2000,14 @@ sna_render_composite_redirect(struct sna *sna,
 				box.x1 = box.x1 & ~1;
 				box.x2 = ALIGN(box.x2, 2);
 			}
+
+			if (box.x1 > sna->render.max_3d_size &&
+			    box.x2 <= 2*sna->render.max_3d_size)
+				box.x1 = sna->render.max_3d_size;
+
+			if (box.y1 > sna->render.max_3d_size &&
+			    box.y2 <= 2*sna->render.max_3d_size)
+				box.y1 = sna->render.max_3d_size;
 
 			offset = box.x1 * op->dst.pixmap->drawable.bitsPerPixel / 8;
 		}
