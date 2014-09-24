@@ -42,7 +42,7 @@
 #undef SAMPLES_X
 #undef SAMPLES_Y
 
-#if 1
+#if 0
 #define __DBG DBG
 #else
 #define __DBG(x)
@@ -633,6 +633,7 @@ polygon_add_line(struct polygon *polygon,
 			unsigned ix = EDGE_Y_BUCKET_INDEX(e->ytop,
 							  polygon->ymin);
 			polygon->y_buckets[ix] = prev->next;
+			polygon->num_edges--;
 			return;
 		}
 	}
@@ -1940,7 +1941,7 @@ imprecise_trapezoid_span_converter(struct sna *sna,
 	dy *= FAST_SAMPLES_Y;
 
 	num_threads = 1;
-	if (!NO_GPU_THREADS && 0 &&
+	if (!NO_GPU_THREADS &&
 	    (flags & COMPOSITE_SPANS_RECTILINEAR) == 0 &&
 	    tmp.thread_boxes &&
 	    thread_choose_span(&tmp, dst, maskFormat, &clip))
@@ -3876,10 +3877,10 @@ tristrip_thread(void *arg)
 }
 
 bool
-tristrip_span_converter(struct sna *sna,
-			CARD8 op, PicturePtr src, PicturePtr dst,
-			PictFormatPtr maskFormat, INT16 src_x, INT16 src_y,
-			int count, xPointFixed *points)
+imprecise_tristrip_span_converter(struct sna *sna,
+				  CARD8 op, PicturePtr src, PicturePtr dst,
+				  PictFormatPtr maskFormat, INT16 src_x, INT16 src_y,
+				  int count, xPointFixed *points)
 {
 	struct sna_composite_spans_op tmp;
 	BoxRec extents;
@@ -3887,16 +3888,6 @@ tristrip_span_converter(struct sna *sna,
 	int16_t dst_x, dst_y;
 	int dx, dy, num_threads;
 	bool was_clear;
-
-	if (NO_SCAN_CONVERTER)
-		return false;
-
-	/* XXX strict adherence to the Render specification */
-	if (is_precise(dst, maskFormat)) {
-		DBG(("%s: fallback -- precise rasterisation requested\n",
-		     __FUNCTION__));
-		return false;
-	}
 
 	if (!sna->render.check_composite_spans(sna, op, src, dst, 0, 0, 0)) {
 		DBG(("%s: fallback -- composite spans not supported\n",

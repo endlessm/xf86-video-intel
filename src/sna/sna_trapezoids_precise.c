@@ -663,7 +663,7 @@ static struct edge *filter(struct edge *edges)
 	struct edge *e;
 
 	e = edges;
-	do {
+	while (e->next) {
 		struct edge *n = e->next;
 		if (e->dir == -n->dir &&
 		    e->height_left == n->height_left &&
@@ -680,8 +680,8 @@ static struct edge *filter(struct edge *edges)
 
 			e = n->next;
 		} else
-			e = e->next;
-	} while (e->next);
+			e = n;
+	}
 
 	return edges;
 }
@@ -3236,5 +3236,343 @@ precise_trapezoid_span_fallback(CARD8 op, PicturePtr src, PicturePtr dst,
 	}
 	sna_pixmap_destroy(scratch);
 
+	return true;
+}
+
+static inline void
+project_point_onto_grid(const xPointFixed *in,
+			int dx, int dy,
+			xPointFixed *out)
+{
+	out->x = dx + pixman_fixed_to_grid_x(in->x);
+	out->y = dy + pixman_fixed_to_grid_y(in->y);
+	__DBG(("%s: (%f, %f) -> (%d, %d)\n",
+	       __FUNCTION__,
+	       pixman_fixed_to_double(in->x),
+	       pixman_fixed_to_double(in->y),
+	       out->x, out->y));
+}
+
+inline static void
+polygon_add_line(struct polygon *polygon,
+		 const xPointFixed *p1,
+		 const xPointFixed *p2)
+{
+	struct edge *e = &polygon->edges[polygon->num_edges];
+	int dx = p2->x - p1->x;
+	int dy = p2->y - p1->y;
+	int top, bot;
+
+	if (dy == 0)
+		return;
+
+	__DBG(("%s: line=(%d, %d), (%d, %d)\n",
+	       __FUNCTION__, (int)p1->x, (int)p1->y, (int)p2->x, (int)p2->y));
+
+	e->dir = 1;
+	if (dy < 0) {
+		const xPointFixed *t;
+
+		dx = -dx;
+		dy = -dy;
+
+		e->dir = -1;
+
+		t = p1;
+		p1 = p2;
+		p2 = t;
+	}
+	assert (dy > 0);
+	e->dy = dy;
+
+	top = MAX(p1->y, polygon->ymin);
+	bot = MIN(p2->y, polygon->ymax);
+	if (bot <= top)
+		return;
+
+	e->ytop = top;
+	e->height_left = bot - top;
+	if (e->height_left <= 0)
+		return;
+
+	__DBG(("%s: edge height=%d\n", __FUNCTION__, e->dir * e->height_left));
+
+	if (dx == 0) {
+		e->x.quo = p1->x;
+		e->x.rem = -dy;
+		e->dxdy.quo = 0;
+		e->dxdy.rem = 0;
+		e->dy = 0;
+	} else {
+		e->dxdy = floored_divrem(dx, dy);
+		if (top == p1->y) {
+			e->x.quo = p1->x;
+			e->x.rem = -dy;
+		} else {
+			e->x = floored_muldivrem(top - p1->y, dx, dy);
+			e->x.quo += p1->x;
+			e->x.rem -= dy;
+		}
+	}
+
+	if (polygon->num_edges > 0) {
+		struct edge *prev = &polygon->edges[polygon->num_edges-1];
+		/* detect degenerate triangles inserted into tristrips */
+		if (e->dir == -prev->dir &&
+		    e->ytop == prev->ytop &&
+		    e->height_left == prev->height_left &&
+		    e->x.quo == prev->x.quo &&
+		    e->x.rem == prev->x.rem &&
+		    e->dxdy.quo == prev->dxdy.quo &&
+		    e->dxdy.rem == prev->dxdy.rem) {
+			unsigned ix = EDGE_Y_BUCKET_INDEX(e->ytop,
+							  polygon->ymin);
+			polygon->y_buckets[ix] = prev->next;
+			polygon->num_edges--;
+			return;
+		}
+	}
+
+	_polygon_insert_edge_into_its_y_bucket(polygon, e);
+	polygon->num_edges++;
+}
+
+struct tristrip_thread {
+	struct sna *sna;
+	const struct sna_composite_spans_op *op;
+	const xPointFixed *points;
+	RegionPtr clip;
+	span_func_t span;
+	BoxRec extents;
+	int dx, dy, draw_y;
+	int count;
+	bool unbounded;
+};
+
+static void
+tristrip_thread(void *arg)
+{
+	struct tristrip_thread *thread = arg;
+	struct span_thread_boxes boxes;
+	struct tor tor;
+	xPointFixed p[4];
+	int n, cw, ccw;
+
+	if (!tor_init(&tor, &thread->extents, 2*thread->count))
+		return;
+
+	boxes.op = thread->op;
+	boxes.num_boxes = 0;
+
+	cw = ccw = 0;
+	project_point_onto_grid(&thread->points[0], thread->dx, thread->dy, &p[cw]);
+	project_point_onto_grid(&thread->points[1], thread->dx, thread->dy, &p[2+ccw]);
+	polygon_add_line(tor.polygon, &p[2+ccw], &p[cw]);
+	n = 2;
+	do {
+		cw = !cw;
+		project_point_onto_grid(&thread->points[n], thread->dx, thread->dy, &p[cw]);
+		polygon_add_line(tor.polygon, &p[!cw], &p[cw]);
+		if (++n == thread->count)
+			break;
+
+		ccw = !ccw;
+		project_point_onto_grid(&thread->points[n], thread->dx, thread->dy, &p[2+ccw]);
+		polygon_add_line(tor.polygon, &p[2+ccw], &p[2+!ccw]);
+		if (++n == thread->count)
+			break;
+	} while (1);
+	polygon_add_line(tor.polygon, &p[cw], &p[2+ccw]);
+	assert(tor.polygon->num_edges <= 2*thread->count);
+
+	tor_render(thread->sna, &tor,
+		   (struct sna_composite_spans_op *)&boxes, thread->clip,
+		   thread->span, thread->unbounded);
+
+	tor_fini(&tor);
+
+	if (boxes.num_boxes) {
+		DBG(("%s: flushing %d boxes\n", __FUNCTION__, boxes.num_boxes));
+		assert(boxes.num_boxes <= SPAN_THREAD_MAX_BOXES);
+		thread->op->thread_boxes(thread->sna, thread->op,
+					 boxes.boxes, boxes.num_boxes);
+	}
+}
+
+bool
+precise_tristrip_span_converter(struct sna *sna,
+				CARD8 op, PicturePtr src, PicturePtr dst,
+				PictFormatPtr maskFormat, INT16 src_x, INT16 src_y,
+				int count, xPointFixed *points)
+{
+	struct sna_composite_spans_op tmp;
+	BoxRec extents;
+	pixman_region16_t clip;
+	int16_t dst_x, dst_y;
+	int dx, dy, num_threads;
+	bool was_clear;
+
+	if (!sna->render.check_composite_spans(sna, op, src, dst, 0, 0, 0)) {
+		DBG(("%s: fallback -- composite spans not supported\n",
+		     __FUNCTION__));
+		return false;
+	}
+
+	dst_x = pixman_fixed_to_int(points[0].x);
+	dst_y = pixman_fixed_to_int(points[0].y);
+
+	miPointFixedBounds(count, points, &extents);
+	DBG(("%s: extents (%d, %d), (%d, %d)\n",
+	     __FUNCTION__, extents.x1, extents.y1, extents.x2, extents.y2));
+
+	if (extents.y1 >= extents.y2 || extents.x1 >= extents.x2)
+		return true;
+
+#if 0
+	if (extents.y2 - extents.y1 < 64 && extents.x2 - extents.x1 < 64) {
+		DBG(("%s: fallback -- traps extents too small %dx%d\n",
+		     __FUNCTION__, extents.y2 - extents.y1, extents.x2 - extents.x1));
+		return false;
+	}
+#endif
+
+	if (!sna_compute_composite_region(&clip,
+					  src, NULL, dst,
+					  src_x + extents.x1 - dst_x,
+					  src_y + extents.y1 - dst_y,
+					  0, 0,
+					  extents.x1, extents.y1,
+					  extents.x2 - extents.x1,
+					  extents.y2 - extents.y1)) {
+		DBG(("%s: triangles do not intersect drawable clips\n",
+		     __FUNCTION__)) ;
+		return true;
+	}
+
+	if (!sna->render.check_composite_spans(sna, op, src, dst,
+					       clip.extents.x2 - clip.extents.x1,
+					       clip.extents.y2 - clip.extents.y1,
+					       0)) {
+		DBG(("%s: fallback -- composite spans not supported\n",
+		     __FUNCTION__));
+		return false;
+	}
+
+	extents = *RegionExtents(&clip);
+	dx = dst->pDrawable->x;
+	dy = dst->pDrawable->y;
+
+	DBG(("%s: after clip -- extents (%d, %d), (%d, %d), delta=(%d, %d) src -> (%d, %d)\n",
+	     __FUNCTION__,
+	     extents.x1, extents.y1,
+	     extents.x2, extents.y2,
+	     dx, dy,
+	     src_x + extents.x1 - dst_x - dx,
+	     src_y + extents.y1 - dst_y - dy));
+
+	was_clear = sna_drawable_is_clear(dst->pDrawable);
+
+	memset(&tmp, 0, sizeof(tmp));
+	if (!sna->render.composite_spans(sna, op, src, dst,
+					 src_x + extents.x1 - dst_x - dx,
+					 src_y + extents.y1 - dst_y - dy,
+					 extents.x1,  extents.y1,
+					 extents.x2 - extents.x1,
+					 extents.y2 - extents.y1,
+					 0,
+					 &tmp)) {
+		DBG(("%s: fallback -- composite spans render op not supported\n",
+		     __FUNCTION__));
+		return false;
+	}
+
+	dx *= SAMPLES_X;
+	dy *= SAMPLES_Y;
+
+	num_threads = 1;
+	if (!NO_GPU_THREADS && 0 &&
+	    tmp.thread_boxes &&
+	    thread_choose_span(&tmp, dst, maskFormat, &clip))
+		num_threads = sna_use_threads(extents.x2 - extents.x1,
+					      extents.y2 - extents.y1,
+					      16);
+	if (num_threads == 1) {
+		struct tor tor;
+		xPointFixed p[4];
+		int cw, ccw, n;
+
+		if (!tor_init(&tor, &extents, 2*count))
+			goto skip;
+
+		cw = ccw = 0;
+		project_point_onto_grid(&points[0], dx, dy, &p[cw]);
+		project_point_onto_grid(&points[1], dx, dy, &p[2+ccw]);
+		polygon_add_line(tor.polygon, &p[2+ccw], &p[cw]);
+		n = 2;
+		do {
+			cw = !cw;
+			project_point_onto_grid(&points[n], dx, dy, &p[cw]);
+			polygon_add_line(tor.polygon, &p[!cw], &p[cw]);
+			if (++n == count)
+				break;
+
+			ccw = !ccw;
+			project_point_onto_grid(&points[n], dx, dy, &p[2+ccw]);
+			polygon_add_line(tor.polygon, &p[2+ccw], &p[2+!ccw]);
+			if (++n == count)
+				break;
+		} while (1);
+		polygon_add_line(tor.polygon, &p[cw], &p[2+ccw]);
+		assert(tor.polygon->num_edges <= 2*count);
+
+		tor_render(sna, &tor, &tmp, &clip,
+			   choose_span(&tmp, dst, maskFormat, &clip),
+			   !was_clear && maskFormat && !operator_is_bounded(op));
+
+		tor_fini(&tor);
+	} else {
+		struct tristrip_thread threads[num_threads];
+		int y, h, n;
+
+		DBG(("%s: using %d threads for tristrip compositing %dx%d\n",
+		     __FUNCTION__, num_threads,
+		     clip.extents.x2 - clip.extents.x1,
+		     clip.extents.y2 - clip.extents.y1));
+
+		threads[0].sna = sna;
+		threads[0].op = &tmp;
+		threads[0].points = points;
+		threads[0].count = count;
+		threads[0].extents = clip.extents;
+		threads[0].clip = &clip;
+		threads[0].dx = dx;
+		threads[0].dy = dy;
+		threads[0].draw_y = dst->pDrawable->y;
+		threads[0].unbounded = !was_clear && maskFormat && !operator_is_bounded(op);
+		threads[0].span = thread_choose_span(&tmp, dst, maskFormat, &clip);
+
+		y = clip.extents.y1;
+		h = clip.extents.y2 - clip.extents.y1;
+		h = (h + num_threads - 1) / num_threads;
+		num_threads -= (num_threads-1) * h >= clip.extents.y2 - clip.extents.y1;
+
+		for (n = 1; n < num_threads; n++) {
+			threads[n] = threads[0];
+			threads[n].extents.y1 = y;
+			threads[n].extents.y2 = y += h;
+
+			sna_threads_run(n, tristrip_thread, &threads[n]);
+		}
+
+		assert(y < threads[0].extents.y2);
+		threads[0].extents.y1 = y;
+		tristrip_thread(&threads[0]);
+
+		sna_threads_wait();
+	}
+skip:
+	tmp.done(sna, &tmp);
+
+	REGION_UNINIT(NULL, &clip);
 	return true;
 }

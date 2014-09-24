@@ -356,7 +356,7 @@ static struct mono_edge *mono_filter(struct mono_edge *edges)
 	struct mono_edge *e;
 
 	e = edges;
-	do {
+	while (e->next) {
 		struct mono_edge *n = e->next;
 		if (e->dir == -n->dir &&
 		    e->height_left == n->height_left &&
@@ -373,8 +373,8 @@ static struct mono_edge *mono_filter(struct mono_edge *edges)
 
 			e = n->next;
 		} else
-			e = e->next;
-	} while (e->next);
+			e = n;
+	}
 
 	return edges;
 }
@@ -1401,6 +1401,159 @@ mono_triangles_span_converter(struct sna *sna,
 				      tri[n].p3.y, tri[n].p1.y,
 				      &tri[n].p3, &tri[n].p1, 1);
 		}
+
+		if (mono.sna->render.composite(mono.sna,
+					       PictOpClear,
+					       mono.sna->clear, NULL, dst,
+					       0, 0,
+					       0, 0,
+					       mono.clip.extents.x1,  mono.clip.extents.y1,
+					       mono.clip.extents.x2 - mono.clip.extents.x1,
+					       mono.clip.extents.y2 - mono.clip.extents.y1,
+					       COMPOSITE_PARTIAL, memset(&mono.op, 0, sizeof(mono.op)))) {
+			if (mono.clip.data == NULL && mono.op.damage == NULL)
+				mono.span = mono_span__fast;
+			else
+				mono.span = mono_span;
+			mono_render(&mono);
+			mono.op.done(mono.sna, &mono.op);
+		}
+		mono_fini(&mono);
+	}
+
+	mono_fini(&mono);
+	REGION_UNINIT(NULL, &mono.clip);
+	return true;
+}
+
+bool
+mono_tristrip_span_converter(struct sna *sna,
+			     CARD8 op, PicturePtr src, PicturePtr dst,
+			     INT16 src_x, INT16 src_y,
+			     int count, xPointFixed *points)
+{
+	struct mono mono;
+	BoxRec extents;
+	int16_t dst_x, dst_y;
+	int16_t dx, dy;
+	bool was_clear;
+	int n;
+
+	mono.sna = sna;
+
+	dst_x = pixman_fixed_to_int(points[0].x);
+	dst_y = pixman_fixed_to_int(points[0].y);
+
+	miPointFixedBounds(count, points, &extents);
+	DBG(("%s: extents (%d, %d), (%d, %d)\n",
+	     __FUNCTION__, extents.x1, extents.y1, extents.x2, extents.y2));
+
+	if (extents.y1 >= extents.y2 || extents.x1 >= extents.x2)
+		return true;
+
+	if (!sna_compute_composite_region(&mono.clip,
+					  src, NULL, dst,
+					  src_x + extents.x1 - dst_x,
+					  src_y + extents.y1 - dst_y,
+					  0, 0,
+					  extents.x1, extents.y1,
+					  extents.x2 - extents.x1,
+					  extents.y2 - extents.y1)) {
+		DBG(("%s: triangles do not intersect drawable clips\n",
+		     __FUNCTION__)) ;
+		return true;
+	}
+
+	dx = dst->pDrawable->x;
+	dy = dst->pDrawable->y;
+
+	DBG(("%s: after clip -- extents (%d, %d), (%d, %d), delta=(%d, %d) src -> (%d, %d)\n",
+	     __FUNCTION__,
+	     mono.clip.extents.x1, mono.clip.extents.y1,
+	     mono.clip.extents.x2, mono.clip.extents.y2,
+	     dx, dy,
+	     src_x + mono.clip.extents.x1 - dst_x - dx,
+	     src_y + mono.clip.extents.y1 - dst_y - dy));
+
+	was_clear = sna_drawable_is_clear(dst->pDrawable);
+
+	if (!mono_init(&mono, 2*count))
+		return false;
+
+	mono_add_line(&mono, dx, dy,
+		      points[0].y, points[1].y,
+		      &points[0], &points[1], -1);
+	n = 2;
+	do {
+		mono_add_line(&mono, dx, dy,
+			      points[n-2].y, points[n].y,
+			      &points[n-2], &points[n], 1);
+		if (++n == count)
+			break;
+
+		mono_add_line(&mono, dx, dy,
+			      points[n-2].y, points[n].y,
+			      &points[n-2], &points[n], -1);
+		if (++n == count)
+			break;
+	} while (1);
+	mono_add_line(&mono, dx, dy,
+		      points[n-2].y, points[n-1].y,
+		      &points[n-2], &points[n-1], 1);
+
+	if (mono.sna->render.composite(mono.sna, op, src, NULL, dst,
+				       src_x + mono.clip.extents.x1 - dst_x - dx,
+				       src_y + mono.clip.extents.y1 - dst_y - dy,
+				       0, 0,
+				       mono.clip.extents.x1,  mono.clip.extents.y1,
+				       mono.clip.extents.x2 - mono.clip.extents.x1,
+				       mono.clip.extents.y2 - mono.clip.extents.y1,
+				       COMPOSITE_PARTIAL, memset(&mono.op, 0, sizeof(mono.op)))) {
+		if (mono.clip.data == NULL && mono.op.damage == NULL)
+			mono.span = mono_span__fast;
+		else
+			mono.span = mono_span;
+		mono_render(&mono);
+		mono.op.done(mono.sna, &mono.op);
+	}
+
+	if (!was_clear && !operator_is_bounded(op)) {
+		xPointFixed p1, p2;
+
+		if (!mono_init(&mono, 2+2*count))
+			return false;
+
+		p1.y = mono.clip.extents.y1 * pixman_fixed_1;
+		p2.y = mono.clip.extents.y2 * pixman_fixed_1;
+
+		p1.x = mono.clip.extents.x1 * pixman_fixed_1;
+		p2.x = mono.clip.extents.x1 * pixman_fixed_1;
+		mono_add_line(&mono, 0, 0, p1.y, p2.y, &p1, &p2, -1);
+
+		p1.x = mono.clip.extents.x2 * pixman_fixed_1;
+		p2.x = mono.clip.extents.x2 * pixman_fixed_1;
+		mono_add_line(&mono, 0, 0, p1.y, p2.y, &p1, &p2, 1);
+
+		mono_add_line(&mono, dx, dy,
+			      points[0].y, points[1].y,
+			      &points[0], &points[1], -1);
+		n = 2;
+		do {
+			mono_add_line(&mono, dx, dy,
+				      points[n-2].y, points[n].y,
+				      &points[n-2], &points[n], 1);
+			if (++n == count)
+				break;
+
+			mono_add_line(&mono, dx, dy,
+				      points[n-2].y, points[n].y,
+				      &points[n-2], &points[n], -1);
+			if (++n == count)
+				break;
+		} while (1);
+		mono_add_line(&mono, dx, dy,
+			      points[n-2].y, points[n-1].y,
+			      &points[n-2], &points[n-1], 1);
 
 		if (mono.sna->render.composite(mono.sna,
 					       PictOpClear,
