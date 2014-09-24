@@ -1617,7 +1617,11 @@ static bool sna_pixmap_alloc_gpu(struct sna *sna,
 	/* Use tiling by default, but disable per user request */
 	if (pixmap->usage_hint == SNA_CREATE_FB && (sna->flags & SNA_LINEAR_FB) == 0) {
 		flags |= CREATE_SCANOUT;
-		tiling = -I915_TILING_X;
+		tiling = kgem_choose_tiling(&sna->kgem,
+					    -I915_TILING_X,
+					    pixmap->drawable.width,
+					    pixmap->drawable.height,
+					    pixmap->drawable.bitsPerPixel);
 	} else
 		tiling = sna_pixmap_default_tiling(sna, pixmap);
 
