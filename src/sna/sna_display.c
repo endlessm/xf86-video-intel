@@ -217,6 +217,11 @@ enum { /* XXX copied from hw/xfree86/modes/xf86Crtc.c */
 
 static void sna_crtc_disable_cursor(struct sna *sna, struct sna_crtc *crtc);
 
+static bool is_zaphod(ScrnInfoPtr scrn)
+{
+	return xf86IsEntityShared(scrn->entityList[0]);
+}
+
 inline static unsigned count_to_mask(int x)
 {
 	return (1 << x) - 1;
@@ -1022,7 +1027,7 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 		     (uint32_t)output->possible_clones));
 
 		assert(output->possible_crtcs & (1 << sna_crtc->pipe) ||
-		       xf86IsEntityShared(crtc->scrn->entityList[0]));
+		       is_zaphod(crtc->scrn));
 
 		output_ids[output_count] = to_connector_id(output);
 		if (++output_count == ARRAY_SIZE(output_ids)) {
@@ -2636,7 +2641,7 @@ sna_crtc_add(ScrnInfoPtr scrn, int id)
 	}
 	sna_crtc->pipe = get_pipe.pipe;
 
-	if (xf86IsEntityShared(scrn->entityList[0]) &&
+	if (is_zaphod(scrn) &&
 	    scrn->confScreen->device->screen != sna_crtc->pipe) {
 		free(sna_crtc);
 		return true;
@@ -3715,7 +3720,7 @@ sna_output_add(struct sna *sna, unsigned id, unsigned serial)
 		(void)drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETENCODER, &enc);
 	}
 
-	if (xf86IsEntityShared(scrn->entityList[0])) {
+	if (is_zaphod(scrn)) {
 		const char *str;
 
 		str = xf86GetOptValString(sna->Options, OPTION_ZAPHOD);
@@ -4031,7 +4036,7 @@ void sna_mode_discover(struct sna *sna)
 	if (res.count_connectors > 32)
 		return;
 
-	assert(sna->mode.num_real_crtc == res.count_crtcs);
+	assert(sna->mode.num_real_crtc == res.count_crtcs || is_zaphod(sna->scrn));
 	assert(sna->mode.max_crtc_width  == res.max_width);
 	assert(sna->mode.max_crtc_height == res.max_height);
 	assert(sna->mode.num_real_encoder == res.count_encoders);
@@ -5106,7 +5111,7 @@ sna_crtc_flip(struct sna *sna, struct sna_crtc *crtc, struct kgem_bo *bo, int x,
 		     (uint32_t)output->possible_clones));
 
 		assert(output->possible_crtcs & (1 << crtc->pipe) ||
-		       xf86IsEntityShared(sna->scrn->entityList[0]));
+		       is_zaphod(sna->scrn));
 
 		output_ids[output_count] = to_connector_id(output);
 		if (++output_count == ARRAY_SIZE(output_ids))
