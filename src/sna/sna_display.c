@@ -1872,6 +1872,29 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 			return NULL;
 		}
 
+		if (__sna_pixmap_get_bo(sna->front)) {
+			DrawableRec tmp;
+
+			DBG(("%s: copying onto shadow CRTC: (%d, %d), (%d, %d), handle=%d\n",
+			     __FUNCTION__,
+			     crtc->bounds.x1,
+			     crtc->bounds.y1,
+			     crtc->bounds.x2,
+			     crtc->bounds.y2,
+			     bo->handle));
+
+			tmp.width = crtc->mode.HDisplay;
+			tmp.height = crtc->mode.VDisplay;
+			tmp.depth = sna->front->drawable.depth;
+			tmp.bitsPerPixel = sna->front->drawable.bitsPerPixel;
+
+			(void)sna->render.copy_boxes(sna, GXcopy,
+						     &sna->front->drawable, __sna_pixmap_get_bo(sna->front), 0, 0,
+						     &tmp, bo, -crtc->bounds.x1, -crtc->bounds.y1,
+						     &crtc->bounds, 1,
+						     0);
+		}
+
 		sna_crtc->transform = true;
 		return bo;
 	} else {
