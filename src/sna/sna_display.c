@@ -1832,6 +1832,61 @@ static void set_shadow(struct sna *sna, RegionPtr region)
 	priv->move_to_gpu_data = sna;
 }
 
+static struct kgem_bo *
+get_scanout_bo(struct sna *sna, PixmapPtr pixmap)
+{
+	struct sna_pixmap *priv;
+
+	priv = sna_pixmap_force_to_gpu(pixmap, MOVE_READ | __MOVE_SCANOUT);
+	if (!priv)
+		return NULL;
+
+	if (priv->gpu_bo->pitch & 63) {
+		struct kgem_bo *tmp;
+		BoxRec b;
+
+		DBG(("%s: converting to scanout bo due to bad pitch [%d]\n",
+		     __FUNCTION__, priv->gpu_bo->pitch));
+
+		if (priv->pinned) {
+			DBG(("%s: failed as the Pixmap is already pinned [%x]\n",
+			     __FUNCTION__, priv->pinned));
+			return NULL;
+		}
+
+		tmp = kgem_create_2d(&sna->kgem,
+				     pixmap->drawable.width,
+				     pixmap->drawable.height,
+				     sna->scrn->bitsPerPixel,
+				     priv->gpu_bo->tiling,
+				     CREATE_EXACT | CREATE_SCANOUT);
+		if (tmp == NULL) {
+			DBG(("%s: allocation failed\n", __FUNCTION__));
+			return NULL;
+		}
+
+		b.x1 = 0;
+		b.y1 = 0;
+		b.x2 = pixmap->drawable.width;
+		b.y2 = pixmap->drawable.height;
+
+		if (sna->render.copy_boxes(sna, GXcopy,
+					   &pixmap->drawable, priv->gpu_bo, 0, 0,
+					   &pixmap->drawable, tmp, 0, 0,
+					   &b, 1, COPY_LAST)) {
+			DBG(("%s: copy failed\n", __FUNCTION__));
+			kgem_bo_destroy(&sna->kgem, tmp);
+			return NULL;
+		}
+
+		kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
+		priv->gpu_bo = tmp;
+	}
+
+	priv->pinned |= PIN_SCANOUT;
+	return priv->gpu_bo;
+}
+
 static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 {
 	struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
@@ -1937,7 +1992,7 @@ out_shadow:
 
 		if (sna_crtc->slave_pixmap) {
 			DBG(("%s: attaching to scanout pixmap\n", __FUNCTION__));
-			bo = sna_pixmap_pin(sna_crtc->slave_pixmap, PIN_SCANOUT);
+			bo = get_scanout_bo(sna, sna_crtc->slave_pixmap);
 			if (bo == NULL) {
 				DBG(("%s: failed to pin crtc scanout\n", __FUNCTION__));
 				sna_crtc->fallback_shadow = true;
@@ -1953,7 +2008,7 @@ out_shadow:
 			}
 		} else {
 			DBG(("%s: attaching to framebuffer\n", __FUNCTION__));
-			bo = sna_pixmap_pin(sna->front, PIN_SCANOUT);
+			bo = get_scanout_bo(sna, sna->front);
 			if (bo == NULL) {
 				DBG(("%s: failed to pin framebuffer\n", __FUNCTION__));
 				sna_crtc->fallback_shadow = true;
