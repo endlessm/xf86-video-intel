@@ -1740,7 +1740,7 @@ static bool use_shadow(struct sna *sna, xf86CrtcPtr crtc)
 		return true;
 	}
 
-	priv = sna_pixmap_force_to_gpu(sna->front, MOVE_READ);
+	priv = sna_pixmap_force_to_gpu(sna->front, MOVE_READ | __MOVE_SCANOUT);
 	if (priv == NULL)
 		return true; /* maybe we can create a bo for the scanout? */
 
@@ -4180,7 +4180,7 @@ static void copy_front(struct sna *sna, PixmapPtr old, PixmapPtr new)
 	if (!old_priv)
 		return;
 
-	new_priv = sna_pixmap_force_to_gpu(new, MOVE_WRITE);
+	new_priv = sna_pixmap_force_to_gpu(new, MOVE_WRITE | __MOVE_SCANOUT);
 	if (!new_priv)
 		return;
 
