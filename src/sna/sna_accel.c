@@ -4051,6 +4051,27 @@ sna_pixmap_create_upload(ScreenPtr screen,
 	return pixmap;
 }
 
+static bool can_convert_to_gpu(struct sna_pixmap *priv, unsigned flags)
+{
+	assert(priv->gpu_bo == NULL);
+
+	if (priv->cpu_bo == NULL)
+		return false;
+
+	if (priv->shm)
+		return false;
+
+	/* Linear scanout have a restriction that their pitch must be
+	 * 64 byte aligned. Force the creation of a proper GPU bo if
+	 * this CPU bo is not suitable for scanout.
+	 */
+	if (priv->pixmap->usage_hint == SNA_CREATE_FB || flags & __MOVE_SCANOUT)
+		if (priv->cpu_bo->pitch & 63)
+			return false;
+
+	return true;
+}
+
 struct sna_pixmap *
 sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 {
@@ -4141,7 +4162,8 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 				return NULL;
 			}
 
-			if (is_linear && priv->cpu_bo && !priv->shm &&
+			if (is_linear &&
+			    can_convert_to_gpu(priv, flags) &&
 			    kgem_bo_convert_to_gpu(&sna->kgem, priv->cpu_bo, flags)) {
 				assert(!priv->mapped);
 				assert(!IS_STATIC_PTR(priv->ptr));
