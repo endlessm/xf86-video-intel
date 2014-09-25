@@ -1846,6 +1846,7 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 		unsigned long tiled_limit;
 		int tiling;
 
+force_shadow:
 		if (!sna_crtc_enable_shadow(sna, sna_crtc)) {
 			DBG(("%s: failed to enable crtc shadow\n"));
 			return NULL;
@@ -1939,26 +1940,30 @@ out_shadow:
 			bo = sna_pixmap_pin(sna_crtc->slave_pixmap, PIN_SCANOUT);
 			if (bo == NULL) {
 				DBG(("%s: failed to pin crtc scanout\n", __FUNCTION__));
-				return NULL;
+				sna_crtc->fallback_shadow = true;
+				goto force_shadow;
 			}
 
 			if (!get_fb(sna, bo,
 				    sna_crtc->slave_pixmap->drawable.width,
 				    sna_crtc->slave_pixmap->drawable.height)) {
 				DBG(("%s: failed to bind fb for crtc scanout\n", __FUNCTION__));
-				return NULL;
+				sna_crtc->fallback_shadow = true;
+				goto force_shadow;
 			}
 		} else {
 			DBG(("%s: attaching to framebuffer\n", __FUNCTION__));
 			bo = sna_pixmap_pin(sna->front, PIN_SCANOUT);
 			if (bo == NULL) {
 				DBG(("%s: failed to pin framebuffer\n", __FUNCTION__));
-				return NULL;
+				sna_crtc->fallback_shadow = true;
+				goto force_shadow;
 			}
 
 			if (!get_fb(sna, bo, scrn->virtualX, scrn->virtualY)) {
 				DBG(("%s: failed to bind fb for crtc scanout\n", __FUNCTION__));
-				return NULL;
+				sna_crtc->fallback_shadow = true;
+				goto force_shadow;
 			}
 		}
 
@@ -1995,7 +2000,8 @@ out_shadow:
 							CREATE_SCANOUT);
 				if (shadow == NULL) {
 					DBG(("%s: failed to allocate TearFree shadow bo\n", __FUNCTION__));
-					return NULL;
+					sna_crtc->fallback_shadow = true;
+					goto force_shadow;
 				}
 
 				if (!get_fb(sna, shadow,
@@ -2003,7 +2009,8 @@ out_shadow:
 					    region.extents.y2)) {
 					DBG(("%s: failed to bind fb for TearFeee shadow\n", __FUNCTION__));
 					kgem_bo_destroy(&sna->kgem, shadow);
-					return NULL;
+					sna_crtc->fallback_shadow = true;
+					goto force_shadow;
 				}
 
 				sna->mode.shadow = shadow;
