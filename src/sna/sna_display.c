@@ -1625,7 +1625,9 @@ void sna_copy_fbcon(struct sna *sna)
 	assert((sna->flags & SNA_IS_HOSTED) == 0);
 
 	priv = sna_pixmap(sna->front);
-	assert(priv && priv->gpu_bo);
+	assert(priv);
+	if (priv->gpu_bo == NULL)
+		return;
 
 	/* Scan the connectors for a framebuffer and assume that is the fbcon */
 	VG_CLEAR(fbcon);

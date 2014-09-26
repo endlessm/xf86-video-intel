@@ -248,15 +248,11 @@ static Bool sna_create_screen_resources(ScreenPtr screen)
 		return FALSE;
 	}
 
-	if (!sna_pixmap_force_to_gpu(new_front, MOVE_READ)) {
-		xf86DrvMsg(screen->myNum, X_ERROR,
-			   "[intel] Failed to allocate video resources for front buffer %dx%d at depth %d\n",
-			   screen->width,
-			   screen->height,
-			   screen->rootDepth);
-		screen->DestroyPixmap(new_front);
-		return FALSE;
-	}
+	/* Prefer to use the GPU for rendering into the eventual scanout
+	 * bo so that we do not unduly stall when it is time to attach
+	 * it to the CRTCs.
+	 */
+	sna_pixmap_force_to_gpu(new_front, MOVE_READ | __MOVE_SCANOUT);
 
 	screen->SetScreenPixmap(new_front);
 	assert(screen->GetScreenPixmap(screen) == new_front);
