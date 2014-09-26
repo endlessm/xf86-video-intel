@@ -122,6 +122,11 @@ static const struct intel_device_info intel_cherryview_info = {
 	.gen = 0101,
 };
 
+static const struct intel_device_info intel_skylake_info = {
+	.gen = 0110,
+};
+
+
 static const SymTabRec intel_chipsets[] = {
 	{PCI_CHIP_I810,				"i810"},
 	{PCI_CHIP_I810_DC100,			"i810-dc100"},
@@ -310,6 +315,8 @@ static const struct pci_id_match intel_device_match[] = {
 	INTEL_BDW_M_IDS(&intel_broadwell_info),
 
 	INTEL_CHV_IDS(&intel_cherryview_info),
+
+	INTEL_SKL_IDS(&intel_skylake_info),
 
 	INTEL_VGA_DEVICE(PCI_MATCH_ANY, &intel_generic_info),
 #endif
