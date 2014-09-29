@@ -252,7 +252,7 @@ static Bool sna_create_screen_resources(ScreenPtr screen)
 	 * bo so that we do not unduly stall when it is time to attach
 	 * it to the CRTCs.
 	 */
-	sna_pixmap_force_to_gpu(new_front, MOVE_READ | __MOVE_SCANOUT);
+	(void)sna_pixmap_force_to_gpu(new_front, MOVE_READ | __MOVE_SCANOUT);
 
 	screen->SetScreenPixmap(new_front);
 	assert(screen->GetScreenPixmap(screen) == new_front);
