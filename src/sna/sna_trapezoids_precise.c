@@ -42,7 +42,7 @@
 #undef FAST_SAMPLES_X
 #undef FAST_SAMPLES_Y
 
-#if 1
+#if 0
 #define __DBG DBG
 #else
 #define __DBG(x)
@@ -77,16 +77,6 @@ static inline int pixman_fixed_to_grid_x(pixman_fixed_t v)
 static inline int pixman_fixed_to_grid_y(pixman_fixed_t v)
 {
 	return ((int64_t)v * SAMPLES_Y + (1<<15)) >> 16;
-}
-
-static inline int pixman_fixed_to_grid_floor_y(pixman_fixed_t v)
-{
-	return ((int64_t)v * SAMPLES_Y) >> 16;
-}
-
-static inline int pixman_fixed_to_grid_ceil_y(pixman_fixed_t v)
-{
-	return ((int64_t)v * SAMPLES_Y + (1<<16) - 1) >> 16;
 }
 
 typedef void (*span_func_t)(struct sna *sna,
@@ -280,39 +270,6 @@ struct tor {
 
     BoxRec extents;
 };
-
-/* Compute the floored division a/b. Assumes / and % perform symmetric
- * division. */
-inline static struct quorem
-floored_divrem(int64_t a, int64_t b)
-{
-	struct quorem qr;
-	assert(b>0);
-	qr.quo = a/b;
-	qr.rem = a%b;
-	if (qr.rem < 0) {
-		qr.quo -= 1;
-		qr.rem += b;
-	}
-	return qr;
-}
-
-/* Compute the floored division (x*a)/b. Assumes / and % perform symmetric
- * division. */
-static struct quorem
-floored_muldivrem(int64_t x, int64_t a, int64_t b)
-{
-	struct quorem qr;
-	int64_t xa = (int64_t)x*a;
-	assert(b>0);
-	qr.quo = xa/b;
-	qr.rem = xa%b;
-	if (qr.rem < 0) {
-		qr.quo -= 1;
-		qr.rem += b;
-	}
-	return qr;
-}
 
 /* Rewinds the cell list's cursor to the beginning.  After rewinding
  * we're good to cell_list_find() the cell any x coordinate. */
@@ -528,9 +485,7 @@ _polygon_insert_edge_into_its_y_bucket(struct polygon *polygon, struct edge *e)
 static inline int edge_to_cell(struct edge *e)
 {
 	int x = e->x.quo;
-	if (e->x.rem <= -e->dy/2)
-		x--;
-	else if (e->x.rem > e->dy/2)
+	if (e->x.rem > e->dy/2)
 		x++;
 	__DBG(("%s: %lld.%lld -> %d\n",
 	       __FUNCTION__, e->x.quo, e->x.rem, x));
@@ -547,10 +502,11 @@ static inline int edge_advance(struct edge *e)
 	if (e->x.rem < 0) {
 		e->x.quo--;
 		e->x.rem += e->dy;
-	} else if (e->x.rem > e->dy) {
+	} else if (e->x.rem >= e->dy) {
 		e->x.quo++;
 		e->x.rem -= e->dy;
 	}
+	assert(e->x.rem >= 0 && e->x.rem < e->dy);
 	return edge_to_cell(e);
 }
 
@@ -576,9 +532,10 @@ polygon_add_edge(struct polygon *polygon,
 	if (ybot > ymax)
 		ybot = ymax;
 
-	__DBG(("%s: dx=(%d, %d), y=[%d, %d] +%d\n",
+	__DBG(("%s: dx=(%d, %d), y=[%d, %d] +%d, -%d\n",
 	       __FUNCTION__, dx, dy, ytop, ybot,
-	       ((ytop - dy)<<16) / SAMPLES_Y - edge->p1.y));
+	       ((int64_t)(ytop - dy)<<16) / SAMPLES_Y - edge->p1.y,
+	       ((int64_t)(ybot - dy)<<16) / SAMPLES_Y - edge->p2.y));
 
 	e->ytop = ytop;
 	e->height_left = ybot - ytop;
@@ -587,12 +544,10 @@ polygon_add_edge(struct polygon *polygon,
 
 	if (pixman_fixed_to_grid_x(edge->p1.x) ==
 	    pixman_fixed_to_grid_x(edge->p2.x)) {
-		e->x.quo = pixman_fixed_to_grid_x(edge->p1.x) + dx;
-		e->x.rem = 0;
-		e->cell = e->x.quo;
+		e->cell = pixman_fixed_to_grid_x(edge->p1.x) + dx;
+		e->x.quo = e->x.rem = 0;
+		e->dxdy.quo = e->dxdy.rem = 0;
 		e->dy = 0;
-		e->dxdy.quo = 0;
-		e->dxdy.rem = 0;
 	} else {
 		int64_t Ey, Ex, tmp;
 
@@ -605,29 +560,28 @@ polygon_add_edge(struct polygon *polygon,
 		       edge->p2.y - edge->p1.y));
 
 		Ex = (int64_t)(edge->p2.x - edge->p1.x) * SAMPLES_X;
-		Ey = (int64_t)(edge->p2.y - edge->p1.y) * SAMPLES_Y * 2;
-		e->dxdy.quo = 2*Ex/Ey;
-		e->dxdy.rem = 2*Ex%Ey;
+		Ey = (int64_t)(edge->p2.y - edge->p1.y) * SAMPLES_Y * (2 << 16);
+		e->dxdy.quo = Ex * (2 << 16) / Ey;
+		e->dxdy.rem = Ex * (2 << 16) % Ey;
 
-		tmp = (int64_t)((ytop - dy) << 16) / SAMPLES_Y - edge->p1.y;
-		tmp = 2*tmp + 1;
+		tmp = (int64_t)(2*(ytop - dy) + 1) << 16;
+		tmp -= (int64_t)edge->p1.y * SAMPLES_Y*2;
 		tmp *= Ex;
-		tmp += (1 << 16) - 1;
-		tmp >>= 16;
-		e->x.quo = tmp/Ey;
-		e->x.rem = tmp%Ey;
+		e->x.quo = tmp / Ey;
+		e->x.rem = tmp % Ey;
 
-		tmp = edge->p1.x * SAMPLES_X;
+		tmp = (int64_t)edge->p1.x * SAMPLES_X;
 		e->x.quo += (tmp >> 16) + dx;
-		e->x.rem += ((tmp & ((1 << 16) - 1)) * Ey + (1<<15)) >> 16;
+		e->x.rem += ((tmp & ((1 << 16) - 1)) * Ey) / (1 << 16);
 
 		if (e->x.rem < 0) {
 			e->x.quo--;
 			e->x.rem += Ey;
-		} else if (e->x.rem > Ey) {
+		} else if (e->x.rem >= Ey) {
 			e->x.quo++;
 			e->x.rem -= Ey;
 		}
+		assert(e->x.rem >= 0 && e->x.rem < Ey);
 
 		e->dy = Ey;
 		e->cell = edge_to_cell(e);
@@ -642,6 +596,125 @@ polygon_add_edge(struct polygon *polygon,
 	}
 
 	e->dir = dir;
+
+	_polygon_insert_edge_into_its_y_bucket(polygon, e);
+	polygon->num_edges++;
+}
+
+inline static void
+polygon_add_line(struct polygon *polygon,
+		 const xPointFixed *p1,
+		 const xPointFixed *p2,
+		 int dx, int dy)
+{
+	struct edge *e = &polygon->edges[polygon->num_edges];
+	int ytop, ybot;
+
+	if (p1->y == p2->y)
+		return;
+
+	__DBG(("%s: line=(%d, %d), (%d, %d)\n",
+	       __FUNCTION__, (int)p1->x, (int)p1->y, (int)p2->x, (int)p2->y));
+
+	e->dir = 1;
+	if (p2->y < p1->y) {
+		const xPointFixed *t;
+
+		e->dir = -1;
+
+		t = p1;
+		p1 = p2;
+		p2 = t;
+	}
+
+	ytop = pixman_fixed_to_grid_y(p1->y) + dy;
+	if (ytop < polygon->ymin)
+		ytop = polygon->ymin;
+
+	ybot = pixman_fixed_to_grid_y(p2->y) + dy;
+	if (ybot > polygon->ymax)
+		ybot = polygon->ymax;
+
+	if (ybot <= ytop)
+		return;
+
+	e->ytop = ytop;
+	e->height_left = ybot - ytop;
+	if (e->height_left <= 0)
+		return;
+
+	__DBG(("%s: edge height=%d\n", __FUNCTION__, e->dir * e->height_left));
+
+	if (pixman_fixed_to_grid_x(p1->x) == pixman_fixed_to_grid_x(p2->x)) {
+		e->cell = pixman_fixed_to_grid_x(p1->x);
+		e->x.quo = e->x.rem = 0;
+		e->dxdy.quo = e->dxdy.rem = 0;
+		e->dy = 0;
+	} else {
+		int64_t Ey, Ex, tmp;
+
+		__DBG(("%s: add diagonal line (%d, %d) -> (%d, %d) [(%d, %d)]\n",
+
+		       __FUNCTION__,
+		       p1->x, p1->y,
+		       p2->x, p2->y,
+		       p2->x - p1->x,
+		       p2->y - p1->y));
+
+		Ex = (int64_t)(p2->x - p1->x) * SAMPLES_X;
+		Ey = (int64_t)(p2->y - p1->y) * SAMPLES_Y * (2 << 16);
+		e->dxdy.quo = Ex * (2 << 16) / Ey;
+		e->dxdy.rem = Ex * (2 << 16) % Ey;
+
+		tmp = (int64_t)(2*(ytop - dy) + 1) << 16;
+		tmp -= (int64_t)p1->y * SAMPLES_Y*2;
+		tmp *= Ex;
+		e->x.quo = tmp / Ey;
+		e->x.rem = tmp % Ey;
+
+		tmp = (int64_t)p1->x * SAMPLES_X;
+		e->x.quo += (tmp >> 16) + dx;
+		e->x.rem += ((tmp & ((1 << 16) - 1)) * Ey) / (1 << 16);
+
+		if (e->x.rem < 0) {
+			e->x.quo--;
+			e->x.rem += Ey;
+		} else if (e->x.rem >= Ey) {
+			e->x.quo++;
+			e->x.rem -= Ey;
+		}
+		assert(e->x.rem >= 0 && e->x.rem < Ey);
+
+		e->dy = Ey;
+		e->cell = edge_to_cell(e);
+
+		__DBG(("%s: x=%lld.%lld + %lld.%lld %lld -> cell=%d\n",
+		       __FUNCTION__,
+		       (long long)e->x.quo,
+		       (long long)e->x.rem,
+		       (long long)e->dxdy.quo,
+		       (long long)e->dxdy.rem,
+		       (long long)Ey, e->cell));
+	}
+
+	if (polygon->num_edges > 0) {
+		struct edge *prev = &polygon->edges[polygon->num_edges-1];
+		/* detect degenerate triangles inserted into tristrips */
+		if (e->dir == -prev->dir &&
+		    e->ytop == prev->ytop &&
+		    e->height_left == prev->height_left &&
+		    e->cell == prev->cell &&
+		    e->x.quo == prev->x.quo &&
+		    e->x.rem == prev->x.rem &&
+		    e->dxdy.quo == prev->dxdy.quo &&
+		    e->dxdy.rem == prev->dxdy.rem) {
+			unsigned ix = EDGE_Y_BUCKET_INDEX(e->ytop,
+							  polygon->ymin);
+			polygon->y_buckets[ix] = prev->next;
+			polygon->num_edges--;
+			return;
+		}
+	}
 
 	_polygon_insert_edge_into_its_y_bucket(polygon, e);
 	polygon->num_edges++;
@@ -675,7 +748,7 @@ merge_sorted_edges(struct edge *head_a, struct edge *head_b)
 
 	prev = head_a->prev;
 	next = &head;
-	if (head_a->x.quo <= head_b->x.quo) {
+	if (head_a->cell <= head_b->cell) {
 		head = head_a;
 	} else {
 		head = head_b;
@@ -684,8 +757,8 @@ merge_sorted_edges(struct edge *head_a, struct edge *head_b)
 	}
 
 	do {
-		x = head_b->x.quo;
-		while (head_a != NULL && head_a->x.quo <= x) {
+		x = head_b->cell;
+		while (head_a != NULL && head_a->cell <= x) {
 			prev = head_a;
 			next = &head_a->next;
 			head_a = head_a->next;
@@ -697,8 +770,8 @@ merge_sorted_edges(struct edge *head_a, struct edge *head_b)
 			return head;
 
 start_with_b:
-		x = head_a->x.quo;
-		while (head_b != NULL && head_b->x.quo <= x) {
+		x = head_a->cell;
+		while (head_b != NULL && head_b->cell <= x) {
 			prev = head_b;
 			next = &head_b->next;
 			head_b = head_b->next;
@@ -726,7 +799,7 @@ sort_edges(struct edge  *list,
 	}
 
 	remaining = head_other->next;
-	if (list->x.quo <= head_other->x.quo) {
+	if (list->cell <= head_other->cell) {
 		*head_out = list;
 		head_other->next = NULL;
 	} else {
@@ -754,8 +827,11 @@ static struct edge *filter(struct edge *edges)
 		struct edge *n = e->next;
 		if (e->dir == -n->dir &&
 		    e->height_left == n->height_left &&
-		    *(uint64_t *)&e->x == *(uint64_t *)&n->x &&
-		    *(uint64_t *)&e->dxdy == *(uint64_t *)&n->dxdy) {
+		    e->cell == n->cell &&
+		    e->x.quo == n->x.quo &&
+		    e->x.rem == n->x.rem &&
+		    e->dxdy.quo == n->dxdy.quo &&
+		    e->dxdy.rem == n->dxdy.rem) {
 			if (e->prev)
 				e->prev->next = n->next;
 			else
@@ -943,64 +1019,10 @@ tor_init(struct tor *converter, const BoxRec *box, int num_edges)
 }
 
 static void
-tor_add_edge(struct tor *converter,
-	     const xTrapezoid *t,
-	     const xLineFixed *edge,
-	     int dir, int dx, int dy)
+tor_add_trapezoid(struct tor *tor, const xTrapezoid *t, int dx, int dy)
 {
-	polygon_add_edge(converter->polygon, t, edge, dir, dx, dy);
-}
-
-static inline bool
-project_trapezoid_onto_grid(const xTrapezoid *in,
-			    int dx, int dy,
-			    xTrapezoid *out)
-{
-	__DBG(("%s: in: L:(%d, %d), (%d, %d); R:(%d, %d), (%d, %d), [%d, %d]\n",
-	       __FUNCTION__,
-	       in->left.p1.x, in->left.p1.y, in->left.p2.x, in->left.p2.y,
-	       in->right.p1.x, in->right.p1.y, in->right.p2.x, in->right.p2.y,
-	       in->top, in->bottom));
-
-	out->left.p1.x = dx + pixman_fixed_to_grid_x(in->left.p1.x);
-	out->left.p1.y = dy + pixman_fixed_to_grid_y(in->left.p1.y);
-	out->left.p2.x = dx + pixman_fixed_to_grid_x(in->left.p2.x);
-	out->left.p2.y = dy + pixman_fixed_to_grid_y(in->left.p2.y);
-
-	out->right.p1.x = dx + pixman_fixed_to_grid_x(in->right.p1.x);
-	out->right.p1.y = dy + pixman_fixed_to_grid_y(in->right.p1.y);
-	out->right.p2.x = dx + pixman_fixed_to_grid_x(in->right.p2.x);
-	out->right.p2.y = dy + pixman_fixed_to_grid_y(in->right.p2.y);
-
-	out->top = dy + pixman_fixed_to_grid_y(in->top);
-	out->bottom = dy + pixman_fixed_to_grid_y(in->bottom);
-
-	__DBG(("%s: out: L:(%d, %d), (%d, %d); R:(%d, %d), (%d, %d), [%d, %d]\n",
-	       __FUNCTION__,
-	       out->left.p1.x, out->left.p1.y, out->left.p2.x, out->left.p2.y,
-	       out->right.p1.x, out->right.p1.y, out->right.p2.x, out->right.p2.y,
-	       out->top, out->bottom));
-
-	return xTrapezoidValid(out);
-}
-
-static void
-tor_add_trapezoid(struct tor *tor,
-		  const xTrapezoid *t,
-		  int dx, int dy)
-{
-#if 0
-	xTrapezoid tt;
-
-	if (!project_trapezoid_onto_grid(t, dx, dy, &tt))
-		return;
-
-	tor_add_edge(tor, &tt, &tt.left, 1);
-	tor_add_edge(tor, &tt, &tt.right, -1);
-#else
-	tor_add_edge(tor, t, &t->left, 1, dx, dy);
-	tor_add_edge(tor, t, &t->right, -1, dx, dy);
-#endif
+	polygon_add_edge(tor->polygon, t, &t->left, 1, dx, dy);
+	polygon_add_edge(tor->polygon, t, &t->right, -1, dx, dy);
 }
 
 static void
@@ -3264,104 +3286,6 @@ precise_trapezoid_span_fallback(CARD8 op, PicturePtr src, PicturePtr dst,
 	return true;
 }
 
-static inline void
-project_point_onto_grid(const xPointFixed *in,
-			int dx, int dy,
-			xPointFixed *out)
-{
-	out->x = dx + pixman_fixed_to_grid_x(in->x);
-	out->y = dy + pixman_fixed_to_grid_y(in->y);
-	__DBG(("%s: (%f, %f) -> (%d, %d)\n",
-	       __FUNCTION__,
-	       pixman_fixed_to_double(in->x),
-	       pixman_fixed_to_double(in->y),
-	       out->x, out->y));
-}
-
-inline static void
-polygon_add_line(struct polygon *polygon,
-		 const xPointFixed *p1,
-		 const xPointFixed *p2)
-{
-	struct edge *e = &polygon->edges[polygon->num_edges];
-	int dx = p2->x - p1->x;
-	int dy = p2->y - p1->y;
-	int top, bot;
-
-	if (dy == 0)
-		return;
-
-	__DBG(("%s: line=(%d, %d), (%d, %d)\n",
-	       __FUNCTION__, (int)p1->x, (int)p1->y, (int)p2->x, (int)p2->y));
-
-	e->dir = 1;
-	if (dy < 0) {
-		const xPointFixed *t;
-
-		dx = -dx;
-		dy = -dy;
-
-		e->dir = -1;
-
-		t = p1;
-		p1 = p2;
-		p2 = t;
-	}
-	assert (dy > 0);
-	e->dy = dy;
-
-	top = MAX(p1->y, polygon->ymin);
-	bot = MIN(p2->y, polygon->ymax);
-	if (bot <= top)
-		return;
-
-	e->ytop = top;
-	e->height_left = bot - top;
-	if (e->height_left <= 0)
-		return;
-
-	__DBG(("%s: edge height=%d\n", __FUNCTION__, e->dir * e->height_left));
-
-	if (dx == 0) {
-		e->x.quo = p1->x;
-		e->cell = p1->x;
-		e->dxdy.quo = 0;
-		e->dxdy.rem = 0;
-		e->dy = 0;
-	} else {
-		e->dxdy = floored_divrem(dx, dy);
-		if (top == p1->y) {
-			e->x.quo = p1->x;
-			e->x.rem = -dy;
-		} else {
-			e->x = floored_muldivrem(top - p1->y, dx, dy);
-			e->x.quo += p1->x;
-			e->x.rem -= dy;
-		}
-	}
-
-	if (polygon->num_edges > 0) {
-		struct edge *prev = &polygon->edges[polygon->num_edges-1];
-		/* detect degenerate triangles inserted into tristrips */
-		if (e->dir == -prev->dir &&
-		    e->ytop == prev->ytop &&
-		    e->height_left == prev->height_left &&
-		    e->x.quo == prev->x.quo &&
-		    e->x.rem == prev->x.rem &&
-		    e->dxdy.quo == prev->dxdy.quo &&
-		    e->dxdy.rem == prev->dxdy.rem) {
-			unsigned ix = EDGE_Y_BUCKET_INDEX(e->ytop,
-							  polygon->ymin);
-			polygon->y_buckets[ix] = prev->next;
-			polygon->num_edges--;
-			return;
-		}
-	}
-
-	_polygon_insert_edge_into_its_y_bucket(polygon, e);
-	polygon->num_edges++;
-}
-
 struct tristrip_thread {
 	struct sna *sna;
 	const struct sna_composite_spans_op *op;
@@ -3380,7 +3304,6 @@ tristrip_thread(void *arg)
 	struct tristrip_thread *thread = arg;
 	struct span_thread_boxes boxes;
 	struct tor tor;
-	xPointFixed p[4];
 	int n, cw, ccw;
 
 	if (!tor_init(&tor, &thread->extents, 2*thread->count))
@@ -3389,25 +3312,29 @@ tristrip_thread(void *arg)
 	boxes.op = thread->op;
 	boxes.num_boxes = 0;
 
-	cw = ccw = 0;
-	project_point_onto_grid(&thread->points[0], thread->dx, thread->dy, &p[cw]);
-	project_point_onto_grid(&thread->points[1], thread->dx, thread->dy, &p[2+ccw]);
-	polygon_add_line(tor.polygon, &p[2+ccw], &p[cw]);
+	cw = 0; ccw = 1;
+	polygon_add_line(tor.polygon,
+			 &thread->points[ccw], &thread->points[cw],
+			 thread->dx, thread->dy);
 	n = 2;
 	do {
-		cw = !cw;
-		project_point_onto_grid(&thread->points[n], thread->dx, thread->dy, &p[cw]);
-		polygon_add_line(tor.polygon, &p[!cw], &p[cw]);
+		polygon_add_line(tor.polygon,
+				 &thread->points[cw], &thread->points[n],
+				 thread->dx, thread->dy);
+		cw = n;
 		if (++n == thread->count)
 			break;
 
-		ccw = !ccw;
-		project_point_onto_grid(&thread->points[n], thread->dx, thread->dy, &p[2+ccw]);
-		polygon_add_line(tor.polygon, &p[2+ccw], &p[2+!ccw]);
+		polygon_add_line(tor.polygon,
+				 &thread->points[n], &thread->points[ccw],
+				 thread->dx, thread->dy);
+		ccw = n;
 		if (++n == thread->count)
 			break;
 	} while (1);
-	polygon_add_line(tor.polygon, &p[cw], &p[2+ccw]);
+	polygon_add_line(tor.polygon,
+			 &thread->points[cw], &thread->points[ccw],
+			 thread->dx, thread->dy);
 	assert(tor.polygon->num_edges <= 2*thread->count);
 
 	tor_render(thread->sna, &tor,
@@ -3523,31 +3450,34 @@ precise_tristrip_span_converter(struct sna *sna,
 					      16);
 	if (num_threads == 1) {
 		struct tor tor;
-		xPointFixed p[4];
 		int cw, ccw, n;
 
 		if (!tor_init(&tor, &extents, 2*count))
 			goto skip;
 
-		cw = ccw = 0;
-		project_point_onto_grid(&points[0], dx, dy, &p[cw]);
-		project_point_onto_grid(&points[1], dx, dy, &p[2+ccw]);
-		polygon_add_line(tor.polygon, &p[2+ccw], &p[cw]);
+		cw = 0; ccw = 1;
+		polygon_add_line(tor.polygon,
+				 &points[ccw], &points[cw],
+				 dx, dy);
 		n = 2;
 		do {
-			cw = !cw;
-			project_point_onto_grid(&points[n], dx, dy, &p[cw]);
-			polygon_add_line(tor.polygon, &p[!cw], &p[cw]);
+			polygon_add_line(tor.polygon,
+					 &points[cw], &points[n],
+					 dx, dy);
+			cw = n;
 			if (++n == count)
 				break;
 
-			ccw = !ccw;
-			project_point_onto_grid(&points[n], dx, dy, &p[2+ccw]);
-			polygon_add_line(tor.polygon, &p[2+ccw], &p[2+!ccw]);
+			polygon_add_line(tor.polygon,
+					 &points[n], &points[ccw],
+					 dx, dy);
+			ccw = n;
 			if (++n == count)
 				break;
 		} while (1);
-		polygon_add_line(tor.polygon, &p[cw], &p[2+ccw]);
+		polygon_add_line(tor.polygon,
+				 &points[cw], &points[ccw],
+				 dx, dy);
 		assert(tor.polygon->num_edges <= 2*count);
 
 		tor_render(sna, &tor, &tmp, &clip,
