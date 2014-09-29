@@ -3405,7 +3405,7 @@ void _kgem_submit(struct kgem *kgem)
 		}
 	}
 #if SHOW_BATCH_AFTER
-	if (gem_read(kgem->fd, rq->bo->handle, kgem->batch, 0, batch_end*sizeof(uint32_t) == 0))
+	if (gem_read(kgem->fd, rq->bo->handle, kgem->batch, 0, batch_end*sizeof(uint32_t)) == 0)
 		__kgem_batch_debug(kgem, batch_end);
 #endif
 	kgem_commit(kgem);
