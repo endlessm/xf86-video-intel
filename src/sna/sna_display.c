@@ -940,6 +940,7 @@ rotation_set(struct sna *sna, struct plane *p, uint32_t desired)
 	assert(p->id);
 	assert(p->rotation.prop);
 
+	VG_CLEAR(prop);
 	prop.obj_id = p->id;
 	prop.obj_type = LOCAL_MODE_OBJECT_PLANE;
 	prop.prop_id = p->rotation.prop;
