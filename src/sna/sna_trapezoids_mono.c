@@ -39,12 +39,6 @@
 
 #include <mipict.h>
 
-#if 0
-#define __DBG(x) LogF x
-#else
-#define __DBG(x)
-#endif
-
 struct quorem {
 	int32_t quo;
 	int32_t rem;

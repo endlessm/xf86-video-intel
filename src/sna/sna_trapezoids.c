@@ -75,8 +75,16 @@ bool trapezoids_bounds(int n, const xTrapezoid *t, BoxPtr box)
 	do {
 		xFixed fx1, fx2, v;
 
-		if (!xTrapezoidValid(t))
+		if (!xTrapezoidValid(t)) {
+			__DBG(("%s: skipping invalid trapezoid: top=%d, bottom=%d, left=(%d, %d), (%d, %d), right=(%d, %d), (%d, %d)\n",
+			       __FUNCTION__,
+			       t->top, t->bottom,
+			       t->left.p1.x, t->left.p1.y,
+			       t->left.p2.x, t->left.p2.y,
+			       t->right.p1.x, t->right.p1.y,
+			       t->right.p2.x, t->right.p2.y));
 			continue;
+		}
 
 		if (t->top < y1)
 			y1 = t->top;
@@ -104,7 +112,7 @@ bool trapezoids_bounds(int n, const xTrapezoid *t, BoxPtr box)
 		}
 
 		if (((x2 - t->right.p1.x) | (x2 - t->right.p2.x)) < 0) {
-			if (pixman_fixed_floor(t->right.p1.x) == pixman_fixed_floor(t->right.p2.x)) {
+			if (pixman_fixed_ceil(t->right.p1.x) == pixman_fixed_ceil(t->right.p2.x)) {
 				x2 = pixman_fixed_ceil(t->right.p1.x);
 			} else {
 				if (t->right.p1.y == t->top)

@@ -42,12 +42,6 @@
 #undef FAST_SAMPLES_X
 #undef FAST_SAMPLES_Y
 
-#if 0
-#define __DBG DBG
-#else
-#define __DBG(x)
-#endif
-
 /* TODO: Emit unantialiased and MSAA triangles. */
 
 #ifndef MAX

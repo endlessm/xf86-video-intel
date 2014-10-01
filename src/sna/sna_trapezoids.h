@@ -13,6 +13,12 @@
 #define NO_IMPRECISE 0
 #define NO_PRECISE 0
 
+#if 0
+#define __DBG DBG
+#else
+#define __DBG(x)
+#endif
+
 bool
 composite_aligned_boxes(struct sna *sna,
 			CARD8 op,
