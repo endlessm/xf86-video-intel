@@ -2077,7 +2077,8 @@ precise_trapezoid_mask_converter(CARD8 op, PicturePtr src, PicturePtr dst,
 	     __FUNCTION__, scratch->devPrivate.ptr, scratch->devKind));
 
 	num_threads = 1;
-	if ((flags & COMPOSITE_SPANS_RECTILINEAR) == 0)
+	if (!NO_GPU_THREADS &&
+	    (flags & COMPOSITE_SPANS_RECTILINEAR) == 0)
 		num_threads = sna_use_threads(extents.x2 - extents.x1,
 					      extents.y2 - extents.y1,
 					      4);
@@ -2693,7 +2694,9 @@ trapezoid_span_inplace__x8r8g8b8(CARD8 op,
 	dy = dst->pDrawable->y * SAMPLES_Y;
 
 	num_threads = 1;
-	if ((flags & COMPOSITE_SPANS_RECTILINEAR) == 0 && (lerp || is_solid))
+	if (!NO_GPU_THREADS &&
+	    (flags & COMPOSITE_SPANS_RECTILINEAR) == 0 &&
+	    (lerp || is_solid))
 		num_threads = sna_use_threads(4*(region.extents.x2 - region.extents.x1),
 					      region.extents.y2 - region.extents.y1,
 					      4);
@@ -3048,7 +3051,8 @@ precise_trapezoid_span_inplace(struct sna *sna,
 	inplace.opacity = color >> 24;
 
 	num_threads = 1;
-	if ((flags & COMPOSITE_SPANS_RECTILINEAR) == 0)
+	if (!NO_GPU_THREADS &&
+	    (flags & COMPOSITE_SPANS_RECTILINEAR) == 0)
 		num_threads = sna_use_threads(region.extents.x2 - region.extents.x1,
 					      region.extents.y2 - region.extents.y1,
 					      4);
@@ -3190,7 +3194,8 @@ precise_trapezoid_span_fallback(CARD8 op, PicturePtr src, PicturePtr dst,
 	     __FUNCTION__, scratch->devPrivate.ptr, scratch->devKind));
 
 	num_threads = 1;
-	if ((flags & COMPOSITE_SPANS_RECTILINEAR) == 0)
+	if (!NO_GPU_THREADS &&
+	    (flags & COMPOSITE_SPANS_RECTILINEAR) == 0)
 		num_threads = sna_use_threads(extents.x2 - extents.x1,
 					      extents.y2 - extents.y1,
 					      4);
@@ -3442,7 +3447,7 @@ precise_tristrip_span_converter(struct sna *sna,
 	dy *= SAMPLES_Y;
 
 	num_threads = 1;
-	if (!NO_GPU_THREADS && 0 &&
+	if (!NO_GPU_THREADS &&
 	    tmp.thread_boxes &&
 	    thread_choose_span(&tmp, dst, maskFormat, &clip))
 		num_threads = sna_use_threads(extents.x2 - extents.x1,
