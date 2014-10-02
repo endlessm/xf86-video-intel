@@ -249,24 +249,36 @@ inline static void *dri2_window_get_front(WindowPtr win) { return NULL; }
 
 #if DRI2INFOREC_VERSION < 6
 
-#define xorg_can_triple_buffer(ptr) 0
+#define xorg_can_triple_buffer() 0
 #define swap_limit(d, l) false
 
 #else
 
 #if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,15,99,904,0)
 /* Prime fixed for triple buffer support */
-#define xorg_can_triple_buffer(ptr) 1
+#define xorg_can_triple_buffer() 1
 #elif XORG_VERSION_CURRENT < XORG_VERSION_NUMERIC(1,12,99,901,0)
 /* Before numGPUScreens was introduced */
-#define xorg_can_triple_buffer(ptr) 1
+#define xorg_can_triple_buffer() 1
 #else
 /* Subject to crashers when combining triple buffering and Prime */
-inline static bool xorg_can_triple_buffer(struct sna *sna)
+inline static bool xorg_can_triple_buffer(void)
 {
 	return screenInfo.numGPUScreens == 0;
 }
 #endif
+
+static void
+mark_stale(DRI2BufferPtr back)
+{
+	/* If we have reuse notifications, we can track when the
+	 * client tries to present an old buffer (one that has not
+	 * been updated since the last swap) and avoid showing the
+	 * stale frame. (This is mostly useful for tracking down
+	 * driver bugs!)
+	 */
+	get_private(back)->stale = xorg_can_triple_buffer();
+}
 
 static Bool
 sna_dri2_swap_limit_validate(DrawablePtr draw, int swap_limit)
@@ -1552,7 +1564,7 @@ sna_dri2_flip(struct sna *sna, struct sna_dri2_event *info)
 
 	info->back->name = tmp_name;
 	get_private(info->back)->bo = tmp_bo;
-	get_private(info->back)->stale = true;
+	mark_stale(info->back);
 
 	assert(get_private(info->front)->bo->refcnt);
 	assert(get_private(info->back)->bo->refcnt);
@@ -1929,7 +1941,7 @@ sna_dri2_xchg(DrawablePtr draw, DRI2BufferPtr front, DRI2BufferPtr back)
 
 	get_private(front)->bo = back_bo;
 	get_private(back)->bo = front_bo;
-	get_private(back)->stale = true;
+	mark_stale(back);
 
 	tmp = front->name;
 	front->name = back->name;
@@ -2228,7 +2240,7 @@ void sna_dri2_vblank_handler(struct sna *sna, struct drm_event_vblank *event)
 		     __FUNCTION__, info->type,
 		     event->sequence, event->tv_sec, event->tv_usec));
 
-		if (xorg_can_triple_buffer(sna)) {
+		if (xorg_can_triple_buffer()) {
 			if (!sna_dri2_blit_complete(sna, info))
 				return;
 
@@ -2348,7 +2360,7 @@ sna_dri2_flip_continue(struct sna *sna, struct sna_dri2_event *info)
 		if (!sna_dri2_flip(sna, info))
 			return false;
 
-		if (!xorg_can_triple_buffer(sna)) {
+		if (!xorg_can_triple_buffer()) {
 			sna_dri2_get_back(sna, info->draw, info->back, info);
 			DBG(("%s: fake triple buffering, unblocking client\n", __FUNCTION__));
 			frame_swap_complete(sna, info, DRI2_FLIP_COMPLETE);
@@ -2386,7 +2398,7 @@ static void chain_flip(struct sna *sna)
 						  chain->back, chain->front,
 						  true);
 
-		if (xorg_can_triple_buffer(sna)) {
+		if (xorg_can_triple_buffer()) {
 			union drm_wait_vblank vbl;
 
 			VG_CLEAR(vbl);
@@ -2499,7 +2511,7 @@ static int use_triple_buffer(struct sna *sna, ClientPtr client, bool async)
 		return sna->flags & SNA_HAS_ASYNC_FLIP ? FLIP_ASYNC : FLIP_COMPLETE;
 	}
 
-	if (xorg_can_triple_buffer(sna)) {
+	if (xorg_can_triple_buffer()) {
 		DBG(("%s: triple buffer enabled, using FLIP_THROTTLE\n", __FUNCTION__));
 		return FLIP_THROTTLE;
 	}
@@ -2589,7 +2601,7 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 			} else {
 				DBG(("%s: chaining flip\n", __FUNCTION__));
 				type = FLIP_THROTTLE;
-				if (xorg_can_triple_buffer(sna))
+				if (xorg_can_triple_buffer())
 					info->mode = -type;
 				else
 					info->mode = -FLIP_COMPLETE;
@@ -2631,7 +2643,7 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 		swap_limit(draw, 1 + (type == FLIP_THROTTLE));
 		if (type >= FLIP_COMPLETE) {
 new_back:
-			if (!xorg_can_triple_buffer(sna))
+			if (!xorg_can_triple_buffer())
 				sna_dri2_get_back(sna, draw, back, info);
 			DBG(("%s: fake triple buffering, unblocking client\n", __FUNCTION__));
 			frame_swap_complete(sna, info, DRI2_EXCHANGE_COMPLETE);
@@ -3316,7 +3328,7 @@ bool sna_dri2_open(struct sna *sna, ScreenPtr screen)
 #endif
 
 #if DRI2INFOREC_VERSION >= 6
-	if (xorg_can_triple_buffer(sna)) {
+	if (xorg_can_triple_buffer()) {
 		info.version = 6;
 		info.SwapLimitValidate = sna_dri2_swap_limit_validate;
 		info.ReuseBufferNotify = sna_dri2_reuse_buffer;
