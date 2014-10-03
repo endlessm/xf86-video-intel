@@ -2355,11 +2355,12 @@ sna_crtc_dpms(xf86CrtcPtr crtc, int mode)
 	assert(priv);
 	priv->dpms_mode = mode;
 
-	if (mode == DPMSModeOn &&
-	    crtc->enabled &&
-	    priv->bo == NULL &&
-	    !__sna_crtc_set_mode(crtc))
-		mode = DPMSModeOff;
+	if (mode == DPMSModeOn && crtc->enabled && priv->bo == NULL) {
+		if (__sna_crtc_set_mode(crtc))
+			update_flush_interval(to_sna(crtc->scrn));
+		else
+			mode = DPMSModeOff;
+	}
 
 	if (mode != DPMSModeOn)
 		sna_crtc_disable(crtc);
@@ -4334,7 +4335,7 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 		xf86CrtcPtr crtc = config->crtc[i];
 
 		assert(to_sna_crtc(crtc) != NULL);
-		if (!crtc->enabled)
+		if (to_sna_crtc(crtc)->bo == NULL)
 			continue;
 
 		if (!__sna_crtc_set_mode(crtc))
@@ -5959,6 +5960,8 @@ sna_mode_enable(struct sna *sna)
 
 		__sna_crtc_set_mode(crtc);
 	}
+
+	update_flush_interval(sna);
 }
 
 void
