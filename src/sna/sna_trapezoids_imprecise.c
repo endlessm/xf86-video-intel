@@ -129,21 +129,21 @@ inline static void apply_damage_box(struct sna_composite_op *op, const BoxRec *b
 
 struct quorem {
 	int32_t quo;
-	int32_t rem;
+	int64_t rem;
 };
 
 struct edge {
 	struct edge *next, *prev;
 
 	int dir;
-
+	int cell;
 	int height_left;
 
 	struct quorem x;
 
 	/* Advance of the current x when moving down a subsample line. */
 	struct quorem dxdy;
-	int dy;
+	int64_t dy;
 
 	/* The clipped y of the top of the edge. */
 	int ytop;
@@ -253,37 +253,6 @@ struct tor {
 
 /* Compute the floored division a/b. Assumes / and % perform symmetric
  * division. */
-inline static struct quorem
-floored_divrem(int a, int b)
-{
-	struct quorem qr;
-	assert(b>0);
-	qr.quo = a/b;
-	qr.rem = a - qr.quo*b;
-	if (qr.rem < 0) {
-		qr.quo -= 1;
-		qr.rem += b;
-	}
-	return qr;
-}
-
-/* Compute the floored division (x*a)/b. Assumes / and % perform symmetric
- * division. */
-static struct quorem
-floored_muldivrem(int32_t x, int32_t a, int32_t b)
-{
-	struct quorem qr;
-	int64_t xa = (int64_t)x*a;
-	assert(b>0);
-	qr.quo = xa/b;
-	qr.rem = xa - qr.quo*b;
-	if (qr.rem < 0) {
-		qr.quo -= 1;
-		qr.rem += b;
-	}
-	return qr;
-}
-
 /* Rewinds the cell list's cursor to the beginning.  After rewinding
  * we're good to cell_list_find() the cell any x coordinate. */
 inline static void
@@ -497,55 +466,65 @@ _polygon_insert_edge_into_its_y_bucket(struct polygon *polygon, struct edge *e)
 
 inline static void
 polygon_add_edge(struct polygon *polygon,
-		 int x1, int x2,
-		 int y1, int y2,
-		 int top, int bottom,
-		 int dir)
+		 const xTrapezoid *t,
+		 const xLineFixed *edge,
+		 int dir, int dx, int dy)
 {
 	struct edge *e = &polygon->edges[polygon->num_edges];
-	int dx = x2 - x1;
-	int dy = y2 - y1;
 	int ytop, ybot;
-	int ymin = polygon->ymin;
-	int ymax = polygon->ymax;
 
-	__DBG(("%s: edge=(%d [%d.%d], %d [%d.%d]), (%d [%d.%d], %d [%d.%d]), top=%d [%d.%d], bottom=%d [%d.%d], dir=%d\n",
-	       __FUNCTION__,
-	       x1, FAST_SAMPLES_INT(x1), FAST_SAMPLES_FRAC(x1),
-	       y1, FAST_SAMPLES_INT(y1), FAST_SAMPLES_FRAC(y1),
-	       x2, FAST_SAMPLES_INT(x2), FAST_SAMPLES_FRAC(x2),
-	       y2, FAST_SAMPLES_INT(y2), FAST_SAMPLES_FRAC(y2),
-	       top, FAST_SAMPLES_INT(top), FAST_SAMPLES_FRAC(top),
-	       bottom, FAST_SAMPLES_INT(bottom), FAST_SAMPLES_FRAC(bottom),
-	       dir));
 	assert (dy > 0);
 
-	e->dy = dy;
 	e->dir = dir;
 
-	ytop = top >= ymin ? top : ymin;
-	ybot = bottom <= ymax ? bottom : ymax;
+	ytop = pixman_fixed_to_fast(t->top) + dy;
+	if (ytop < polygon->ymin)
+		ytop = polygon->ymin;
+
+	ybot = pixman_fixed_to_fast(t->bottom) + dy;
+	if (ybot > polygon->ymax)
+		ybot = polygon->ymax;
+
 	e->ytop = ytop;
 	e->height_left = ybot - ytop;
 	if (e->height_left <= 0)
 		return;
 
-	if (dx == 0) {
-		e->x.quo = x1;
+	if (pixman_fixed_to_fast(edge->p1.x) == pixman_fixed_to_fast(edge->p2.x)) {
+		e->cell = e->x.quo = pixman_fixed_to_fast(edge->p1.x) + dx;
 		e->x.rem = 0;
-		e->dy = 0;
 		e->dxdy.quo = 0;
 		e->dxdy.rem = 0;
+		e->dy = 0;
 	} else {
-		e->dxdy = floored_divrem(dx, dy);
-		if (ytop == y1) {
-			e->x.quo = x1;
-			e->x.rem = 0;
-		} else {
-			e->x = floored_muldivrem(ytop - y1, dx, dy);
-			e->x.quo += x1;
+		int64_t Ex, Ey, tmp;
+
+		Ex = (int64_t)(edge->p2.x - edge->p1.x) * FAST_SAMPLES_X;
+		Ey = (int64_t)(edge->p2.y - edge->p1.y) * FAST_SAMPLES_Y * (2 << 16);
+
+		e->dxdy.quo = Ex * (2 << 16) / Ey;
+		e->dxdy.rem = Ex * (2 << 16) % Ey;
+
+		tmp = (int64_t)(2 * (ytop - dy) + 1) << 16;
+		tmp -= (int64_t)edge->p1.y * FAST_SAMPLES_Y * 2;
+		tmp *= Ex;
+		e->x.quo = tmp / Ey;
+		e->x.rem = tmp % Ey;
+
+		tmp = (int64_t)edge->p1.x * FAST_SAMPLES_X;
+		e->x.quo += tmp / (1 << 16) + dx;
+		e->x.rem += ((tmp & ((1 << 16) - 1)) * Ey) / (1 << 16);
+
+		if (e->x.rem < 0) {
+			--e->x.quo;
+			e->x.rem += Ey;
+		} else if (e->x.rem >= Ey) {
+			++e->x.quo;
+			e->x.rem -= Ey;
 		}
-		e->x.rem -= dy; /* Bias for faster edge advancement. */
+
+		e->cell = e->x.quo + (e->x.rem >= Ey/2);
+		e->dy = Ey;
 	}
 
 	_polygon_insert_edge_into_its_y_bucket(polygon, e);
@@ -555,25 +534,21 @@ polygon_add_edge(struct polygon *polygon,
 inline static void
 polygon_add_line(struct polygon *polygon,
 		 const xPointFixed *p1,
-		 const xPointFixed *p2)
+		 const xPointFixed *p2,
+		 int dx, int dy)
 {
 	struct edge *e = &polygon->edges[polygon->num_edges];
-	int dx = p2->x - p1->x;
-	int dy = p2->y - p1->y;
 	int top, bot;
 
-	if (dy == 0)
+	if (p1->y == p2->y)
 		return;
 
 	__DBG(("%s: line=(%d, %d), (%d, %d)\n",
 	       __FUNCTION__, (int)p1->x, (int)p1->y, (int)p2->x, (int)p2->y));
 
 	e->dir = 1;
-	if (dy < 0) {
+	if (p2->y < p1->y) {
 		const xPointFixed *t;
-
-		dx = -dx;
-		dy = -dy;
 
 		e->dir = -1;
 
@@ -581,11 +556,15 @@ polygon_add_line(struct polygon *polygon,
 		p1 = p2;
 		p2 = t;
 	}
-	assert (dy > 0);
-	e->dy = dy;
 
-	top = MAX(p1->y, polygon->ymin);
-	bot = MIN(p2->y, polygon->ymax);
+	top = pixman_fixed_to_fast(p1->y) + dy;
+	if (top < polygon->ymin)
+		top = polygon->ymin;
+
+	bot = pixman_fixed_to_fast(p2->y) + dy;
+	if (bot > polygon->ymax)
+		bot = polygon->ymax;
+
 	if (bot <= top)
 		return;
 
@@ -596,22 +575,41 @@ polygon_add_line(struct polygon *polygon,
 
 	__DBG(("%s: edge height=%d\n", __FUNCTION__, e->dir * e->height_left));
 
-	if (dx == 0) {
-		e->x.quo = p1->x;
-		e->x.rem = -dy;
+	if (pixman_fixed_to_fast(p1->x) == pixman_fixed_to_fast(p2->x)) {
+		e->cell = e->x.quo = pixman_fixed_to_fast(p1->x) + dx;
+		e->x.rem = 0;
 		e->dxdy.quo = 0;
 		e->dxdy.rem = 0;
 		e->dy = 0;
 	} else {
-		e->dxdy = floored_divrem(dx, dy);
-		if (top == p1->y) {
-			e->x.quo = p1->x;
-			e->x.rem = -dy;
-		} else {
-			e->x = floored_muldivrem(top - p1->y, dx, dy);
-			e->x.quo += p1->x;
-			e->x.rem -= dy;
+		int64_t Ex, Ey, tmp;
+
+		Ex = (int64_t)(p2->x - p1->x) * FAST_SAMPLES_X;
+		Ey = (int64_t)(p2->y - p1->y) * FAST_SAMPLES_Y * (2 << 16);
+
+		e->dxdy.quo = Ex * (2 << 16) / Ey;
+		e->dxdy.rem = Ex * (2 << 16) % Ey;
+
+		tmp = (int64_t)(2 * (top - dy) + 1) << 16;
+		tmp -= (int64_t)p1->y * FAST_SAMPLES_Y * 2;
+		tmp *= Ex;
+		e->x.quo = tmp / Ey;
+		e->x.rem = tmp % Ey;
+
+		tmp = (int64_t)p1->x * FAST_SAMPLES_X;
+		e->x.quo += tmp / (1 << 16) + dx;
+		e->x.rem += ((tmp & ((1 << 16) - 1)) * Ey) / (1 << 16);
+
+		if (e->x.rem < 0) {
+			--e->x.quo;
+			e->x.rem += Ey;
+		} else if (e->x.rem >= Ey) {
+			++e->x.quo;
+			e->x.rem -= Ey;
 		}
+
+		e->cell = e->x.quo + (e->x.rem >= Ey/2);
+		e->dy = Ey;
 	}
 
 	if (polygon->num_edges > 0) {
@@ -640,13 +638,13 @@ static void
 active_list_reset(struct active_list *active)
 {
 	active->head.height_left = INT_MAX;
-	active->head.x.quo = INT_MIN;
+	active->head.cell = INT_MIN;
 	active->head.dy = 0;
 	active->head.prev = NULL;
 	active->head.next = &active->tail;
 	active->tail.prev = &active->head;
 	active->tail.next = NULL;
-	active->tail.x.quo = INT_MAX;
+	active->tail.cell = INT_MAX;
 	active->tail.height_left = INT_MAX;
 	active->tail.dy = 0;
 }
@@ -662,7 +660,7 @@ merge_sorted_edges(struct edge *head_a, struct edge *head_b)
 
 	prev = head_a->prev;
 	next = &head;
-	if (head_a->x.quo <= head_b->x.quo) {
+	if (head_a->cell <= head_b->cell) {
 		head = head_a;
 	} else {
 		head = head_b;
@@ -671,8 +669,8 @@ merge_sorted_edges(struct edge *head_a, struct edge *head_b)
 	}
 
 	do {
-		x = head_b->x.quo;
-		while (head_a != NULL && head_a->x.quo <= x) {
+		x = head_b->cell;
+		while (head_a != NULL && head_a->cell <= x) {
 			prev = head_a;
 			next = &head_a->next;
 			head_a = head_a->next;
@@ -684,8 +682,8 @@ merge_sorted_edges(struct edge *head_a, struct edge *head_b)
 			return head;
 
 start_with_b:
-		x = head_a->x.quo;
-		while (head_b != NULL && head_b->x.quo <= x) {
+		x = head_a->cell;
+		while (head_b != NULL && head_b->cell <= x) {
 			prev = head_b;
 			next = &head_b->next;
 			head_b = head_b->next;
@@ -713,7 +711,7 @@ sort_edges(struct edge  *list,
 	}
 
 	remaining = head_other->next;
-	if (list->x.quo <= head_other->x.quo) {
+	if (list->cell <= head_other->cell) {
 		*head_out = list;
 		head_other->next = NULL;
 	} else {
@@ -741,8 +739,10 @@ static struct edge *filter(struct edge *edges)
 		struct edge *n = e->next;
 		if (e->dir == -n->dir &&
 		    e->height_left == n->height_left &&
-		    *(uint64_t *)&e->x == *(uint64_t *)&n->x &&
-		    *(uint64_t *)&e->dxdy == *(uint64_t *)&n->dxdy) {
+		    &e->x.quo == &n->x.quo &&
+		    &e->x.rem == &n->x.rem &&
+		    &e->dxdy.quo == &n->dxdy.quo &&
+		    &e->dxdy.rem == &n->dxdy.rem) {
 			if (e->prev)
 				e->prev->next = n->next;
 			else
@@ -797,22 +797,30 @@ merge_edges(struct active_list *active, struct edge *edges)
 	active->head.next = merge_unsorted_edges(active->head.next, edges);
 }
 
-inline static void
+inline static int
 fill_buckets(struct active_list *active,
 	     struct edge *edge,
 	     struct edge **buckets)
 {
+	int ymax = 0;
+
 	while (edge) {
+		int y = edge->ytop & (FAST_SAMPLES_Y-1);
 		struct edge *next = edge->next;
-		struct edge **b = &buckets[edge->ytop & (FAST_SAMPLES_Y-1)];
-		__DBG(("%s: ytop %d -> bucket %d\n", __FUNCTION__,  edge->ytop, edge->ytop & (FAST_SAMPLES_Y-1)));
+		struct edge **b = &buckets[y];
+		__DBG(("%s: ytop %d -> bucket %d\n", __FUNCTION__,
+		       edge->ytop, y));
 		if (*b)
 			(*b)->prev = edge;
 		edge->next = *b;
 		edge->prev = NULL;
 		*b = edge;
 		edge = next;
+		if (y > ymax)
+			ymax = y;
 	}
+
+	return ymax;
 }
 
 inline static void
@@ -820,7 +828,7 @@ nonzero_subrow(struct active_list *active, struct cell_list *coverages)
 {
 	struct edge *edge = active->head.next;
 	int prev_x = INT_MIN;
-	int winding = 0, xstart = edge->x.quo;
+	int winding = 0, xstart = edge->cell;
 
 	cell_list_rewind(coverages);
 
@@ -828,10 +836,9 @@ nonzero_subrow(struct active_list *active, struct cell_list *coverages)
 		struct edge *next = edge->next;
 
 		winding += edge->dir;
-		if (0 == winding && edge->next->x.quo != edge->x.quo) {
-			cell_list_add_subspan(coverages,
-					      xstart, edge->x.quo);
-			xstart = edge->next->x.quo;
+		if (0 == winding && edge->next->cell != edge->cell) {
+			cell_list_add_subspan(coverages, xstart, edge->cell);
+			xstart = edge->next->cell;
 		}
 
 		assert(edge->height_left > 0);
@@ -839,26 +846,29 @@ nonzero_subrow(struct active_list *active, struct cell_list *coverages)
 			if (edge->dy) {
 				edge->x.quo += edge->dxdy.quo;
 				edge->x.rem += edge->dxdy.rem;
-				if (edge->x.rem >= 0) {
+				if (edge->x.rem < 0) {
+					--edge->x.quo;
+					edge->x.rem += edge->dy;
+				} else if (edge->x.rem >= edge->dy) {
 					++edge->x.quo;
 					edge->x.rem -= edge->dy;
-					assert(edge->x.rem < 0);
 				}
+				edge->cell = edge->x.quo + (edge->x.rem >= edge->dy/2);
 			}
 
-			if (edge->x.quo < prev_x) {
+			if (edge->cell < prev_x) {
 				struct edge *pos = edge->prev;
 				pos->next = next;
 				next->prev = pos;
 				do
 					pos = pos->prev;
-				while (edge->x.quo < pos->x.quo);
+				while (edge->cell < pos->cell);
 				pos->next->prev = edge;
 				edge->next = pos->next;
 				edge->prev = pos;
 				pos->next = edge;
 			} else
-				prev_x = edge->x.quo;
+				prev_x = edge->cell;
 		} else {
 			edge->prev->next = next;
 			next->prev = edge->prev;
@@ -900,7 +910,7 @@ nonzero_row(struct active_list *active, struct cell_list *coverages)
 			right = right->next;
 		} while (1);
 
-		cell_list_add_span(coverages, left->x.quo, right->x.quo);
+		cell_list_add_span(coverages, left->cell, right->cell);
 		left = right->next;
 	}
 }
@@ -938,16 +948,12 @@ tor_init(struct tor *converter, const BoxRec *box, int num_edges)
 }
 
 static void
-tor_add_edge(struct tor *converter,
-	     const xTrapezoid *t,
-	     const xLineFixed *edge,
-	     int dir)
+tor_add_trapezoid(struct tor *tor,
+		  const xTrapezoid *t,
+		  int dx, int dy)
 {
-	polygon_add_edge(converter->polygon,
-			 edge->p1.x, edge->p2.x,
-			 edge->p1.y, edge->p2.y,
-			 t->top, t->bottom,
-			 dir);
+	polygon_add_edge(tor->polygon, t, &t->left, 1, dx, dy);
+	polygon_add_edge(tor->polygon, t, &t->right, -1, dx, dy);
 }
 
 static void
@@ -1167,7 +1173,11 @@ tor_render(struct sna *sna,
 
 		/* Determine if we can ignore this row or use the full pixel
 		 * stepper. */
-		if (polygon->y_buckets[i] == NULL) {
+		if (fill_buckets(active, polygon->y_buckets[i], buckets) == 0) {
+			if (buckets[0]) {
+				merge_edges(active, buckets[0]);
+				buckets[0] = NULL;
+			}
 			if (active->head.next == &active->tail) {
 				for (; polygon->y_buckets[j] == NULL; j++)
 					;
@@ -1210,8 +1220,6 @@ tor_render(struct sna *sna,
 			       __FUNCTION__,  i, j));
 		} else {
 			int suby;
-
-			fill_buckets(active, polygon->y_buckets[i], buckets);
 
 			/* Subsample this row. */
 			for (suby = 0; suby < FAST_SAMPLES_Y; suby++) {
@@ -1258,27 +1266,27 @@ inplace_row(struct active_list *active, uint8_t *row, int width)
 			}
 
 			winding += right->dir;
-			if (0 == winding && right->x.quo != right->next->x.quo)
+			if (0 == winding && right->cell != right->next->cell)
 				break;
 
 			right = right->next;
 		} while (1);
 
-		if (left->x.quo < 0) {
+		if (left->cell < 0) {
 			lix = lfx = 0;
-		} else if (left->x.quo >= width * FAST_SAMPLES_X) {
+		} else if (left->cell >= width * FAST_SAMPLES_X) {
 			lix = width;
 			lfx = 0;
 		} else
-			FAST_SAMPLES_X_TO_INT_FRAC(left->x.quo, lix, lfx);
+			FAST_SAMPLES_X_TO_INT_FRAC(left->cell, lix, lfx);
 
-		if (right->x.quo < 0) {
+		if (right->cell < 0) {
 			rix = rfx = 0;
-		} else if (right->x.quo >= width * FAST_SAMPLES_X) {
+		} else if (right->cell >= width * FAST_SAMPLES_X) {
 			rix = width;
 			rfx = 0;
 		} else
-			FAST_SAMPLES_X_TO_INT_FRAC(right->x.quo, rix, rfx);
+			FAST_SAMPLES_X_TO_INT_FRAC(right->cell, rix, rfx);
 		if (lix == rix) {
 			if (rfx != lfx) {
 				assert(lix < width);
@@ -1356,8 +1364,8 @@ inplace_subrow(struct active_list *active, int8_t *row,
 
 		winding += edge->dir;
 		if (0 == winding) {
-			if (edge->next->x.quo != edge->x.quo) {
-				if (edge->x.quo <= xstart) {
+			if (edge->next->cell != edge->cell) {
+				if (edge->cell <= xstart) {
 					xstart = INT_MIN;
 				} else  {
 					int fx;
@@ -1373,7 +1381,7 @@ inplace_subrow(struct active_list *active, int8_t *row,
 							row[ix] += fx;
 					}
 
-					xstart = edge->x.quo;
+					xstart = edge->cell;
 					if (xstart < FAST_SAMPLES_X * width) {
 						FAST_SAMPLES_X_TO_INT_FRAC(xstart, ix, fx);
 						row[ix] -= FAST_SAMPLES_X - fx;
@@ -1389,7 +1397,7 @@ inplace_subrow(struct active_list *active, int8_t *row,
 				}
 			}
 		} else if (xstart < 0) {
-			xstart = MAX(edge->x.quo, 0);
+			xstart = MAX(edge->cell, 0);
 		}
 
 		assert(edge->height_left > 0);
@@ -1397,25 +1405,29 @@ inplace_subrow(struct active_list *active, int8_t *row,
 			if (edge->dy) {
 				edge->x.quo += edge->dxdy.quo;
 				edge->x.rem += edge->dxdy.rem;
-				if (edge->x.rem >= 0) {
+				if (edge->x.rem < 0) {
+					--edge->x.quo;
+					edge->x.rem += edge->dy;
+				} else if (edge->x.rem >= 0) {
 					++edge->x.quo;
 					edge->x.rem -= edge->dy;
 				}
+				edge->cell = edge->x.quo + (edge->x.rem >= edge->dy/2);
 			}
 
-			if (edge->x.quo < prev_x) {
+			if (edge->cell < prev_x) {
 				struct edge *pos = edge->prev;
 				pos->next = next;
 				next->prev = pos;
-				do {
+				do
 					pos = pos->prev;
-				} while (edge->x.quo < pos->x.quo);
+				while (edge->cell < pos->cell);
 				pos->next->prev = edge;
 				edge->next = pos->next;
 				edge->prev = pos;
 				pos->next = edge;
 			} else
-				prev_x = edge->x.quo;
+				prev_x = edge->cell;
 		} else {
 			edge->prev->next = next;
 			next->prev = edge->prev;
@@ -1536,7 +1548,11 @@ tor_inplace(struct tor *converter, PixmapPtr scratch, int mono, uint8_t *buf)
 
 		/* Determine if we can ignore this row or use the full pixel
 		 * stepper. */
-		if (!polygon->y_buckets[i]) {
+		if (fill_buckets(active, polygon->y_buckets[i], buckets) == 0) {
+			if (buckets[0]) {
+				merge_edges(active, buckets[0]);
+				buckets[0] = NULL;
+			}
 			if (active->head.next == &active->tail) {
 				for (; !polygon->y_buckets[j]; j++)
 					;
@@ -1577,8 +1593,6 @@ tor_inplace(struct tor *converter, PixmapPtr scratch, int mono, uint8_t *buf)
 			       __FUNCTION__,  i, j));
 		} else {
 			int min = width, max = 0, suby;
-
-			fill_buckets(active, polygon->y_buckets[i], buckets);
 
 			/* Subsample this row. */
 			memset(ptr, 0, width);
@@ -1804,17 +1818,11 @@ span_thread(void *arg)
 	y1 = thread->extents.y1 - thread->draw_y;
 	y2 = thread->extents.y2 - thread->draw_y;
 	for (n = thread->ntrap, t = thread->traps; n--; t++) {
-		xTrapezoid tt;
-
 		if (pixman_fixed_integer_floor(t->top) >= y2 ||
 		    pixman_fixed_integer_ceil(t->bottom) <= y1)
 			continue;
 
-		if (!project_trapezoid_onto_grid(t, thread->dx, thread->dy, &tt))
-			continue;
-
-		tor_add_edge(&tor, &tt, &tt.left, 1);
-		tor_add_edge(&tor, &tt, &tt.right, -1);
+		tor_add_trapezoid(&tor, t, thread->dx, thread->dy);
 	}
 
 	tor_render(thread->sna, &tor,
@@ -1950,17 +1958,11 @@ imprecise_trapezoid_span_converter(struct sna *sna,
 			goto skip;
 
 		for (n = 0; n < ntrap; n++) {
-			xTrapezoid t;
-
 			if (pixman_fixed_integer_floor(traps[n].top) + dst->pDrawable->y >= clip.extents.y2 ||
 			    pixman_fixed_integer_ceil(traps[n].bottom) + dst->pDrawable->y <= clip.extents.y1)
 				continue;
 
-			if (!project_trapezoid_onto_grid(&traps[n], dx, dy, &t))
-				continue;
-
-			tor_add_edge(&tor, &t, &t.left, 1);
-			tor_add_edge(&tor, &t, &t.right, -1);
+			tor_add_trapezoid(&tor, &traps[n], dx, dy);
 		}
 
 		tor_render(sna, &tor, &tmp, &clip,
@@ -2132,17 +2134,11 @@ imprecise_trapezoid_mask_converter(CARD8 op, PicturePtr src, PicturePtr dst,
 	}
 
 	for (n = 0; n < ntrap; n++) {
-		xTrapezoid t;
-
 		if (pixman_fixed_to_int(traps[n].top) - dst_y >= extents.y2 ||
 		    pixman_fixed_to_int(traps[n].bottom) - dst_y < 0)
 			continue;
 
-		if (!project_trapezoid_onto_grid(&traps[n], dx, dy, &t))
-			continue;
-
-		tor_add_edge(&tor, &t, &t.left, 1);
-		tor_add_edge(&tor, &t, &t.right, -1);
+		tor_add_trapezoid(&tor, &traps[n], dx, dy);
 	}
 
 	if (extents.x2 <= TOR_INPLACE_SIZE) {
@@ -2543,17 +2539,11 @@ static void inplace_x8r8g8b8_thread(void *arg)
 	y1 = thread->extents.y1 - thread->dst->pDrawable->y;
 	y2 = thread->extents.y2 - thread->dst->pDrawable->y;
 	for (n = 0; n < thread->ntrap; n++) {
-		xTrapezoid t;
-
 		if (pixman_fixed_to_int(thread->traps[n].top) >= y2 ||
 		    pixman_fixed_to_int(thread->traps[n].bottom) < y1)
 			continue;
 
-		if (!project_trapezoid_onto_grid(&thread->traps[n], thread->dx, thread->dy, &t))
-			continue;
-
-		tor_add_edge(&tor, &t, &t.left, 1);
-		tor_add_edge(&tor, &t, &t.right, -1);
+		tor_add_trapezoid(&tor, &thread->traps[n], thread->dx, thread->dy);
 	}
 
 	clip = thread->dst->pCompositeClip;
@@ -2736,17 +2726,11 @@ trapezoid_span_inplace__x8r8g8b8(CARD8 op,
 			return true;
 
 		for (n = 0; n < ntrap; n++) {
-			xTrapezoid t;
-
 			if (pixman_fixed_to_int(traps[n].top) >= region.extents.y2 - dst->pDrawable->y ||
 			    pixman_fixed_to_int(traps[n].bottom) < region.extents.y1 - dst->pDrawable->y)
 				continue;
 
-			if (!project_trapezoid_onto_grid(&traps[n], dx, dy, &t))
-				continue;
-
-			tor_add_edge(&tor, &t, &t.left, 1);
-			tor_add_edge(&tor, &t, &t.right, -1);
+			tor_add_trapezoid(&tor, &traps[n], dx, dy);
 		}
 
 		if (lerp) {
@@ -2906,17 +2890,11 @@ static void inplace_thread(void *arg)
 		return;
 
 	for (n = 0; n < thread->ntrap; n++) {
-		xTrapezoid t;
-
 		if (pixman_fixed_to_int(thread->traps[n].top) >= thread->extents.y2 - thread->draw_y ||
 		    pixman_fixed_to_int(thread->traps[n].bottom) < thread->extents.y1 - thread->draw_y)
 			continue;
 
-		if (!project_trapezoid_onto_grid(&thread->traps[n], thread->dx, thread->dy, &t))
-			continue;
-
-		tor_add_edge(&tor, &t, &t.left, 1);
-		tor_add_edge(&tor, &t, &t.right, -1);
+		tor_add_trapezoid(&tor, &thread->traps[n], thread->dx, thread->dy);
 	}
 
 	tor_render(NULL, &tor, (void*)&thread->inplace,
@@ -3094,17 +3072,11 @@ imprecise_trapezoid_span_inplace(struct sna *sna,
 			return true;
 
 		for (n = 0; n < ntrap; n++) {
-			xTrapezoid t;
-
 			if (pixman_fixed_to_int(traps[n].top) >= region.extents.y2 - dst->pDrawable->y ||
 			    pixman_fixed_to_int(traps[n].bottom) < region.extents.y1 - dst->pDrawable->y)
 				continue;
 
-			if (!project_trapezoid_onto_grid(&traps[n], dx, dy, &t))
-				continue;
-
-			tor_add_edge(&tor, &t, &t.left, 1);
-			tor_add_edge(&tor, &t, &t.right, -1);
+			tor_add_trapezoid(&tor, &traps[n], dx, dy);
 		}
 
 		if (sigtrap_get() == 0) {
@@ -3236,17 +3208,11 @@ imprecise_trapezoid_span_fallback(CARD8 op, PicturePtr src, PicturePtr dst,
 	}
 
 	for (n = 0; n < ntrap; n++) {
-		xTrapezoid t;
-
 		if (pixman_fixed_to_int(traps[n].top) - dst_y >= extents.y2 ||
 		    pixman_fixed_to_int(traps[n].bottom) - dst_y < 0)
 			continue;
 
-		if (!project_trapezoid_onto_grid(&traps[n], dx, dy, &t))
-			continue;
-
-		tor_add_edge(&tor, &t, &t.left, 1);
-		tor_add_edge(&tor, &t, &t.right, -1);
+		tor_add_trapezoid(&tor, &traps[n], dx, dy);
 	}
 
 	if (extents.x2 <= TOR_INPLACE_SIZE) {
@@ -3365,27 +3331,23 @@ trap_span_converter(struct sna *sna,
 		goto skip;
 
 	for (n = 0; n < ntrap; n++) {
-		xTrap t;
 		xPointFixed p1, p2;
 
 		if (pixman_fixed_to_int(trap[n].top.y) + dst->pDrawable->y >= extents.y2 ||
 		    pixman_fixed_to_int(trap[n].bot.y) + dst->pDrawable->y < extents.y1)
 			continue;
 
-		if (!project_trap_onto_grid(&trap[n], dx, dy, &t))
-			continue;
+		p1.y = trap[n].top.y;
+		p2.y = trap[n].bot.y;
+		p1.x = trap[n].top.l;
+		p2.x = trap[n].bot.l;
+		polygon_add_line(tor.polygon, &p1, &p2, dx, dy);
 
-		p1.y = t.top.y;
-		p2.y = t.bot.y;
-		p1.x = t.top.l;
-		p2.x = t.bot.l;
-		polygon_add_line(tor.polygon, &p1, &p2);
-
-		p1.y = t.bot.y;
-		p2.y = t.top.y;
-		p1.x = t.top.r;
-		p2.x = t.bot.r;
-		polygon_add_line(tor.polygon, &p1, &p2);
+		p1.y = trap[n].bot.y;
+		p2.y = trap[n].top.y;
+		p1.x = trap[n].top.r;
+		p2.x = trap[n].bot.r;
+		polygon_add_line(tor.polygon, &p1, &p2, dx, dy);
 	}
 
 	tor_render(sna, &tor, &tmp, clip,
@@ -3485,27 +3447,23 @@ trap_mask_converter(struct sna *sna,
 	}
 
 	for (n = 0; n < ntrap; n++) {
-		xTrap t;
 		xPointFixed p1, p2;
 
 		if (pixman_fixed_to_int(trap[n].top.y) + picture->pDrawable->y >= extents.y2 ||
 		    pixman_fixed_to_int(trap[n].bot.y) + picture->pDrawable->y < extents.y1)
 			continue;
 
-		if (!project_trap_onto_grid(&trap[n], dx, dy, &t))
-			continue;
+		p1.y = trap[n].top.y;
+		p2.y = trap[n].bot.y;
+		p1.x = trap[n].top.l;
+		p2.x = trap[n].bot.l;
+		polygon_add_line(tor.polygon, &p1, &p2, dx, dy);
 
-		p1.y = t.top.y;
-		p2.y = t.bot.y;
-		p1.x = t.top.l;
-		p2.x = t.bot.l;
-		polygon_add_line(tor.polygon, &p1, &p2);
-
-		p1.y = t.bot.y;
-		p2.y = t.top.y;
-		p1.x = t.top.r;
-		p2.x = t.bot.r;
-		polygon_add_line(tor.polygon, &p1, &p2);
+		p1.y = trap[n].bot.y;
+		p2.y = trap[n].top.y;
+		p1.x = trap[n].top.r;
+		p2.x = trap[n].bot.r;
+		polygon_add_line(tor.polygon, &p1, &p2, dx, dy);
 	}
 
 	if (picture->polyEdge == PolyEdgeSharp)
@@ -3668,14 +3626,9 @@ triangles_span_converter(struct sna *sna,
 		goto skip;
 
 	for (n = 0; n < count; n++) {
-		xTriangle t;
-
-		if (!project_triangle_onto_grid(&tri[n], dx, dy, &t))
-			continue;
-
-		polygon_add_line(tor.polygon, &t.p1, &t.p2);
-		polygon_add_line(tor.polygon, &t.p2, &t.p3);
-		polygon_add_line(tor.polygon, &t.p3, &t.p1);
+		polygon_add_line(tor.polygon, &tri[n].p1, &tri[n].p2, dx, dy);
+		polygon_add_line(tor.polygon, &tri[n].p2, &tri[n].p3, dx, dy);
+		polygon_add_line(tor.polygon, &tri[n].p3, &tri[n].p1, dx, dy);
 	}
 
 	tor_render(sna, &tor, &tmp, &clip,
@@ -3770,14 +3723,9 @@ triangles_mask_converter(CARD8 op, PicturePtr src, PicturePtr dst,
 	}
 
 	for (n = 0; n < count; n++) {
-		xTriangle t;
-
-		if (!project_triangle_onto_grid(&tri[n], dx, dy, &t))
-			continue;
-
-		polygon_add_line(tor.polygon, &t.p1, &t.p2);
-		polygon_add_line(tor.polygon, &t.p2, &t.p3);
-		polygon_add_line(tor.polygon, &t.p3, &t.p1);
+		polygon_add_line(tor.polygon, &tri[n].p1, &tri[n].p2, dx, dy);
+		polygon_add_line(tor.polygon, &tri[n].p2, &tri[n].p3, dx, dy);
+		polygon_add_line(tor.polygon, &tri[n].p3, &tri[n].p1, dx, dy);
 	}
 
 	if (maskFormat ? maskFormat->depth < 8 : dst->polyEdge == PolyEdgeSharp)
@@ -3826,7 +3774,6 @@ tristrip_thread(void *arg)
 	struct tristrip_thread *thread = arg;
 	struct span_thread_boxes boxes;
 	struct tor tor;
-	xPointFixed p[4];
 	int n, cw, ccw;
 
 	if (!tor_init(&tor, &thread->extents, 2*thread->count))
@@ -3835,25 +3782,29 @@ tristrip_thread(void *arg)
 	boxes.op = thread->op;
 	boxes.num_boxes = 0;
 
-	cw = ccw = 0;
-	project_point_onto_grid(&thread->points[0], thread->dx, thread->dy, &p[cw]);
-	project_point_onto_grid(&thread->points[1], thread->dx, thread->dy, &p[2+ccw]);
-	polygon_add_line(tor.polygon, &p[2+ccw], &p[cw]);
+	cw = 0; ccw = 1;
+	polygon_add_line(tor.polygon,
+			 &thread->points[ccw], &thread->points[cw],
+			 thread->dx, thread->dy);
 	n = 2;
 	do {
-		cw = !cw;
-		project_point_onto_grid(&thread->points[n], thread->dx, thread->dy, &p[cw]);
-		polygon_add_line(tor.polygon, &p[!cw], &p[cw]);
+		polygon_add_line(tor.polygon,
+				 &thread->points[cw], &thread->points[n],
+				 thread->dx, thread->dy);
+		cw = n;
 		if (++n == thread->count)
 			break;
 
-		ccw = !ccw;
-		project_point_onto_grid(&thread->points[n], thread->dx, thread->dy, &p[2+ccw]);
-		polygon_add_line(tor.polygon, &p[2+ccw], &p[2+!ccw]);
+		polygon_add_line(tor.polygon,
+				 &thread->points[n], &thread->points[ccw],
+				 thread->dx, thread->dy);
+		ccw = n;
 		if (++n == thread->count)
 			break;
 	} while (1);
-	polygon_add_line(tor.polygon, &p[cw], &p[2+ccw]);
+	polygon_add_line(tor.polygon,
+			 &thread->points[cw], &thread->points[ccw],
+			 thread->dx, thread->dy);
 	assert(tor.polygon->num_edges <= 2*thread->count);
 
 	tor_render(thread->sna, &tor,
@@ -3969,31 +3920,34 @@ imprecise_tristrip_span_converter(struct sna *sna,
 					      16);
 	if (num_threads == 1) {
 		struct tor tor;
-		xPointFixed p[4];
 		int cw, ccw, n;
 
 		if (!tor_init(&tor, &extents, 2*count))
 			goto skip;
 
-		cw = ccw = 0;
-		project_point_onto_grid(&points[0], dx, dy, &p[cw]);
-		project_point_onto_grid(&points[1], dx, dy, &p[2+ccw]);
-		polygon_add_line(tor.polygon, &p[2+ccw], &p[cw]);
+		cw = 0; ccw = 1;
+		polygon_add_line(tor.polygon,
+				 &points[ccw], &points[cw],
+				 dx, dy);
 		n = 2;
 		do {
-			cw = !cw;
-			project_point_onto_grid(&points[n], dx, dy, &p[cw]);
-			polygon_add_line(tor.polygon, &p[!cw], &p[cw]);
+			polygon_add_line(tor.polygon,
+					 &points[cw], &points[n],
+					 dx, dy);
+			cw = n;
 			if (++n == count)
 				break;
 
-			ccw = !ccw;
-			project_point_onto_grid(&points[n], dx, dy, &p[2+ccw]);
-			polygon_add_line(tor.polygon, &p[2+ccw], &p[2+!ccw]);
+			polygon_add_line(tor.polygon,
+					 &points[n], &points[ccw],
+					 dx, dy);
+			ccw = n;
 			if (++n == count)
 				break;
 		} while (1);
-		polygon_add_line(tor.polygon, &p[cw], &p[2+ccw]);
+		polygon_add_line(tor.polygon,
+				 &points[cw], &points[2+ccw],
+				 dx, dy);
 		assert(tor.polygon->num_edges <= 2*count);
 
 		tor_render(sna, &tor, &tmp, &clip,

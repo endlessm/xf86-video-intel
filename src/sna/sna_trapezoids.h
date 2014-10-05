@@ -365,7 +365,7 @@ xTriangleValid(const xTriangle *t)
 
 static inline int pixman_fixed_to_fast(pixman_fixed_t v)
 {
-	return (v + ((1<<(16-FAST_SAMPLES_shift-1))-1)) >> (16 - FAST_SAMPLES_shift);
+	return (v + (1<<(16-FAST_SAMPLES_shift-1))) >> (16 - FAST_SAMPLES_shift);
 }
 
 bool trapezoids_bounds(int n, const xTrapezoid *t, BoxPtr box);
