@@ -938,6 +938,8 @@ create_pixmap_hdr(struct sna *sna, ScreenPtr screen,
 		pixmap->refcnt = 1;
 	}
 
+	DBG(("%s: pixmap=%ld, width=%d, height=%d, usage=%d\n", __FUNCTION__,
+	     pixmap->drawable.serialNumber, width, height, usage));
 	pixmap->drawable.width = width;
 	pixmap->drawable.height = height;
 	pixmap->usage_hint = usage;
@@ -1105,13 +1107,14 @@ sna_share_pixmap_backing(PixmapPtr pixmap, ScreenPtr slave, void **fd_handle)
 		struct kgem_bo *bo;
 		BoxRec box;
 
-		DBG(("%s: removing tiling %d, and aligning pitch  for %dx%d pixmap=%ld\n",
-		     __FUNCTION__, priv->gpu_bo->tiling,
+		DBG(("%s: removing tiling %d, and aligning pitch %d for %dx%d pixmap=%ld\n",
+		     __FUNCTION__, priv->gpu_bo->tiling, priv->gpu_bo->pitch,
 		     pixmap->drawable.width, pixmap->drawable.height,
 		     pixmap->drawable.serialNumber));
 
 		if (priv->pinned) {
-			DBG(("%s: can't convert pinned bo\n", __FUNCTION__));
+			DBG(("%s: can't convert pinned %x bo\n", __FUNCTION__,
+			     priv->pinned));
 			return FALSE;
 		}
 
@@ -1222,7 +1225,8 @@ sna_create_pixmap_shared(struct sna *sna, ScreenPtr screen,
 	PixmapPtr pixmap;
 	struct sna_pixmap *priv;
 
-	DBG(("%s: depth=%d\n", __FUNCTION__, depth));
+	DBG(("%s: width=%d, height=%d, depth=%d\n",
+	     __FUNCTION__, width, height, depth));
 
 	/* Create a stub to be attached later */
 	pixmap = create_pixmap_hdr(sna, screen,

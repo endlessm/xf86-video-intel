@@ -6559,10 +6559,17 @@ inline static DrawablePtr crtc_source(xf86CrtcPtr crtc, int16_t *sx, int16_t *sy
 {
 	struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
 	if (sna_crtc->slave_pixmap) {
+		DBG(("%s: using slave pixmap=%ld, offset (%d, %d)\n",
+		     __FUNCTION__,
+		     sna_crtc->slave_pixmap->drawable.serialNumber,
+		 -crtc->x, -crtc->y));
 		*sx = -crtc->x;
 		*sy = -crtc->y;
 		return &sna_crtc->slave_pixmap->drawable;
 	} else {
+		DBG(("%s: using Screen pixmap=%ld)\n",
+		     __FUNCTION__,
+		     to_sna(crtc->scrn)->front->drawable.serialNumber));
 		*sx = *sy = 0;
 		return &to_sna(crtc->scrn)->front->drawable;
 	}
@@ -6793,6 +6800,7 @@ sna_crtc_redisplay(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo *bo)
 	}
 
 	if (crtc->filter == NULL &&
+	    priv->gpu_bo &&
 	    sna_transform_is_integer_translation(&crtc->crtc_to_framebuffer,
 						 &tx, &ty)) {
 		DrawableRec tmp;
