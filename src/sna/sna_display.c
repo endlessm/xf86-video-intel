@@ -6801,6 +6801,7 @@ sna_crtc_redisplay(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo *bo)
 
 	if (crtc->filter == NULL &&
 	    priv->gpu_bo &&
+	    priv->cpu_damage == NULL &&
 	    sna_transform_is_integer_translation(&crtc->crtc_to_framebuffer,
 						 &tx, &ty)) {
 		DrawableRec tmp;
