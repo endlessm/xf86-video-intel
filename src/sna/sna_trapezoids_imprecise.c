@@ -124,7 +124,7 @@ inline static void apply_damage_box(struct sna_composite_op *op, const BoxRec *b
     (i) = FAST_SAMPLES_INT(t);				\
 } while (0)
 
-#define FAST_SAMPLES_XY (2*FAST_SAMPLES_X*FAST_SAMPLES_Y) /* Unit area on the grid. */
+#define FAST_SAMPLES_XY (FAST_SAMPLES_X*FAST_SAMPLES_Y) /* Unit area on the grid. */
 #define AREA_TO_ALPHA(c)  ((c) / (float)FAST_SAMPLES_XY)
 
 struct quorem {
@@ -374,14 +374,14 @@ cell_list_add_subspan(struct cell_list *cells, int x1, int x2)
 
 	cell = cell_list_find(cells, ix1);
 	if (ix1 != ix2) {
-		cell->uncovered_area += 2*fx1;
+		cell->uncovered_area += fx1;
 		++cell->covered_height;
 
 		cell = cell_list_find(cells, ix2);
-		cell->uncovered_area -= 2*fx2;
+		cell->uncovered_area -= fx2;
 		--cell->covered_height;
 	} else
-		cell->uncovered_area += 2*(fx1-fx2);
+		cell->uncovered_area += (fx1-fx2);
 }
 
 inline static void
@@ -399,14 +399,14 @@ cell_list_add_span(struct cell_list *cells, int x1, int x2)
 
 	cell = cell_list_find(cells, ix1);
 	if (ix1 != ix2) {
-		cell->uncovered_area += 2*fx1*FAST_SAMPLES_Y;
+		cell->uncovered_area += fx1*FAST_SAMPLES_Y;
 		cell->covered_height += FAST_SAMPLES_Y;
 
 		cell = cell_list_find(cells, ix2);
-		cell->uncovered_area -= 2*fx2*FAST_SAMPLES_Y;
+		cell->uncovered_area -= fx2*FAST_SAMPLES_Y;
 		cell->covered_height -= FAST_SAMPLES_Y;
 	} else
-		cell->uncovered_area += 2*(fx1-fx2)*FAST_SAMPLES_Y;
+		cell->uncovered_area += (fx1-fx2)*FAST_SAMPLES_Y;
 }
 
 static void
@@ -1094,7 +1094,7 @@ tor_blt(struct sna *sna,
 	box.x1 = converter->extents.x1;
 
 	/* Form the spans from the coverages and areas. */
-	cover = cells->head.covered_height*FAST_SAMPLES_X*2;
+	cover = cells->head.covered_height*FAST_SAMPLES_X;
 	assert(cover >= 0);
 	for (cell = cells->head.next; cell != &cells->tail; cell = cell->next) {
 		int x = cell->x;
@@ -1116,7 +1116,7 @@ tor_blt(struct sna *sna,
 				span(sna, op, clip, &box, cover);
 			}
 			box.x1 = box.x2;
-			cover += cell->covered_height*FAST_SAMPLES_X*2;
+			cover += cell->covered_height*FAST_SAMPLES_X;
 		}
 
 		if (cell->uncovered_area) {
@@ -1451,7 +1451,7 @@ inplace_end_subrows(struct active_list *active, uint8_t *row,
 		buf += 4;
 
 		if (dw == 0) {
-			v = cover * 256 / (FAST_SAMPLES_X * FAST_SAMPLES_Y);
+			v = cover * 256 / FAST_SAMPLES_XY;
 			v -= v >> 8;
 			v |= v << 8;
 			dw = v | v << 16;
@@ -1459,7 +1459,7 @@ inplace_end_subrows(struct active_list *active, uint8_t *row,
 			cover += (int8_t)(dw & 0xff);
 			if (cover) {
 				assert(cover > 0);
-				v = cover * 256 / (FAST_SAMPLES_X * FAST_SAMPLES_Y);
+				v = cover * 256 / FAST_SAMPLES_XY;
 				v -= v >> 8;
 				dw >>= 8;
 				dw |= v << 24;
@@ -1469,7 +1469,7 @@ inplace_end_subrows(struct active_list *active, uint8_t *row,
 			cover += (int8_t)(dw & 0xff);
 			if (cover) {
 				assert(cover > 0);
-				v = cover * 256 / (FAST_SAMPLES_X * FAST_SAMPLES_Y);
+				v = cover * 256 / FAST_SAMPLES_XY;
 				v -= v >> 8;
 				dw >>= 8;
 				dw |= v << 24;
@@ -1479,7 +1479,7 @@ inplace_end_subrows(struct active_list *active, uint8_t *row,
 			cover += (int8_t)(dw & 0xff);
 			if (cover) {
 				assert(cover > 0);
-				v = cover * 256 / (FAST_SAMPLES_X * FAST_SAMPLES_Y);
+				v = cover * 256 / FAST_SAMPLES_XY;
 				v -= v >> 8;
 				dw >>= 8;
 				dw |= v << 24;
@@ -1489,7 +1489,7 @@ inplace_end_subrows(struct active_list *active, uint8_t *row,
 			cover += (int8_t)(dw & 0xff);
 			if (cover) {
 				assert(cover > 0);
-				v = cover * 256 / (FAST_SAMPLES_X * FAST_SAMPLES_Y);
+				v = cover * 256 / FAST_SAMPLES_XY;
 				v -= v >> 8;
 				dw >>= 8;
 				dw |= v << 24;
@@ -1508,7 +1508,7 @@ inplace_end_subrows(struct active_list *active, uint8_t *row,
 		cover += *buf++;
 		assert(cover >= 0);
 
-		v = cover * 256 / (FAST_SAMPLES_X * FAST_SAMPLES_Y);
+		v = cover * 256 / FAST_SAMPLES_XY;
 		v -= v >> 8;
 		*row++ = v;
 	}
@@ -1629,39 +1629,6 @@ static int operator_is_bounded(uint8_t op)
 	default:
 		return false;
 	}
-}
-
-static inline bool
-project_trapezoid_onto_grid(const xTrapezoid *in,
-			    int dx, int dy,
-			    xTrapezoid *out)
-{
-	__DBG(("%s: in: L:(%d, %d), (%d, %d); R:(%d, %d), (%d, %d), [%d, %d]\n",
-	       __FUNCTION__,
-	       in->left.p1.x, in->left.p1.y, in->left.p2.x, in->left.p2.y,
-	       in->right.p1.x, in->right.p1.y, in->right.p2.x, in->right.p2.y,
-	       in->top, in->bottom));
-
-	out->left.p1.x = dx + pixman_fixed_to_fast(in->left.p1.x);
-	out->left.p1.y = dy + pixman_fixed_to_fast(in->left.p1.y);
-	out->left.p2.x = dx + pixman_fixed_to_fast(in->left.p2.x);
-	out->left.p2.y = dy + pixman_fixed_to_fast(in->left.p2.y);
-
-	out->right.p1.x = dx + pixman_fixed_to_fast(in->right.p1.x);
-	out->right.p1.y = dy + pixman_fixed_to_fast(in->right.p1.y);
-	out->right.p2.x = dx + pixman_fixed_to_fast(in->right.p2.x);
-	out->right.p2.y = dy + pixman_fixed_to_fast(in->right.p2.y);
-
-	out->top = dy + pixman_fixed_to_fast(in->top);
-	out->bottom = dy + pixman_fixed_to_fast(in->bottom);
-
-	__DBG(("%s: out: L:(%d, %d), (%d, %d); R:(%d, %d), (%d, %d), [%d, %d]\n",
-	       __FUNCTION__,
-	       out->left.p1.x, out->left.p1.y, out->left.p2.x, out->left.p2.y,
-	       out->right.p1.x, out->right.p1.y, out->right.p2.x, out->right.p2.y,
-	       out->top, out->bottom));
-
-	return xTrapezoidValid(out);
 }
 
 static span_func_t
@@ -3255,22 +3222,6 @@ imprecise_trapezoid_span_fallback(CARD8 op, PicturePtr src, PicturePtr dst,
 	return true;
 }
 
-static inline bool
-project_trap_onto_grid(const xTrap *in,
-		       int dx, int dy,
-		       xTrap *out)
-{
-	out->top.l = dx + pixman_fixed_to_fast(in->top.l);
-	out->top.r = dx + pixman_fixed_to_fast(in->top.r);
-	out->top.y = dy + pixman_fixed_to_fast(in->top.y);
-
-	out->bot.l = dx + pixman_fixed_to_fast(in->bot.l);
-	out->bot.r = dx + pixman_fixed_to_fast(in->bot.r);
-	out->bot.y = dy + pixman_fixed_to_fast(in->bot.y);
-
-	return out->bot.y > out->top.y;
-}
-
 bool
 trap_span_converter(struct sna *sna,
 		    PicturePtr dst,
@@ -3488,33 +3439,6 @@ trap_mask_converter(struct sna *sna,
 	mark_damaged(pixmap, priv, &extents ,x, y);
 	sna_pixmap_destroy(scratch);
 	return true;
-}
-
-static inline void
-project_point_onto_grid(const xPointFixed *in,
-			int dx, int dy,
-			xPointFixed *out)
-{
-	out->x = dx + pixman_fixed_to_fast(in->x);
-	out->y = dy + pixman_fixed_to_fast(in->y);
-	__DBG(("%s: (%f, %f) -> (%d, %d)\n",
-	       __FUNCTION__,
-	       pixman_fixed_to_double(in->x),
-	       pixman_fixed_to_double(in->y),
-	       out->x, out->y));
-}
-
-#if HAS_PIXMAN_TRIANGLES
-static inline bool
-project_triangle_onto_grid(const xTriangle *in,
-			   int dx, int dy,
-			   xTriangle *out)
-{
-	project_point_onto_grid(&in->p1, dx, dy, &out->p1);
-	project_point_onto_grid(&in->p2, dx, dy, &out->p2);
-	project_point_onto_grid(&in->p3, dx, dy, &out->p3);
-
-	return xTriangleValid(out);
 }
 
 bool
@@ -4001,5 +3925,3 @@ skip:
 	REGION_UNINIT(NULL, &clip);
 	return true;
 }
-
-#endif
