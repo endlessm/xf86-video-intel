@@ -312,6 +312,8 @@ struct sna {
 		struct udev_monitor *backlight_monitor;
 		pointer backlight_handler;
 #endif
+
+		Bool (*rrGetInfo)(ScreenPtr, Rotation *);
 	} mode;
 
 	struct {

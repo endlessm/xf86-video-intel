@@ -59,6 +59,7 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <sys/ioctl.h>
 #include <sys/fcntl.h>
+#include <sys/poll.h>
 #include "i915_drm.h"
 
 #ifdef HAVE_VALGRIND
@@ -866,6 +867,22 @@ err_dev:
 	goto out;
 }
 
+static bool sna_uevent_poll(struct sna *sna)
+{
+	struct pollfd pfd;
+
+	if (sna->uevent_monitor == NULL)
+		return false;
+
+	pfd.fd = udev_monitor_get_fd(sna->uevent_monitor);
+	pfd.events = POLLIN;
+
+	if (poll(&pfd, 1, 0) > 0)
+		sna_handle_uevents(pfd.fd, sna);
+
+	return true;
+}
+
 static void
 sna_uevent_fini(struct sna *sna)
 {
@@ -887,8 +904,20 @@ sna_uevent_fini(struct sna *sna)
 }
 #else
 static void sna_uevent_init(struct sna *sna) { }
+static bool sna_uevent_poll(struct sna *sna) { return false; }
 static void sna_uevent_fini(struct sna *sna) { }
 #endif /* HAVE_UDEV */
+
+static Bool
+sna_randr_getinfo(ScreenPtr screen, Rotation *rotations)
+{
+	struct sna *sna = to_sna_from_screen(screen);
+
+	if (!sna_uevent_poll(sna))
+		sna_mode_discover(sna);
+
+	return sna->mode.rrGetInfo(screen, rotations);
+}
 
 static void sna_leave_vt(VT_FUNC_ARGS_DECL)
 {
@@ -1035,6 +1064,25 @@ agp_aperture_size(struct pci_device *dev, int gen)
 }
 
 static Bool
+sna_mode_init(struct sna *sna, ScreenPtr screen)
+{
+	rrScrPrivPtr rp;
+
+	if (!xf86CrtcScreenInit(screen))
+		return FALSE;
+
+	xf86RandR12SetRotations(screen, RR_Rotate_All | RR_Reflect_All);
+	xf86RandR12SetTransformSupport(screen, TRUE);
+
+	/* Wrap RR queries to catch pending MST topology changes */
+	rp = rrGetScrPriv(screen);
+	sna->mode.rrGetInfo = rp->rrGetInfo;
+	rp->rrGetInfo = sna_randr_getinfo;
+
+	return TRUE;
+}
+
+static Bool
 sna_screen_init(SCREEN_INIT_ARGS_DECL)
 {
 	ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
@@ -1134,11 +1182,8 @@ sna_screen_init(SCREEN_INIT_ARGS_DECL)
 	sna->CloseScreen = screen->CloseScreen;
 	screen->CloseScreen = sna_early_close_screen;
 
-	if (!xf86CrtcScreenInit(screen))
+	if (!sna_mode_init(sna, screen))
 		return FALSE;
-
-	xf86RandR12SetRotations(screen, RR_Rotate_All | RR_Reflect_All);
-	xf86RandR12SetTransformSupport(screen, TRUE);
 
 	if (!miCreateDefColormap(screen))
 		return FALSE;
@@ -1151,6 +1196,7 @@ sna_screen_init(SCREEN_INIT_ARGS_DECL)
 
 	xf86DPMSInit(screen, sna_dpms_set, 0);
 
+	sna_uevent_init(sna);
 	sna_video_init(sna, screen);
 	sna_dri_init(sna, screen);
 
@@ -1164,8 +1210,6 @@ sna_screen_init(SCREEN_INIT_ARGS_DECL)
 		xf86ShowUnusedOptions(scrn->scrnIndex, scrn->options);
 
 	sna->suspended = FALSE;
-
-	sna_uevent_init(sna);
 
 	return TRUE;
 }
