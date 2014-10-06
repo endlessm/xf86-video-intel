@@ -1093,7 +1093,7 @@ sna_share_pixmap_backing(PixmapPtr pixmap, ScreenPtr slave, void **fd_handle)
 	DBG(("%s: pixmap=%ld\n", __FUNCTION__, pixmap->drawable.serialNumber));
 
 	priv = sna_pixmap_move_to_gpu(pixmap,
-				      MOVE_READ | MOVE_WRITE | __MOVE_DRI | __MOVE_FORCE);
+				      MOVE_READ | MOVE_WRITE | __MOVE_DRI | __MOVE_PRIME | __MOVE_FORCE);
 	if (priv == NULL)
 		return FALSE;
 
@@ -1125,7 +1125,7 @@ sna_share_pixmap_backing(PixmapPtr pixmap, ScreenPtr slave, void **fd_handle)
 				    pixmap->drawable.height,
 				    pixmap->drawable.bitsPerPixel,
 				    I915_TILING_NONE,
-				    CREATE_GTT_MAP | CREATE_PRIME);
+				    CREATE_GTT_MAP | CREATE_PRIME | CREATE_EXACT);
 		if (bo == NULL) {
 			DBG(("%s: allocation failed\n", __FUNCTION__));
 			return FALSE;
@@ -1244,7 +1244,7 @@ sna_create_pixmap_shared(struct sna *sna, ScreenPtr screen,
 					      width, height,
 					      pixmap->drawable.bitsPerPixel,
 					      I915_TILING_NONE,
-					      CREATE_GTT_MAP | CREATE_PRIME);
+					      CREATE_GTT_MAP | CREATE_PRIME | CREATE_EXACT);
 		if (priv->gpu_bo == NULL) {
 			free(priv);
 			FreePixmap(pixmap);
@@ -1921,6 +1921,7 @@ sna_pixmap_undo_cow(struct sna *sna, struct sna_pixmap *priv, unsigned flags)
 
 		if (flags & MOVE_READ) {
 			PixmapPtr pixmap = priv->pixmap;
+			unsigned create, tiling;
 			BoxRec box;
 
 			DBG(("%s: copying cow\n", __FUNCTION__));
@@ -1929,11 +1930,18 @@ sna_pixmap_undo_cow(struct sna *sna, struct sna_pixmap *priv, unsigned flags)
 			box.x2 = pixmap->drawable.width;
 			box.y2 = pixmap->drawable.height;
 
+			if (flags & __MOVE_PRIME) {
+				create|= CREATE_GTT_MAP | CREATE_PRIME | CREATE_EXACT;
+				tiling = I915_TILING_NONE;
+			} else {
+				create = 0;
+				tiling = sna_pixmap_default_tiling(sna, pixmap);
+			}
+
 			bo = kgem_create_2d(&sna->kgem,
 					    box.x2, box.y2,
 					    pixmap->drawable.bitsPerPixel,
-					    sna_pixmap_default_tiling(sna, pixmap),
-					    0);
+					    tiling, create);
 			if (bo == NULL) {
 				cow->refcnt++;
 				DBG(("%s: allocation failed\n", __FUNCTION__));
@@ -4073,6 +4081,10 @@ static bool can_convert_to_gpu(struct sna_pixmap *priv, unsigned flags)
 		if (priv->cpu_bo->pitch & 63)
 			return false;
 
+	if (flags & __MOVE_PRIME)
+		if (priv->cpu_bo->pitch & 255)
+			return false;
+
 	return true;
 }
 
@@ -4160,10 +4172,16 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 			assert(pixmap->drawable.height > 0);
 			assert(pixmap->drawable.bitsPerPixel >= 8);
 
-			is_linear = sna_pixmap_default_tiling(sna, pixmap) == I915_TILING_NONE;
-			if (is_linear && flags & __MOVE_TILED) {
-				DBG(("%s: not creating linear GPU bo\n", __FUNCTION__));
-				return NULL;
+			if (flags & __MOVE_PRIME) {
+				assert((flags & __MOVE_TILED) == 0);
+				is_linear = true;
+			} else {
+				is_linear = sna_pixmap_default_tiling(sna, pixmap) == I915_TILING_NONE;
+				if (is_linear && flags & __MOVE_TILED) {
+					DBG(("%s: not creating linear GPU bo\n",
+					     __FUNCTION__));
+					return NULL;
+				}
 			}
 
 			if (is_linear &&
@@ -4185,6 +4203,8 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 				unsigned create = 0;
 				if (flags & MOVE_INPLACE_HINT || (priv->cpu_damage && priv->cpu_bo == NULL))
 					create = CREATE_GTT_MAP | CREATE_INACTIVE;
+				if (flags & __MOVE_PRIME)
+					create |= CREATE_GTT_MAP | CREATE_PRIME | CREATE_EXACT;
 
 				sna_pixmap_alloc_gpu(sna, pixmap, priv, create);
 			}

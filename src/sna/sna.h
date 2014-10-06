@@ -709,6 +709,7 @@ sna_pixmap_undo_cow(struct sna *sna, struct sna_pixmap *priv, unsigned flags);
 #define __MOVE_DRI 0x80
 #define __MOVE_SCANOUT 0x100
 #define __MOVE_TILED 0x200
+#define __MOVE_PRIME 0x400
 
 struct sna_pixmap *
 sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int flags);
