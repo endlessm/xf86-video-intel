@@ -473,7 +473,8 @@ polygon_add_edge(struct polygon *polygon,
 	struct edge *e = &polygon->edges[polygon->num_edges];
 	int ytop, ybot;
 
-	assert (dy > 0);
+	assert(t->bottom > t->top);
+	assert(edge->p2.y > edge->p1.y);
 
 	e->dir = dir;
 
