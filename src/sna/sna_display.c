@@ -6826,7 +6826,11 @@ sna_crtc_redisplay(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo *bo)
 		sna_crtc_redisplay__fallback(crtc, region, bo);
 }
 
-#define shadow_flip_handler (sna_flip_handler_t)sna_mode_redisplay
+static void shadow_flip_handler(struct drm_event_vblank *e,
+				void *data)
+{
+	sna_mode_redisplay(data);
+}
 
 void sna_shadow_set_crtc(struct sna *sna,
 			 xf86CrtcPtr crtc,
@@ -7060,6 +7064,7 @@ disable1:
 
 				assert(sna_crtc->flip_bo == NULL);
 				sna_crtc->flip_handler = shadow_flip_handler;
+				sna_crtc->flip_data = sna;
 				sna_crtc->flip_bo = bo;
 				sna_crtc->flip_bo->active_scanout++;
 				sna_crtc->flip_serial = sna_crtc->mode_serial;
@@ -7196,6 +7201,7 @@ fixup_flip:
 
 			assert(crtc->flip_bo == NULL);
 			crtc->flip_handler = shadow_flip_handler;
+			crtc->flip_data = sna;
 			crtc->flip_bo = kgem_bo_reference(flip_bo);
 			crtc->flip_bo->active_scanout++;
 			crtc->flip_serial = crtc->mode_serial;
