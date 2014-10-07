@@ -430,8 +430,8 @@ move_to_gpu(PixmapPtr pixmap, const BoxRec *box, bool blt)
 
 	priv = sna_pixmap(pixmap);
 	if (priv == NULL) {
-		DBG(("%s: not migrating unattached pixmap\n",
-		     __FUNCTION__));
+		DBG(("%s: not migrating unattached pixmap=%ld\n",
+		     __FUNCTION__, pixmap->drawable.serialNumber));
 		return NULL;
 	}
 
@@ -448,14 +448,16 @@ move_to_gpu(PixmapPtr pixmap, const BoxRec *box, bool blt)
 	}
 
 	if (priv->cpu_damage == NULL) {
-		DBG(("%s: not migrating uninitialised pixmap\n",
-		     __FUNCTION__));
+		DBG(("%s: not migrating uninitialised pixmap=%ld\n",
+		     __FUNCTION__, pixmap->drawable.serialNumber));
 		return NULL;
 	}
 
 	if (pixmap->usage_hint) {
-		DBG(("%s: not migrating pixmap due to usage_hint=%d\n",
-		     __FUNCTION__, pixmap->usage_hint));
+		DBG(("%s: not migrating pixmap=%ld due to usage_hint=%d\n",
+		     __FUNCTION__,
+		     pixmap->drawable.serialNumber,
+		     pixmap->usage_hint));
 		return NULL;
 	}
 
