@@ -7243,6 +7243,12 @@ void sna_mode_wakeup(struct sna *sna)
 	if (len < (int)sizeof(struct drm_event))
 		return;
 
+	/* Note that we cannot rely on the passed in struct sna matching
+	 * the struct sna used for the vblank event (in case it was submitted
+	 * by a different ZaphodHead). When processing the event, we must
+	 * ensure that we only use the pointer passed along with the event.
+	 */
+
 	DBG(("%s: len=%d\n", __FUNCTION__, len));
 
 	i = 0;
@@ -7251,14 +7257,17 @@ void sna_mode_wakeup(struct sna *sna)
 		switch (e->type) {
 		case DRM_EVENT_VBLANK:
 			if (((uintptr_t)((struct drm_event_vblank *)e)->user_data) & 2)
-				sna_present_vblank_handler(sna, (struct drm_event_vblank *)e);
+				sna_present_vblank_handler((struct drm_event_vblank *)e);
 			else
-				sna_dri2_vblank_handler(sna, (struct drm_event_vblank *)e);
+				sna_dri2_vblank_handler((struct drm_event_vblank *)e);
 			break;
 		case DRM_EVENT_FLIP_COMPLETE:
 			{
 				struct drm_event_vblank *vbl = (struct drm_event_vblank *)e;
 				struct sna_crtc *crtc = (void *)(uintptr_t)vbl->user_data;
+
+				/* Beware Zaphod! */
+				sna = to_sna(crtc->base->scrn);
 
 				crtc->swap.tv_sec = vbl->tv_sec;
 				crtc->swap.tv_usec = vbl->tv_usec;
@@ -7292,7 +7301,7 @@ void sna_mode_wakeup(struct sna *sna)
 				DBG(("%s: flip complete, pending? %d\n", __FUNCTION__, sna->mode.flip_active));
 				assert(sna->mode.flip_active);
 				if (--sna->mode.flip_active == 0)
-					crtc->flip_handler(sna, vbl, crtc->flip_data);
+					crtc->flip_handler(vbl, crtc->flip_data);
 			}
 			break;
 		default:

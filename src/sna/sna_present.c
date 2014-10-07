@@ -124,7 +124,7 @@ sna_present_get_ust_msc(RRCrtcPtr crtc, CARD64 *ust, CARD64 *msc)
 }
 
 void
-sna_present_vblank_handler(struct sna *sna, struct drm_event_vblank *event)
+sna_present_vblank_handler(struct drm_event_vblank *event)
 {
 	struct sna_present_event *info = to_present_event(event->user_data);
 
@@ -298,9 +298,7 @@ page_flip__async(RRCrtcPtr crtc,
 }
 
 static void
-present_flip_handler(struct sna *sna,
-		     struct drm_event_vblank *event,
-		     void *data)
+present_flip_handler(struct drm_event_vblank *event, void *data)
 {
 	struct sna_present_event *info = data;
 	struct ust_msc swap;

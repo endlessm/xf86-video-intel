@@ -445,8 +445,7 @@ extern void sna_crtc_config_notify(ScreenPtr screen);
 
 extern bool sna_cursors_init(ScreenPtr screen, struct sna *sna);
 
-typedef void (*sna_flip_handler_t)(struct sna *sna,
-				   struct drm_event_vblank *e,
+typedef void (*sna_flip_handler_t)(struct drm_event_vblank *e,
 				   void *data);
 
 extern int sna_page_flip(struct sna *sna,
@@ -544,14 +543,14 @@ static inline uint64_t ust64(int tv_sec, int tv_usec)
 #if HAVE_DRI2
 bool sna_dri2_open(struct sna *sna, ScreenPtr pScreen);
 void sna_dri2_page_flip_handler(struct sna *sna, struct drm_event_vblank *event);
-void sna_dri2_vblank_handler(struct sna *sna, struct drm_event_vblank *event);
+void sna_dri2_vblank_handler(struct drm_event_vblank *event);
 void sna_dri2_pixmap_update_bo(struct sna *sna, PixmapPtr pixmap, struct kgem_bo *bo);
 void sna_dri2_destroy_window(WindowPtr win);
 void sna_dri2_close(struct sna *sna, ScreenPtr pScreen);
 #else
 static inline bool sna_dri2_open(struct sna *sna, ScreenPtr pScreen) { return false; }
 static inline void sna_dri2_page_flip_handler(struct sna *sna, struct drm_event_vblank *event) { }
-static inline void sna_dri2_vblank_handler(struct sna *sna, struct drm_event_vblank *event) { }
+static inline void sna_dri2_vblank_handler(struct drm_event_vblank *event) { }
 static inline void sna_dri2_pixmap_update_bo(struct sna *sna, PixmapPtr pixmap, struct kgem_bo *bo) { }
 static inline void sna_dri2_destroy_window(WindowPtr win) { }
 static inline void sna_dri2_close(struct sna *sna, ScreenPtr pScreen) { }
@@ -569,13 +568,12 @@ static inline void sna_dri3_close(struct sna *sna, ScreenPtr pScreen) { }
 bool sna_present_open(struct sna *sna, ScreenPtr pScreen);
 void sna_present_update(struct sna *sna);
 void sna_present_close(struct sna *sna, ScreenPtr pScreen);
-void sna_present_vblank_handler(struct sna *sna,
-				struct drm_event_vblank *event);
+void sna_present_vblank_handler(struct drm_event_vblank *event);
 #else
 static inline bool sna_present_open(struct sna *sna, ScreenPtr pScreen) { return false; }
 static inline void sna_present_update(struct sna *sna) { }
 static inline void sna_present_close(struct sna *sna, ScreenPtr pScreen) { }
-static inline void sna_present_vblank_handler(struct sna *sna, struct drm_event_vblank *event) { }
+static inline void sna_present_vblank_handler(struct drm_event_vblank *event) { }
 #endif
 
 extern bool sna_crtc_set_sprite_rotation(xf86CrtcPtr crtc, uint32_t rotation);
