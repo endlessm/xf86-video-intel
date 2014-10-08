@@ -17886,7 +17886,7 @@ void sna_accel_leave(struct sna *sna)
 		return;
 
 	/* as a user, we can only render now if we have a rendernode */
-	if (intel_has_render_node(sna->scrn))
+	if (intel_has_render_node(sna->dev))
 		return;
 
 	/* no longer authorized to use our fd */

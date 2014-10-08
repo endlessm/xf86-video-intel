@@ -242,6 +242,7 @@ struct sna {
 	struct kgem kgem;
 
 	ScrnInfoPtr scrn;
+	struct intel_device *dev;
 
 	unsigned flags;
 #define SNA_IS_SLAVED		0x1

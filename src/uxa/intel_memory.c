@@ -168,7 +168,7 @@ agp_aperture_size(struct pci_device *dev, int gen)
 void intel_set_gem_max_sizes(ScrnInfoPtr scrn)
 {
 	intel_screen_private *intel = intel_get_screen_private(scrn);
-	size_t agp_size = agp_aperture_size(intel->PciInfo,
+	size_t agp_size = agp_aperture_size(xf86GetPciInfoForEntity(intel->pEnt->index),
 					    INTEL_INFO(intel)->gen);
 
 	/* The chances of being able to mmap an object larger than

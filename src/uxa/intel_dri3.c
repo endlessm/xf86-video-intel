@@ -40,9 +40,11 @@ intel_dri3_open(ScreenPtr screen,
                 RRProviderPtr provider,
                 int *out)
 {
+	ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
+	intel_screen_private *intel = intel_get_screen_private(scrn);
 	int fd;
 
-	fd = intel_get_client_fd(xf86ScreenToScrn(screen));
+	fd = intel_get_client_fd(intel->dev);
 	if (fd < 0)
 		return -fd;
 

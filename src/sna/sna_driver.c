@@ -268,7 +268,7 @@ static Bool sna_create_screen_resources(ScreenPtr screen)
 	 * already revoked our KMS privileges, so just carry on regardless,
 	 * and hope that everything is sorted after the VT switch.
 	 */
-	if (intel_get_master(sna->scrn) == 0) {
+	if (intel_get_master(sna->dev) == 0) {
 		/* Only preserve the fbcon, not any subsequent server regens */
 		if (serverGeneration == 1 && (sna->flags & SNA_IS_HOSTED) == 0)
 			sna_copy_fbcon(sna);
@@ -597,8 +597,8 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int probe)
 	scrn->progClock = TRUE;
 	scrn->rgbBits = 8;
 
-	fd = intel_get_device(scrn);
-	if (fd == -1) {
+	sna->dev = intel_get_device(scrn, &fd);
+	if (sna->dev == NULL) {
 		xf86DrvMsg(scrn->scrnIndex, X_ERROR,
 			   "Failed to claim DRM device.\n");
 		goto cleanup;
@@ -611,7 +611,7 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int probe)
 		goto cleanup;
 	}
 
-	intel_detect_chipset(scrn, pEnt);
+	intel_detect_chipset(scrn, sna->dev);
 	xf86DrvMsg(scrn->scrnIndex, X_PROBED, "CPU: %s\n",
 		   sna_cpu_features_to_string(sna->cpu_features, buf));
 
@@ -715,6 +715,8 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int probe)
 
 cleanup:
 	scrn->driverPrivate = (void *)((uintptr_t)sna->info | (sna->flags & SNA_IS_SLAVED) | 2);
+	if (sna->dev)
+		intel_put_device(sna->dev);
 	free(sna);
 	return FALSE;
 }
@@ -929,7 +931,7 @@ static void sna_leave_vt(VT_FUNC_ARGS_DECL)
 	sna_accel_leave(sna);
 	sna_mode_reset(sna);
 
-	if (intel_put_master(scrn))
+	if (intel_put_master(sna->dev))
 		xf86DrvMsg(scrn->scrnIndex, X_WARNING,
 			   "drmDropMaster failed: %s\n", strerror(errno));
 }
@@ -967,7 +969,7 @@ static Bool sna_early_close_screen(CLOSE_SCREEN_ARGS_DECL)
 	}
 
 	if (scrn->vtSema) {
-		intel_put_master(scrn);
+		intel_put_master(sna->dev);
 		scrn->vtSema = FALSE;
 	}
 
@@ -1234,9 +1236,9 @@ static void sna_free_screen(FREE_SCREEN_ARGS_DECL)
 
 	sna_mode_fini(sna);
 	sna_acpi_fini(sna);
-	free(sna);
 
-	intel_put_device(scrn);
+	intel_put_device(sna->dev);
+	free(sna);
 }
 
 static Bool sna_enter_vt(VT_FUNC_ARGS_DECL)
@@ -1245,7 +1247,7 @@ static Bool sna_enter_vt(VT_FUNC_ARGS_DECL)
 	struct sna *sna = to_sna(scrn);
 
 	DBG(("%s\n", __FUNCTION__));
-	if (intel_get_master(scrn))
+	if (intel_get_master(sna->dev))
 		return FALSE;
 
 	if (sna->flags & SNA_REPROBE) {
@@ -1257,7 +1259,7 @@ static Bool sna_enter_vt(VT_FUNC_ARGS_DECL)
 	}
 
 	if (!sna_set_desired_mode(sna)) {
-		intel_put_master(scrn);
+		intel_put_master(sna->dev);
 		return FALSE;
 	}
 

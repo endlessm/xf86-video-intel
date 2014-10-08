@@ -3885,7 +3885,7 @@ static bool gen8_render_setup(struct sna *sna)
 	int i, j, k, l, m;
 	uint32_t devid;
 
-	devid = intel_get_device_id(sna->scrn);
+	devid = intel_get_device_id(sna->dev);
 	if (devid & 0xf)
 		state->gt = ((devid >> 4) & 0xf) + 1;
 	DBG(("%s: gt=%d\n", __FUNCTION__, state->gt));

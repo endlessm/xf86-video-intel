@@ -54,7 +54,6 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "xorg-server.h"
 #include "xf86_OSproc.h"
 #include "compiler.h"
-#include "xf86Pci.h"
 #include "xf86Cursor.h"
 #include "xf86xv.h"
 #include "xf86Crtc.h"
@@ -113,6 +112,7 @@ enum dri_type {
 
 typedef struct intel_screen_private {
 	ScrnInfoPtr scrn;
+	struct intel_device *dev;
 	int cpp;
 
 #define RENDER_BATCH			I915_EXEC_RENDER
@@ -167,7 +167,6 @@ typedef struct intel_screen_private {
 
 	int Chipset;
 	EntityInfoPtr pEnt;
-	struct pci_device *PciInfo;
 	const struct intel_device_info *info;
 
 	unsigned int BR[20];
@@ -326,14 +325,14 @@ typedef struct intel_screen_private {
 #define IS_HSW(intel) (INTEL_INFO(intel)->gen == 075)
 
 /* Some chips have specific errata (or limits) that we need to workaround. */
-#define IS_I830(intel) ((intel)->PciInfo->device_id == PCI_CHIP_I830_M)
-#define IS_845G(intel) ((intel)->PciInfo->device_id == PCI_CHIP_845_G)
-#define IS_I865G(intel) ((intel)->PciInfo->device_id == PCI_CHIP_I865_G)
+#define IS_I830(intel) (intel_get_device_id((intel)->dev) == PCI_CHIP_I830_M)
+#define IS_845G(intel) (intel_get_device_id((intel)->dev) == PCI_CHIP_845_G)
+#define IS_I865G(intel) (intel_get_device_id((intel)->dev) == PCI_CHIP_I865_G)
 
-#define IS_I915G(pI810) ((intel)->PciInfo->device_id == PCI_CHIP_I915_G || (intel)->PciInfo->device_id == PCI_CHIP_E7221_G)
-#define IS_I915GM(pI810) ((intel)->PciInfo->device_id == PCI_CHIP_I915_GM)
+#define IS_I915G(pI810) (intel_get_device_id((intel)->dev) == PCI_CHIP_I915_G || intel_get_device_id((intel)->dev) == PCI_CHIP_E7221_G)
+#define IS_I915GM(pI810) (intel_get_device_id((intel)->dev) == PCI_CHIP_I915_GM)
 
-#define IS_965_Q(pI810) ((intel)->PciInfo->device_id == PCI_CHIP_I965_Q)
+#define IS_965_Q(pI810) (intel_get_device_id((intel)->dev) == PCI_CHIP_I965_Q)
 
 /* supports Y tiled surfaces (pre-965 Mesa isn't ready yet) */
 #define SUPPORTS_YTILING(pI810) (INTEL_INFO(intel)->gen >= 040)

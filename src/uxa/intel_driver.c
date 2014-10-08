@@ -200,7 +200,7 @@ static void PreInitCleanup(ScrnInfoPtr scrn)
 static void intel_check_chipset_option(ScrnInfoPtr scrn)
 {
 	intel_screen_private *intel = intel_get_screen_private(scrn);
-	intel_detect_chipset(scrn, intel->pEnt);
+	intel_detect_chipset(scrn, intel->dev);
 }
 
 static Bool I830GetEarlyOptions(ScrnInfoPtr scrn)
@@ -268,9 +268,8 @@ static void intel_check_dri_option(ScrnInfoPtr scrn)
 static Bool intel_open_drm_master(ScrnInfoPtr scrn)
 {
 	intel_screen_private *intel = intel_get_screen_private(scrn);
-
-	intel->drmSubFD = intel_get_device(scrn);
-	return intel->drmSubFD != -1;
+	intel->dev = intel_get_device(scrn, &intel->drmSubFD);
+	return intel->dev != NULL;
 }
 
 static int intel_init_bufmgr(intel_screen_private *intel)
@@ -381,7 +380,7 @@ static Bool can_accelerate_blt(struct intel_screen_private *intel)
 	}
 
 	if (INTEL_INFO(intel)->gen == 060) {
-		struct pci_device *const device = intel->PciInfo;
+		struct pci_device *const device = xf86GetPciInfoForEntity(intel->pEnt->index);
 
 		/* Sandybridge rev07 locks up easily, even with the
 		 * BLT ring workaround in place.
@@ -481,8 +480,6 @@ static Bool I830PreInit(ScrnInfoPtr scrn, int flags)
 	intel->pEnt = pEnt;
 
 	scrn->displayWidth = 640;	/* default it */
-
-	intel->PciInfo = xf86GetPciInfoForEntity(intel->pEnt->index);
 
 	if (!intel_open_drm_master(scrn)) {
 		xf86DrvMsg(scrn->scrnIndex, X_ERROR,
@@ -860,7 +857,7 @@ I830ScreenInit(SCREEN_INIT_ARGS_DECL)
 #ifdef INTEL_XVMC
 	MessageType from;
 #endif
-	struct pci_device *const device = intel->PciInfo;
+	struct pci_device *const device = xf86GetPciInfoForEntity(intel->pEnt->index);
 	int fb_bar = IS_GEN2(intel) ? 0 : 2;
 
 	scrn->videoRam = device->regions[fb_bar].size / 1024;
@@ -1065,7 +1062,7 @@ static void I830FreeScreen(FREE_SCREEN_ARGS_DECL)
 	if (intel && !((uintptr_t)intel & 3)) {
 		intel_mode_fini(intel);
 		intel_bufmgr_fini(intel);
-		intel_put_device(scrn);
+		intel_put_device(intel->dev);
 
 		free(intel);
 		scrn->driverPrivate = NULL;
@@ -1075,12 +1072,13 @@ static void I830FreeScreen(FREE_SCREEN_ARGS_DECL)
 static void I830LeaveVT(VT_FUNC_ARGS_DECL)
 {
 	SCRN_INFO_PTR(arg);
+	intel_screen_private *intel = intel_get_screen_private(scrn);
 
 	xf86RotateFreeShadow(scrn);
 
 	xf86_hide_cursors(scrn);
 
-	if (intel_put_master(scrn))
+	if (intel_put_master(intel->dev))
 		xf86DrvMsg(scrn->scrnIndex, X_WARNING,
 			   "drmDropMaster failed: %s\n", strerror(errno));
 }
@@ -1091,8 +1089,9 @@ static void I830LeaveVT(VT_FUNC_ARGS_DECL)
 static Bool I830EnterVT(VT_FUNC_ARGS_DECL)
 {
 	SCRN_INFO_PTR(arg);
+	intel_screen_private *intel = intel_get_screen_private(scrn);
 
-	if (intel_get_master(scrn)) {
+	if (intel_get_master(intel->dev)) {
 		xf86DrvMsg(scrn->scrnIndex, X_WARNING,
 			   "drmSetMaster failed: %s\n",
 			   strerror(errno));

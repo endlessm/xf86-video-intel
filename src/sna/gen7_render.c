@@ -3885,7 +3885,7 @@ static bool gen7_render_setup(struct sna *sna, int devid)
 
 const char *gen7_render_init(struct sna *sna, const char *backend)
 {
-	int devid = intel_get_device_id(sna->scrn);
+	int devid = intel_get_device_id(sna->dev);
 
 	if (!gen7_render_setup(sna, devid))
 		return backend;

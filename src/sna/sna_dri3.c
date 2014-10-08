@@ -158,7 +158,7 @@ static int sna_dri3_open_device(ScreenPtr screen,
 	int fd;
 
 	DBG(("%s()\n", __FUNCTION__));
-	fd = intel_get_client_fd(xf86ScreenToScrn(screen));
+	fd = intel_get_client_fd(to_sna_from_screen(screen)->dev);
 	if (fd < 0)
 		return -fd;
 
