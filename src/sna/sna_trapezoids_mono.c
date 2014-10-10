@@ -193,8 +193,6 @@ mono_add_line(struct mono *mono,
 {
 	struct mono_polygon *polygon = &mono->polygon;
 	struct mono_edge *e;
-	pixman_fixed_t dx;
-	pixman_fixed_t dy;
 	int y, ytop, ybot;
 
 	__DBG(("%s: top=%d, bottom=%d, line=(%d, %d), (%d, %d) delta=%dx%d, dir=%d\n",
@@ -224,6 +222,8 @@ mono_add_line(struct mono *mono,
 	y = I(bottom) + dst_y;
 	ybot = MIN(y, mono->clip.extents.y2);
 
+	__DBG(("%s: edge height [%d, %d] = %d\n",
+	       __FUNCTION__, ytop, ybot, ybot - ytop));
 	if (ybot <= ytop) {
 		__DBG(("discard clipped line\n"));
 		return;
@@ -233,23 +233,33 @@ mono_add_line(struct mono *mono,
 	e->height_left = ybot - ytop;
 	e->dir = dir;
 
-	dx = p2->x - p1->x;
-	dy = p2->y - p1->y;
-
-	if (dx == 0) {
+	if (I(p1->x) == I(p2->x)) {
+		__DBG(("%s: vertical edge x:%d\n", __FUNCTION__, I(p1->x)));
 		e->x.quo = p1->x;
 		e->x.rem = 0;
 		e->dxdy.quo = 0;
 		e->dxdy.rem = 0;
 		e->dy = 0;
 	} else {
-		e->dxdy = floored_muldivrem (dx, pixman_fixed_1, dy);
-		e->dy = dy;
+		int32_t dx = p2->x - p1->x;
+		int32_t dy = p2->y - p1->y;
 
-		e->x = floored_muldivrem ((ytop-dst_y) * pixman_fixed_1 + pixman_fixed_1_minus_e/2 - p1->y,
-					  dx, dy);
+		__DBG(("%s: diagonal edge (%d, %d), x:[%d, %d]\n", __FUNCTION__, dx, dy, I(p1->x), I(p2->x)));
+		assert(dy > 0);
+
+		e->dxdy = floored_muldivrem(dx, pixman_fixed_1, dy);
+
+		e->x = floored_muldivrem((ytop - dst_y) * pixman_fixed_1 + pixman_fixed_1_minus_e/2 - p1->y,
+					 dx, dy);
 		e->x.quo += p1->x;
 		e->x.rem -= dy;
+
+		e->dy = dy;
+
+		__DBG(("%s: initial x=%d [%d.%d/%d] + dxdy=%d.%d/%d\n",
+		       __FUNCTION__,
+		       I(e->x.quo), e->x.quo, e->x.rem, e->dy,
+		       e->dxdy.quo, e->dxdy.rem, e->dy));
 	}
 	e->x.quo += dst_x*pixman_fixed_1;
 
