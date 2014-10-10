@@ -555,6 +555,7 @@ polygon_add_edge(struct polygon *polygon,
 
 		Ex = (int64_t)(edge->p2.x - edge->p1.x) * SAMPLES_X;
 		Ey = (int64_t)(edge->p2.y - edge->p1.y) * SAMPLES_Y * (2 << 16);
+		assert(Ey > 0);
 		e->dxdy.quo = Ex * (2 << 16) / Ey;
 		e->dxdy.rem = Ex * (2 << 16) % Ey;
 
@@ -566,7 +567,14 @@ polygon_add_edge(struct polygon *polygon,
 
 		tmp = (int64_t)edge->p1.x * SAMPLES_X;
 		e->x.quo += (tmp >> 16) + dx;
-		e->x.rem += ((tmp & ((1 << 16) - 1)) * Ey) / (1 << 16);
+		tmp &= (1 << 16) - 1;
+		if (tmp) {
+			if (Ey < INT64_MAX >> 16)
+				tmp = (tmp * Ey) / (1 << 16);
+			else /* Handle overflow by losing precision */
+				tmp = tmp * (Ey / (1 << 16));
+			e->x.rem += tmp;
+		}
 
 		if (e->x.rem < 0) {
 			e->x.quo--;
