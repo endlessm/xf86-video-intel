@@ -602,24 +602,31 @@ static void sna_backlight_drain_uevents(struct sna *sna) { }
 static void sna_backlight_close(struct sna *sna) { }
 #endif
 
+static void
+sna_output_backlight_disable(struct sna_output *sna_output)
+{
+	xf86OutputPtr output = sna_output->base;
+
+	xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
+		   "Failed to set backlight %s for output %s, disabling\n",
+		   sna_output->backlight.iface, output->name);
+	backlight_disable(&sna_output->backlight);
+	if (output->randr_output) {
+		RRDeleteOutputProperty(output->randr_output, backlight_atom);
+		RRDeleteOutputProperty(output->randr_output, backlight_deprecated_atom);
+	}
+}
+
 static int
 sna_output_backlight_set(struct sna_output *sna_output, int level)
 {
-	xf86OutputPtr output = sna_output->base;
 	int ret = 0;
 
 	DBG(("%s(%s) level=%d, max=%d\n", __FUNCTION__,
-	     output->name, level, sna_output->backlight.max));
+	     sna_output->base->name, level, sna_output->backlight.max));
 
 	if (backlight_set(&sna_output->backlight, level)) {
-		xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
-			   "Failed to set backlight %s for output %s to brightness level %d, disabling\n",
-			   sna_output->backlight.iface, output->name, level);
-		backlight_disable(&sna_output->backlight);
-		if (output->randr_output) {
-			RRDeleteOutputProperty(output->randr_output, backlight_atom);
-			RRDeleteOutputProperty(output->randr_output, backlight_deprecated_atom);
-		}
+		sna_output_backlight_disable(sna_output);
 		ret = -1;
 	}
 
@@ -627,7 +634,7 @@ sna_output_backlight_set(struct sna_output *sna_output, int level)
 	 * the change latter when we wake up and the output is in a different
 	 * state.
 	 */
-	sna_backlight_drain_uevents(to_sna(output->scrn));
+	sna_backlight_drain_uevents(to_sna(sna_output->base->scrn));
 	return ret;
 }
 
@@ -645,15 +652,8 @@ sna_output_backlight_on(struct sna_output *sna_output)
 	DBG(("%s(%s)\n", __FUNCTION__, sna_output->base->name));
 	sna_output_backlight_set(sna_output,
 				 sna_output->backlight_active_level);
-	if (backlight_on(&sna_output->backlight) < 0) {
-		xf86OutputPtr output = sna_output->base;
-
-		backlight_disable(&sna_output->backlight);
-		if (output->randr_output) {
-			RRDeleteOutputProperty(output->randr_output, backlight_atom);
-			RRDeleteOutputProperty(output->randr_output, backlight_deprecated_atom);
-		}
-	}
+	if (backlight_on(&sna_output->backlight) < 0)
+		sna_output_backlight_disable(sna_output);
 }
 
 static int
