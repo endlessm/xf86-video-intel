@@ -217,7 +217,7 @@ __backlight_write(const char *iface, const char *file, const char *value)
 {
 	int fd, ret;
 
-	fd = __backlight_open(iface, file, O_RDONLY);
+	fd = __backlight_open(iface, file, O_WRONLY);
 	if (fd < 0)
 		return -1;
 
