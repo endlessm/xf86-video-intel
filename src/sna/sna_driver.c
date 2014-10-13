@@ -879,7 +879,7 @@ static bool sna_uevent_poll(struct sna *sna)
 	pfd.fd = udev_monitor_get_fd(sna->uevent_monitor);
 	pfd.events = POLLIN;
 
-	if (poll(&pfd, 1, 0) > 0)
+	while (poll(&pfd, 1, 0) > 0)
 		sna_handle_uevents(pfd.fd, sna);
 
 	return true;
