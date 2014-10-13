@@ -125,7 +125,7 @@
 # define SBE_SWIZZLE_ENABLE                (1 << 21)
 # define SBE_POINT_SPRITE_LOWERLEFT        (1 << 20)
 # define SBE_URB_ENTRY_READ_LENGTH_SHIFT   11
-# define SBE_URB_ENTRY_READ_OFFSET_SHIFT   4
+# define SBE_URB_ENTRY_READ_OFFSET_SHIFT   5
 
 #define GEN8_3DSTATE_PS                                 GEN8_3D(3, 0, 0x20)
 /* DW1: kernel pointer */
