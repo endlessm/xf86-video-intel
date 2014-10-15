@@ -2260,7 +2260,9 @@ retry: /* Attach per-crtc pixmap or direct */
 		goto error;
 	}
 
-	kgem_bo_submit(&sna->kgem, bo);
+	/* Prevent recursion when enabling outputs during execbuffer */
+	if (bo->exec && RQ(bo->rq)->bo == NULL)
+		_kgem_submit(&sna->kgem);
 
 	sna_crtc->bo = bo;
 	if (!sna_crtc_apply(crtc)) {

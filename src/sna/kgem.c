@@ -3088,6 +3088,7 @@ out_4096:
 		}
 
 		if (!__kgem_busy(kgem, bo->handle)) {
+			assert(RQ(bo->rq)->bo == bo);
 			__kgem_retire_rq(kgem, RQ(bo->rq));
 			goto out_4096;
 		}
@@ -3233,6 +3234,7 @@ retry:
 		ret = do_ioctl(kgem->fd,
 			       DRM_IOCTL_I915_GEM_EXECBUFFER2,
 			       execbuf);
+		DBG(("%s: last_gasp ret=%d\n", __FUNCTION__, ret));
 		sna_mode_enable(container_of(kgem, struct sna, kgem));
 	}
 	errno = err;
@@ -3273,11 +3275,13 @@ void _kgem_submit(struct kgem *kgem)
 	__kgem_batch_debug(kgem, batch_end);
 #endif
 
-	rq = kgem->next_request;
 	if (kgem->surface != kgem->batch_size)
 		size = compact_batch_surface(kgem);
 	else
 		size = kgem->nbatch * sizeof(kgem->batch[0]);
+
+	rq = kgem->next_request;
+	assert(rq->bo == NULL);
 	rq->bo = kgem_create_batch(kgem, size);
 	if (rq->bo) {
 		uint32_t handle = rq->bo->handle;
