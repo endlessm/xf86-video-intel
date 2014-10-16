@@ -282,6 +282,13 @@ static void assert_bo_retired(struct kgem_bo *bo)
 #define assert_bo_retired(bo)
 #endif
 
+static void
+__kgem_set_wedged(struct kgem *kgem)
+{
+	kgem->wedged = true;
+	sna_render_mark_wedged(container_of(kgem, struct sna, kgem));
+}
+
 static void kgem_sna_reset(struct kgem *kgem)
 {
 	struct sna *sna = container_of(kgem, struct sna, kgem);
@@ -3343,7 +3350,7 @@ void _kgem_submit(struct kgem *kgem)
 				if (!kgem->wedged) {
 					xf86DrvMsg(kgem_get_screen_index(kgem), X_ERROR,
 						   "Failed to submit rendering commands, disabling acceleration.\n");
-					kgem->wedged = true;
+					__kgem_set_wedged(kgem);
 				}
 
 #if !NDEBUG
@@ -3451,8 +3458,7 @@ void kgem_throttle(struct kgem *kgem)
 	if (kgem->wedged)
 		return;
 
-	kgem->wedged = __kgem_throttle(kgem, true);
-	if (kgem->wedged) {
+	if (__kgem_throttle(kgem, true)) {
 		static int once;
 		char path[128];
 
@@ -3465,6 +3471,7 @@ void kgem_throttle(struct kgem *kgem)
 			once = 1;
 		}
 
+		__kgem_set_wedged(kgem);
 		kgem->need_throttle = false;
 	}
 }

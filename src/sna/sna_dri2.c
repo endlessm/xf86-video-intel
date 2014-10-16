@@ -862,74 +862,6 @@ static void sna_dri2_select_mode(struct sna *sna, struct kgem_bo *dst, struct kg
 	_kgem_set_mode(&sna->kgem, mode);
 }
 
-static bool can_copy_cpu(struct sna *sna,
-			 struct kgem_bo *src,
-			 struct kgem_bo *dst)
-{
-	if (src->tiling != dst->tiling)
-		return false;
-
-	if (src->pitch != dst->pitch)
-		return false;
-
-	if (!kgem_bo_can_map__cpu(&sna->kgem, src, false))
-		return false;
-
-	if (!kgem_bo_can_map__cpu(&sna->kgem, dst, true))
-		return false;
-
-	DBG(("%s -- yes, src handle=%d, dst handle=%d\n", __FUNCTION__, src->handle, dst->handle));
-	return true;
-}
-
-static void
-sna_dri2_copy_fallback(struct sna *sna,
-		       const DrawableRec *draw,
-		       struct kgem_bo *src_bo, int sx, int sy,
-		       struct kgem_bo *dst_bo, int dx, int dy,
-		       const BoxRec *box, int n)
-{
-	void *dst, *src;
-	bool clipped;
-
-	clipped = (n > 1 ||
-		   box->x1 + sx > 0 ||
-		   box->y1 + sy > 0 ||
-		   box->x2 + sx < draw->width ||
-		   box->y2 + sy < draw->height);
-
-	dst = src = NULL;
-	if (!clipped && can_copy_cpu(sna, src_bo, dst_bo)) {
-		dst = kgem_bo_map__cpu(&sna->kgem, dst_bo);
-		src = kgem_bo_map__cpu(&sna->kgem, src_bo);
-	}
-
-	if (dst == NULL || src == NULL) {
-		dst = kgem_bo_map__gtt(&sna->kgem, dst_bo);
-		src = kgem_bo_map__gtt(&sna->kgem, src_bo);
-		if (dst == NULL || src == NULL)
-			return;
-	} else {
-		kgem_bo_sync__cpu_full(&sna->kgem, dst_bo, true);
-		kgem_bo_sync__cpu_full(&sna->kgem, src_bo, false);
-	}
-
-	DBG(("%s: src(%d, %d), dst(%d, %d) x %d\n",
-	     __FUNCTION__, sx, sy, dx, dy, n));
-
-	if (sigtrap_get() == 0) {
-		do {
-			memcpy_blt(src, dst, draw->bitsPerPixel,
-				   src_bo->pitch, dst_bo->pitch,
-				   box->x1 + sx, box->y1 + sy,
-				   box->x1 + dx, box->y1 + dy,
-				   box->x2 - box->x1, box->y2 - box->y1);
-			box++;
-		} while (--n);
-		sigtrap_put();
-	}
-}
-
 static bool is_front(int attachment)
 {
 	return attachment == DRI2BufferFrontLeft;
@@ -950,6 +882,7 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 	struct kgem_bo *dst_bo;
 	const BoxRec *boxes;
 	int16_t dx, dy, sx, sy;
+	unsigned flags;
 	int n;
 
 	/* To hide a stale DRI2Buffer, one may choose to substitute
@@ -1071,7 +1004,6 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 	assert(dst_bo->refcnt);
 	if (is_front(dst->attachment)) {
 		struct sna_pixmap *priv;
-		unsigned int flags;
 
 		flags = MOVE_WRITE | __MOVE_FORCE;
 		if (clip.data)
@@ -1135,38 +1067,32 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 	}
 	DamageRegionAppend(&pixmap->drawable, region);
 
-	if (wedged(sna)) {
-fallback:
-		sna_dri2_copy_fallback(sna, src_draw,
-				      src_bo, sx, sy,
-				      dst_bo, dx, dy,
-				      boxes, n);
-	} else {
-		unsigned flags;
 
-		DBG(("%s: copying [(%d, %d), (%d, %d)]x%d src=(%d, %d), dst=(%d, %d)\n",
-		     __FUNCTION__,
-		     boxes[0].x1, boxes[0].y1,
-		     boxes[0].x2, boxes[0].y2,
-		     n, sx, sy, dx, dy));
+	DBG(("%s: copying [(%d, %d), (%d, %d)]x%d src=(%d, %d), dst=(%d, %d)\n",
+	     __FUNCTION__,
+	     boxes[0].x1, boxes[0].y1,
+	     boxes[0].x2, boxes[0].y2,
+	     n, sx, sy, dx, dy));
 
-		flags = COPY_LAST;
-		if (sync)
-			flags |= COPY_SYNC;
-		if (!sna->render.copy_boxes(sna, GXcopy,
-					    src_draw, src_bo, sx, sy,
-					    dst_draw, dst_bo, dx, dy,
-					    boxes, n, flags))
-			goto fallback;
+	flags = COPY_LAST;
+	if (sync)
+		flags |= COPY_SYNC;
+	if (!sna->render.copy_boxes(sna, GXcopy,
+				    src_draw, src_bo, sx, sy,
+				    dst_draw, dst_bo, dx, dy,
+				    boxes, n, flags))
+		memcpy_copy_boxes(sna, GXcopy,
+				  src_draw, src_bo, sx, sy,
+				  dst_draw, dst_bo, dx, dy,
+				  boxes, n, flags);
 
-		DBG(("%s: flushing? %d\n", __FUNCTION__, sync));
-		if (sync) { /* STAT! */
-			struct kgem_request *rq = sna->kgem.next_request;
-			kgem_submit(&sna->kgem);
-			if (rq->bo) {
-				bo = ref(rq->bo);
-				DBG(("%s: recording sync fence handle=%d\n", __FUNCTION__, bo->handle));
-			}
+	DBG(("%s: flushing? %d\n", __FUNCTION__, sync));
+	if (sync) { /* STAT! */
+		struct kgem_request *rq = sna->kgem.next_request;
+		kgem_submit(&sna->kgem);
+		if (rq->bo) {
+			bo = ref(rq->bo);
+			DBG(("%s: recording sync fence handle=%d\n", __FUNCTION__, bo->handle));
 		}
 	}
 

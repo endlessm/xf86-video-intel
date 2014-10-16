@@ -2297,3 +2297,81 @@ cleanup_boxes:
 
 	return ret;
 }
+
+static bool can_copy_cpu(struct sna *sna,
+			 struct kgem_bo *src,
+			 struct kgem_bo *dst)
+{
+	if (src->tiling != dst->tiling)
+		return false;
+
+	if (src->pitch != dst->pitch)
+		return false;
+
+	if (!kgem_bo_can_map__cpu(&sna->kgem, src, false))
+		return false;
+
+	if (!kgem_bo_can_map__cpu(&sna->kgem, dst, true))
+		return false;
+
+	DBG(("%s -- yes, src handle=%d, dst handle=%d\n", __FUNCTION__, src->handle, dst->handle));
+	return true;
+}
+
+bool
+memcpy_copy_boxes(struct sna *sna, uint8_t op,
+		  const DrawableRec *src_draw, struct kgem_bo *src_bo, int16_t sx, int16_t sy,
+		  const DrawableRec *dst_draw, struct kgem_bo *dst_bo, int16_t dx, int16_t dy,
+		  const BoxRec *box, int n, unsigned flags)
+{
+	void *dst, *src;
+	bool clipped;
+
+	if (op != GXcopy)
+		return false;
+
+	clipped = (n > 1 ||
+		   box->x1 + dx > 0 ||
+		   box->y1 + dy > 0 ||
+		   box->x2 + dx < dst_draw->width ||
+		   box->y2 + dy < dst_draw->height);
+
+	dst = src = NULL;
+	if (!clipped && can_copy_cpu(sna, src_bo, dst_bo)) {
+		dst = kgem_bo_map__cpu(&sna->kgem, dst_bo);
+		src = kgem_bo_map__cpu(&sna->kgem, src_bo);
+	}
+
+	if (dst == NULL || src == NULL) {
+		dst = kgem_bo_map__gtt(&sna->kgem, dst_bo);
+		src = kgem_bo_map__gtt(&sna->kgem, src_bo);
+		if (dst == NULL || src == NULL)
+			return false;
+	} else {
+		kgem_bo_sync__cpu_full(&sna->kgem, dst_bo, true);
+		kgem_bo_sync__cpu_full(&sna->kgem, src_bo, false);
+	}
+
+	DBG(("%s: src(%d, %d), dst(%d, %d) x %d\n",
+	     __FUNCTION__, sx, sy, dx, dy, n));
+
+	if (sigtrap_get() == 0) {
+		do {
+			memcpy_blt(src, dst, dst_draw->bitsPerPixel,
+				   src_bo->pitch, dst_bo->pitch,
+				   box->x1 + sx, box->y1 + sy,
+				   box->x1 + dx, box->y1 + dy,
+				   box->x2 - box->x1, box->y2 - box->y1);
+			box++;
+		} while (--n);
+		sigtrap_put();
+	}
+
+	return true;
+}
+
+void
+sna_render_mark_wedged(struct sna *sna)
+{
+	sna->render.copy_boxes = memcpy_copy_boxes;
+}
