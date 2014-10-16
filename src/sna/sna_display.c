@@ -7035,31 +7035,44 @@ void sna_mode_redisplay(struct sna *sna)
 				arg.reserved = 0;
 
 				if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_PAGE_FLIP, &arg)) {
-					BoxRec box;
-					DrawableRec tmp;
+					if (sna_crtc_flip(sna, sna_crtc, bo, 0, 0)) {
+						assert(sna_crtc->bo->active_scanout);
+						assert(sna_crtc->bo->refcnt >= sna_crtc->bo->active_scanout);
+						sna_crtc->bo->active_scanout--;
+						kgem_bo_destroy(&sna->kgem, sna_crtc->bo);
 
-					DBG(("%s: flip [fb=%d] on crtc %d [%d, pipe=%d] failed - %d\n",
-					     __FUNCTION__, arg.fb_id, i, sna_crtc->id, sna_crtc->pipe, errno));
+						sna_crtc->bo = kgem_bo_reference(bo);
+						sna_crtc->bo->active_scanout++;
+						sna_crtc->client_bo = kgem_bo_reference(bo);
+					} else {
+						BoxRec box;
+						DrawableRec tmp;
+
+						DBG(("%s: flip [fb=%d] on crtc %d [%d, pipe=%d] failed - %d\n",
+						     __FUNCTION__, arg.fb_id, i, sna_crtc->id, sna_crtc->pipe, errno));
+						sna->flags &= ~SNA_TEAR_FREE;
+
 disable1:
-					box.x1 = 0;
-					box.y1 = 0;
-					tmp.width = box.x2 = crtc->mode.HDisplay;
-					tmp.height = box.y2 = crtc->mode.VDisplay;
-					tmp.depth = sna->front->drawable.depth;
-					tmp.bitsPerPixel = sna->front->drawable.bitsPerPixel;
+						box.x1 = 0;
+						box.y1 = 0;
+						tmp.width = box.x2 = crtc->mode.HDisplay;
+						tmp.height = box.y2 = crtc->mode.VDisplay;
+						tmp.depth = sna->front->drawable.depth;
+						tmp.bitsPerPixel = sna->front->drawable.bitsPerPixel;
 
-					if (!sna->render.copy_boxes(sna, GXcopy,
-								    &sna->front->drawable, bo, 0, 0,
-								    &tmp, sna_crtc->bo, 0, 0,
-								    &box, 1, COPY_LAST)) {
-						xf86DrvMsg(crtc->scrn->scrnIndex, X_ERROR,
-							   "%s: page flipping failed, disabling CRTC:%d (pipe=%d)\n",
-							   __FUNCTION__, sna_crtc->id, sna_crtc->pipe);
-						sna_crtc_disable(crtc);
+						if (!sna->render.copy_boxes(sna, GXcopy,
+									    &sna->front->drawable, bo, 0, 0,
+									    &tmp, sna_crtc->bo, 0, 0,
+									    &box, 1, COPY_LAST)) {
+							xf86DrvMsg(crtc->scrn->scrnIndex, X_ERROR,
+								   "%s: page flipping failed, disabling CRTC:%d (pipe=%d)\n",
+								   __FUNCTION__, sna_crtc->id, sna_crtc->pipe);
+							sna_crtc_disable(crtc);
+						}
+
+						kgem_bo_destroy(&sna->kgem, bo);
+						sna_crtc->client_bo = NULL;
 					}
-
-					kgem_bo_destroy(&sna->kgem, bo);
-					sna_crtc->client_bo = NULL;
 					continue;
 				}
 				sna->mode.flip_active++;
@@ -7181,6 +7194,7 @@ fixup_flip:
 					crtc->bo = kgem_bo_reference(flip_bo);
 					crtc->bo->active_scanout++;
 				} else {
+					sna->flags &= ~SNA_TEAR_FREE;
 					if (sna->mode.flip_active == 0) {
 						DBG(("%s: abandoning flip attempt\n", __FUNCTION__));
 						goto fixup_shadow;
