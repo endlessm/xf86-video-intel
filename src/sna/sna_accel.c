@@ -17436,6 +17436,7 @@ static void sna_scanout_flush(struct sna *sna)
 	sna->kgem.busy = busy;
 
 	if (priv &&
+	    sna->mode.shadow_damage == NULL &&
 	    sna_pixmap_force_to_gpu(priv->pixmap,
 				    MOVE_READ | MOVE_ASYNC_HINT | __MOVE_SCANOUT))
 		kgem_scanout_flush(&sna->kgem, priv->gpu_bo);
