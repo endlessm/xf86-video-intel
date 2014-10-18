@@ -1872,6 +1872,10 @@ sna_dri2_xchg(DrawablePtr draw, DRI2BufferPtr front, DRI2BufferPtr back)
 	front->name = back->name;
 	back->name = tmp;
 
+	tmp = front->pitch;
+	front->pitch = back->pitch;
+	back->pitch = tmp;
+
 	assert(front_bo->refcnt);
 	assert(back_bo->refcnt);
 
