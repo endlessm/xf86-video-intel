@@ -69,8 +69,7 @@
 #define DEFAULT_TILING I915_TILING_X
 
 #define USE_INPLACE 1
-#define USE_WIDE_SPANS 0 /* -1 force CPU, 1 force GPU */
-#define USE_ZERO_SPANS 1 /* -1 force CPU, 1 force GPU */
+#define USE_SPANS 0 /* -1 force CPU, 1 force GPU */
 #define USE_CPU_BO 1
 #define USE_USERPTR_UPLOADS 1
 #define USE_USERPTR_DOWNLOADS 1
@@ -9620,49 +9619,30 @@ sna_poly_line_extents(DrawablePtr drawable, GCPtr gc,
 	return 1 | blt << 2 | clip << 1;
 }
 
-/* Only use our spans code if the destination is busy and we can't perform
- * the operation in place.
- *
- * Currently it looks to be faster to use the GPU for zero spans on all
- * platforms.
- */
 inline static int
-_use_zero_spans(DrawablePtr drawable, GCPtr gc, const BoxRec *extents)
+_use_line_spans(DrawablePtr drawable, GCPtr gc, const BoxRec *extents, unsigned flags)
 {
-	if (USE_ZERO_SPANS)
-		return USE_ZERO_SPANS > 0;
+	uint32_t ignored;
+
+	if (USE_SPANS)
+		return USE_SPANS > 0;
+
+	if (flags & RECTILINEAR)
+		return PREFER_GPU;
+
+	if (gc->lineStyle != LineSolid && gc->lineWidth == 0)
+		return 0;
+
+	if (gc_is_solid(gc, &ignored))
+		return PREFER_GPU;
 
 	return !drawable_gc_inplace_hint(drawable, gc);
 }
 
-static int
-use_zero_spans(DrawablePtr drawable, GCPtr gc, const BoxRec *extents)
-{
-	bool ret = _use_zero_spans(drawable, gc, extents);
-	DBG(("%s? %d\n", __FUNCTION__, ret));
-	return ret;
-}
-
-/* Only use our spans code if the destination is busy and we can't perform
- * the operation in place.
- *
- * Currently it looks to be faster to use the CPU for wide spans on all
- * platforms, slow MI code. But that does not take into account the true
- * cost of readback?
- */
 inline static int
-_use_wide_spans(DrawablePtr drawable, GCPtr gc, const BoxRec *extents)
+use_line_spans(DrawablePtr drawable, GCPtr gc, const BoxRec *extents, unsigned flags)
 {
-	if (USE_WIDE_SPANS)
-		return USE_WIDE_SPANS > 0;
-
-	return !drawable_gc_inplace_hint(drawable, gc);
-}
-
-static int
-use_wide_spans(DrawablePtr drawable, GCPtr gc, const BoxRec *extents)
-{
-	int ret = _use_wide_spans(drawable, gc, extents);
+	int ret = _use_line_spans(drawable, gc, extents, flags);
 	DBG(("%s? %d\n", __FUNCTION__, ret));
 	return ret;
 }
@@ -9733,27 +9713,24 @@ sna_poly_line(DrawablePtr drawable, GCPtr gc,
 		goto spans_fallback;
 	}
 
+	data.bo = sna_drawable_use_bo(drawable, PREFER_GPU,
+				      &data.region.extents,
+				      &data.damage);
+	if (data.bo == NULL)
+		goto fallback;
+
 	if (gc_is_solid(gc, &color)) {
 		DBG(("%s: trying solid fill [%08x]\n",
 		     __FUNCTION__, (unsigned)color));
-
 		if (data.flags & RECTILINEAR) {
-			data.bo = sna_drawable_use_bo(drawable, PREFER_GPU,
-						      &data.region.extents,
-						      &data.damage);
-			if (data.bo &&
-			    sna_poly_line_blt(drawable,
+			if (sna_poly_line_blt(drawable,
 					      data.bo, data.damage,
 					      gc, color, mode, n, pt,
 					      &data.region.extents,
 					      data.flags & IS_CLIPPED))
 				return;
 		} else { /* !rectilinear */
-			if ((data.bo = sna_drawable_use_bo(drawable,
-							   use_zero_spans(drawable, gc, &data.region.extents),
-							   &data.region.extents,
-							   &data.damage)) &&
-			    sna_poly_zero_line_blt(drawable,
+			if (sna_poly_zero_line_blt(drawable,
 						   data.bo, data.damage,
 						   gc, mode, n, pt,
 						   &data.region.extents,
@@ -9763,80 +9740,76 @@ sna_poly_line(DrawablePtr drawable, GCPtr gc,
 		}
 	} else if (data.flags & RECTILINEAR) {
 		/* Try converting these to a set of rectangles instead */
-		data.bo = sna_drawable_use_bo(drawable, PREFER_GPU,
-					      &data.region.extents, &data.damage);
-		if (data.bo) {
-			DDXPointRec p1, p2;
-			xRectangle *rect;
-			int i;
+		DDXPointRec p1, p2;
+		xRectangle *rect;
+		int i;
 
-			DBG(("%s: converting to rectagnles\n", __FUNCTION__));
+		DBG(("%s: converting to rectagnles\n", __FUNCTION__));
 
-			rect = malloc (n * sizeof (xRectangle));
-			if (rect == NULL)
-				return;
+		rect = malloc (n * sizeof (xRectangle));
+		if (rect == NULL)
+			return;
 
-			p1 = pt[0];
-			for (i = 1; i < n; i++) {
-				if (mode == CoordModePrevious) {
-					p2.x = p1.x + pt[i].x;
-					p2.y = p1.y + pt[i].y;
-				} else
-					p2 = pt[i];
-				if (p1.x < p2.x) {
-					rect[i].x = p1.x;
-					rect[i].width = p2.x - p1.x + 1;
-				} else if (p1.x > p2.x) {
-					rect[i].x = p2.x;
-					rect[i].width = p1.x - p2.x + 1;
-				} else {
-					rect[i].x = p1.x;
-					rect[i].width = 1;
-				}
-				if (p1.y < p2.y) {
-					rect[i].y = p1.y;
-					rect[i].height = p2.y - p1.y + 1;
-				} else if (p1.y > p2.y) {
-					rect[i].y = p2.y;
-					rect[i].height = p1.y - p2.y + 1;
-				} else {
-					rect[i].y = p1.y;
-					rect[i].height = 1;
-				}
-
-				/* don't paint last pixel */
-				if (gc->capStyle == CapNotLast) {
-					if (p1.x == p2.x)
-						rect[i].height--;
-					else
-						rect[i].width--;
-				}
-				p1 = p2;
-			}
-
-			if (gc->fillStyle == FillTiled) {
-				i = sna_poly_fill_rect_tiled_blt(drawable,
-								 data.bo, data.damage,
-								 gc, n - 1, rect + 1,
-								 &data.region.extents,
-								 data.flags & IS_CLIPPED);
+		p1 = pt[0];
+		for (i = 1; i < n; i++) {
+			if (mode == CoordModePrevious) {
+				p2.x = p1.x + pt[i].x;
+				p2.y = p1.y + pt[i].y;
+			} else
+				p2 = pt[i];
+			if (p1.x < p2.x) {
+				rect[i].x = p1.x;
+				rect[i].width = p2.x - p1.x + 1;
+			} else if (p1.x > p2.x) {
+				rect[i].x = p2.x;
+				rect[i].width = p1.x - p2.x + 1;
 			} else {
-				i = sna_poly_fill_rect_stippled_blt(drawable,
-								    data.bo, data.damage,
-								    gc, n - 1, rect + 1,
-								    &data.region.extents,
-								    data.flags & IS_CLIPPED);
+				rect[i].x = p1.x;
+				rect[i].width = 1;
 			}
-			free (rect);
+			if (p1.y < p2.y) {
+				rect[i].y = p1.y;
+				rect[i].height = p2.y - p1.y + 1;
+			} else if (p1.y > p2.y) {
+				rect[i].y = p2.y;
+				rect[i].height = p1.y - p2.y + 1;
+			} else {
+				rect[i].y = p1.y;
+				rect[i].height = 1;
+			}
 
-			if (i)
-				return;
+			/* don't paint last pixel */
+			if (gc->capStyle == CapNotLast) {
+				if (p1.x == p2.x)
+					rect[i].height--;
+				else
+					rect[i].width--;
+			}
+			p1 = p2;
 		}
+
+		if (gc->fillStyle == FillTiled) {
+			i = sna_poly_fill_rect_tiled_blt(drawable,
+							 data.bo, data.damage,
+							 gc, n - 1, rect + 1,
+							 &data.region.extents,
+							 data.flags & IS_CLIPPED);
+		} else {
+			i = sna_poly_fill_rect_stippled_blt(drawable,
+							    data.bo, data.damage,
+							    gc, n - 1, rect + 1,
+							    &data.region.extents,
+							    data.flags & IS_CLIPPED);
+		}
+		free (rect);
+
+		if (i)
+			return;
 	}
 
 spans_fallback:
 	if ((data.bo = sna_drawable_use_bo(drawable,
-					   use_wide_spans(drawable, gc, &data.region.extents),
+					   use_line_spans(drawable, gc, &data.region.extents, data.flags),
 					   &data.region.extents, &data.damage))) {
 		DBG(("%s: converting line into spans\n", __FUNCTION__));
 		get_drawable_deltas(drawable, data.pixmap, &data.dx, &data.dy);
@@ -10645,26 +10618,26 @@ sna_poly_segment(DrawablePtr drawable, GCPtr gc, int n, xSegment *seg)
 
 	if (gc->lineStyle != LineSolid || gc->lineWidth > 1)
 		goto spans_fallback;
+
+	data.bo = sna_drawable_use_bo(drawable, PREFER_GPU,
+				      &data.region.extents,
+				      &data.damage);
+	if (data.bo == NULL)
+		goto fallback;
+
 	if (gc_is_solid(gc, &color)) {
 		DBG(("%s: trying blt solid fill [%08x, flags=%x] paths\n",
 		     __FUNCTION__, (unsigned)color, data.flags));
 
 		if (data.flags & RECTILINEAR) {
-			if ((data.bo = sna_drawable_use_bo(drawable, PREFER_GPU,
-							   &data.region.extents,
-							   &data.damage)) &&
-			     sna_poly_segment_blt(drawable,
+			if (sna_poly_segment_blt(drawable,
 						 data.bo, data.damage,
 						 gc, color, n, seg,
 						 &data.region.extents,
 						 data.flags & IS_CLIPPED))
 				return;
 		} else {
-			if ((data.bo = sna_drawable_use_bo(drawable,
-							   use_zero_spans(drawable, gc, &data.region.extents),
-							   &data.region.extents,
-							   &data.damage)) &&
-			    sna_poly_zero_segment_blt(drawable,
+			if (sna_poly_zero_segment_blt(drawable,
 						      data.bo, data.damage,
 						      gc, n, seg,
 						      &data.region.extents,
@@ -10676,13 +10649,7 @@ sna_poly_segment(DrawablePtr drawable, GCPtr gc, int n, xSegment *seg)
 		xRectangle *rect;
 		int i;
 
-		data.bo = sna_drawable_use_bo(drawable, PREFER_GPU,
-					      &data.region.extents,
-					      &data.damage);
-		if (data.bo == NULL)
-			goto fallback;
-
-		DBG(("%s: converting to rectagnles\n", __FUNCTION__));
+		DBG(("%s: converting to rectangles\n", __FUNCTION__));
 
 		rect = malloc (n * sizeof (xRectangle));
 		if (rect == NULL)
@@ -10740,7 +10707,7 @@ sna_poly_segment(DrawablePtr drawable, GCPtr gc, int n, xSegment *seg)
 
 spans_fallback:
 	if ((data.bo = sna_drawable_use_bo(drawable,
-					   use_wide_spans(drawable, gc, &data.region.extents),
+					   use_line_spans(drawable, gc, &data.region.extents, data.flags),
 					   &data.region.extents,
 					   &data.damage))) {
 		void (*line)(DrawablePtr, GCPtr, int, int, DDXPointPtr);
@@ -11564,8 +11531,7 @@ sna_poly_arc(DrawablePtr drawable, GCPtr gc, int n, xArc *arc)
 	if (!PM_IS_SOLID(drawable, gc->planemask))
 		goto fallback;
 
-	if ((data.bo = sna_drawable_use_bo(drawable,
-					   use_wide_spans(drawable, gc, &data.region.extents),
+	if ((data.bo = sna_drawable_use_bo(drawable, PREFER_GPU,
 					   &data.region.extents, &data.damage))) {
 		uint32_t color;
 
@@ -11883,6 +11849,29 @@ get_pixel(PixmapPtr pixmap)
 	}
 }
 
+inline static int
+_use_fill_spans(DrawablePtr drawable, GCPtr gc, const BoxRec *extents, unsigned flags)
+{
+	if (USE_SPANS)
+		return USE_SPANS > 0;
+
+	if (gc->fillStyle == FillTiled && !gc->tileIsPixel &&
+	    sna_pixmap_is_gpu(gc->tile.pixmap)) {
+		DBG(("%s: source is already on the gpu\n", __FUNCTION__));
+		return PREFER_GPU | FORCE_GPU;
+	}
+
+	return PREFER_GPU;
+}
+
+static int
+use_fill_spans(DrawablePtr drawable, GCPtr gc, const BoxRec *extents, unsigned flags)
+{
+	int ret = _use_fill_spans(drawable, gc, extents, flags);
+	DBG(("%s? %d\n", __FUNCTION__, ret));
+	return ret;
+}
+
 static void
 sna_poly_fill_polygon(DrawablePtr draw, GCPtr gc,
 		      int shape, int mode,
@@ -11938,7 +11927,7 @@ sna_poly_fill_polygon(DrawablePtr draw, GCPtr gc,
 		goto fallback;
 
 	if ((data.bo = sna_drawable_use_bo(draw,
-					   (shape == Convex ? use_zero_spans : use_wide_spans)(draw, gc, &data.region.extents),
+					   use_fill_spans(draw, gc, &data.region.extents, data.flags),
 					   &data.region.extents,
 					   &data.damage))) {
 		uint32_t color;
@@ -14999,7 +14988,8 @@ sna_poly_fill_arc(DrawablePtr draw, GCPtr gc, int n, xArc *arc)
 	if (!PM_IS_SOLID(draw, gc->planemask))
 		goto fallback;
 
-	if ((data.bo = sna_drawable_use_bo(draw, PREFER_GPU,
+	if ((data.bo = sna_drawable_use_bo(draw,
+					   use_fill_spans(draw, gc, &data.region.extents, data.flags),
 					   &data.region.extents,
 					   &data.damage))) {
 		uint32_t color;
