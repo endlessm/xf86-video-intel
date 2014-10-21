@@ -120,11 +120,21 @@ enum {
 };
 
 struct kgem {
-	int fd;
 	unsigned wedged;
+	int fd;
 	unsigned gen;
 
 	uint32_t unique_id;
+
+	uint16_t nbatch;
+	uint16_t surface;
+	uint16_t nexec;
+	uint16_t nreloc;
+	uint16_t nreloc__self;
+	uint16_t nfence;
+	uint16_t batch_size;
+
+	uint32_t *batch;
 
 	enum kgem_mode {
 		/* order matches I915_EXEC_RING ordering */
@@ -157,14 +167,6 @@ struct kgem {
 	uint32_t batch_flags_base;
 #define I915_EXEC_SECURE (1<<9)
 #define LOCAL_EXEC_OBJECT_WRITE (1<<2)
-
-	uint16_t nbatch;
-	uint16_t surface;
-	uint16_t nexec;
-	uint16_t nreloc;
-	uint16_t nreloc__self;
-	uint16_t nfence;
-	uint16_t batch_size;
 
 	uint32_t flush:1;
 	uint32_t need_expire:1;
@@ -217,8 +219,9 @@ struct kgem {
 				    int16_t dst_x, int16_t dst_y,
 				    uint16_t width, uint16_t height);
 
+	struct kgem_bo *batch_bo;
+
 	uint16_t reloc__self[256];
-	uint32_t batch[64*1024-8] page_aligned;
 	struct drm_i915_gem_exec_object2 exec[384] page_aligned;
 	struct drm_i915_gem_relocation_entry reloc[8192] page_aligned;
 
@@ -299,8 +302,9 @@ enum {
 	CREATE_PRIME = 0x20,
 	CREATE_TEMPORARY = 0x40,
 	CREATE_CACHED = 0x80,
-	CREATE_NO_RETIRE = 0x100,
-	CREATE_NO_THROTTLE = 0x200,
+	CREATE_UNCACHED = 0x100,
+	CREATE_NO_RETIRE = 0x200,
+	CREATE_NO_THROTTLE = 0x400,
 };
 struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 			       int width,

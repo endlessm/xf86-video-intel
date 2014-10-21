@@ -1252,6 +1252,99 @@ out:
 	gem_close(kgem->fd, tiling.handle);
 }
 
+static void kgem_fixup_relocs(struct kgem *kgem, struct kgem_bo *bo, int shrink)
+{
+	int n;
+
+	DBG(("%s: shrinking by %d\n", __FUNCTION__, shrink));
+
+	bo->target_handle = kgem->has_handle_lut ? kgem->nexec : bo->handle;
+
+	assert(kgem->nreloc__self <= 256);
+	if (kgem->nreloc__self) {
+		for (n = 0; n < kgem->nreloc__self; n++) {
+			int i = kgem->reloc__self[n];
+			assert(kgem->reloc[i].target_handle == ~0U);
+			kgem->reloc[i].target_handle = bo->target_handle;
+			kgem->reloc[i].presumed_offset = bo->presumed_offset;
+			kgem->batch[kgem->reloc[i].offset/sizeof(kgem->batch[0])] =
+				kgem->reloc[i].delta + bo->presumed_offset - shrink;
+		}
+
+		if (n == 256) {
+			for (n = kgem->reloc__self[255]; n < kgem->nreloc; n++) {
+				if (kgem->reloc[n].target_handle == ~0U) {
+					kgem->reloc[n].target_handle = bo->target_handle;
+					kgem->reloc[n].presumed_offset = bo->presumed_offset;
+					kgem->batch[kgem->reloc[n].offset/sizeof(kgem->batch[0])] =
+						kgem->reloc[n].delta + bo->presumed_offset - shrink;
+				}
+			}
+		}
+	}
+
+	if (shrink) {
+		for (n = 0; n < kgem->nreloc; n++) {
+			if (kgem->reloc[n].read_domains == I915_GEM_DOMAIN_INSTRUCTION &&
+			    kgem->reloc[n].target_handle == bo->target_handle)
+				kgem->reloc[n].delta -= shrink;
+
+			if (kgem->reloc[n].offset >= sizeof(uint32_t)*kgem->nbatch)
+				kgem->reloc[n].offset -= shrink;
+		}
+	}
+}
+
+static struct kgem_bo *kgem_new_batch(struct kgem *kgem)
+{
+	struct kgem_bo *last;
+	unsigned flags;
+
+	last = kgem->batch_bo;
+	if (last) {
+		kgem_fixup_relocs(kgem, last, 0);
+		kgem->batch = NULL;
+	}
+
+	if (kgem->batch) {
+		assert(last == NULL);
+		return NULL;
+	}
+
+	flags = CREATE_CPU_MAP | CREATE_NO_THROTTLE;
+	if (!kgem->has_llc)
+		flags |= CREATE_UNCACHED;
+
+	kgem->batch_bo = kgem_create_linear(kgem,
+					    sizeof(uint32_t)*kgem->batch_size,
+					    flags);
+	if (kgem->batch_bo)
+		kgem->batch = kgem_bo_map__cpu(kgem, kgem->batch_bo);
+	if (kgem->batch == NULL) {
+		DBG(("%s: unable to map batch bo, mallocing(size=%d)\n",
+		     __FUNCTION__,
+		     sizeof(uint32_t)*kgem->batch_size));
+		if (kgem->batch_bo) {
+			kgem_bo_destroy(kgem, kgem->batch_bo);
+			kgem->batch_bo = NULL;
+		}
+
+		if (posix_memalign((void **)&kgem->batch, PAGE_SIZE,
+				   ALIGN(sizeof(uint32_t) * kgem->batch_size, PAGE_SIZE))) {
+			ERR(("%s: batch allocation failed, disabling acceleration\n", __FUNCTION__));
+			__kgem_set_wedged(kgem);
+		}
+	} else {
+		DBG(("%s: allocated and mapped batch handle=%d [size=%d]\n",
+		     __FUNCTION__, kgem->batch_bo->handle,
+		     sizeof(uint32_t)*kgem->batch_size));
+		kgem_bo_sync__cpu(kgem, kgem->batch_bo);
+	}
+
+	DBG(("%s: using last batch handle=%d\n",
+	     __FUNCTION__, last ? last->handle : 0));
+	return last;
+}
 
 void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 {
@@ -1362,7 +1455,7 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 		kgem->wedged = 1;
 	}
 
-	kgem->batch_size = ARRAY_SIZE(kgem->batch);
+	kgem->batch_size = UINT16_MAX & ~7;
 	if (gen == 020 && !kgem->has_pinned_batches)
 		/* Limited to what we can pin */
 		kgem->batch_size = 4*1024;
@@ -1382,6 +1475,7 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 
 	DBG(("%s: maximum batch size? %d\n", __FUNCTION__,
 	     kgem->batch_size));
+	kgem_new_batch(kgem);
 
 	kgem->half_cpu_cache_pages = cpu_cache_size() >> 13;
 	DBG(("%s: last-level cache size: %d bytes, threshold in pages: %d\n",
@@ -1801,36 +1895,6 @@ static uint32_t kgem_end_batch(struct kgem *kgem)
 		kgem->batch[kgem->nbatch++] = MI_NOOP;
 
 	return kgem->nbatch;
-}
-
-static void kgem_fixup_self_relocs(struct kgem *kgem, struct kgem_bo *bo)
-{
-	int n;
-
-	assert(kgem->nreloc__self <= 256);
-	if (kgem->nreloc__self == 0)
-		return;
-
-	for (n = 0; n < kgem->nreloc__self; n++) {
-		int i = kgem->reloc__self[n];
-		assert(kgem->reloc[i].target_handle == ~0U);
-		kgem->reloc[i].target_handle = bo->target_handle;
-		kgem->reloc[i].presumed_offset = bo->presumed_offset;
-		kgem->batch[kgem->reloc[i].offset/sizeof(kgem->batch[0])] =
-			kgem->reloc[i].delta + bo->presumed_offset;
-	}
-
-	if (n == 256) {
-		for (n = kgem->reloc__self[255]; n < kgem->nreloc; n++) {
-			if (kgem->reloc[n].target_handle == ~0U) {
-				kgem->reloc[n].target_handle = bo->target_handle;
-				kgem->reloc[n].presumed_offset = bo->presumed_offset;
-				kgem->batch[kgem->reloc[n].offset/sizeof(kgem->batch[0])] =
-					kgem->reloc[n].delta + bo->presumed_offset;
-			}
-		}
-
-	}
 }
 
 static void kgem_bo_binding_free(struct kgem *kgem, struct kgem_bo *bo)
@@ -3041,15 +3105,16 @@ void kgem_reset(struct kgem *kgem)
 	kgem->needs_reservation = false;
 	kgem->flush = 0;
 	kgem->batch_flags = kgem->batch_flags_base;
+	assert(kgem->batch);
 
 	kgem->next_request = __kgem_request_alloc(kgem);
 
 	kgem_sna_reset(kgem);
 }
 
-static int compact_batch_surface(struct kgem *kgem)
+static int compact_batch_surface(struct kgem *kgem, int *shrink)
 {
-	int size, shrink, n;
+	int size, n;
 
 	if (!kgem->has_relaxed_delta)
 		return kgem->batch_size * sizeof(uint32_t);
@@ -3059,29 +3124,22 @@ static int compact_batch_surface(struct kgem *kgem)
 	size = n - kgem->surface + kgem->nbatch;
 	size = ALIGN(size, 1024);
 
-	shrink = n - size;
-	if (shrink) {
-		DBG(("shrinking from %d to %d\n", kgem->batch_size, size));
-
-		shrink *= sizeof(uint32_t);
-		for (n = 0; n < kgem->nreloc; n++) {
-			if (kgem->reloc[n].read_domains == I915_GEM_DOMAIN_INSTRUCTION &&
-			    kgem->reloc[n].target_handle == ~0U)
-				kgem->reloc[n].delta -= shrink;
-
-			if (kgem->reloc[n].offset >= sizeof(uint32_t)*kgem->nbatch)
-				kgem->reloc[n].offset -= shrink;
-		}
-	}
-
+	*shrink = (n - size) * sizeof(uint32_t);
 	return size * sizeof(uint32_t);
 }
 
 static struct kgem_bo *
-kgem_create_batch(struct kgem *kgem, int size)
+kgem_create_batch(struct kgem *kgem)
 {
 	struct drm_i915_gem_set_domain set_domain;
 	struct kgem_bo *bo;
+	int shrink = 0;
+	int size;
+
+	if (kgem->surface != kgem->batch_size)
+		size = compact_batch_surface(kgem, &shrink);
+	else
+		size = kgem->nbatch * sizeof(uint32_t);
 
 	if (size <= 4096) {
 		bo = list_first_entry(&kgem->pinned_batches[0],
@@ -3091,7 +3149,8 @@ kgem_create_batch(struct kgem *kgem, int size)
 out_4096:
 			assert(bo->refcnt > 0);
 			list_move_tail(&bo->list, &kgem->pinned_batches[0]);
-			return kgem_bo_reference(bo);
+			bo = kgem_bo_reference(bo);
+			goto write;
 		}
 
 		if (!__kgem_busy(kgem, bo->handle)) {
@@ -3109,7 +3168,8 @@ out_4096:
 out_16384:
 			assert(bo->refcnt > 0);
 			list_move_tail(&bo->list, &kgem->pinned_batches[1]);
-			return kgem_bo_reference(bo);
+			bo = kgem_bo_reference(bo);
+			goto write;
 		}
 
 		if (!__kgem_busy(kgem, bo->handle)) {
@@ -3121,14 +3181,14 @@ out_16384:
 	if (kgem->gen == 020) {
 		bo = kgem_create_linear(kgem, size, CREATE_CACHED | CREATE_TEMPORARY);
 		if (bo)
-			return bo;
+			goto write;
 
 		/* Nothing available for reuse, rely on the kernel wa */
 		if (kgem->has_pinned_batches) {
 			bo = kgem_create_linear(kgem, size, CREATE_CACHED | CREATE_TEMPORARY);
 			if (bo) {
 				kgem->batch_flags &= ~LOCAL_I915_EXEC_IS_PINNED;
-				return bo;
+				goto write;
 			}
 		}
 
@@ -3152,11 +3212,26 @@ out_16384:
 
 			kgem_retire(kgem);
 			assert(bo->rq == NULL);
-			return kgem_bo_reference(bo);
+			bo = kgem_bo_reference(bo);
+			goto write;
 		}
 	}
 
-	return kgem_create_linear(kgem, size, CREATE_NO_THROTTLE);
+	bo = NULL;
+	if (!kgem->has_llc) {
+		bo = kgem_create_linear(kgem, size, CREATE_NO_THROTTLE);
+		if (bo) {
+write:
+			kgem_fixup_relocs(kgem, bo, shrink);
+			if (kgem_batch_write(kgem, bo->handle, size)) {
+				kgem_bo_destroy(kgem, bo);
+				return NULL;
+			}
+		}
+	}
+	if (bo == NULL)
+		bo = kgem_new_batch(kgem);
+	return bo;
 }
 
 #if !NDEBUG
@@ -3253,7 +3328,6 @@ void _kgem_submit(struct kgem *kgem)
 {
 	struct kgem_request *rq;
 	uint32_t batch_end;
-	int size;
 
 	assert(!DBG_NO_HW);
 	assert(!kgem->wedged);
@@ -3282,17 +3356,14 @@ void _kgem_submit(struct kgem *kgem)
 	__kgem_batch_debug(kgem, batch_end);
 #endif
 
-	if (kgem->surface != kgem->batch_size)
-		size = compact_batch_surface(kgem);
-	else
-		size = kgem->nbatch * sizeof(kgem->batch[0]);
-
 	rq = kgem->next_request;
 	assert(rq->bo == NULL);
-	rq->bo = kgem_create_batch(kgem, size);
+
+	rq->bo = kgem_create_batch(kgem);
 	if (rq->bo) {
+		struct drm_i915_gem_execbuffer2 execbuf;
 		uint32_t handle = rq->bo->handle;
-		int i;
+		int i, ret;
 
 		assert(!rq->bo->needs_flush);
 
@@ -3306,113 +3377,105 @@ void _kgem_submit(struct kgem *kgem)
 		kgem->exec[i].rsvd1 = 0;
 		kgem->exec[i].rsvd2 = 0;
 
-		rq->bo->target_handle = kgem->has_handle_lut ? i : handle;
 		rq->bo->exec = &kgem->exec[i];
 		rq->bo->rq = MAKE_REQUEST(rq, kgem->ring); /* useful sanity check */
 		list_add(&rq->bo->request, &rq->buffers);
 		rq->ring = kgem->ring == KGEM_BLT;
 
-		kgem_fixup_self_relocs(kgem, rq->bo);
+		memset(&execbuf, 0, sizeof(execbuf));
+		execbuf.buffers_ptr = (uintptr_t)kgem->exec;
+		execbuf.buffer_count = kgem->nexec;
+		execbuf.batch_len = batch_end*sizeof(uint32_t);
+		execbuf.flags = kgem->ring | kgem->batch_flags;
 
-		if (kgem_batch_write(kgem, handle, size) == 0) {
-			struct drm_i915_gem_execbuffer2 execbuf;
-			int ret;
-
-			memset(&execbuf, 0, sizeof(execbuf));
-			execbuf.buffers_ptr = (uintptr_t)kgem->exec;
-			execbuf.buffer_count = kgem->nexec;
-			execbuf.batch_len = batch_end*sizeof(uint32_t);
-			execbuf.flags = kgem->ring | kgem->batch_flags;
-
-			if (DBG_DUMP) {
-				int fd = open("/tmp/i915-batchbuffers.dump",
-					      O_WRONLY | O_CREAT | O_APPEND,
-					      0666);
-				if (fd != -1) {
-					ret = write(fd, kgem->batch, batch_end*sizeof(uint32_t));
-					fd = close(fd);
-				}
+		if (DBG_DUMP) {
+			int fd = open("/tmp/i915-batchbuffers.dump",
+				      O_WRONLY | O_CREAT | O_APPEND,
+				      0666);
+			if (fd != -1) {
+				ret = write(fd, kgem->batch, batch_end*sizeof(uint32_t));
+				fd = close(fd);
 			}
+		}
 
-			ret = do_execbuf(kgem, &execbuf);
-			if (DEBUG_SYNC && ret == 0) {
-				struct drm_i915_gem_set_domain set_domain;
+		ret = do_execbuf(kgem, &execbuf);
+		if (DEBUG_SYNC && ret == 0) {
+			struct drm_i915_gem_set_domain set_domain;
 
-				VG_CLEAR(set_domain);
-				set_domain.handle = handle;
-				set_domain.read_domains = I915_GEM_DOMAIN_GTT;
-				set_domain.write_domain = I915_GEM_DOMAIN_GTT;
+			VG_CLEAR(set_domain);
+			set_domain.handle = handle;
+			set_domain.read_domains = I915_GEM_DOMAIN_GTT;
+			set_domain.write_domain = I915_GEM_DOMAIN_GTT;
 
-				ret = do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain);
+			ret = do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain);
+		}
+		if (ret < 0) {
+			kgem_throttle(kgem);
+			if (!kgem->wedged) {
+				xf86DrvMsg(kgem_get_screen_index(kgem), X_ERROR,
+					   "Failed to submit rendering commands, disabling acceleration.\n");
+				__kgem_set_wedged(kgem);
 			}
-			if (ret < 0) {
-				kgem_throttle(kgem);
-				if (!kgem->wedged) {
-					xf86DrvMsg(kgem_get_screen_index(kgem), X_ERROR,
-						   "Failed to submit rendering commands, disabling acceleration.\n");
-					__kgem_set_wedged(kgem);
-				}
 
 #if !NDEBUG
-				ErrorF("batch[%d/%d]: %d %d %d, nreloc=%d, nexec=%d, nfence=%d, aperture=%d, fenced=%d, high=%d,%d: errno=%d\n",
-				       kgem->mode, kgem->ring, batch_end, kgem->nbatch, kgem->surface,
-				       kgem->nreloc, kgem->nexec, kgem->nfence, kgem->aperture, kgem->aperture_fenced, kgem->aperture_high, kgem->aperture_total, -ret);
+			ErrorF("batch[%d/%d]: %d %d %d, nreloc=%d, nexec=%d, nfence=%d, aperture=%d, fenced=%d, high=%d,%d: errno=%d\n",
+			       kgem->mode, kgem->ring, batch_end, kgem->nbatch, kgem->surface,
+			       kgem->nreloc, kgem->nexec, kgem->nfence, kgem->aperture, kgem->aperture_fenced, kgem->aperture_high, kgem->aperture_total, -ret);
 
-				for (i = 0; i < kgem->nexec; i++) {
-					struct kgem_bo *bo, *found = NULL;
+			for (i = 0; i < kgem->nexec; i++) {
+				struct kgem_bo *bo, *found = NULL;
 
-					list_for_each_entry(bo, &kgem->next_request->buffers, request) {
-						if (bo->handle == kgem->exec[i].handle) {
-							found = bo;
-							break;
-						}
+				list_for_each_entry(bo, &kgem->next_request->buffers, request) {
+					if (bo->handle == kgem->exec[i].handle) {
+						found = bo;
+						break;
 					}
-					ErrorF("exec[%d] = handle:%d, presumed offset: %x, size: %d, tiling %d, fenced %d, snooped %d, deleted %d\n",
-					       i,
-					       kgem->exec[i].handle,
-					       (int)kgem->exec[i].offset,
-					       found ? kgem_bo_size(found) : -1,
-					       found ? found->tiling : -1,
-					       (int)(kgem->exec[i].flags & EXEC_OBJECT_NEEDS_FENCE),
-					       found ? found->snoop : -1,
-					       found ? found->purged : -1);
 				}
-				for (i = 0; i < kgem->nreloc; i++) {
-					ErrorF("reloc[%d] = pos:%d, target:%d, delta:%d, read:%x, write:%x, offset:%x\n",
-					       i,
-					       (int)kgem->reloc[i].offset,
-					       kgem->reloc[i].target_handle,
-					       kgem->reloc[i].delta,
-					       kgem->reloc[i].read_domains,
-					       kgem->reloc[i].write_domain,
-					       (int)kgem->reloc[i].presumed_offset);
-				}
-
-				{
-					struct drm_i915_gem_get_aperture aperture;
-					if (do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_GET_APERTURE, &aperture) == 0)
-						ErrorF("Aperture size %lld, available %lld\n",
-						       (long long)aperture.aper_size,
-						       (long long)aperture.aper_available_size);
-				}
-
-				if (ret == -ENOSPC)
-					dump_gtt_info(kgem);
-				if (ret == -EDEADLK)
-					dump_fence_regs(kgem);
-
-				if (DEBUG_SYNC) {
-					int fd = open("/tmp/batchbuffer", O_WRONLY | O_CREAT | O_APPEND, 0666);
-					if (fd != -1) {
-						int ignored = write(fd, kgem->batch, batch_end*sizeof(uint32_t));
-						assert(ignored == batch_end*sizeof(uint32_t));
-						close(fd);
-					}
-
-					FatalError("SNA: failed to submit batchbuffer, errno=%d\n", -ret);
-				}
-#endif
+				ErrorF("exec[%d] = handle:%d, presumed offset: %x, size: %d, tiling %d, fenced %d, snooped %d, deleted %d\n",
+				       i,
+				       kgem->exec[i].handle,
+				       (int)kgem->exec[i].offset,
+				       found ? kgem_bo_size(found) : -1,
+				       found ? found->tiling : -1,
+				       (int)(kgem->exec[i].flags & EXEC_OBJECT_NEEDS_FENCE),
+				       found ? found->snoop : -1,
+				       found ? found->purged : -1);
 			}
+			for (i = 0; i < kgem->nreloc; i++) {
+				ErrorF("reloc[%d] = pos:%d, target:%d, delta:%d, read:%x, write:%x, offset:%x\n",
+				       i,
+				       (int)kgem->reloc[i].offset,
+				       kgem->reloc[i].target_handle,
+				       kgem->reloc[i].delta,
+				       kgem->reloc[i].read_domains,
+				       kgem->reloc[i].write_domain,
+				       (int)kgem->reloc[i].presumed_offset);
+			}
+
+			{
+				struct drm_i915_gem_get_aperture aperture;
+				if (do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_GET_APERTURE, &aperture) == 0)
+					ErrorF("Aperture size %lld, available %lld\n",
+					       (long long)aperture.aper_size,
+					       (long long)aperture.aper_available_size);
+			}
+
+			if (ret == -ENOSPC)
+				dump_gtt_info(kgem);
+			if (ret == -EDEADLK)
+				dump_fence_regs(kgem);
+
+			if (DEBUG_SYNC) {
+				int fd = open("/tmp/batchbuffer", O_WRONLY | O_CREAT | O_APPEND, 0666);
+				if (fd != -1) {
+					int ignored = write(fd, kgem->batch, batch_end*sizeof(uint32_t));
+					assert(ignored == batch_end*sizeof(uint32_t));
+					close(fd);
+				}
+
+				FatalError("SNA: failed to submit batchbuffer, errno=%d\n", -ret);
+			}
+#endif
 		}
 	}
 #if SHOW_BATCH_AFTER
@@ -4167,16 +4230,18 @@ struct kgem_bo *kgem_create_linear(struct kgem *kgem, int size, unsigned flags)
 	}
 
 	size = NUM_PAGES(size);
-	bo = search_linear_cache(kgem, size, CREATE_INACTIVE | flags);
-	if (bo) {
-		assert(bo->domain != DOMAIN_GPU);
-		ASSERT_IDLE(kgem, bo->handle);
-		bo->refcnt = 1;
-		return bo;
-	}
+	if ((flags & CREATE_UNCACHED) == 0) {
+		bo = search_linear_cache(kgem, size, CREATE_INACTIVE | flags);
+		if (bo) {
+			assert(bo->domain != DOMAIN_GPU);
+			ASSERT_IDLE(kgem, bo->handle);
+			bo->refcnt = 1;
+			return bo;
+		}
 
-	if (flags & CREATE_CACHED)
-		return NULL;
+		if (flags & CREATE_CACHED)
+			return NULL;
+	}
 
 	handle = gem_create(kgem->fd, size);
 	if (handle == 0)
