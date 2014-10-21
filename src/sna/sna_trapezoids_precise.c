@@ -3538,3 +3538,85 @@ skip:
 	REGION_UNINIT(NULL, &clip);
 	return true;
 }
+
+bool
+precise_trap_span_converter(struct sna *sna,
+			    PicturePtr dst,
+			    INT16 src_x, INT16 src_y,
+			    int ntrap, xTrap *trap)
+{
+	struct sna_composite_spans_op tmp;
+	struct tor tor;
+	BoxRec extents;
+	pixman_region16_t *clip;
+	int dx, dy, n;
+
+	if (dst->pDrawable->depth < 8)
+		return false;
+
+	if (!sna->render.check_composite_spans(sna, PictOpAdd, sna->render.white_picture, dst,
+					       dst->pCompositeClip->extents.x2 - dst->pCompositeClip->extents.x1,
+					       dst->pCompositeClip->extents.y2 - dst->pCompositeClip->extents.y1,
+					       0)) {
+		DBG(("%s: fallback -- composite spans not supported\n",
+		     __FUNCTION__));
+		return false;
+	}
+
+	clip = dst->pCompositeClip;
+	extents = *RegionExtents(clip);
+	dx = dst->pDrawable->x;
+	dy = dst->pDrawable->y;
+
+	DBG(("%s: after clip -- extents (%d, %d), (%d, %d), delta=(%d, %d)\n",
+	     __FUNCTION__,
+	     extents.x1, extents.y1,
+	     extents.x2, extents.y2,
+	     dx, dy));
+
+	memset(&tmp, 0, sizeof(tmp));
+	if (!sna->render.composite_spans(sna, PictOpAdd, sna->render.white_picture, dst,
+					 0, 0,
+					 extents.x1,  extents.y1,
+					 extents.x2 - extents.x1,
+					 extents.y2 - extents.y1,
+					 0,
+					 &tmp)) {
+		DBG(("%s: fallback -- composite spans render op not supported\n",
+		     __FUNCTION__));
+		return false;
+	}
+
+	dx *= SAMPLES_X;
+	dy *= SAMPLES_Y;
+	if (!tor_init(&tor, &extents, 2*ntrap))
+		goto skip;
+
+	for (n = 0; n < ntrap; n++) {
+		xPointFixed p1, p2;
+
+		if (pixman_fixed_to_int(trap[n].top.y) + dst->pDrawable->y >= extents.y2 ||
+		    pixman_fixed_to_int(trap[n].bot.y) + dst->pDrawable->y < extents.y1)
+			continue;
+
+		p1.y = trap[n].top.y;
+		p2.y = trap[n].bot.y;
+		p1.x = trap[n].top.l;
+		p2.x = trap[n].bot.l;
+		polygon_add_line(tor.polygon, &p1, &p2, dx, dy);
+
+		p1.y = trap[n].bot.y;
+		p2.y = trap[n].top.y;
+		p1.x = trap[n].top.r;
+		p2.x = trap[n].bot.r;
+		polygon_add_line(tor.polygon, &p1, &p2, dx, dy);
+	}
+
+	tor_render(sna, &tor, &tmp, clip,
+		   choose_span(&tmp, dst, NULL, clip), false);
+
+	tor_fini(&tor);
+skip:
+	tmp.done(sna, &tmp);
+	return true;
+}

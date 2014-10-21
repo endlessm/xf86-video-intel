@@ -3233,10 +3233,10 @@ imprecise_trapezoid_span_fallback(CARD8 op, PicturePtr src, PicturePtr dst,
 }
 
 bool
-trap_span_converter(struct sna *sna,
-		    PicturePtr dst,
-		    INT16 src_x, INT16 src_y,
-		    int ntrap, xTrap *trap)
+imprecise_trap_span_converter(struct sna *sna,
+			      PicturePtr dst,
+			      INT16 src_x, INT16 src_y,
+			      int ntrap, xTrap *trap)
 {
 	struct sna_composite_spans_op tmp;
 	struct tor tor;
@@ -3244,14 +3244,8 @@ trap_span_converter(struct sna *sna,
 	pixman_region16_t *clip;
 	int dx, dy, n;
 
-	if (NO_SCAN_CONVERTER)
-		return false;
-
 	if (dst->pDrawable->depth < 8)
 		return false;
-
-	if (dst->polyEdge == PolyEdgeSharp)
-		return mono_trap_span_converter(sna, dst, src_x, src_y, ntrap, trap);
 
 	if (!sna->render.check_composite_spans(sna, PictOpAdd, sna->render.white_picture, dst,
 					       dst->pCompositeClip->extents.x2 - dst->pCompositeClip->extents.x1,

@@ -822,11 +822,13 @@ void
 sna_add_traps(PicturePtr picture, INT16 x, INT16 y, int n, xTrap *t)
 {
 	struct sna *sna;
+	PixmapPtr pixmap;
 
 	DBG(("%s (%d, %d) x %d\n", __FUNCTION__, x, y, n));
 
-	sna = to_sna_from_drawable(picture->pDrawable);
-	if (is_gpu(sna, picture->pDrawable, PREFER_GPU_SPANS)) {
+	pixmap = get_drawable_pixmap(picture->pDrawable);
+	sna = to_sna_from_pixmap(pixmap);
+	if (is_gpu_dst(sna_pixmap(pixmap))) {
 		if (trap_span_converter(sna, picture, x, y, n, t))
 			return;
 	}
@@ -840,8 +842,7 @@ sna_add_traps(PicturePtr picture, INT16 x, INT16 y, int n, xTrap *t)
 	}
 
 	DBG(("%s -- fallback\n", __FUNCTION__));
-	if (sna_drawable_move_to_cpu(picture->pDrawable,
-				     MOVE_READ | MOVE_WRITE)) {
+	if (sna_pixmap_move_to_cpu(pixmap, MOVE_READ | MOVE_WRITE)) {
 		pixman_image_t *image;
 		int dx, dy;
 

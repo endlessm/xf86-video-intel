@@ -54,12 +54,6 @@ mono_trapezoid_span_inplace(struct sna *sna,
 			    int ntrap, xTrapezoid *traps);
 
 bool
-mono_trap_span_converter(struct sna *sna,
-			 PicturePtr dst,
-			 INT16 x, INT16 y,
-			 int ntrap, xTrap *traps);
-
-bool
 mono_triangles_span_converter(struct sna *sna,
 			      CARD8 op, PicturePtr src, PicturePtr dst,
 			      INT16 src_x, INT16 src_y,
@@ -210,10 +204,39 @@ trapezoid_span_fallback(CARD8 op, PicturePtr src, PicturePtr dst,
 }
 
 bool
+mono_trap_span_converter(struct sna *sna,
+			 PicturePtr dst,
+			 INT16 x, INT16 y,
+			 int ntrap, xTrap *traps);
+
+bool
+precise_trap_span_converter(struct sna *sna,
+			    PicturePtr dst,
+			    INT16 src_x, INT16 src_y,
+			    int ntrap, xTrap *trap);
+
+bool
+imprecise_trap_span_converter(struct sna *sna,
+			      PicturePtr dst,
+			      INT16 src_x, INT16 src_y,
+			      int ntrap, xTrap *trap);
+
+static inline bool
 trap_span_converter(struct sna *sna,
 		    PicturePtr dst,
 		    INT16 src_x, INT16 src_y,
-		    int ntrap, xTrap *trap);
+		    int ntrap, xTrap *trap)
+{
+	if (NO_SCAN_CONVERTER)
+		return false;
+
+	if (dst->polyEdge == PolyEdgeSharp || dst->pDrawable->depth < 8)
+		return mono_trap_span_converter(sna, dst, src_x, src_y, ntrap, trap);
+	else if (dst->polyMode == PolyModePrecise)
+		return precise_trap_span_converter(sna, dst, src_x, src_y, ntrap, trap);
+	else
+		return imprecise_trap_span_converter(sna, dst, src_x, src_y, ntrap, trap);
+}
 
 bool
 trap_mask_converter(struct sna *sna,

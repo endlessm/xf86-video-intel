@@ -1286,6 +1286,10 @@ mono_trap_span_converter(struct sna *sna,
 				       mono.clip.extents.x2 - mono.clip.extents.x1,
 				       mono.clip.extents.y2 - mono.clip.extents.y1,
 				       COMPOSITE_PARTIAL, memset(&mono.op, 0, sizeof(mono.op)))) {
+		if (mono.clip.data == NULL && mono.op.damage == NULL)
+			mono.span = mono_span__fast;
+		else
+			mono.span = mono_span;
 		mono_render(&mono);
 		mono.op.done(mono.sna, &mono.op);
 	}
