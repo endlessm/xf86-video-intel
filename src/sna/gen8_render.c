@@ -922,6 +922,8 @@ gen8_emit_sf(struct sna *sna, bool has_mask)
 
 	OUT_BATCH(GEN8_3DSTATE_SBE | (4 - 2));
 	OUT_BATCH(num_sf_outputs << SBE_NUM_OUTPUTS_SHIFT |
+		  SBE_FORCE_VERTEX_URB_READ_LENGTH | /* forced is faster */
+		  SBE_FORCE_VERTEX_URB_READ_OFFSET |
 		  1 << SBE_URB_ENTRY_READ_LENGTH_SHIFT |
 		  1 << SBE_URB_ENTRY_READ_OFFSET_SHIFT);
 	OUT_BATCH(0);
