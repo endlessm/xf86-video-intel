@@ -1930,7 +1930,7 @@ sna_pixmap_undo_cow(struct sna *sna, struct sna_pixmap *priv, unsigned flags)
 			box.y2 = pixmap->drawable.height;
 
 			if (flags & __MOVE_PRIME) {
-				create|= CREATE_GTT_MAP | CREATE_PRIME | CREATE_EXACT;
+				create = CREATE_GTT_MAP | CREATE_PRIME | CREATE_EXACT;
 				tiling = I915_TILING_NONE;
 			} else {
 				create = 0;
