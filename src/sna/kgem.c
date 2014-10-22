@@ -79,6 +79,7 @@ search_snoop_cache(struct kgem *kgem, unsigned int num_pages, unsigned flags);
 #define DBG_NO_RELAXED_FENCING 0
 #define DBG_NO_SECURE_BATCHES 0
 #define DBG_NO_PINNED_BATCHES 0
+#define DBG_NO_SHRINK_BATCHES 0
 #define DBG_NO_FAST_RELOC 0
 #define DBG_NO_HANDLE_LUT 0
 #define DBG_NO_WT 0
@@ -1256,39 +1257,46 @@ static void kgem_fixup_relocs(struct kgem *kgem, struct kgem_bo *bo, int shrink)
 {
 	int n;
 
-	DBG(("%s: shrinking by %d\n", __FUNCTION__, shrink));
-
 	bo->target_handle = kgem->has_handle_lut ? kgem->nexec : bo->handle;
 
 	assert(kgem->nreloc__self <= 256);
 	if (kgem->nreloc__self) {
+		DBG(("%s: fixing up %d%s self-relocations\n",
+		     __FUNCTION__, kgem->nreloc__self,
+		     kgem->nreloc__self == 256 ? "+" : ""));
 		for (n = 0; n < kgem->nreloc__self; n++) {
 			int i = kgem->reloc__self[n];
+			uint32_t *b;
+
 			assert(kgem->reloc[i].target_handle == ~0U);
 			kgem->reloc[i].target_handle = bo->target_handle;
 			kgem->reloc[i].presumed_offset = bo->presumed_offset;
-			kgem->batch[kgem->reloc[i].offset/sizeof(kgem->batch[0])] =
-				kgem->reloc[i].delta + bo->presumed_offset - shrink;
+
+			b = &kgem->batch[kgem->reloc[i].offset/sizeof(*b)];
+			*b = kgem->reloc[i].delta + bo->presumed_offset;
+			if (kgem->reloc[i].read_domains == I915_GEM_DOMAIN_INSTRUCTION)
+				*b -= shrink;
 		}
 
 		if (n == 256) {
 			for (n = kgem->reloc__self[255]; n < kgem->nreloc; n++) {
 				if (kgem->reloc[n].target_handle == ~0U) {
+					uint32_t *b;
 					kgem->reloc[n].target_handle = bo->target_handle;
 					kgem->reloc[n].presumed_offset = bo->presumed_offset;
-					kgem->batch[kgem->reloc[n].offset/sizeof(kgem->batch[0])] =
-						kgem->reloc[n].delta + bo->presumed_offset - shrink;
+
+					b = &kgem->batch[kgem->reloc[n].offset/sizeof(*b)];
+					*b = kgem->reloc[n].delta + bo->presumed_offset;
+					if (kgem->reloc[n].read_domains == I915_GEM_DOMAIN_INSTRUCTION)
+						*b -= shrink;
 				}
 			}
 		}
 	}
 
 	if (shrink) {
+		DBG(("%s: shrinking by %d\n", __FUNCTION__, shrink));
 		for (n = 0; n < kgem->nreloc; n++) {
-			if (kgem->reloc[n].read_domains == I915_GEM_DOMAIN_INSTRUCTION &&
-			    kgem->reloc[n].target_handle == bo->target_handle)
-				kgem->reloc[n].delta -= shrink;
-
 			if (kgem->reloc[n].offset >= sizeof(uint32_t)*kgem->nbatch)
 				kgem->reloc[n].offset -= shrink;
 		}
@@ -3131,6 +3139,7 @@ static int compact_batch_surface(struct kgem *kgem, int *shrink)
 static struct kgem_bo *
 kgem_create_batch(struct kgem *kgem)
 {
+#if !DBG_NO_SHRINK_BATCHES
 	struct drm_i915_gem_set_domain set_domain;
 	struct kgem_bo *bo;
 	int shrink = 0;
@@ -3232,6 +3241,9 @@ write:
 	if (bo == NULL)
 		bo = kgem_new_batch(kgem);
 	return bo;
+#else
+	return kgem_new_batch(kgem);
+#endif
 }
 
 #if !NDEBUG
@@ -3362,13 +3374,12 @@ void _kgem_submit(struct kgem *kgem)
 	rq->bo = kgem_create_batch(kgem);
 	if (rq->bo) {
 		struct drm_i915_gem_execbuffer2 execbuf;
-		uint32_t handle = rq->bo->handle;
 		int i, ret;
 
 		assert(!rq->bo->needs_flush);
 
 		i = kgem->nexec++;
-		kgem->exec[i].handle = handle;
+		kgem->exec[i].handle = rq->bo->handle;
 		kgem->exec[i].relocation_count = kgem->nreloc;
 		kgem->exec[i].relocs_ptr = (uintptr_t)kgem->reloc;
 		kgem->exec[i].alignment = 0;
@@ -3403,7 +3414,7 @@ void _kgem_submit(struct kgem *kgem)
 			struct drm_i915_gem_set_domain set_domain;
 
 			VG_CLEAR(set_domain);
-			set_domain.handle = handle;
+			set_domain.handle = rq->bo->handle;
 			set_domain.read_domains = I915_GEM_DOMAIN_GTT;
 			set_domain.write_domain = I915_GEM_DOMAIN_GTT;
 
