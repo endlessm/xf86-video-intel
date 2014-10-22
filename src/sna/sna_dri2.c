@@ -309,6 +309,9 @@ sna_dri2_reuse_buffer(DrawablePtr draw, DRI2BufferPtr buffer)
 
 static bool swap_limit(DrawablePtr draw, int limit)
 {
+	if (!xorg_can_triple_buffer())
+		return false;
+
 	DBG(("%s: draw=%ld setting swap limit to %d\n", __FUNCTION__, (long)draw->id, limit));
 	DRI2SwapLimit(draw, limit);
 	return true;
