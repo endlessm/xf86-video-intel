@@ -652,6 +652,9 @@ static bool upload_inplace__tiled(struct kgem *kgem, struct kgem_bo *bo)
 		break;
 	}
 
+	if (kgem->has_wc_mmap)
+		return true;
+
 	return kgem_bo_can_map__cpu(kgem, bo, true);
 }
 
@@ -663,14 +666,22 @@ write_boxes_inplace__tiled(struct kgem *kgem,
 {
 	uint8_t *dst;
 
-	assert(kgem_bo_can_map__cpu(kgem, bo, true));
+	assert(kgem->has_wc_mmap || kgem_bo_can_map__cpu(kgem, bo, true));
 	assert(bo->tiling != I915_TILING_Y);
 
-	dst = kgem_bo_map__cpu(kgem, bo);
-	if (dst == NULL)
-		return false;
+	if (kgem_bo_can_map__cpu(kgem, bo, true)) {
+		dst = kgem_bo_map__cpu(kgem, bo);
+		if (dst == NULL)
+			return false;
 
-	kgem_bo_sync__cpu(kgem, bo);
+		kgem_bo_sync__cpu(kgem, bo);
+	} else {
+		dst = kgem_bo_map__wc(kgem, bo);
+		if (dst == NULL)
+			return false;
+
+		kgem_bo_sync__gtt(kgem, bo);
+	}
 
 	if (sigtrap_get())
 		return false;

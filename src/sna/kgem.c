@@ -83,6 +83,7 @@ search_snoop_cache(struct kgem *kgem, unsigned int num_pages, unsigned flags);
 #define DBG_NO_FAST_RELOC 0
 #define DBG_NO_HANDLE_LUT 0
 #define DBG_NO_WT 0
+#define DBG_NO_WC_MMAP 0
 #define DBG_DUMP 0
 #define DBG_NO_MALLOC_CACHE 0
 
@@ -94,6 +95,11 @@ search_snoop_cache(struct kgem *kgem, unsigned int num_pages, unsigned flags);
 
 #define SHOW_BATCH_BEFORE 0
 #define SHOW_BATCH_AFTER 0
+
+#if !USE_WC_MMAP
+#undef DBG_NO_WC_MMAP
+#define DBG_NO_WC_MMAP 1
+#endif
 
 #if 0
 #define ASSERT_IDLE(kgem__, handle__) assert(!__kgem_busy(kgem__, handle__))
@@ -127,12 +133,14 @@ search_snoop_cache(struct kgem *kgem, unsigned int num_pages, unsigned flags);
 #define LOCAL_I915_PARAM_HAS_BLT		11
 #define LOCAL_I915_PARAM_HAS_RELAXED_FENCING	12
 #define LOCAL_I915_PARAM_HAS_RELAXED_DELTA	15
+#define LOCAL_I915_PARAM_HAS_LLC		17
 #define LOCAL_I915_PARAM_HAS_SEMAPHORES		20
 #define LOCAL_I915_PARAM_HAS_SECURE_BATCHES	23
 #define LOCAL_I915_PARAM_HAS_PINNED_BATCHES	24
 #define LOCAL_I915_PARAM_HAS_NO_RELOC		25
 #define LOCAL_I915_PARAM_HAS_HANDLE_LUT		26
 #define LOCAL_I915_PARAM_HAS_WT			27
+#define LOCAL_I915_PARAM_MMAP_VERSION		29
 
 #define LOCAL_I915_EXEC_IS_PINNED		(1<<10)
 #define LOCAL_I915_EXEC_NO_RELOC		(1<<11)
@@ -178,6 +186,17 @@ struct local_i915_gem_caching {
 #define LOCAL_I915_GEM_GET_CACHING	0x30
 #define LOCAL_IOCTL_I915_GEM_SET_CACHING DRM_IOW(DRM_COMMAND_BASE + LOCAL_I915_GEM_SET_CACHING, struct local_i915_gem_caching)
 #define LOCAL_IOCTL_I915_GEM_GET_CACHING DRM_IOW(DRM_COMMAND_BASE + LOCAL_I915_GEM_GET_CACHING, struct local_i915_gem_caching)
+
+struct local_i915_gem_mmap2 {
+	uint32_t handle;
+	uint32_t pad;
+	uint64_t offset;
+	uint64_t size;
+	uint64_t addr_ptr;
+	uint64_t flags;
+#define I915_MMAP_WC 0x1
+};
+#define LOCAL_IOCTL_I915_GEM_MMAP_v2 DRM_IOWR(DRM_COMMAND_BASE + DRM_I915_GEM_MMAP, struct local_i915_gem_mmap2)
 
 struct kgem_buffer {
 	struct kgem_bo base;
@@ -411,7 +430,7 @@ static bool __kgem_throttle_retire(struct kgem *kgem, unsigned flags)
 
 static void *__kgem_bo_map__gtt(struct kgem *kgem, struct kgem_bo *bo)
 {
-	struct drm_i915_gem_mmap_gtt mmap_arg;
+	struct drm_i915_gem_mmap_gtt gtt;
 	void *ptr;
 	int err;
 
@@ -419,12 +438,13 @@ static void *__kgem_bo_map__gtt(struct kgem *kgem, struct kgem_bo *bo)
 	     bo->handle, bytes(bo)));
 	assert(bo->proxy == NULL);
 	assert(!bo->snoop);
-	assert(num_pages(bo) <= kgem->aperture_mappable / 4);
+	assert(num_pages(bo) <= kgem->aperture_mappable / 2);
+	assert(kgem->gen != 021 || bo->tiling != I915_TILING_Y);
 
+	VG_CLEAR(gtt);
 retry_gtt:
-	VG_CLEAR(mmap_arg);
-	mmap_arg.handle = bo->handle;
-	if ((err = do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_MMAP_GTT, &mmap_arg))) {
+	gtt.handle = bo->handle;
+	if ((err = do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_MMAP_GTT, &gtt))) {
 		assert(err != EINVAL);
 
 		(void)__kgem_throttle_retire(kgem, 0);
@@ -441,7 +461,7 @@ retry_gtt:
 
 retry_mmap:
 	ptr = mmap(0, bytes(bo), PROT_READ | PROT_WRITE, MAP_SHARED,
-		   kgem->fd, mmap_arg.offset);
+		   kgem->fd, gtt.offset);
 	if (ptr == MAP_FAILED) {
 		err = errno;
 		assert(err != EINVAL);
@@ -457,7 +477,50 @@ retry_mmap:
 		ptr = NULL;
 	}
 
-	return ptr;
+	/* Cache this mapping to avoid the overhead of an
+	 * excruciatingly slow GTT pagefault. This is more an
+	 * issue with compositing managers which need to
+	 * frequently flush CPU damage to their GPU bo.
+	 */
+	return bo->map__gtt = ptr;
+}
+
+static void *__kgem_bo_map__wc(struct kgem *kgem, struct kgem_bo *bo)
+{
+	struct local_i915_gem_mmap2 wc;
+	int err;
+
+	DBG(("%s(handle=%d, size=%d)\n", __FUNCTION__,
+	     bo->handle, bytes(bo)));
+	assert(bo->proxy == NULL);
+	assert(!bo->snoop);
+	assert(kgem->has_wc_mmap);
+
+	VG_CLEAR(wc);
+
+retry_wc:
+	wc.handle = bo->handle;
+	wc.offset = 0;
+	wc.size = bytes(bo);
+	wc.flags = I915_MMAP_WC;
+	if ((err = do_ioctl(kgem->fd, LOCAL_IOCTL_I915_GEM_MMAP_v2, &wc))) {
+		assert(err != EINVAL);
+
+		if (__kgem_throttle_retire(kgem, 0))
+			goto retry_wc;
+
+		if (kgem_cleanup_cache(kgem))
+			goto retry_wc;
+
+		ERR(("%s: failed to mmap handle=%d, %d bytes, into CPU(wc) domain: %d\n",
+		     __FUNCTION__, bo->handle, bytes(bo), -err));
+		return NULL;
+	}
+
+	VG(VALGRIND_MAKE_MEM_DEFINED(wc.addr_ptr, bytes(bo)));
+
+	DBG(("%s: caching CPU(wc) vma for %d\n", __FUNCTION__, bo->handle));
+	return bo->map__wc = (void *)(uintptr_t)wc.addr_ptr;
 }
 
 static int gem_write(int fd, uint32_t handle,
@@ -1029,15 +1092,35 @@ static bool test_has_llc(struct kgem *kgem)
 	if (DBG_NO_LLC)
 		return false;
 
-#if defined(I915_PARAM_HAS_LLC) /* Expected in libdrm-2.4.31 */
-	has_llc = gem_param(kgem, I915_PARAM_HAS_LLC);
-#endif
+	has_llc = gem_param(kgem, LOCAL_I915_PARAM_HAS_LLC);
 	if (has_llc == -1) {
 		DBG(("%s: no kernel/drm support for HAS_LLC, assuming support for LLC based on GPU generation\n", __FUNCTION__));
 		has_llc = kgem->gen >= 060;
 	}
 
 	return has_llc;
+}
+
+static bool test_has_wc_mmap(struct kgem *kgem)
+{
+	struct local_i915_gem_mmap2 wc;
+	bool ret;
+
+	if (DBG_NO_WC_MMAP)
+		return false;
+
+	if (gem_param(kgem, LOCAL_I915_PARAM_MMAP_VERSION) < 1)
+		return false;
+
+	VG_CLEAR(wc);
+	wc.handle = gem_create(kgem->fd, 1);
+	wc.offset = 0;
+	wc.size = 4096;
+	wc.flags = I915_MMAP_WC;
+	ret = do_ioctl(kgem->fd, LOCAL_IOCTL_I915_GEM_MMAP_v2, &wc) == 0;
+	gem_close(kgem->fd, wc.handle);
+
+	return ret;
 }
 
 static bool test_has_caching(struct kgem *kgem)
@@ -1427,6 +1510,10 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 	kgem->has_wt = test_has_wt(kgem);
 	DBG(("%s: has write-through caching for scanouts? %d\n", __FUNCTION__,
 	     kgem->has_wt));
+
+	kgem->has_wc_mmap = test_has_wc_mmap(kgem);
+	DBG(("%s: has wc-mmapping? %d\n", __FUNCTION__,
+	     kgem->has_wc_mmap));
 
 	kgem->has_caching = test_has_caching(kgem);
 	DBG(("%s: has set-cache-level? %d\n", __FUNCTION__,
@@ -1975,17 +2062,23 @@ static void kgem_bo_free(struct kgem *kgem, struct kgem_bo *bo)
 
 	DBG(("%s: releasing %p:%p vma for handle=%d, count=%d\n",
 	     __FUNCTION__, bo->map__gtt, bo->map__cpu,
-	     bo->handle, list_is_empty(&bo->vma) ? 0 : kgem->vma[bo->map__gtt == NULL].count));
+	     bo->handle, list_is_empty(&bo->vma) ? 0 : kgem->vma[bo->map__gtt == NULL && bo->map__wc == NULL].count));
 
 	if (!list_is_empty(&bo->vma)) {
 		_list_del(&bo->vma);
-		kgem->vma[bo->map__gtt == NULL].count--;
+		kgem->vma[bo->map__gtt == NULL && bo->map__wc == NULL].count--;
 	}
 
 	if (bo->map__gtt)
-		munmap(MAP(bo->map__gtt), bytes(bo));
-	if (bo->map__cpu)
+		munmap(bo->map__gtt, bytes(bo));
+	if (bo->map__wc) {
+		VG(VALGRIND_MAKE_MEM_NOACCESS(bo->map__wc, bytes(bo)));
+		munmap(bo->map__wc, bytes(bo));
+	}
+	if (bo->map__cpu) {
+		VG(VALGRIND_MAKE_MEM_NOACCESS(MAP(bo->map__cpu), bytes(bo)));
 		munmap(MAP(bo->map__cpu), bytes(bo));
+	}
 
 	_list_del(&bo->list);
 	_list_del(&bo->request);
@@ -2021,25 +2114,24 @@ inline static void kgem_bo_move_to_inactive(struct kgem *kgem,
 
 	if (bucket(bo) >= NUM_CACHE_BUCKETS) {
 		if (bo->map__gtt) {
-			munmap(MAP(bo->map__gtt), bytes(bo));
+			munmap(bo->map__gtt, bytes(bo));
 			bo->map__gtt = NULL;
 		}
 
 		list_move(&bo->list, &kgem->large_inactive);
 	} else {
 		assert(bo->flush == false);
+		assert(list_is_empty(&bo->vma));
 		list_move(&bo->list, &kgem->inactive[bucket(bo)]);
-		if (bo->map__gtt) {
-			if (!kgem_bo_can_map(kgem, bo)) {
-				munmap(MAP(bo->map__gtt), bytes(bo));
-				bo->map__gtt = NULL;
-			}
-			if (bo->map__gtt) {
-				list_add(&bo->vma, &kgem->vma[0].inactive[bucket(bo)]);
-				kgem->vma[0].count++;
-			}
+		if (bo->map__gtt && !kgem_bo_can_map(kgem, bo)) {
+			munmap(bo->map__gtt, bytes(bo));
+			bo->map__gtt = NULL;
 		}
-		if (bo->map__cpu && !bo->map__gtt) {
+		if (bo->map__gtt || (bo->map__wc && !bo->tiling)) {
+			list_add(&bo->vma, &kgem->vma[0].inactive[bucket(bo)]);
+			kgem->vma[0].count++;
+		}
+		if (bo->map__cpu && list_is_empty(&bo->vma)) {
 			list_add(&bo->vma, &kgem->vma[1].inactive[bucket(bo)]);
 			kgem->vma[1].count++;
 		}
@@ -2087,9 +2179,9 @@ inline static void kgem_bo_remove_from_inactive(struct kgem *kgem,
 	assert(bo->rq == NULL);
 	assert(bo->exec == NULL);
 	if (!list_is_empty(&bo->vma)) {
-		assert(bo->map__gtt || bo->map__cpu);
+		assert(bo->map__gtt || bo->map__wc || bo->map__cpu);
 		list_del(&bo->vma);
-		kgem->vma[bo->map__gtt == NULL].count--;
+		kgem->vma[bo->map__gtt == NULL && bo->map__wc == NULL].count--;
 	}
 }
 
@@ -2824,6 +2916,7 @@ static void kgem_commit(struct kgem *kgem)
 		assert(list_is_empty(&rq->buffers));
 
 		assert(rq->bo->map__gtt == NULL);
+		assert(rq->bo->map__wc == NULL);
 		assert(rq->bo->map__cpu == NULL);
 		gem_close(kgem->fd, rq->bo->handle);
 		kgem_cleanup_cache(kgem);
@@ -3985,7 +4078,7 @@ discard:
 		     __FUNCTION__, for_cpu ? "cpu" : "gtt"));
 		cache = &kgem->vma[for_cpu].inactive[cache_bucket(num_pages)];
 		list_for_each_entry(bo, cache, vma) {
-			assert(for_cpu ? bo->map__cpu : bo->map__gtt);
+			assert(for_cpu ? !!bo->map__cpu : (bo->map__gtt || bo->map__wc));
 			assert(bucket(bo) == cache_bucket(num_pages));
 			assert(bo->proxy == NULL);
 			assert(bo->rq == NULL);
@@ -4067,10 +4160,10 @@ discard:
 			bo->pitch = 0;
 		}
 
-		if (bo->map__gtt || bo->map__cpu) {
+		if (bo->map__gtt || bo->map__wc || bo->map__cpu) {
 			if (flags & (CREATE_CPU_MAP | CREATE_GTT_MAP)) {
 				int for_cpu = !!(flags & CREATE_CPU_MAP);
-				if (for_cpu ? bo->map__cpu : bo->map__gtt){
+				if (for_cpu ? !!bo->map__cpu : (bo->map__gtt || bo->map__wc)){
 					if (first != NULL)
 						break;
 
@@ -4477,7 +4570,7 @@ unsigned kgem_can_create_2d(struct kgem *kgem,
 			flags |= KGEM_CAN_CREATE_CPU;
 		if (size > 4096 && size <= kgem->max_gpu_size)
 			flags |= KGEM_CAN_CREATE_GPU;
-		if (size <= PAGE_SIZE*kgem->aperture_mappable/4)
+		if (size <= PAGE_SIZE*kgem->aperture_mappable/4 || kgem->has_wc_mmap)
 			flags |= KGEM_CAN_CREATE_GTT;
 		if (size > kgem->large_object_size)
 			flags |= KGEM_CAN_CREATE_LARGE;
@@ -4903,7 +4996,7 @@ large_inactive:
 				assert(bucket(bo) == bucket);
 				assert(bo->refcnt == 0);
 				assert(!bo->scanout);
-				assert(for_cpu ? bo->map__cpu : bo->map__gtt);
+				assert(for_cpu ? !!bo->map__cpu : (bo->map__gtt || bo->map__wc));
 				assert(bo->rq == NULL);
 				assert(bo->exec == NULL);
 				assert(list_is_empty(&bo->request));
@@ -5996,7 +6089,6 @@ static void kgem_trim_vma_cache(struct kgem *kgem, int type, int bucket)
 	i = 0;
 	while (kgem->vma[type].count > 0) {
 		struct kgem_bo *bo = NULL;
-		void **ptr;
 
 		for (j = 0;
 		     bo == NULL && j < ARRAY_SIZE(kgem->vma[type].inactive);
@@ -6011,12 +6103,23 @@ static void kgem_trim_vma_cache(struct kgem *kgem, int type, int bucket)
 		DBG(("%s: discarding inactive %s vma cache for %d\n",
 		     __FUNCTION__, type ? "CPU" : "GTT", bo->handle));
 
-		ptr = type ? &bo->map__cpu : &bo->map__gtt;
 		assert(bo->rq == NULL);
+		if (type) {
+			VG(VALGRIND_MAKE_MEM_NOACCESS(MAP(bo->map__cpu), bytes(bo)));
+			munmap(MAP(bo->map__cpu), bytes(bo));
+			bo->map__cpu = NULL;
+		} else {
+			if (bo->map__wc) {
+				VG(VALGRIND_MAKE_MEM_NOACCESS(bo->map__wc, bytes(bo)));
+				munmap(bo->map__wc, bytes(bo));
+				bo->map__wc = NULL;
+			}
+			if (bo->map__gtt) {
+				munmap(bo->map__gtt, bytes(bo));
+				bo->map__gtt = NULL;
+			}
+		}
 
-		VG(if (type) VALGRIND_MAKE_MEM_NOACCESS(MAP(*ptr), bytes(bo)));
-		munmap(MAP(*ptr), bytes(bo));
-		*ptr = NULL;
 		list_del(&bo->vma);
 		kgem->vma[type].count--;
 
@@ -6028,10 +6131,28 @@ static void kgem_trim_vma_cache(struct kgem *kgem, int type, int bucket)
 	}
 }
 
-void *kgem_bo_map__async(struct kgem *kgem, struct kgem_bo *bo)
+static void *__kgem_bo_map__gtt_or_wc(struct kgem *kgem, struct kgem_bo *bo)
 {
 	void *ptr;
 
+	DBG(("%s: handle=%d\n", __FUNCTION__, bo->handle));
+	kgem_trim_vma_cache(kgem, MAP_GTT, bucket(bo));
+
+	if (bo->tiling || !kgem->has_wc_mmap) {
+		ptr = bo->map__gtt;
+		if (ptr == NULL)
+			ptr = __kgem_bo_map__gtt(kgem, bo);
+	} else {
+		ptr = bo->map__wc;
+		if (ptr == NULL)
+			ptr = __kgem_bo_map__wc(kgem, bo);
+	}
+
+	return ptr;
+}
+
+void *kgem_bo_map__async(struct kgem *kgem, struct kgem_bo *bo)
+{
 	DBG(("%s: handle=%d, offset=%ld, tiling=%d, map=%p:%p, domain=%d\n", __FUNCTION__,
 	     bo->handle, (long)bo->presumed_offset, bo->tiling, bo->map__gtt, bo->map__cpu, bo->domain));
 
@@ -6046,26 +6167,7 @@ void *kgem_bo_map__async(struct kgem *kgem, struct kgem_bo *bo)
 		return kgem_bo_map__cpu(kgem, bo);
 	}
 
-	ptr = MAP(bo->map__gtt);
-	if (ptr == NULL) {
-		assert(num_pages(bo) <= kgem->aperture_mappable / 2);
-
-		kgem_trim_vma_cache(kgem, MAP_GTT, bucket(bo));
-
-		ptr = __kgem_bo_map__gtt(kgem, bo);
-		if (ptr == NULL)
-			return NULL;
-
-		/* Cache this mapping to avoid the overhead of an
-		 * excruciatingly slow GTT pagefault. This is more an
-		 * issue with compositing managers which need to frequently
-		 * flush CPU damage to their GPU bo.
-		 */
-		bo->map__gtt = ptr;
-		DBG(("%s: caching GTT vma for %d\n", __FUNCTION__, bo->handle));
-	}
-
-	return ptr;
+	return __kgem_bo_map__gtt_or_wc(kgem, bo);
 }
 
 void *kgem_bo_map(struct kgem *kgem, struct kgem_bo *bo)
@@ -6091,25 +6193,7 @@ void *kgem_bo_map(struct kgem *kgem, struct kgem_bo *bo)
 		return ptr;
 	}
 
-	ptr = MAP(bo->map__gtt);
-	if (ptr == NULL) {
-		assert(num_pages(bo) <= kgem->aperture_mappable / 2);
-		assert(kgem->gen != 021 || bo->tiling != I915_TILING_Y);
-
-		kgem_trim_vma_cache(kgem, MAP_GTT, bucket(bo));
-
-		ptr = __kgem_bo_map__gtt(kgem, bo);
-		if (ptr == NULL)
-			return NULL;
-
-		/* Cache this mapping to avoid the overhead of an
-		 * excruciatingly slow GTT pagefault. This is more an
-		 * issue with compositing managers which need to frequently
-		 * flush CPU damage to their GPU bo.
-		 */
-		bo->map__gtt = ptr;
-		DBG(("%s: caching GTT vma for %d\n", __FUNCTION__, bo->handle));
-	}
+	ptr = __kgem_bo_map__gtt_or_wc(kgem, bo);
 
 	if (bo->domain != DOMAIN_GTT || FORCE_MMAP_SYNC & (1 << DOMAIN_GTT)) {
 		struct drm_i915_gem_set_domain set_domain;
@@ -6137,8 +6221,6 @@ void *kgem_bo_map(struct kgem *kgem, struct kgem_bo *bo)
 
 void *kgem_bo_map__gtt(struct kgem *kgem, struct kgem_bo *bo)
 {
-	void *ptr;
-
 	DBG(("%s: handle=%d, offset=%ld, tiling=%d, map=%p:%p, domain=%d\n", __FUNCTION__,
 	     bo->handle, (long)bo->presumed_offset, bo->tiling, bo->map__gtt, bo->map__cpu, bo->domain));
 
@@ -6148,26 +6230,24 @@ void *kgem_bo_map__gtt(struct kgem *kgem, struct kgem_bo *bo)
 	assert_tiling(kgem, bo);
 	assert(!bo->purged || bo->reusable);
 
-	ptr = MAP(bo->map__gtt);
-	if (ptr == NULL) {
-		assert(num_pages(bo) <= kgem->aperture_mappable / 4);
+	return __kgem_bo_map__gtt_or_wc(kgem, bo);
+}
 
-		kgem_trim_vma_cache(kgem, MAP_GTT, bucket(bo));
+void *kgem_bo_map__wc(struct kgem *kgem, struct kgem_bo *bo)
+{
+	DBG(("%s: handle=%d, offset=%ld, tiling=%d, map=%p:%p, domain=%d\n", __FUNCTION__,
+	     bo->handle, (long)bo->presumed_offset, bo->tiling, bo->map__gtt, bo->map__cpu, bo->domain));
 
-		ptr = __kgem_bo_map__gtt(kgem, bo);
-		if (ptr == NULL)
-			return NULL;
+	assert(bo->proxy == NULL);
+	assert(bo->exec == NULL);
+	assert(list_is_empty(&bo->list));
+	assert_tiling(kgem, bo);
+	assert(!bo->purged || bo->reusable);
 
-		/* Cache this mapping to avoid the overhead of an
-		 * excruciatingly slow GTT pagefault. This is more an
-		 * issue with compositing managers which need to frequently
-		 * flush CPU damage to their GPU bo.
-		 */
-		bo->map__gtt = ptr;
-		DBG(("%s: caching GTT vma for %d\n", __FUNCTION__, bo->handle));
-	}
+	if (bo->map__wc)
+		return bo->map__wc;
 
-	return ptr;
+	return __kgem_bo_map__wc(kgem, bo);
 }
 
 void *kgem_bo_map__debug(struct kgem *kgem, struct kgem_bo *bo)
@@ -6512,6 +6592,7 @@ init_buffer_from_bo(struct kgem_buffer *bo, struct kgem_bo *old)
 	     __FUNCTION__, old->handle));
 
 	assert(old->proxy == NULL);
+	assert(list_is_empty(&old->list));
 
 	memcpy(&bo->base, old, sizeof(*old));
 	if (old->rq)
@@ -6817,7 +6898,7 @@ struct kgem_bo *kgem_create_buffer(struct kgem *kgem,
 	assert(alloc);
 
 	alloc /= PAGE_SIZE;
-	if (alloc > kgem->aperture_mappable / 4)
+	if (alloc > kgem->aperture_mappable / 4 && !kgem->has_wc_mmap)
 		flags &= ~KGEM_BUFFER_INPLACE;
 
 	if (kgem->has_llc &&
@@ -7049,7 +7130,7 @@ init:
 	assert(!bo->need_io || !bo->base.needs_flush);
 	assert(!bo->need_io || bo->base.domain != DOMAIN_GPU);
 	assert(bo->mem);
-	assert(bo->mmapped != MMAPPED_GTT || MAP(bo->base.map__gtt) == bo->mem);
+	assert(bo->mmapped != MMAPPED_GTT || bo->base.map__gtt == bo->mem || bo->base.map__wc == bo->mem);
 	assert(bo->mmapped != MMAPPED_CPU || MAP(bo->base.map__cpu) == bo->mem);
 
 	bo->used = size;

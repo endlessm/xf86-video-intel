@@ -760,6 +760,16 @@ if test "x$RENDERNODE" = "xyes"; then
 	xp_msg="$xp_msg rendernode"
 fi
 
+AC_ARG_ENABLE(wc-mmap,
+	      AS_HELP_STRING([--enable-wc-map],
+			     [Enable use of WriteCombining mmaps [default=no]]),
+	      [WC_MMAP="$enableval"],
+	      [WC_MMAP="no"])
+if test "x$WC_MMAP" = "xyes"; then
+	AC_DEFINE(USE_WC_MMAP,1,[Enable use of WriteCombining mmaps])
+	xp_msg="$xp_msg mmap(wc)"
+fi
+
 AC_ARG_ENABLE(create2,
 	      AS_HELP_STRING([--enable-create2],
 			     [Enable use of create2 ioctl (experimental) [default=no]]),

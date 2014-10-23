@@ -4588,7 +4588,7 @@ can_create_upload_tiled_x(struct sna *sna,
 	if (sna->kgem.has_llc)
 		return true;
 
-	if (sna_pixmap_default_tiling(sna, pixmap))
+	if (!sna->kgem.has_wc_mmap && sna_pixmap_default_tiling(sna, pixmap))
 		return false;
 
 	return true;
@@ -4608,11 +4608,19 @@ create_upload_tiled_x(struct sna *sna,
 	assert(priv->gpu_bo == NULL);
 	assert(priv->gpu_damage == NULL);
 
-	create = CREATE_CPU_MAP | CREATE_INACTIVE;
-	if (!sna->kgem.has_llc)
-		create |= CREATE_CACHED;
+	if (sna->kgem.has_llc)
+		create = CREATE_CPU_MAP | CREATE_INACTIVE;
+	else if (sna->kgem.has_wc_mmap)
+		create = CREATE_GTT_MAP | CREATE_INACTIVE;
+	else
+		create = CREATE_CPU_MAP | CREATE_INACTIVE | CREATE_CACHED;
 
 	return sna_pixmap_alloc_gpu(sna, pixmap, priv, create);
+}
+
+static bool can_upload__tiled_x(struct kgem *kgem, struct kgem_bo *bo)
+{
+	return kgem_bo_can_map__cpu(kgem, bo, true) || kgem->has_wc_mmap;
 }
 
 static bool
@@ -4625,7 +4633,7 @@ try_upload__tiled_x(PixmapPtr pixmap, RegionRec *region,
 	uint8_t *dst;
 	int n;
 
-	if (!kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, true)) {
+	if (!can_upload__tiled_x(&sna->kgem, priv->gpu_bo)) {
 		DBG(("%s: no, cannot map through the CPU\n", __FUNCTION__));
 		return false;
 	}
@@ -4638,11 +4646,19 @@ try_upload__tiled_x(PixmapPtr pixmap, RegionRec *region,
 	    __kgem_bo_is_busy(&sna->kgem, priv->gpu_bo))
 		return false;
 
-	dst = kgem_bo_map__cpu(&sna->kgem, priv->gpu_bo);
-	if (dst == NULL)
-		return false;
+	if (kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, true)) {
+		dst = kgem_bo_map__cpu(&sna->kgem, priv->gpu_bo);
+		if (dst == NULL)
+			return false;
 
-	kgem_bo_sync__cpu(&sna->kgem, priv->gpu_bo);
+		kgem_bo_sync__cpu(&sna->kgem, priv->gpu_bo);
+	} else {
+		dst = kgem_bo_map__wc(&sna->kgem, priv->gpu_bo);
+		if (dst == NULL)
+			return false;
+
+		kgem_bo_sync__gtt(&sna->kgem, priv->gpu_bo);
+	}
 
 	box = region_rects(region);
 	n = region_num_rects(region);
@@ -4712,12 +4728,14 @@ try_upload__tiled_x(PixmapPtr pixmap, RegionRec *region,
 		} while (--n);
 
 		if (!priv->shm) {
-			assert(dst == MAP(priv->gpu_bo->map__cpu));
 			pixmap->devPrivate.ptr = dst;
 			pixmap->devKind = priv->gpu_bo->pitch;
-			priv->mapped = MAPPED_CPU;
+			if (dst == MAP(priv->gpu_bo->map__cpu)) {
+				priv->mapped = MAPPED_CPU;
+				priv->cpu = true;
+			} else
+				priv->mapped = MAPPED_GTT;
 			assert_pixmap_map(pixmap, priv);
-			priv->cpu = true;
 		}
 	}
 
@@ -6129,7 +6147,7 @@ upload_inplace:
 		return false;
 	}
 
-	if (!kgem_bo_can_map__cpu(&sna->kgem, dst_priv->gpu_bo, true) ||
+	if (!can_upload__tiled_x(&sna->kgem, dst_priv->gpu_bo) ||
 	    __kgem_bo_is_busy(&sna->kgem, dst_priv->gpu_bo)) {
 		if (replaces && !dst_priv->pinned) {
 			unsigned create;
@@ -6156,7 +6174,7 @@ upload_inplace:
 			return false;
 		}
 
-		if (!kgem_bo_can_map__cpu(&sna->kgem, dst_priv->gpu_bo, true)) {
+		if (!can_upload__tiled_x(&sna->kgem, dst_priv->gpu_bo)) {
 			DBG(("%s - no, cannot map dst for reads into the CPU\n", __FUNCTION__));
 			return false;
 		}
@@ -6169,13 +6187,23 @@ upload_inplace:
 		return false;
 	}
 
-	ptr = kgem_bo_map__cpu(&sna->kgem, dst_priv->gpu_bo);
-	if (ptr == NULL) {
-		DBG(("%s - no, map failed\n", __FUNCTION__));
-		return false;
-	}
+	if (kgem_bo_can_map__cpu(&sna->kgem, dst_priv->gpu_bo, true)) {
+		ptr = kgem_bo_map__cpu(&sna->kgem, dst_priv->gpu_bo);
+		if (ptr == NULL) {
+			DBG(("%s - no, map failed\n", __FUNCTION__));
+			return false;
+		}
 
-	kgem_bo_sync__cpu(&sna->kgem, dst_priv->gpu_bo);
+		kgem_bo_sync__cpu(&sna->kgem, dst_priv->gpu_bo);
+	} else {
+		ptr = kgem_bo_map__wc(&sna->kgem, dst_priv->gpu_bo);
+		if (ptr == NULL) {
+			DBG(("%s - no, map failed\n", __FUNCTION__));
+			return false;
+		}
+
+		kgem_bo_sync__gtt(&sna->kgem, dst_priv->gpu_bo);
+	}
 
 	if (!DAMAGE_IS_ALL(dst_priv->gpu_damage)) {
 		assert(!dst_priv->clear);

@@ -675,7 +675,8 @@ void sna_pixmap_destroy(PixmapPtr pixmap);
 
 #define assert_pixmap_map(pixmap, priv)  do { \
 	assert(priv->mapped != MAPPED_NONE || pixmap->devPrivate.ptr == PTR(priv->ptr)); \
-	assert(priv->mapped == MAPPED_NONE || pixmap->devPrivate.ptr == (priv->mapped == MAPPED_CPU ? MAP(priv->gpu_bo->map__cpu) : MAP(priv->gpu_bo->map__gtt))); \
+	assert(priv->mapped != MAPPED_CPU || pixmap->devPrivate.ptr == MAP(priv->gpu_bo->map__cpu)); \
+	assert(priv->mapped != MAPPED_GTT || pixmap->devPrivate.ptr == priv->gpu_bo->map__gtt || pixmap->devPrivate.ptr == priv->gpu_bo->map__wc); \
 } while (0)
 
 static inline void sna_pixmap_unmap(PixmapPtr pixmap, struct sna_pixmap *priv)

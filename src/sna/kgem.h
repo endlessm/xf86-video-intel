@@ -62,6 +62,7 @@ struct kgem_bo {
 
 	void *map__cpu;
 	void *map__gtt;
+	void *map__wc;
 #define MAP(ptr) ((void*)((uintptr_t)(ptr) & ~3))
 
 	struct kgem_bo_binding {
@@ -192,6 +193,7 @@ struct kgem {
 	uint32_t has_wt :1;
 	uint32_t has_no_reloc :1;
 	uint32_t has_handle_lut :1;
+	uint32_t has_wc_mmap :1;
 
 	uint32_t can_blt_cpu :1;
 	uint32_t can_render_y :1;
@@ -504,6 +506,7 @@ uint64_t kgem_add_reloc64(struct kgem *kgem,
 void *kgem_bo_map(struct kgem *kgem, struct kgem_bo *bo);
 void *kgem_bo_map__async(struct kgem *kgem, struct kgem_bo *bo);
 void *kgem_bo_map__gtt(struct kgem *kgem, struct kgem_bo *bo);
+void *kgem_bo_map__wc(struct kgem *kgem, struct kgem_bo *bo);
 void kgem_bo_sync__gtt(struct kgem *kgem, struct kgem_bo *bo);
 void *kgem_bo_map__debug(struct kgem *kgem, struct kgem_bo *bo);
 void *kgem_bo_map__cpu(struct kgem *kgem, struct kgem_bo *bo);
@@ -715,13 +718,16 @@ static inline bool kgem_bo_mapped(struct kgem *kgem, struct kgem_bo *bo)
 	if (bo->tiling == I915_TILING_NONE && (bo->domain == DOMAIN_CPU || kgem->has_llc))
 		return bo->map__cpu != NULL;
 
+	if (bo->tiling == I915_TILING_NONE && bo->map__wc)
+		return true;
+
 	return bo->map__gtt != NULL;
 }
 
 static inline bool kgem_bo_can_map(struct kgem *kgem, struct kgem_bo *bo)
 {
-	DBG(("%s: handle=%d, map=%p:%p, tiling=%d, domain=%d, offset=%ld\n",
-	     __FUNCTION__, bo->handle, bo->map__gtt, bo->map__cpu, bo->tiling, bo->domain, (long)bo->presumed_offset));
+	DBG(("%s: handle=%d, map=%p:%p:%p, tiling=%d, domain=%d, offset=%ld\n",
+	     __FUNCTION__, bo->handle, bo->map__gtt, bo->map__wc, bo->map__cpu, bo->tiling, bo->domain, (long)bo->presumed_offset));
 
 	if (!bo->tiling && (kgem->has_llc || bo->domain == DOMAIN_CPU))
 		return true;
@@ -733,6 +739,9 @@ static inline bool kgem_bo_can_map(struct kgem *kgem, struct kgem_bo *bo)
 
 	if (kgem->gen == 021 && bo->tiling == I915_TILING_Y)
 		return false;
+
+	if (!bo->tiling && kgem->has_wc_mmap)
+		return true;
 
 	return __kgem_bo_num_pages(bo) <= kgem->aperture_mappable / 4;
 }
