@@ -1232,10 +1232,13 @@ err:
 
 static void kgem_init_swizzling(struct kgem *kgem)
 {
-	struct drm_i915_gem_get_tiling tiling;
-
-	if (kgem->gen < 050) /* bit17 swizzling :( */
-		return;
+	struct local_i915_gem_get_tiling_v2 {
+		uint32_t handle;
+		uint32_t tiling_mode;
+		uint32_t swizzle_mode;
+		uint32_t phys_swizzle_mode;
+	} tiling;
+#define LOCAL_IOCTL_I915_GEM_GET_TILING DRM_IOWR (DRM_COMMAND_BASE + DRM_I915_GEM_GET_TILING, struct local_i915_gem_get_tiling_v2)
 
 	VG_CLEAR(tiling);
 	tiling.handle = gem_create(kgem->fd, 1);
@@ -1245,7 +1248,10 @@ static void kgem_init_swizzling(struct kgem *kgem)
 	if (!gem_set_tiling(kgem->fd, tiling.handle, I915_TILING_X, 512))
 		goto out;
 
-	if (do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_GET_TILING, &tiling))
+	if (do_ioctl(kgem->fd, LOCAL_IOCTL_I915_GEM_GET_TILING, &tiling))
+		goto out;
+
+	if (kgem->gen < 50 && tiling.phys_swizzle_mode != tiling.swizzle_mode)
 		goto out;
 
 	choose_memcpy_tiled_x(kgem, tiling.swizzle_mode);
