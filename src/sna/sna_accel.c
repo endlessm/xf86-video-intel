@@ -1398,9 +1398,9 @@ void sna_add_flush_pixmap(struct sna *sna,
 	assert(priv->gpu_damage == NULL || priv->gpu_bo);
 	list_move(&priv->flush_list, &sna->flush_pixmaps);
 
-	if (bo->exec == NULL && kgem_is_idle(&sna->kgem)) {
-		DBG(("%s: new flush bo, flushin before\n", __FUNCTION__));
-		kgem_submit(&sna->kgem);
+	if (bo->exec == NULL && sna->kgem.nbatch && kgem_is_idle(&sna->kgem)) {
+		DBG(("%s: new flush bo, flushing before\n", __FUNCTION__));
+		_kgem_submit(&sna->kgem);
 	}
 }
 

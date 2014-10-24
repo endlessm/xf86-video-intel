@@ -155,6 +155,7 @@ struct kgem {
 	struct list batch_buffers, active_buffers;
 
 	struct list requests[2];
+	struct kgem_request *fence[2];
 	struct kgem_request *next_request;
 	struct kgem_request static_request;
 

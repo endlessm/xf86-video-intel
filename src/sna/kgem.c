@@ -2523,6 +2523,9 @@ static bool __kgem_retire_rq(struct kgem *kgem, struct kgem_request *rq)
 	     __FUNCTION__, rq->bo->handle));
 	assert(RQ(rq->bo->rq) == rq);
 
+	if (rq == kgem->fence[rq->ring])
+		kgem->fence[rq->ring] = NULL;
+
 	while (!list_is_empty(&rq->buffers)) {
 		struct kgem_bo *bo;
 
@@ -2653,21 +2656,50 @@ bool __kgem_ring_is_idle(struct kgem *kgem, int ring)
 	assert(ring < ARRAY_SIZE(kgem->requests));
 	assert(!list_is_empty(&kgem->requests[ring]));
 
+	rq = kgem->fence[ring];
+	if (rq) {
+		struct kgem_request *tmp;
+
+		if (__kgem_busy(kgem, rq->bo->handle)) {
+			DBG(("%s: last fence handle=%d still busy\n",
+			     __FUNCTION__, rq->bo->handle));
+			return false;
+		}
+
+		do {
+			tmp = list_first_entry(&kgem->requests[ring],
+					       struct kgem_request,
+					       list);
+			assert(tmp->ring == ring);
+			__kgem_retire_rq(kgem, tmp);
+		} while (tmp != rq);
+
+		assert(kgem->fence[ring] == NULL);
+		if (list_is_empty(&kgem->requests[ring]))
+			return true;
+	}
+
 	rq = list_last_entry(&kgem->requests[ring],
 			     struct kgem_request, list);
 	assert(rq->ring == ring);
 	if (__kgem_busy(kgem, rq->bo->handle)) {
 		DBG(("%s: last requests handle=%d still busy\n",
 		     __FUNCTION__, rq->bo->handle));
+		kgem->fence[ring] = rq;
 		return false;
 	}
 
 	DBG(("%s: ring=%d idle (handle=%d)\n",
 	     __FUNCTION__, ring, rq->bo->handle));
 
-	kgem_retire__requests_ring(kgem, ring);
+	while (!list_is_empty(&kgem->requests[ring])) {
+		rq = list_first_entry(&kgem->requests[ring],
+				      struct kgem_request,
+				      list);
+		assert(rq->ring == ring);
+		__kgem_retire_rq(kgem, rq);
+	}
 
-	assert(list_is_empty(&kgem->requests[ring]));
 	return true;
 }
 
