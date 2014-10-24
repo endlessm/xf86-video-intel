@@ -553,8 +553,8 @@ polygon_add_edge(struct polygon *polygon,
 		       edge->p2.x - edge->p1.x,
 		       edge->p2.y - edge->p1.y));
 
-		Ex = (int64_t)(edge->p2.x - edge->p1.x) * SAMPLES_X;
-		Ey = (int64_t)(edge->p2.y - edge->p1.y) * SAMPLES_Y * (2 << 16);
+		Ex = ((int64_t)edge->p2.x - edge->p1.x) * SAMPLES_X;
+		Ey = ((int64_t)edge->p2.y - edge->p1.y) * SAMPLES_Y * (2 << 16);
 		assert(Ey > 0);
 		e->dxdy.quo = Ex * (2 << 16) / Ey;
 		e->dxdy.rem = Ex * (2 << 16) % Ey;
@@ -663,8 +663,8 @@ polygon_add_line(struct polygon *polygon,
 		       p2->x - p1->x,
 		       p2->y - p1->y));
 
-		Ex = (int64_t)(p2->x - p1->x) * SAMPLES_X;
-		Ey = (int64_t)(p2->y - p1->y) * SAMPLES_Y * (2 << 16);
+		Ex = ((int64_t)p2->x - p1->x) * SAMPLES_X;
+		Ey = ((int64_t)p2->y - p1->y) * SAMPLES_Y * (2 << 16);
 		e->dxdy.quo = Ex * (2 << 16) / Ey;
 		e->dxdy.rem = Ex * (2 << 16) % Ey;
 
