@@ -436,10 +436,6 @@ static void *__kgem_bo_map__gtt(struct kgem *kgem, struct kgem_bo *bo)
 
 	DBG(("%s(handle=%d, size=%d)\n", __FUNCTION__,
 	     bo->handle, bytes(bo)));
-	assert(bo->proxy == NULL);
-	assert(!bo->snoop);
-	assert(num_pages(bo) <= kgem->aperture_mappable / 2);
-	assert(kgem->gen != 021 || bo->tiling != I915_TILING_Y);
 
 	VG_CLEAR(gtt);
 retry_gtt:
@@ -492,8 +488,6 @@ static void *__kgem_bo_map__wc(struct kgem *kgem, struct kgem_bo *bo)
 
 	DBG(("%s(handle=%d, size=%d)\n", __FUNCTION__,
 	     bo->handle, bytes(bo)));
-	assert(bo->proxy == NULL);
-	assert(!bo->snoop);
 	assert(kgem->has_wc_mmap);
 
 	VG_CLEAR(wc);
@@ -6136,9 +6130,16 @@ static void *__kgem_bo_map__gtt_or_wc(struct kgem *kgem, struct kgem_bo *bo)
 	void *ptr;
 
 	DBG(("%s: handle=%d\n", __FUNCTION__, bo->handle));
+
+	assert(bo->proxy == NULL);
+	assert(!bo->snoop);
+
 	kgem_trim_vma_cache(kgem, MAP_GTT, bucket(bo));
 
 	if (bo->tiling || !kgem->has_wc_mmap) {
+		assert(num_pages(bo) <= kgem->aperture_mappable / 2);
+		assert(kgem->gen != 021 || bo->tiling != I915_TILING_Y);
+
 		ptr = bo->map__gtt;
 		if (ptr == NULL)
 			ptr = __kgem_bo_map__gtt(kgem, bo);
@@ -6250,27 +6251,10 @@ void *kgem_bo_map__wc(struct kgem *kgem, struct kgem_bo *bo)
 	return __kgem_bo_map__wc(kgem, bo);
 }
 
-void *kgem_bo_map__debug(struct kgem *kgem, struct kgem_bo *bo)
-{
-	return kgem_bo_map__async(kgem, bo);
-}
-
-void *kgem_bo_map__cpu(struct kgem *kgem, struct kgem_bo *bo)
+static void *__kgem_bo_map__cpu(struct kgem *kgem, struct kgem_bo *bo)
 {
 	struct drm_i915_gem_mmap mmap_arg;
 	int err;
-
-	DBG(("%s(handle=%d, size=%d, map=%p:%p)\n",
-	     __FUNCTION__, bo->handle, bytes(bo), bo->map__gtt, bo->map__cpu));
-	assert(!bo->purged);
-	assert(list_is_empty(&bo->list));
-	assert(bo->proxy == NULL);
-	assert_tiling(kgem, bo);
-
-	if (bo->map__cpu)
-		return MAP(bo->map__cpu);
-
-	kgem_trim_vma_cache(kgem, MAP_CPU, bucket(bo));
 
 retry:
 	VG_CLEAR(mmap_arg);
@@ -6296,6 +6280,45 @@ retry:
 	DBG(("%s: caching CPU vma for %d\n", __FUNCTION__, bo->handle));
 	return bo->map__cpu = (void *)(uintptr_t)mmap_arg.addr_ptr;
 }
+
+void *kgem_bo_map__cpu(struct kgem *kgem, struct kgem_bo *bo)
+{
+	DBG(("%s(handle=%d, size=%d, map=%p:%p)\n",
+	     __FUNCTION__, bo->handle, bytes(bo), bo->map__gtt, bo->map__cpu));
+	assert(!bo->purged);
+	assert(list_is_empty(&bo->list));
+	assert(bo->proxy == NULL);
+	assert_tiling(kgem, bo);
+
+	if (bo->map__cpu)
+		return MAP(bo->map__cpu);
+
+	kgem_trim_vma_cache(kgem, MAP_CPU, bucket(bo));
+
+	return __kgem_bo_map__cpu(kgem, bo);
+}
+
+void *kgem_bo_map__debug(struct kgem *kgem, struct kgem_bo *bo)
+{
+	void *ptr;
+
+	if (bo->tiling == I915_TILING_NONE && kgem->has_llc) {
+		ptr = MAP(bo->map__cpu);
+		if (ptr == NULL)
+			ptr = __kgem_bo_map__cpu(kgem, bo);
+	} else if (bo->tiling || !kgem->has_wc_mmap) {
+		ptr = bo->map__gtt;
+		if (ptr == NULL)
+			ptr = __kgem_bo_map__gtt(kgem, bo);
+	} else {
+		ptr = bo->map__wc;
+		if (ptr == NULL)
+			ptr = __kgem_bo_map__wc(kgem, bo);
+	}
+
+	return ptr;
+}
+
 
 uint32_t kgem_bo_flink(struct kgem *kgem, struct kgem_bo *bo)
 {
