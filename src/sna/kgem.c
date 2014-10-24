@@ -1260,36 +1260,47 @@ static void kgem_fixup_relocs(struct kgem *kgem, struct kgem_bo *bo, int shrink)
 	bo->target_handle = kgem->has_handle_lut ? kgem->nexec : bo->handle;
 
 	assert(kgem->nreloc__self <= 256);
-	if (kgem->nreloc__self) {
-		DBG(("%s: fixing up %d%s self-relocations\n",
-		     __FUNCTION__, kgem->nreloc__self,
-		     kgem->nreloc__self == 256 ? "+" : ""));
-		for (n = 0; n < kgem->nreloc__self; n++) {
-			int i = kgem->reloc__self[n];
-			uint32_t *b;
+	if (kgem->nreloc__self == 0)
+		return;
 
-			assert(kgem->reloc[i].target_handle == ~0U);
-			kgem->reloc[i].target_handle = bo->target_handle;
-			kgem->reloc[i].presumed_offset = bo->presumed_offset;
+	DBG(("%s: fixing up %d%s self-relocations to handle=%p, presumed-offset=%llx\n",
+	     __FUNCTION__, kgem->nreloc__self,
+	     kgem->nreloc__self == 256 ? "+" : "",
+	     bo->handle, (long long)bo->presumed_offset));
+	for (n = 0; n < kgem->nreloc__self; n++) {
+		int i = kgem->reloc__self[n];
 
-			b = &kgem->batch[kgem->reloc[i].offset/sizeof(*b)];
-			*b = kgem->reloc[i].delta + bo->presumed_offset;
-			if (kgem->reloc[i].read_domains == I915_GEM_DOMAIN_INSTRUCTION)
-				*b -= shrink;
+		assert(kgem->reloc[i].target_handle == ~0U);
+		kgem->reloc[i].target_handle = bo->target_handle;
+		kgem->reloc[i].presumed_offset = bo->presumed_offset;
+
+		if (kgem->reloc[i].read_domains == I915_GEM_DOMAIN_INSTRUCTION) {
+			DBG(("%s: moving base of self-reloc[%d:%d] %d -> %d\n",
+			     __FUNCTION__, n, i,
+			     kgem->reloc[i].delta,
+			     kgem->reloc[i].delta - shrink));
+
+			kgem->reloc[i].delta -= shrink;
 		}
+		kgem->batch[kgem->reloc[i].offset/sizeof(uint32_t)] =
+			kgem->reloc[i].delta + bo->presumed_offset;
+	}
 
-		if (n == 256) {
-			for (n = kgem->reloc__self[255]; n < kgem->nreloc; n++) {
-				if (kgem->reloc[n].target_handle == ~0U) {
-					uint32_t *b;
-					kgem->reloc[n].target_handle = bo->target_handle;
-					kgem->reloc[n].presumed_offset = bo->presumed_offset;
+	if (n == 256) {
+		for (n = kgem->reloc__self[255]; n < kgem->nreloc; n++) {
+			if (kgem->reloc[n].target_handle == ~0U) {
+				kgem->reloc[n].target_handle = bo->target_handle;
+				kgem->reloc[n].presumed_offset = bo->presumed_offset;
 
-					b = &kgem->batch[kgem->reloc[n].offset/sizeof(*b)];
-					*b = kgem->reloc[n].delta + bo->presumed_offset;
-					if (kgem->reloc[n].read_domains == I915_GEM_DOMAIN_INSTRUCTION)
-						*b -= shrink;
+				if (kgem->reloc[n].read_domains == I915_GEM_DOMAIN_INSTRUCTION) {
+					DBG(("%s: moving base of reloc[%d] %d -> %d\n",
+					     __FUNCTION__, n,
+					     kgem->reloc[n].delta,
+					     kgem->reloc[n].delta - shrink));
+					kgem->reloc[n].delta -= shrink;
 				}
+				kgem->batch[kgem->reloc[n].offset/sizeof(uint32_t)] =
+					kgem->reloc[n].delta + bo->presumed_offset;
 			}
 		}
 	}
