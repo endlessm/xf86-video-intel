@@ -41,7 +41,7 @@
 
 struct quorem {
 	int32_t quo;
-	int32_t rem;
+	int64_t rem;
 };
 
 struct mono_edge {
@@ -50,7 +50,7 @@ struct mono_edge {
 	int32_t height_left;
 	int32_t dir;
 
-	int32_t dy;
+	int64_t dy;
 	struct quorem x;
 	struct quorem dxdy;
 };
@@ -241,8 +241,8 @@ mono_add_line(struct mono *mono,
 		e->dxdy.rem = 0;
 		e->dy = 0;
 	} else {
-		int32_t dx = p2->x - p1->x;
-		int32_t dy = p2->y - p1->y;
+		int64_t dx = (int64_t)p2->x - p1->x;
+		int64_t dy = (int64_t)p2->y - p1->y;
 
 		__DBG(("%s: diagonal edge (%d, %d), x:[%d, %d]\n", __FUNCTION__, dx, dy, I(p1->x), I(p2->x)));
 		assert(dy > 0);
@@ -364,8 +364,10 @@ static struct mono_edge *mono_filter(struct mono_edge *edges)
 		struct mono_edge *n = e->next;
 		if (e->dir == -n->dir &&
 		    e->height_left == n->height_left &&
-		    *(uint64_t *)&e->x == *(uint64_t *)&n->x &&
-		    *(uint64_t *)&e->dxdy == *(uint64_t *)&n->dxdy) {
+		    e->x.quo == n->x.quo &&
+		    e->x.rem == n->x.rem &&
+		    e->dxdy.quo == n->dxdy.quo &&
+		    e->dxdy.rem == n->dxdy.rem) {
 			if (e->prev)
 				e->prev->next = n->next;
 			else
