@@ -4395,6 +4395,7 @@ static bool must_check sna_gc_move_to_cpu(GCPtr gc,
 	sgc->priv = gc->pCompositeClip;
 	gc->pCompositeClip = region;
 
+#if XORG_VERSION_CURRENT < XORG_VERSION_NUMERIC(1,16,99,901,0)
 	if (gc->clientClipType == CT_PIXMAP) {
 		PixmapPtr clip = gc->clientClip;
 		gc->clientClip = region_from_bitmap(gc->pScreen, clip);
@@ -4403,6 +4404,9 @@ static bool must_check sna_gc_move_to_cpu(GCPtr gc,
 		changes |= GCClipMask;
 	} else
 		changes &= ~GCClipMask;
+#else
+	changes &= ~GCClipMask;
+#endif
 
 	if (changes || drawable->serialNumber != (sgc->serial & DRAWABLE_SERIAL_BITS)) {
 		long tmp = gc->serialNumber;
@@ -6862,6 +6866,15 @@ static inline bool box_equal(const BoxRec *a, const BoxRec *b)
 	return *(const uint64_t *)a == *(const uint64_t *)b;
 }
 
+static inline bool has_clip(GCPtr gc)
+{
+#if XORG_VERSION_CURRENT < XORG_VERSION_NUMERIC(1,16,99,901,0)
+	return gc->clientClipType != CT_NONE;
+#else
+	return gc->clientClip != NULL;
+#endif
+}
+
 static RegionPtr
 sna_do_copy(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	    int sx, int sy,
@@ -6948,7 +6961,7 @@ sna_do_copy(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 
 	/* Compute source clip region */
 	if (src->type == DRAWABLE_PIXMAP) {
-		if (src == dst && gc->clientClipType == CT_NONE) {
+		if (src == dst && !has_clip(gc)) {
 			DBG(("%s: pixmap -- using gc clip\n", __FUNCTION__));
 			clip = gc->pCompositeClip;
 		} else {
@@ -16622,7 +16635,7 @@ sna_validate_gc(GCPtr gc, unsigned long changes, DrawablePtr drawable)
 
 	if (changes & (GCClipMask|GCSubwindowMode) ||
 	    drawable->serialNumber != (gc->serialNumber & DRAWABLE_SERIAL_BITS) ||
-	    (gc->clientClipType != CT_NONE && (changes & (GCClipXOrigin | GCClipYOrigin)))) {
+	    (has_clip(gc) && (changes & (GCClipXOrigin | GCClipYOrigin)))) {
 		DBG(("%s: recomputing clip\n", __FUNCTION__));
 		miComputeCompositeClip(gc, drawable);
 		DBG(("%s: composite clip=%dx[(%d, %d), (%d, %d)] [%p]\n",
