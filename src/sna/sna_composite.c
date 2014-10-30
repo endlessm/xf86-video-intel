@@ -132,7 +132,7 @@ picture_has_clip(PicturePtr p)
 }
 
 static inline bool
-clip_to_src(RegionPtr region, PicturePtr p, int dx, int	 dy)
+clip_to_src(RegionPtr region, PicturePtr p, int dx, int dy)
 {
 	bool result;
 
