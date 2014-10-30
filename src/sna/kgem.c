@@ -2551,6 +2551,7 @@ static bool __kgem_retire_rq(struct kgem *kgem, struct kgem_request *rq)
 		}
 
 		bo->domain = DOMAIN_NONE;
+		bo->gtt_dirty = false;
 		bo->rq = NULL;
 		if (bo->refcnt)
 			continue;
@@ -2701,6 +2702,21 @@ bool __kgem_ring_is_idle(struct kgem *kgem, int ring)
 	}
 
 	return true;
+}
+
+void __kgem_retire_requests_upto(struct kgem *kgem, struct kgem_request *rq)
+{
+	struct list *requests = &kgem->requests[RQ_RING(rq) == I915_EXEC_BLT];
+	struct kgem_request *tmp;
+
+	rq = RQ(rq);
+	assert(rq != &kgem->static_request);
+
+	do {
+		tmp = list_first_entry(requests, struct kgem_request, list);
+		assert(tmp->ring == rq->ring);
+		__kgem_retire_rq(kgem, tmp);
+	} while (tmp != rq);
 }
 
 #if 0
