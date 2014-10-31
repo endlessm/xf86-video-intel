@@ -1247,8 +1247,8 @@ static void wm_projective_st(struct brw_compile *p, int dw,
 		 brw_vec8_grf(2, 0));
 	gen8_PLN(p,
 		 brw_vec8_grf(28, 0),
-		 brw_vec1_grf(uv, 0),
-		 brw_vec8_grf(4, 0));
+		 brw_vec1_grf(uv, 4),
+		 brw_vec8_grf(2, 0));
 
 	gen8_MUL(p,
 		 brw_message_reg(msg),
