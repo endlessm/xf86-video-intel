@@ -755,7 +755,7 @@ gen6_emit_drawing_rectangle(struct sna *sna,
 	OUT_BATCH(0);
 
 	DBG(("%s: offset=(%d, %d), limit=(%d, %d)\n",
-	     __FUNCTION__, op->dst.x, op->dst.y, op->dst.width, op->dst.width));
+	     __FUNCTION__, op->dst.x, op->dst.y, op->dst.width, op->dst.height));
 	OUT_BATCH(GEN6_3DSTATE_DRAWING_RECTANGLE | (4 - 2));
 	OUT_BATCH(0);
 	OUT_BATCH(limit);

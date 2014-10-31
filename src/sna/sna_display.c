@@ -6604,6 +6604,10 @@ sna_crtc_redisplay__fallback(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo 
 		return;
 	}
 
+	DBG(("%s: dst format=%08x, depth=%d, bpp=%d, pitch=%d, size=%dx%d\n",
+	     __FUNCTION__, format->format, depth, draw->bitsPerPixel,
+	     bo->pitch, crtc->mode.HDisplay, crtc->mode.VDisplay));
+
 	ptr = kgem_bo_map__gtt(&sna->kgem, bo);
 	if (ptr == NULL)
 		return;
@@ -6627,7 +6631,7 @@ sna_crtc_redisplay__fallback(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo 
 	if (error)
 		goto free_src;
 
-	if (crtc->filter)
+	if (crtc->filter && crtc->transform_in_use)
 		SetPicturePictFilter(src, crtc->filter,
 				     crtc->params, crtc->nparams);
 
@@ -6693,6 +6697,10 @@ sna_crtc_redisplay__composite(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo
 		return;
 	}
 
+	DBG(("%s: dst format=%08x, depth=%d, bpp=%d, pitch=%d, size=%dx%d\n",
+	     __FUNCTION__, format->format, depth, draw->bitsPerPixel,
+	     bo->pitch, crtc->mode.HDisplay, crtc->mode.VDisplay));
+
 	pixmap = sna_pixmap_create_unattached(screen, 0, 0, depth);
 	if (pixmap == NullPixmap)
 		return;
@@ -6717,7 +6725,7 @@ sna_crtc_redisplay__composite(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo
 	if (error)
 		goto free_src;
 
-	if (crtc->filter)
+	if (crtc->filter && crtc->transform_in_use)
 		SetPicturePictFilter(src, crtc->filter,
 				     crtc->params, crtc->nparams);
 
