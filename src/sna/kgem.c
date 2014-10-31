@@ -2704,13 +2704,17 @@ bool __kgem_ring_is_idle(struct kgem *kgem, int ring)
 	return true;
 }
 
-void __kgem_retire_requests_upto(struct kgem *kgem, struct kgem_request *rq)
+void __kgem_retire_requests_upto(struct kgem *kgem, struct kgem_bo *bo)
 {
+	struct kgem_request *rq = bo->rq, *tmp;
 	struct list *requests = &kgem->requests[RQ_RING(rq) == I915_EXEC_BLT];
-	struct kgem_request *tmp;
 
 	rq = RQ(rq);
 	assert(rq != &kgem->static_request);
+	if (rq == (struct kgem_request *)kgem) {
+		__kgem_bo_clear_busy(bo);
+		return;
+	}
 
 	do {
 		tmp = list_first_entry(requests, struct kgem_request, list);
