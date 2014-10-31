@@ -1467,11 +1467,11 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 	if (!is_hw_supported(kgem, dev)) {
 		xf86DrvMsg(kgem_get_screen_index(kgem), X_WARNING,
 			   "Detected unsupported/dysfunctional hardware, disabling acceleration.\n");
-		kgem->wedged = 1;
+		__kgem_set_wedged(kgem);
 	} else if (__kgem_throttle(kgem, false)) {
 		xf86DrvMsg(kgem_get_screen_index(kgem), X_WARNING,
 			   "Detected a hung GPU, disabling acceleration.\n");
-		kgem->wedged = 1;
+		__kgem_set_wedged(kgem);
 	}
 
 	kgem->batch_size = UINT16_MAX & ~7;
@@ -1489,7 +1489,7 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 	if (!kgem_init_pinned_batches(kgem) && gen == 020) {
 		xf86DrvMsg(kgem_get_screen_index(kgem), X_WARNING,
 			   "Unable to reserve memory for GPU, disabling acceleration.\n");
-		kgem->wedged = 1;
+		__kgem_set_wedged(kgem);
 	}
 
 	DBG(("%s: maximum batch size? %d\n", __FUNCTION__,

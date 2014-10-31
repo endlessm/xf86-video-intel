@@ -17711,6 +17711,9 @@ static bool sna_option_accel_none(struct sna *sna)
 {
 	const char *s;
 
+	if (wedged(sna))
+		return true;
+
 	if (xf86ReturnOptValBool(sna->Options, OPTION_ACCEL_DISABLE, FALSE))
 		return true;
 
@@ -17812,6 +17815,7 @@ bool sna_accel_init(ScreenPtr screen, struct sna *sna)
 	if (sna_option_accel_none(sna)) {
 		backend = "disabled";
 		sna->kgem.wedged = true;
+		sna_render_mark_wedged(sna);
 	} else if (sna_option_accel_blt(sna) || sna->info->gen >= 0110)
 		(void)backend;
 	else if (sna->info->gen >= 0100)
