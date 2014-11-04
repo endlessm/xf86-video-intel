@@ -1100,7 +1100,7 @@ sna_screen_init(SCREEN_INIT_ARGS_DECL)
 	if (!sna_register_all_privates())
 		return FALSE;
 
-	scrn->videoRam = sna->kgem.aperture_mappable / 1024;
+	scrn->videoRam = sna->kgem.aperture_mappable * 4; /* Page to KiB */
 
 	miClearVisualTypes();
 	if (!miSetVisualTypes(scrn->depth,
