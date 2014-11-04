@@ -1059,12 +1059,6 @@ static void sna_dri_init(struct sna *sna, ScreenPtr screen)
 			   "direct rendering: %senabled\n", str);
 }
 
-static size_t
-agp_aperture_size(struct pci_device *dev, int gen)
-{
-	return dev->regions[gen < 030 ? 0 : 2].size;
-}
-
 static Bool
 sna_mode_init(struct sna *sna, ScreenPtr screen)
 {
@@ -1089,7 +1083,6 @@ sna_screen_init(SCREEN_INIT_ARGS_DECL)
 {
 	ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
 	struct sna *sna = to_sna(scrn);
-	struct pci_device *pci;
 	VisualPtr visuals;
 	DepthPtr depths;
 	int nvisuals;
@@ -1107,11 +1100,7 @@ sna_screen_init(SCREEN_INIT_ARGS_DECL)
 	if (!sna_register_all_privates())
 		return FALSE;
 
-	pci = xf86GetPciInfoForEntity(sna->pEnt->index);
-	if (pci != NULL)
-		scrn->videoRam = agp_aperture_size(pci, sna->kgem.gen) / 1024;
-	else
-		scrn->videoRam = 256;
+	scrn->videoRam = sna->kgem.aperture_mappable / 1024;
 
 	miClearVisualTypes();
 	if (!miSetVisualTypes(scrn->depth,
