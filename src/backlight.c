@@ -485,7 +485,8 @@ int backlight_off(struct backlight *b)
 	if (!b->has_power)
 		return 0;
 
-	return __backlight_write(b->iface, "bl_power", "0");
+	/* 4 -> FB_BLANK_POWERDOWN */
+	return __backlight_write(b->iface, "bl_power", "4");
 }
 
 int backlight_on(struct backlight *b)
@@ -496,7 +497,8 @@ int backlight_on(struct backlight *b)
 	if (!b->has_power)
 		return 0;
 
-	return __backlight_write(b->iface, "bl_power", "1");
+	/* 0 -> FB_BLANK_UNBLANK */
+	return __backlight_write(b->iface, "bl_power", "0");
 }
 #endif
 
