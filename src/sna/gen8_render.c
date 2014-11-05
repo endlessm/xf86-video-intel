@@ -962,7 +962,7 @@ gen8_emit_wm(struct sna *sna, int kernel)
 	OUT_BATCH(GEN8_3DSTATE_PS | (12 - 2));
 	OUT_BATCH64(kernels[0] ?: kernels[1] ?: kernels[2]);
 	OUT_BATCH(1 << PS_SAMPLER_COUNT_SHIFT |
-		  //PS_VECTOR_MASK_ENABLE |
+		  PS_VECTOR_MASK_ENABLE |
 		  wm_kernels[kernel].num_surfaces << PS_BINDING_TABLE_ENTRY_COUNT_SHIFT);
 	OUT_BATCH64(0); /* scratch address */
 	OUT_BATCH(PS_MAX_THREADS |
