@@ -339,10 +339,10 @@ AC_ARG_ENABLE(dri2,
 	      [DRI2=$enableval],
 	      [DRI2=yes])
 AC_ARG_ENABLE(dri3,
-	      AS_HELP_STRING([--disable-dri3],
-			     [Disable DRI3 support [[default=yes]]]),
+	      AS_HELP_STRING([--enable-dri3],
+			     [Enable DRI3 support [[default=no]]]),
 	      [DRI3=$enableval],
-	      [DRI3=yes])
+	      [DRI3=no])
 
 AC_ARG_ENABLE(xvmc, AS_HELP_STRING([--disable-xvmc],
                                   [Disable XvMC support [[default=yes]]]),
