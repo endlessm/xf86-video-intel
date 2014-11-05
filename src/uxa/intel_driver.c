@@ -72,7 +72,6 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "intel_uxa.h"
 #endif
 
-#include "intel_glamor.h"
 #include "intel_options.h"
 #include "i915_drm.h"
 
@@ -610,13 +609,6 @@ static Bool I830PreInit(ScrnInfoPtr scrn, int flags)
 		return FALSE;
 	}
 
-	if (!intel_glamor_pre_init(scrn)) {
-		PreInitCleanup(scrn);
-		xf86DrvMsg(scrn->scrnIndex, X_ERROR,
-			"Failed to pre init glamor display.\n");
-		return FALSE;
-	}
-
 	/* Load the dri modules if requested. */
 #if HAVE_DRI2
 	if (intel->dri2 != DRI_DISABLED && !xf86LoadSubModule(scrn, "dri2"))
@@ -964,7 +956,6 @@ I830ScreenInit(SCREEN_INIT_ARGS_DECL)
 	intel->CreateScreenResources = screen->CreateScreenResources;
 	screen->CreateScreenResources = i830CreateScreenResources;
 
-	intel_glamor_init(screen);
 	if (!xf86CrtcScreenInit(screen))
 		return FALSE;
 
@@ -1124,8 +1115,6 @@ static Bool I830CloseScreen(CLOSE_SCREEN_ARGS_DECL)
 	intel_mode_close(intel);
 
 	DeleteCallback(&FlushCallback, intel_flush_callback, scrn);
-
-	intel_glamor_close_screen(screen);
 
 	TimerFree(intel->cache_expire);
 	intel->cache_expire = NULL;

@@ -60,8 +60,6 @@
 #include "intel_uxa.h"
 #endif
 
-#include "intel_glamor.h"
-
 #define KNOWN_MODE_FLAGS ((1<<14)-1)
 
 struct intel_drm_queue {

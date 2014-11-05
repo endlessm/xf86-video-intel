@@ -74,7 +74,6 @@
 #define _INTEL_XVMC_SERVER_
 #include "intel_xvmc.h"
 #endif
-#include "intel_glamor.h"
 
 /* overlay debugging printf function */
 #if 0

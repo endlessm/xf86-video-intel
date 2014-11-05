@@ -137,7 +137,7 @@ void intel_put_device(struct intel_device *dev);
 void intel_detect_chipset(ScrnInfoPtr scrn, struct intel_device *dev);
 
 #define IS_DEFAULT_ACCEL_METHOD(x) ({ \
-	enum { NOACCEL, SNA, UXA, GLAMOR } default_accel_method__ = DEFAULT_ACCEL_METHOD; \
+	enum { NOACCEL, SNA, UXA } default_accel_method__ = DEFAULT_ACCEL_METHOD; \
 	default_accel_method__ == x; \
 })
 

@@ -78,7 +78,6 @@
 #define _INTEL_XVMC_SERVER_
 #include "intel_xvmc.h"
 #endif
-#include "intel_glamor.h"
 #include "intel_uxa.h"
 #include "intel_video_overlay.h"
 
@@ -163,7 +162,7 @@ void intel_video_init(ScreenPtr screen)
 	ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
 	intel_screen_private *intel = intel_get_screen_private(scrn);
 	XF86VideoAdaptorPtr *adaptors = NULL, *newAdaptors = NULL;
-	XF86VideoAdaptorPtr overlayAdaptor = NULL, texturedAdaptor = NULL, glamorAdaptor = NULL;
+	XF86VideoAdaptorPtr overlayAdaptor = NULL, texturedAdaptor = NULL;
 	int num_adaptors = xf86XVListGenericAdaptors(scrn, &adaptors);
 
 	/* Give our adaptor list enough space for the overlay and/or texture video
@@ -213,20 +212,11 @@ void intel_video_init(ScreenPtr screen)
 		}
 	}
 
-	glamorAdaptor = intel_glamor_xv_init(screen, 16);
-	if (glamorAdaptor != NULL)
-		xf86DrvMsg(scrn->scrnIndex, X_INFO,
-			   "Set up textured video using glamor\n");
-
-
 	if (overlayAdaptor && intel->XvPreferOverlay)
 		adaptors[num_adaptors++] = overlayAdaptor;
 
 	if (texturedAdaptor)
 		adaptors[num_adaptors++] = texturedAdaptor;
-
-	if (glamorAdaptor)
-		adaptors[num_adaptors++] = glamorAdaptor;
 
 	if (overlayAdaptor && !intel->XvPreferOverlay)
 		adaptors[num_adaptors++] = overlayAdaptor;

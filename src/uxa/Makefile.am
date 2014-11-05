@@ -34,7 +34,6 @@ libuxa_la_SOURCES = \
 	intel_batchbuffer.h \
 	intel_display.c \
 	intel_driver.c \
-	intel_glamor.h \
 	intel_memory.c \
 	intel_uxa.c \
 	intel_video.c \
@@ -58,20 +57,11 @@ libuxa_la_SOURCES = \
 	uxa.c \
 	uxa.h \
 	uxa-accel.c \
-	uxa-glamor.h \
 	uxa-glyphs.c \
 	uxa-render.c \
 	uxa-priv.h \
 	uxa-unaccel.c
 	$(NULL)
-
-if GLAMOR
-AM_CFLAGS += $(LIBGLAMOR_CFLAGS)
-libuxa_la_LIBADD += $(LIBGLAMOR_LIBS)
-libuxa_la_SOURCES += \
-	 intel_glamor.c \
-	 $(NULL)
-endif
 
 if DRI2
 AM_CFLAGS += $(DRI2_CFLAGS)

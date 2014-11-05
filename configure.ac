@@ -427,31 +427,6 @@ fi
 PKG_CHECK_MODULES(XORG, [xorg-server >= $required_xorg_server_version xproto fontsproto pixman-1 >= $required_pixman_version $REQUIRED_MODULES])
 ABI_VERSION=`$PKG_CONFIG --variable=abi_videodrv xorg-server`
 
-AC_ARG_ENABLE(glamor,
-	      AS_HELP_STRING([--enable-glamor],
-			     [Enable glamor, a new GL-based acceleration [default=no]]),
-	      [GLAMOR="$enableval"],
-	      [GLAMOR="no"])
-if test "x$GLAMOR" != "xno"; then
-	if test "x$UXA" != "xyes"; then
-		AC_MSG_ERROR([Glamor acceleration requested but UXA is not enabled])
-	fi
-	if pkg-config --exists "xorg-server >= 1.15.99.901"; then
-		save_CPPFLAGS=$CPPFLAGS
-		CPPFLAGS="$XORG_CFLAGS"
-		AC_CHECK_HEADER([glamor.h],
-				[GLAMOR="yes (using Xorg glamor module)"],
-				[test "x$GLAMOR" != "xauto" && AC_MSG_ERROR("failed to find required Xorg headers for glamor")
-				GLAMOR="no"], [#include <xorg-server.h>])
-		CPPFLAGS=$save_CPPFLAGS
-	else
-		PKG_CHECK_MODULES(LIBGLAMOR, [glamor >= 0.6.0])
-		PKG_CHECK_MODULES(LIBGLAMOR_EGL, [glamor-egl])
-		GLAMOR="yes (using libglamor)"
-	fi
-	AC_DEFINE(USE_GLAMOR, 1, [Enable glamor acceleration])
-fi
-
 if test "x$ONLY_UMS" = "xyes"; then
 	UMS="yes"
 	KMS="no"
@@ -651,10 +626,6 @@ AC_MSG_CHECKING([whether to include UXA support])
 AC_MSG_RESULT([$UXA])
 AM_CONDITIONAL(UXA, test "x$UXA" != "xno")
 
-AC_MSG_CHECKING([whether to include GLAMOR support])
-AC_MSG_RESULT([$GLAMOR])
-AM_CONDITIONAL(GLAMOR, test "x$GLAMOR" != "xno")
-
 AC_MSG_CHECKING([whether to include SNA support])
 AM_CONDITIONAL(SNA, test "x$SNA" != "xno")
 AC_MSG_RESULT([$SNA])
@@ -675,7 +646,7 @@ fi
 
 AC_ARG_WITH(default-accel,
 	    AS_HELP_STRING([--with-default-accel],
-			   [Select the default acceleration method out of glamor, none, sna, or uxa  [default is sna if enabled, otherwise uxa]]),
+			   [Select the default acceleration method out of none, sna, or uxa  [default is sna if enabled, otherwise uxa]]),
 			   [accel="$withval"],
 			   [accel="auto"])
 if test "x$accel" = "xyes"; then
@@ -713,15 +684,6 @@ if test "x$accel" = "xuxa"; then
 		have_accel="yes"
 	else
 		AC_MSG_ERROR([UXA requested as default, but is not enabled])
-	fi
-fi
-
-if test "x$accel" = "xglamor"; then
-	if test "x$GLAMOR" != "xno"; then
-		AC_DEFINE(DEFAULT_ACCEL_METHOD, GLAMOR, [Default acceleration method])
-		have_accel="yes"
-	else
-		AC_MSG_ERROR([glamor acceleration requested as default, but is not enabled])
 	fi
 fi
 
@@ -920,13 +882,6 @@ if test "x$UXA" != "xno"; then
 		accel_msg="$accel_msg *uxa"
 	else
 		accel_msg="$accel_msg uxa"
-	fi
-fi
-if test "x$GLAMOR" != "xno"; then
-	if test "$accel" = "glamor"; then
-		accel_msg="$accel_msg *glamor"
-	else
-		accel_msg="$accel_msg glamor"
 	fi
 fi
 

@@ -40,7 +40,6 @@ struct intel_uxa_pixmap {
 #define PIN_DRI2 0x2
 #define PIN_DRI3 0x4
 #define PIN_PRIME 0x8
-#define PIN_GLAMOR 0x10
 };
 
 #if HAS_DEVPRIVATEKEYREC

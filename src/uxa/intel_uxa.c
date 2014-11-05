@@ -41,7 +41,6 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "intel.h"
 #include "intel_uxa.h"
-#include "intel_glamor.h"
 
 #include "i830_reg.h"
 #include "i915_drm.h"
@@ -657,16 +656,7 @@ static Bool intel_uxa_prepare_access(PixmapPtr pixmap, uxa_access_t access)
 	dri_bo *bo = priv->bo;
 	int ret;
 
-	/* Transitioning to glamor acceleration, we need to flush all pending
-	 * usage by UXA. */
-	if (access == UXA_GLAMOR_ACCESS_RW || access == UXA_GLAMOR_ACCESS_RO) {
-		if (!list_is_empty(&priv->batch))
-			intel_batch_submit(scrn);
-		return TRUE;
-	}
-
 	/* When falling back to swrast, flush all pending operations */
-	intel_glamor_flush(intel);
 	if (access == UXA_ACCESS_RW || priv->dirty)
 		intel_batch_submit(scrn);
 
@@ -691,9 +681,6 @@ static Bool intel_uxa_prepare_access(PixmapPtr pixmap, uxa_access_t access)
 static void intel_uxa_finish_access(PixmapPtr pixmap, uxa_access_t access)
 {
 	struct intel_uxa_pixmap *priv;
-
-	if (access == UXA_GLAMOR_ACCESS_RW || access == UXA_GLAMOR_ACCESS_RO)
-		return;
 
 	priv = intel_uxa_get_pixmap_private(pixmap);
 	if (priv == NULL)
@@ -963,7 +950,6 @@ void intel_uxa_block_handler(intel_screen_private *intel)
 	 * and beyond rendering results may not hit the
 	 * framebuffer until significantly later.
 	 */
-	intel_glamor_flush(intel);
 	intel_flush_rendering(intel);
 	intel_throttle(intel);
 }
@@ -976,12 +962,6 @@ intel_uxa_create_pixmap(ScreenPtr screen, int w, int h, int depth,
 	intel_screen_private *intel = intel_get_screen_private(scrn);
 	struct intel_uxa_pixmap *priv;
 	PixmapPtr pixmap, new_pixmap = NULL;
-
-	if (!(usage & INTEL_CREATE_PIXMAP_DRI2)) {
-		pixmap = intel_glamor_create_pixmap(screen, w, h, depth, usage);
-		if (pixmap)
-			return pixmap;
-	}
 
 	if (w > 32767 || h > 32767)
 		return NullPixmap;
@@ -1061,35 +1041,10 @@ intel_uxa_create_pixmap(ScreenPtr screen, int w, int h, int depth,
 		intel_uxa_set_pixmap_private(pixmap, priv);
 
 		screen->ModifyPixmapHeader(pixmap, w, h, 0, 0, stride, NULL);
-
-		if (!intel_glamor_create_textured_pixmap(pixmap))
-			goto fallback_glamor;
 	}
 
 	return pixmap;
 
-fallback_glamor:
-	if (usage & INTEL_CREATE_PIXMAP_DRI2) {
-	/* XXX need further work to handle the DRI2 failure case.
-	 * Glamor don't know how to handle a BO only pixmap. Put
-	 * a warning indicator here.
-	 */
-		xf86DrvMsg(scrn->scrnIndex, X_WARNING,
-			   "Failed to create textured DRI2 pixmap.");
-		return pixmap;
-	}
-	/* Create textured pixmap failed means glamor failed to
-	 * create a texture from current BO for some reasons. We turn
-	 * to create a new glamor pixmap and clean up current one.
-	 * One thing need to be noted, this new pixmap doesn't
-	 * has a priv and bo attached to it. It's glamor's responsbility
-	 * to take care of it. Glamor will mark this new pixmap as a
-	 * texture only pixmap and will never fallback to DDX layer
-	 * afterwards.
-	 */
-	new_pixmap = intel_glamor_create_pixmap(screen, w, h,
-						depth, usage);
-	dri_bo_unreference(priv->bo);
 fallback_priv:
 	free(priv);
 fallback_pixmap:
@@ -1102,10 +1057,8 @@ fallback_pixmap:
 
 static Bool intel_uxa_destroy_pixmap(PixmapPtr pixmap)
 {
-	if (pixmap->refcnt == 1) {
-		intel_glamor_destroy_pixmap(pixmap);
+	if (pixmap->refcnt == 1)
 		intel_uxa_set_pixmap_bo(pixmap, NULL);
-	}
 	fbDestroyPixmap(pixmap);
 	return TRUE;
 }
@@ -1139,9 +1092,6 @@ Bool intel_uxa_create_screen_resources(ScreenPtr screen)
 
 	intel_uxa_set_pixmap_bo(pixmap, bo);
 	if (intel_uxa_get_pixmap_private(pixmap) == NULL)
-		goto err;
-
-	if (!intel_glamor_create_screen_resources(screen))
 		goto err;
 
 	intel_uxa_get_pixmap_private(pixmap)->pinned |= PIN_SCANOUT;
