@@ -788,6 +788,8 @@ gen8_emit_cc_invariant(struct sna *sna)
 static void
 gen8_emit_vf_invariant(struct sna *sna)
 {
+	int n;
+
 #if 1
 	OUT_BATCH(GEN8_3DSTATE_VF | (2 - 2));
 	OUT_BATCH(0);
@@ -800,6 +802,12 @@ gen8_emit_vf_invariant(struct sna *sna)
 	OUT_BATCH(RECTLIST);
 
 	OUT_BATCH(GEN8_3DSTATE_VF_STATISTICS | 0);
+
+	for (n = 1; n <= 3; n++) {
+		OUT_BATCH(GEN8_3DSTATE_VF_INSTANCING | (3 - 2));
+		OUT_BATCH(n);
+		OUT_BATCH(0);
+	}
 }
 
 static void
@@ -1416,10 +1424,6 @@ static void gen8_emit_vertex_buffer(struct sna *sna,
 	sna->render.vertex_reloc[sna->render.nvertex_reloc++] = sna->kgem.nbatch;
 	OUT_BATCH64(0);
 	OUT_BATCH(~0); /* buffer size: disabled */
-
-	OUT_BATCH(GEN8_3DSTATE_VF_INSTANCING | (3 - 2));
-	OUT_BATCH(id);
-	OUT_BATCH(0);
 
 	sna->render.vb_id |= 1 << id;
 }
