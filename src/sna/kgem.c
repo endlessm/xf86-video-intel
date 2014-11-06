@@ -4629,7 +4629,10 @@ static void __kgem_bo_make_scanout(struct kgem *kgem,
 	if (bo->map__gtt == NULL)
 		bo->map__gtt = __kgem_bo_map__gtt(kgem, bo);
 	if (bo->map__gtt) {
-		*(uint32_t *)bo->map__gtt = 0;
+		if (sigtrap_get() == 0) {
+			*(uint32_t *)bo->map__gtt = 0;
+			sigtrap_put();
+		}
 		bo->domain = DOMAIN_GTT;
 	}
 
