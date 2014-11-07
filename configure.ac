@@ -723,7 +723,7 @@ if test "x$RENDERNODE" = "xyes"; then
 fi
 
 AC_ARG_ENABLE(wc-mmap,
-	      AS_HELP_STRING([--enable-wc-map],
+	      AS_HELP_STRING([--enable-wc-mmap],
 			     [Enable use of WriteCombining mmaps [default=no]]),
 	      [WC_MMAP="$enableval"],
 	      [WC_MMAP="no"])
