@@ -696,8 +696,8 @@ sna_composite(CARD8 op,
 		goto fallback;
 	}
 
-	if (dst->alphaMap) {
-		DBG(("%s: fallback due to unhandled alpha-map\n", __FUNCTION__));
+	if (!can_render_to_picture(dst)) {
+		DBG(("%s: fallback due to unhandled picture\n", __FUNCTION__));
 		goto fallback;
 	}
 
@@ -956,8 +956,8 @@ sna_composite_rectangles(CARD8		 op,
 	if (wedged(sna))
 		goto fallback;
 
-	if (dst->alphaMap) {
-		DBG(("%s: fallback, dst has an alpha-map\n", __FUNCTION__));
+	if (!can_render_to_picture(dst)) {
+		DBG(("%s: fallback, dst has an incompatible picture\n", __FUNCTION__));
 		goto fallback;
 	}
 
