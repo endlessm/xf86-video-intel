@@ -326,6 +326,7 @@ struct sna {
 		uint32_t fg, bg;
 		int size;
 
+		int active;
 		int last_x;
 		int last_y;
 
