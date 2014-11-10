@@ -7251,7 +7251,8 @@ sna_poly_point__gpu(DrawablePtr drawable, GCPtr gc,
 				b++;
 			}
 		} while (--nbox);
-		fill.boxes(data->sna, &fill, box, b - box);
+		if (b != box)
+			fill.boxes(data->sna, &fill, box, b - box);
 	}
 	fill.done(data->sna, &fill);
 }
