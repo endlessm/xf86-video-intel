@@ -508,6 +508,7 @@ struct gen7_render_state {
 	uint16_t last_primitive;
 	int16_t floats_per_vertex;
 	uint16_t surface_table;
+	uint16_t pipe_controls_since_stall;
 
 	bool needs_invariant;
 	bool emit_flush;
