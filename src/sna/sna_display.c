@@ -5034,7 +5034,7 @@ sna_cursor_pre_init(struct sna *sna)
 #define DRM_CAP_CURSOR_WIDTH	8
 #define DRM_CAP_CURSOR_HEIGHT	9
 
-#define I915_PARAM_HAS_COHERENT_PHYS_GTT 30
+#define I915_PARAM_HAS_COHERENT_PHYS_GTT 29
 
 	sna->cursor.max_size = 64;
 
