@@ -517,6 +517,36 @@ retry_wc:
 	return bo->map__wc = (void *)(uintptr_t)wc.addr_ptr;
 }
 
+static void *__kgem_bo_map__cpu(struct kgem *kgem, struct kgem_bo *bo)
+{
+	struct drm_i915_gem_mmap mmap_arg;
+	int err;
+
+retry:
+	VG_CLEAR(mmap_arg);
+	mmap_arg.handle = bo->handle;
+	mmap_arg.offset = 0;
+	mmap_arg.size = bytes(bo);
+	if ((err = do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_MMAP, &mmap_arg))) {
+		assert(err != EINVAL);
+
+		if (__kgem_throttle_retire(kgem, 0))
+			goto retry;
+
+		if (kgem_cleanup_cache(kgem))
+			goto retry;
+
+		ERR(("%s: failed to mmap handle=%d, %d bytes, into CPU domain: %d\n",
+		     __FUNCTION__, bo->handle, bytes(bo), -err));
+		return NULL;
+	}
+
+	VG(VALGRIND_MAKE_MEM_DEFINED(mmap_arg.addr_ptr, bytes(bo)));
+
+	DBG(("%s: caching CPU vma for %d\n", __FUNCTION__, bo->handle));
+	return bo->map__cpu = (void *)(uintptr_t)mmap_arg.addr_ptr;
+}
+
 static int gem_write(int fd, uint32_t handle,
 		     int offset, int length,
 		     const void *src)
@@ -638,6 +668,7 @@ static void kgem_bo_maybe_retire(struct kgem *kgem, struct kgem_bo *bo)
 bool kgem_bo_write(struct kgem *kgem, struct kgem_bo *bo,
 		   const void *data, int length)
 {
+	void *ptr;
 	int err;
 
 	assert(bo->refcnt);
@@ -646,6 +677,22 @@ bool kgem_bo_write(struct kgem *kgem, struct kgem_bo *bo,
 
 	assert(length <= bytes(bo));
 retry:
+	ptr = NULL;
+	if (bo->domain == DOMAIN_CPU || (kgem->has_llc && !bo->scanout)) {
+		ptr = bo->map__cpu;
+		if (ptr == NULL)
+			ptr = __kgem_bo_map__cpu(kgem, bo);
+	} else if (kgem->has_wc_mmap) {
+		ptr = bo->map__wc;
+		if (ptr == NULL)
+			ptr = __kgem_bo_map__wc(kgem, bo);
+	}
+	if (ptr) {
+		/* XXX unsynchronized? */
+		memcpy(ptr, data, length);
+		return true;
+	}
+
 	if ((err = gem_write(kgem->fd, bo->handle, 0, length, data))) {
 		assert(err != EINVAL);
 
@@ -3149,24 +3196,50 @@ static void kgem_cleanup(struct kgem *kgem)
 	kgem_close_inactive(kgem);
 }
 
-static int kgem_batch_write(struct kgem *kgem, uint32_t handle, uint32_t size)
+static int
+kgem_batch_write(struct kgem *kgem,
+		 struct kgem_bo *bo,
+		 uint32_t size)
 {
+	char *ptr;
 	int ret;
 
-	ASSERT_IDLE(kgem, handle);
+	ASSERT_IDLE(kgem, bo->handle);
 
 #if DBG_NO_EXEC
 	{
 		uint32_t batch[] = { MI_BATCH_BUFFER_END, 0};
-		return gem_write(kgem->fd, handle, 0, sizeof(batch), batch);
+		return gem_write(kgem->fd, bo->handle, 0, sizeof(batch), batch);
 	}
 #endif
 
-
+	assert(!bo->scanout);
 retry:
+	ptr = NULL;
+	if (bo->domain == DOMAIN_CPU || kgem->has_llc) {
+		ptr = bo->map__cpu;
+		if (ptr == NULL)
+			ptr = __kgem_bo_map__cpu(kgem, bo);
+	} else if (kgem->has_wc_mmap) {
+		ptr = bo->map__wc;
+		if (ptr == NULL)
+			ptr = __kgem_bo_map__wc(kgem, bo);
+	}
+	if (ptr) {
+		memcpy(ptr, kgem->batch, sizeof(uint32_t)*kgem->nbatch);
+		if (kgem->surface != kgem->batch_size) {
+			ret = PAGE_ALIGN(sizeof(uint32_t) * kgem->batch_size);
+			ret -= sizeof(uint32_t) * kgem->surface;
+			ptr += size - ret;
+			memcpy(ptr, kgem->batch + kgem->surface,
+			       (kgem->batch_size - kgem->surface)*sizeof(uint32_t));
+		}
+		return 0;
+	}
+
 	/* If there is no surface data, just upload the batch */
 	if (kgem->surface == kgem->batch_size) {
-		if ((ret = gem_write__cachealigned(kgem->fd, handle,
+		if ((ret = gem_write__cachealigned(kgem->fd, bo->handle,
 						   0, sizeof(uint32_t)*kgem->nbatch,
 						   kgem->batch)) == 0)
 			return 0;
@@ -3177,7 +3250,7 @@ retry:
 	/* Are the batch pages conjoint with the surface pages? */
 	if (kgem->surface < kgem->nbatch + PAGE_SIZE/sizeof(uint32_t)) {
 		assert(size == PAGE_ALIGN(kgem->batch_size*sizeof(uint32_t)));
-		if ((ret = gem_write__cachealigned(kgem->fd, handle,
+		if ((ret = gem_write__cachealigned(kgem->fd, bo->handle,
 						   0, kgem->batch_size*sizeof(uint32_t),
 						   kgem->batch)) == 0)
 			return 0;
@@ -3186,7 +3259,7 @@ retry:
 	}
 
 	/* Disjoint surface/batch, upload separately */
-	if ((ret = gem_write__cachealigned(kgem->fd, handle,
+	if ((ret = gem_write__cachealigned(kgem->fd, bo->handle,
 					   0, sizeof(uint32_t)*kgem->nbatch,
 					   kgem->batch)))
 		goto expire;
@@ -3194,7 +3267,7 @@ retry:
 	ret = PAGE_ALIGN(sizeof(uint32_t) * kgem->batch_size);
 	ret -= sizeof(uint32_t) * kgem->surface;
 	assert(size-ret >= kgem->nbatch*sizeof(uint32_t));
-	if (gem_write(kgem->fd, handle,
+	if (gem_write(kgem->fd, bo->handle,
 		      size - ret, (kgem->batch_size - kgem->surface)*sizeof(uint32_t),
 		      kgem->batch + kgem->surface))
 		goto expire;
@@ -3388,7 +3461,7 @@ out_16384:
 		if (bo) {
 write:
 			kgem_fixup_relocs(kgem, bo, shrink);
-			if (kgem_batch_write(kgem, bo->handle, size)) {
+			if (kgem_batch_write(kgem, bo, size)) {
 				kgem_bo_destroy(kgem, bo);
 				return NULL;
 			}
@@ -6249,36 +6322,6 @@ void *kgem_bo_map__wc(struct kgem *kgem, struct kgem_bo *bo)
 		return bo->map__wc;
 
 	return __kgem_bo_map__wc(kgem, bo);
-}
-
-static void *__kgem_bo_map__cpu(struct kgem *kgem, struct kgem_bo *bo)
-{
-	struct drm_i915_gem_mmap mmap_arg;
-	int err;
-
-retry:
-	VG_CLEAR(mmap_arg);
-	mmap_arg.handle = bo->handle;
-	mmap_arg.offset = 0;
-	mmap_arg.size = bytes(bo);
-	if ((err = do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_MMAP, &mmap_arg))) {
-		assert(err != EINVAL);
-
-		if (__kgem_throttle_retire(kgem, 0))
-			goto retry;
-
-		if (kgem_cleanup_cache(kgem))
-			goto retry;
-
-		ERR(("%s: failed to mmap handle=%d, %d bytes, into CPU domain: %d\n",
-		     __FUNCTION__, bo->handle, bytes(bo), -err));
-		return NULL;
-	}
-
-	VG(VALGRIND_MAKE_MEM_DEFINED(mmap_arg.addr_ptr, bytes(bo)));
-
-	DBG(("%s: caching CPU vma for %d\n", __FUNCTION__, bo->handle));
-	return bo->map__cpu = (void *)(uintptr_t)mmap_arg.addr_ptr;
 }
 
 void *kgem_bo_map__cpu(struct kgem *kgem, struct kgem_bo *bo)
