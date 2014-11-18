@@ -1797,6 +1797,8 @@ inline static uint32_t kgem_pitch_alignment(struct kgem *kgem, unsigned flags)
 		return 256;
 	if (flags & CREATE_SCANOUT)
 		return 64;
+	if (kgem->gen >= 0100)
+		return 32;
 	return 8;
 }
 
@@ -7234,7 +7236,7 @@ struct kgem_bo *kgem_create_buffer_2d(struct kgem *kgem,
 	assert(width > 0 && height > 0);
 	assert(ret != NULL);
 	stride = ALIGN(width, 2) * bpp >> 3;
-	stride = ALIGN(stride, 4);
+	stride = ALIGN(stride, kgem->gen >= 0100 ? 32 : 4);
 
 	DBG(("%s: %dx%d, %d bpp, stride=%d\n",
 	     __FUNCTION__, width, height, bpp, stride));
