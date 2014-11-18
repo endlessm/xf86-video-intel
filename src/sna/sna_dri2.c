@@ -64,15 +64,7 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 static inline struct kgem_bo *ref(struct kgem_bo *bo)
 {
-	assert(bo->refcnt);
-	bo->refcnt++;
-	return bo;
-}
-
-static inline void unref(struct kgem_bo *bo)
-{
-	assert(bo->refcnt > 1);
-	bo->refcnt--;
+	return kgem_bo_reference(bo);
 }
 
 struct sna_dri2_private {
