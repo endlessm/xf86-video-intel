@@ -1948,8 +1948,8 @@ static void frame_swap_complete(struct sna_dri2_event *frame, int type)
 	assert(frame->client);
 
 	swap = sna_crtc_last_swap(frame->crtc);
-	DBG(("%s: draw=%ld, pipe=%d, frame=%lld [msc=%lld], tv=%d.%06d\n",
-	     __FUNCTION__, (long)frame->draw, frame->pipe,
+	DBG(("%s(type=%d): draw=%ld, pipe=%d, frame=%lld [msc=%lld], tv=%d.%06d\n",
+	     __FUNCTION__, type, (long)frame->draw, frame->pipe,
 	     (long long)swap->msc,
 	     (long long)draw_current_msc(frame->draw, frame->crtc, swap->msc),
 	     swap->tv_sec, swap->tv_usec));
@@ -1967,8 +1967,8 @@ static void fake_swap_complete(struct sna *sna, ClientPtr client,
 	const struct ust_msc *swap;
 
 	swap = sna_crtc_last_swap(crtc);
-	DBG(("%s: draw=%ld, pipe=%d, frame=%lld [msc %lld], tv=%d.%06d\n",
-	     __FUNCTION__, (long)draw->id, crtc ? sna_crtc_to_pipe(crtc) : -1,
+	DBG(("%s(type=%d): draw=%ld, pipe=%d, frame=%lld [msc %lld], tv=%d.%06d\n",
+	     __FUNCTION__, type, (long)draw->id, crtc ? sna_crtc_to_pipe(crtc) : -1,
 	     (long long)swap->msc,
 	     (long long)draw_current_msc(draw, crtc, swap->msc),
 	     swap->tv_sec, swap->tv_usec));
@@ -2802,6 +2802,7 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 	union drm_wait_vblank vbl;
 	xf86CrtcPtr crtc = NULL;
 	struct sna_dri2_event *info = NULL;
+	int type = DRI2_EXCHANGE_COMPLETE;
 	CARD64 current_msc;
 
 	DBG(("%s: draw=%lu %dx%d, pixmap=%ld %dx%d, back=%u (refs=%d/%d, flush=%d) , front=%u (refs=%d/%d, flush=%d)\n",
@@ -2973,15 +2974,17 @@ blit:
 	DBG(("%s -- blit\n", __FUNCTION__));
 	if (info)
 		sna_dri2_event_free(info);
-	if (can_xchg(sna, draw, front, back))
+	if (can_xchg(sna, draw, front, back)) {
 		sna_dri2_xchg(draw, front, back);
-	else
+	} else {
 		__sna_dri2_copy_region(sna, draw, NULL, back, front, false);
+		type = DRI2_BLIT_COMPLETE;
+	}
 skip:
 	DBG(("%s: unable to show frame, unblocking client\n", __FUNCTION__));
 	if (crtc == NULL)
 		crtc = sna_mode_first_crtc(sna);
-	fake_swap_complete(sna, client, draw, crtc, DRI2_BLIT_COMPLETE, func, data);
+	fake_swap_complete(sna, client, draw, crtc, type, func, data);
 	*target_msc = 0; /* offscreen, so zero out target vblank count */
 	return TRUE;
 }
