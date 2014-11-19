@@ -3287,7 +3287,7 @@ expire:
 		goto retry;
 
 	ERR(("%s: failed to write batch (handle=%d): %d\n",
-	     __FUNCTION__, handle, -ret));
+	     __FUNCTION__, bo->handle, -ret));
 	return ret;
 }
 
