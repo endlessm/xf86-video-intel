@@ -5198,6 +5198,9 @@ sna_put_xybitmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 		}
 	}
 
+	if (!kgem_bo_can_blt(&sna->kgem, bo))
+		return false;
+
 	assert_pixmap_contains_box(pixmap, RegionExtents(region));
 	if (damage)
 		sna_damage_add_to_pixmap(damage, region, pixmap);
@@ -5210,6 +5213,7 @@ sna_put_xybitmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 	y += dy + drawable->y;
 
 	kgem_set_mode(&sna->kgem, KGEM_BLT, bo);
+	assert(kgem_bo_can_blt(&sna->kgem, bo));
 
 	/* Region is pre-clipped and translated into pixmap space */
 	box = region_rects(region);
@@ -5358,6 +5362,9 @@ sna_put_xypixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 		}
 	}
 
+	if (!kgem_bo_can_blt(&sna->kgem, bo))
+		return false;
+
 	assert_pixmap_contains_box(pixmap, RegionExtents(region));
 	if (damage)
 		sna_damage_add_to_pixmap(damage, region, pixmap);
@@ -5370,6 +5377,7 @@ sna_put_xypixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 	y += dy + drawable->y;
 
 	kgem_set_mode(&sna->kgem, KGEM_BLT, bo);
+	assert(kgem_bo_can_blt(&sna->kgem, bo));
 
 	skip = h * BitmapBytePad(w + left);
 	for (i = 1 << (gc->depth-1); i; i >>= 1, bits += skip) {
@@ -8214,6 +8222,7 @@ sna_copy_bitmap_blt(DrawablePtr _bitmap, DrawablePtr drawable, GCPtr gc,
 	br13 |= copy_ROP[gc->alu] << 16;
 
 	kgem_set_mode(&sna->kgem, KGEM_BLT, arg->bo);
+	assert(kgem_bo_can_blt(&sna->kgem, arg->bo));
 	do {
 		int bx1 = (box->x1 + sx) & ~7;
 		int bx2 = (box->x2 + sx + 7) & ~7;
@@ -8436,6 +8445,7 @@ sna_copy_plane_blt(DrawablePtr source, DrawablePtr drawable, GCPtr gc,
 	br13 |= copy_ROP[gc->alu] << 16;
 
 	kgem_set_mode(&sna->kgem, KGEM_BLT, arg->bo);
+	assert(kgem_bo_can_blt(&sna->kgem, arg->bo));
 	do {
 		int bx1 = (box->x1 + sx) & ~7;
 		int bx2 = (box->x2 + sx + 7) & ~7;
@@ -8722,6 +8732,10 @@ sna_copy_plane(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 				goto fallback;
 			}
 		}
+
+		if (!kgem_bo_can_blt(&sna->kgem, arg.bo))
+			return false;
+
 		RegionUninit(&region);
 		return sna_do_copy(src, dst, gc,
 				   src_x, src_y,
@@ -12159,9 +12173,14 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 	if (tile_bo->tiling)
 		return false;
 
+	if (!kgem_bo_can_blt(&sna->kgem, bo) ||
+	    !kgem_bo_can_blt(&sna->kgem, tile_bo))
+		return false;
+
 	assert(tile_bo->pitch == 8 * drawable->bitsPerPixel >> 3);
 
 	kgem_set_mode(&sna->kgem, KGEM_BLT, bo);
+	assert(kgem_bo_can_blt(&sna->kgem, bo));
 	if (!kgem_check_batch(&sna->kgem, 10+2*3) ||
 	    !kgem_check_reloc(&sna->kgem, 2) ||
 	    !kgem_check_many_bo_fenced(&sna->kgem, bo, tile_bo, NULL)) {
@@ -13097,6 +13116,7 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 	}
 
 	kgem_set_mode(&sna->kgem, KGEM_BLT, bo);
+	assert(kgem_bo_can_blt(&sna->kgem, bo));
 	if (!kgem_check_batch(&sna->kgem, 10 + 2*3) ||
 	    !kgem_check_bo_fenced(&sna->kgem, bo) ||
 	    !kgem_check_reloc(&sna->kgem, 1)) {
@@ -13475,6 +13495,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 
 	get_drawable_deltas(drawable, pixmap, &dx, &dy);
 	kgem_set_mode(&sna->kgem, KGEM_BLT, bo);
+	assert(kgem_bo_can_blt(&sna->kgem, bo));
 
 	br00 = 3 << 20;
 	br13 = bo->pitch;
@@ -14389,6 +14410,7 @@ sna_poly_fill_rect_stippled_n_blt__imm(DrawablePtr drawable,
 
 	get_drawable_deltas(drawable, pixmap, &dx, &dy);
 	kgem_set_mode(&sna->kgem, KGEM_BLT, bo);
+	assert(kgem_bo_can_blt(&sna->kgem, bo));
 
 	br00 = XY_MONO_SRC_COPY_IMM | 3 << 20;
 	br13 = bo->pitch;
@@ -14533,6 +14555,7 @@ sna_poly_fill_rect_stippled_n_blt(DrawablePtr drawable,
 
 	get_drawable_deltas(drawable, pixmap, &dx, &dy);
 	kgem_set_mode(&sna->kgem, KGEM_BLT, bo);
+	assert(kgem_bo_can_blt(&sna->kgem, bo));
 
 	br00 = XY_MONO_SRC_COPY | 3 << 20;
 	br13 = bo->pitch;
@@ -14660,10 +14683,9 @@ sna_poly_fill_rect_stippled_blt(DrawablePtr drawable,
 {
 
 	PixmapPtr stipple = gc->stipple;
+	PixmapPtr pixmap = get_drawable_pixmap(drawable);
 
 	if (bo->tiling == I915_TILING_Y) {
-		PixmapPtr pixmap = get_drawable_pixmap(drawable);
-
 		DBG(("%s: converting bo from Y-tiling\n", __FUNCTION__));
 		/* This is cheating, but only the gpu_bo can be tiled */
 		assert(bo == __sna_pixmap_get_bo(pixmap));
@@ -14674,6 +14696,9 @@ sna_poly_fill_rect_stippled_blt(DrawablePtr drawable,
 			return false;
 		}
 	}
+
+	if (!kgem_bo_can_blt(&to_sna_from_pixmap(pixmap)->kgem, bo))
+		return false;
 
 	if (!sna_drawable_move_to_cpu(&stipple->drawable, MOVE_READ))
 		return false;
@@ -15221,6 +15246,9 @@ sna_glyph_blt(DrawablePtr drawable, GCPtr gc,
 		}
 	}
 
+	if (!kgem_bo_can_blt(&sna->kgem, bo))
+		return false;
+
 	if (get_drawable_deltas(drawable, pixmap, &dx, &dy))
 		RegionTranslate(clip, dx, dy);
 	_x += drawable->x + dx;
@@ -15239,6 +15267,7 @@ sna_glyph_blt(DrawablePtr drawable, GCPtr gc,
 	}
 
 	kgem_set_mode(&sna->kgem, KGEM_BLT, bo);
+	assert(kgem_bo_can_blt(&sna->kgem, bo));
 	if (!kgem_check_batch(&sna->kgem, 20) ||
 	    !kgem_check_bo_fenced(&sna->kgem, bo) ||
 	    !kgem_check_reloc(&sna->kgem, 1)) {
@@ -15938,6 +15967,9 @@ sna_reversed_glyph_blt(DrawablePtr drawable, GCPtr gc,
 		}
 	}
 
+	if (!kgem_bo_can_blt(&sna->kgem, bo))
+		return false;
+
 	if (get_drawable_deltas(drawable, pixmap, &dx, &dy))
 		RegionTranslate(clip, dx, dy);
 	_x += drawable->x + dx;
@@ -15956,6 +15988,7 @@ sna_reversed_glyph_blt(DrawablePtr drawable, GCPtr gc,
 	}
 
 	kgem_set_mode(&sna->kgem, KGEM_BLT, bo);
+	assert(kgem_bo_can_blt(&sna->kgem, bo));
 	if (!kgem_check_batch(&sna->kgem, 20) ||
 	    !kgem_check_bo_fenced(&sna->kgem, bo) ||
 	    !kgem_check_reloc(&sna->kgem, 1)) {
@@ -16397,6 +16430,9 @@ sna_push_pixels_solid_blt(GCPtr gc,
 		}
 	}
 
+	if (!kgem_bo_can_blt(&sna->kgem, bo))
+		return false;
+
 	if (get_drawable_deltas(drawable, pixmap, &dx, &dy))
 		RegionTranslate(region, dx, dy);
 
@@ -16410,6 +16446,7 @@ sna_push_pixels_solid_blt(GCPtr gc,
 	     region->extents.x2, region->extents.y2));
 
 	kgem_set_mode(&sna->kgem, KGEM_BLT, bo);
+	assert(kgem_bo_can_blt(&sna->kgem, bo));
 
 	/* Region is pre-clipped and translated into pixmap space */
 	box = region_rects(region);
