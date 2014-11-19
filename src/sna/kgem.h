@@ -551,6 +551,13 @@ static inline bool kgem_bo_blt_pitch_is_ok(struct kgem *kgem,
 					   struct kgem_bo *bo)
 {
 	int pitch = bo->pitch;
+
+	if (kgem->gen >= 0100 && pitch & (1 << 4)) { /* bdw is broken */
+		DBG(("%s: can not blt to handle=%d, pitch=%d\n",
+		     __FUNCTION__, bo->handle, pitch));
+		return false;
+	}
+
 	if (kgem->gen >= 040 && bo->tiling)
 		pitch /= 4;
 	if (pitch > MAXSHORT) {
@@ -570,6 +577,12 @@ static inline bool kgem_bo_can_blt(struct kgem *kgem,
 	if (bo->tiling == I915_TILING_Y) {
 		DBG(("%s: can not blt to handle=%d, tiling=Y\n",
 		     __FUNCTION__, bo->handle));
+		return false;
+	}
+
+	if (kgem->gen >= 0100 && bo->proxy && bo->delta & (1 << 4)) {
+		DBG(("%s: can not blt to handle=%d, delta=%d\n",
+		     __FUNCTION__, bo->handle, bo->delta));
 		return false;
 	}
 
