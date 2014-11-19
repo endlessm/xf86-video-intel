@@ -2831,11 +2831,18 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 	assert(get_private(front)->bo->refcnt);
 	assert(get_private(back)->bo->refcnt);
 
-	if (get_private(front)->pixmap != get_drawable_pixmap(draw))
+	if (get_private(front)->pixmap != get_drawable_pixmap(draw)) {
+		DBG(("%s: decoupled DRI2 front pixmap=%ld, actual pixmap=%ld\n",
+		     __FUNCTION__,
+		     get_private(front)->pixmap->drawable.serialNumber,
+		     get_drawable_pixmap(draw)->drawable.serialNumber));
 		goto skip;
+	}
 
-	if (get_private(back)->stale)
+	if (get_private(back)->stale) {
+		DBG(("%s: stale back buffer\n", __FUNCTION__));
 		goto skip;
+	}
 
 	assert(sna_pixmap_from_drawable(draw)->flush);
 
@@ -2849,8 +2856,15 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 			priv->front = NULL;
 		}
 		if (win->clipList.extents.x2 <= win->clipList.extents.x1 ||
-		    win->clipList.extents.y2 <= win->clipList.extents.y1)
+		    win->clipList.extents.y2 <= win->clipList.extents.y1) {
+			DBG(("%s: window clipped (%d, %d), (%d, %d)\n",
+			     __FUNCTION__,
+			     win->clipList.extents.x1,
+			     win->clipList.extents.y1,
+			     win->clipList.extents.x2,
+			     win->clipList.extents.y2));
 			goto skip;
+		}
 	}
 
 	/* Drawable not displayed... just complete the swap */
