@@ -989,6 +989,11 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 	int i;
 
 	DBG(("%s CRTC:%d [pipe=%d], handle=%d\n", __FUNCTION__, sna_crtc->id, sna_crtc->pipe, sna_crtc->bo->handle));
+	if (!sna_crtc->kmode.clock) {
+		ERR(("%s(CRTC:%d [pipe=%d]): attempted to set an invalid mode\n",
+		     __FUNCTION__, sna_crtc->id, sna_crtc->pipe));
+		return false;
+	}
 
 	assert(sna->mode.num_real_output < ARRAY_SIZE(output_ids));
 	sna_crtc_disable_cursor(sna, sna_crtc);
