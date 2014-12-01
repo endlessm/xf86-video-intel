@@ -33,9 +33,15 @@
 #ifndef NDEBUG
 #include <os.h>
 #include "compiler.h"
+
+#if XORG_VERSION_CURRENT < XORG_VERSION_NUMERIC(1,6,0,0,0)
+#define xorg_backtrace()
+#endif
+
 #undef assert
-#define assert(E) do { \
-	if (unlikely(!(E))) FatalError("%s:%d assertion '%s' failed\n", __func__, __LINE__, #E); \
+#define assert(E) do if (unlikely(!(E))) { \
+	xorg_backtrace(); \
+	FatalError("%s:%d assertion '%s' failed\n", __func__, __LINE__, #E); \
 } while (0)
 #endif
 
