@@ -1039,9 +1039,16 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 
 		output_ids[output_count] = to_connector_id(output);
 		if (++output_count == ARRAY_SIZE(output_ids)) {
+			DBG(("%s: too many outputs (%d) for me!\n",
+			     __FUNCTION__, output_count));
 			errno = EINVAL;
 			return false;
 		}
+	}
+	if (output_count == 0) {
+		DBG(("%s: no outputs\n", __FUNCTION__));
+		errno = EINVAL;
+		return false;
 	}
 
 	VG_CLEAR(arg);
