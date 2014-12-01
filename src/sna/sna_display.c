@@ -4064,7 +4064,7 @@ static void sort_randr_outputs(struct sna *sna, ScreenPtr screen)
 	}
 }
 
-static void disable_unused_crtc(struct sna *sna)
+static bool disable_unused_crtc(struct sna *sna)
 {
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
 	bool update = false;
@@ -4076,7 +4076,6 @@ static void disable_unused_crtc(struct sna *sna)
 		if (!crtc->enabled)
 			continue;
 
-
 		for (o = 0; o < sna->mode.num_real_output; o++) {
 			xf86OutputPtr output = config->output[o];
 			if (output->crtc == crtc)
@@ -4084,13 +4083,19 @@ static void disable_unused_crtc(struct sna *sna)
 		}
 
 		if (o == sna->mode.num_real_output) {
+			DBG(("%s: CRTC:%d was enabled with no outputs\n",
+			     __FUNCTION__, to_sna_crtc(crtc)->id));
 			crtc->enabled = false;
 			update = true;
 		}
 	}
 
-	if (update)
+	if (update) {
+		DBG(("%s: disabling unused functions\n", __FUNCTION__));
 		xf86DisableUnusedFunctions(sna->scrn);
+	}
+
+	return update;
 }
 
 void sna_mode_discover(struct sna *sna)
@@ -5790,13 +5795,19 @@ sna_crtc_config_notify(ScreenPtr screen)
 	if (!sna->mode.dirty)
 		return;
 
-	/* XXX DisableUnusedOutputs? */
+	if (disable_unused_crtc(sna)) {
+		/* This will have recursed, so simply bail at this point */
+		assert(sna->mode.dirty == false);
+#ifdef RANDR_12_INTERFACE
+		xf86RandR12TellChanged(screen);
+#endif
+		return;
+	}
 
-	probe_capabilities(sna);
 	update_flush_interval(sna);
-
 	sna_cursors_reload(sna);
 
+	probe_capabilities(sna);
 	sna_present_update(sna);
 
 	sna->mode.dirty = false;
