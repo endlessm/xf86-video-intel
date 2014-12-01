@@ -7021,6 +7021,8 @@ void sna_mode_redisplay(struct sna *sna)
 						} else {
 							DBG(("%s: flip [fb=%d] on crtc %d [%d, pipe=%d] failed - %d\n",
 							     __FUNCTION__, arg.fb_id, i, sna_crtc->id, sna_crtc->pipe, errno));
+							xf86DrvMsg(sna->scrn->scrnIndex, X_ERROR,
+								   "Page flipping failed, disabling TearFree\n");
 							sna->flags &= ~SNA_TEAR_FREE;
 
 							damage.extents = crtc->bounds;
@@ -7148,6 +7150,8 @@ void sna_mode_redisplay(struct sna *sna)
 
 						DBG(("%s: flip [fb=%d] on crtc %d [%d, pipe=%d] failed - %d\n",
 						     __FUNCTION__, arg.fb_id, i, sna_crtc->id, sna_crtc->pipe, errno));
+						xf86DrvMsg(sna->scrn->scrnIndex, X_ERROR,
+							   "Page flipping failed, disabling TearFree\n");
 						sna->flags &= ~SNA_TEAR_FREE;
 
 disable1:
@@ -7292,7 +7296,10 @@ fixup_flip:
 					crtc->bo = kgem_bo_reference(flip_bo);
 					crtc->bo->active_scanout++;
 				} else {
+					xf86DrvMsg(sna->scrn->scrnIndex, X_ERROR,
+						   "Failed to prepare CRTC for page flipping, disabling TearFree\n");
 					sna->flags &= ~SNA_TEAR_FREE;
+
 					if (sna->mode.flip_active == 0) {
 						DBG(("%s: abandoning flip attempt\n", __FUNCTION__));
 						goto fixup_shadow;
