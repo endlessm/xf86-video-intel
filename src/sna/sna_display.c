@@ -1719,7 +1719,7 @@ static bool use_shadow(struct sna *sna, xf86CrtcPtr crtc)
 	RRTransformPtr transform;
 	PictTransform crtc_to_fb;
 	struct pict_f_transform f_crtc_to_fb, f_fb_to_crtc;
-	unsigned long pitch_limit;
+	unsigned pitch_limit;
 	struct sna_pixmap *priv;
 	BoxRec b;
 
@@ -1912,7 +1912,7 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 
 force_shadow:
 		if (!sna_crtc_enable_shadow(sna, sna_crtc)) {
-			DBG(("%s: failed to enable crtc shadow\n"));
+			DBG(("%s: failed to enable crtc shadow\n", __FUNCTION__));
 			return NULL;
 		}
 
@@ -2522,8 +2522,8 @@ static int plane_details(struct sna *sna, struct plane *p)
 			continue;
 		}
 
-		DBG(("%s: prop[%d] .id=%d, .name=%s, .flags=%x, .value=%ld\n", __FUNCTION__, i,
-		     (long)props[i], prop.name, prop.flags, (long)values[i]));
+		DBG(("%s: prop[%d] .id=%ld, .name=%s, .flags=%x, .value=%ld\n", __FUNCTION__, i,
+		     (long)props[i], prop.name, (unsigned)prop.flags, (long)values[i]));
 
 		if (strcmp(prop.name, "type") == 0) {
 			type = values[i];
@@ -2597,7 +2597,7 @@ sna_crtc_find_planes(struct sna *sna, struct sna_crtc *crtc)
 		return;
 	}
 
-	DBG(("%s: %d planes\n", __FUNCTION__, r.count_planes));
+	DBG(("%s: %d planes\n", __FUNCTION__, (int)r.count_planes));
 
 	if (r.count_planes > ARRAY_SIZE(stack_planes)) {
 		planes = malloc(sizeof(uint32_t)*r.count_planes);
