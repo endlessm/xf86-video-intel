@@ -5992,6 +5992,7 @@ sna_mode_enable(struct sna *sna)
 
 	update_flush_interval(sna);
 	sna_show_cursors(sna->scrn);
+	sna->mode.dirty = false;
 }
 
 void
@@ -6009,6 +6010,7 @@ sna_mode_close(struct sna *sna)
 	sna_cursors_fini(sna);
 
 	sna_backlight_close(sna);
+	sna->mode.dirty = false;
 }
 
 void
