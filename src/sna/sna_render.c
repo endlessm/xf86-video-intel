@@ -829,9 +829,15 @@ fixup:
 	size = sna->render.max_3d_size - 4096 / pixmap->drawable.bitsPerPixel;
 	while (size * size * 4 > max_size)
 		size /= 2;
+	DBG(("%s: size=%d (max=%d), scale %dx%d\n",
+	     __FUNCTION__, size, max_size, sx, sy));
 
 	sw = size / sx - 2 * sx;
+	if (sw < 1)
+		sw = 1;
 	sh = size / sy - 2 * sy;
+	if (sh < 1)
+		sh = 1;
 	DBG(("%s %d:%d downsampling using %dx%d GPU tiles\n",
 	     __FUNCTION__, (width + sw-1)/sw, (height + sh-1)/sh, sw, sh));
 
