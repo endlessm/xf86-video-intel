@@ -18011,6 +18011,9 @@ void sna_accel_block_handler(struct sna *sna, struct timeval **tv)
 		_kgem_submit(&sna->kgem);
 	}
 
+	if (sna->mode.dirty)
+		sna_crtc_config_notify(xf86ScrnToScreen(sna->scrn));
+
 restart:
 	if (sna_scanout_do_flush(sna))
 		sna_scanout_flush(sna);

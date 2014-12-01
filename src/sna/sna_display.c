@@ -5780,6 +5780,8 @@ sna_crtc_config_notify(ScreenPtr screen)
 	if (!sna->mode.dirty)
 		return;
 
+	/* XXX DisableUnusedOutputs? */
+
 	probe_capabilities(sna);
 	update_flush_interval(sna);
 
@@ -6917,12 +6919,16 @@ void sna_mode_redisplay(struct sna *sna)
 	if (!sna->mode.shadow_damage)
 		return;
 
-	DBG(("%s: posting shadow damage? %d (flips pending? %d)\n",
+	DBG(("%s: posting shadow damage? %d (flips pending? %d, mode reconfiguration pending? %d)\n",
 	     __FUNCTION__,
 	     !RegionNil(DamageRegion(sna->mode.shadow_damage)),
-	     sna->mode.flip_active));
+	     sna->mode.flip_active,
+	     sna->mode.dirty));
 	assert((sna->flags & SNA_IS_HOSTED) == 0);
 	assert(sna->mode.shadow_active);
+
+	if (sna->mode.dirty)
+		return;
 
 	region = DamageRegion(sna->mode.shadow_damage);
 	if (RegionNil(region))
