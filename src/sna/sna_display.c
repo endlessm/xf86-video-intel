@@ -5176,6 +5176,8 @@ sna_crtc_flip(struct sna *sna, struct sna_crtc *crtc, struct kgem_bo *bo, int x,
 	DBG(("%s CRTC:%d [pipe=%d], handle=%d\n", __FUNCTION__, crtc->id, crtc->pipe, bo->handle));
 
 	assert(sna->mode.num_real_output < ARRAY_SIZE(output_ids));
+	assert(crtc->bo);
+	assert(crtc->kmode.clock);
 
 	for (i = 0; i < sna->mode.num_real_output; i++) {
 		xf86OutputPtr output = config->output[i];
@@ -5196,6 +5198,7 @@ sna_crtc_flip(struct sna *sna, struct sna_crtc *crtc, struct kgem_bo *bo, int x,
 		if (++output_count == ARRAY_SIZE(output_ids))
 			return false;
 	}
+	assert(output_count);
 
 	VG_CLEAR(arg);
 	arg.crtc_id = crtc->id;
