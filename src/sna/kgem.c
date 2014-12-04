@@ -2967,6 +2967,10 @@ static void kgem_commit(struct kgem *kgem)
 		assert(rq->ring < ARRAY_SIZE(kgem->requests));
 		list_add_tail(&rq->list, &kgem->requests[rq->ring]);
 		kgem->need_throttle = kgem->need_retire = 1;
+
+		if (kgem->fence[rq->ring] == NULL &&
+		    __kgem_busy(kgem, rq->bo->handle))
+			kgem->fence[rq->ring] = rq;
 	}
 
 	kgem->next_request = NULL;
