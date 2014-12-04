@@ -772,8 +772,11 @@ sna_wakeup_handler(WAKEUPHANDLER_ARGS_DECL)
 
 	sna_accel_wakeup_handler(sna);
 
-	if (FD_ISSET(sna->kgem.fd, (fd_set*)read_mask))
+	if (FD_ISSET(sna->kgem.fd, (fd_set*)read_mask)) {
 		sna_mode_wakeup(sna);
+		/* Clear the flag so that subsequent ZaphodHeads don't block  */
+		FD_CLR(sna->kgem.fd, (fd_set*)read_mask);
+	}
 }
 
 #if HAVE_UDEV
