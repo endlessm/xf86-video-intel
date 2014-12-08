@@ -433,7 +433,7 @@ extern void sna_mode_check(struct sna *sna);
 extern bool sna_mode_disable(struct sna *sna);
 extern void sna_mode_enable(struct sna *sna);
 extern void sna_mode_reset(struct sna *sna);
-extern void sna_mode_wakeup(struct sna *sna);
+extern int sna_mode_wakeup(struct sna *sna);
 extern void sna_mode_redisplay(struct sna *sna);
 extern void sna_shadow_set_crtc(struct sna *sna, xf86CrtcPtr crtc, struct kgem_bo *bo);
 extern void sna_shadow_unset_crtc(struct sna *sna, xf86CrtcPtr crtc);

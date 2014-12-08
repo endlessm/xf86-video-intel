@@ -254,15 +254,6 @@ static inline bool event_pending(int fd)
 	return poll(&pfd, 1, 0) == 1;
 }
 
-static bool sna_mode_has_pending_events(struct sna *sna)
-{
-	/* In order to workaround a kernel bug in not honouring O_NONBLOCK,
-	 * check that the fd is readable before attempting to read the next
-	 * event from drm.
-	 */
-	return event_pending(sna->kgem.fd);
-}
-
 static bool sna_mode_wait_for_event(struct sna *sna)
 {
 	struct pollfd pfd;
@@ -1171,8 +1162,8 @@ static bool wait_for_shadow(struct sna *sna,
 		drmIoctl(sna->kgem.fd, DRM_IOCTL_I915_GEM_THROTTLE, 0);
 		sna->kgem.need_throttle = false;
 
-		while (sna->mode.flip_active && sna_mode_has_pending_events(sna))
-			sna_mode_wakeup(sna);
+		while (sna->mode.flip_active && sna_mode_wakeup(sna))
+			;
 	}
 
 	bo = sna->mode.shadow;
@@ -4364,9 +4355,7 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 			sna_crtc_disable(crtc);
 	}
 
-	while (sna_mode_has_pending_events(sna))
-		sna_mode_wakeup(sna);
-
+	sna_mode_wakeup(sna);
 	kgem_clean_scanout_cache(&sna->kgem);
 
 	return TRUE;
@@ -5972,9 +5961,7 @@ sna_mode_disable(struct sna *sna)
 	for (i = 0; i < sna->mode.num_real_crtc; i++)
 		sna_crtc_disable(config->crtc[i]);
 
-	while (sna_mode_has_pending_events(sna))
-		sna_mode_wakeup(sna);
-
+	sna_mode_wakeup(sna);
 	kgem_clean_scanout_cache(&sna->kgem);
 	return true;
 }
@@ -6009,8 +5996,7 @@ sna_mode_enable(struct sna *sna)
 void
 sna_mode_close(struct sna *sna)
 {
-	while (sna_mode_has_pending_events(sna))
-		sna_mode_wakeup(sna);
+	sna_mode_wakeup(sna);
 
 	if (sna->flags & SNA_IS_HOSTED)
 		return;
@@ -6575,8 +6561,7 @@ void sna_mode_reset(struct sna *sna)
 	}
 
 	/* drain the event queue */
-	while (sna_mode_has_pending_events(sna))
-		sna_mode_wakeup(sna);
+	sna_mode_wakeup(sna);
 }
 
 static void transformed_box(BoxRec *box, xf86CrtcPtr crtc)
@@ -6968,8 +6953,8 @@ void sna_mode_redisplay(struct sna *sna)
 		damage = sna->mode.shadow_damage;
 		sna->mode.shadow_damage = NULL;
 
-		while (sna->mode.flip_active && sna_mode_has_pending_events(sna))
-			sna_mode_wakeup(sna);
+		while (sna->mode.flip_active && sna_mode_wakeup(sna))
+			;
 
 		sna->mode.shadow_damage = damage;
 	}
@@ -7387,17 +7372,26 @@ fixup_flip:
 	RegionEmpty(region);
 }
 
-void sna_mode_wakeup(struct sna *sna)
+int sna_mode_wakeup(struct sna *sna)
 {
 	char buffer[1024];
 	int len, i;
+	int ret = 0;
+
+again:
+	/* In order to workaround a kernel bug in not honouring O_NONBLOCK,
+	 * check that the fd is readable before attempting to read the next
+	 * event from drm.
+	 */
+	if (!event_pending(sna->kgem.fd))
+		return ret;
 
 	/* The DRM read semantics guarantees that we always get only
 	 * complete events.
 	 */
 	len = read(sna->kgem.fd, buffer, sizeof (buffer));
 	if (len < (int)sizeof(struct drm_event))
-		return;
+		return ret;
 
 	/* Note that we cannot rely on the passed in struct sna matching
 	 * the struct sna used for the vblank event (in case it was submitted
@@ -7464,5 +7458,8 @@ void sna_mode_wakeup(struct sna *sna)
 			break;
 		}
 		i += e->length;
+		ret++;
 	}
+
+	goto again;
 }
