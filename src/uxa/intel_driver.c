@@ -1125,11 +1125,6 @@ static Bool I830CloseScreen(CLOSE_SCREEN_ARGS_DECL)
 		intel->uxa_driver = NULL;
 	}
 
-	if (intel->back_pixmap) {
-		screen->DestroyPixmap(intel->back_pixmap);
-		intel->back_pixmap = NULL;
-	}
-
 	if (intel->back_buffer) {
 		drm_intel_bo_unreference(intel->back_buffer);
 		intel->back_buffer = NULL;

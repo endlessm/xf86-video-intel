@@ -1581,11 +1581,6 @@ intel_xf86crtc_resize(ScrnInfoPtr scrn, int width, int height)
 	old_fb_id = mode->fb_id;
 	old_front = intel->front_buffer;
 
-	if (intel->back_pixmap) {
-		scrn->pScreen->DestroyPixmap(intel->back_pixmap);
-		intel->back_pixmap = NULL;
-	}
-
 	if (intel->back_buffer) {
 		drm_intel_bo_unreference(intel->back_buffer);
 		intel->back_buffer = NULL;
