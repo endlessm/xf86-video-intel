@@ -1075,8 +1075,10 @@ sna_mode_init(struct sna *sna, ScreenPtr screen)
 
 	/* Wrap RR queries to catch pending MST topology changes */
 	rp = rrGetScrPriv(screen);
-	sna->mode.rrGetInfo = rp->rrGetInfo;
-	rp->rrGetInfo = sna_randr_getinfo;
+	if (rp) {
+		sna->mode.rrGetInfo = rp->rrGetInfo;
+		rp->rrGetInfo = sna_randr_getinfo;
+	}
 
 	return TRUE;
 }
