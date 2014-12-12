@@ -5576,8 +5576,6 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 		crtc->desiredX = mode.x;
 		crtc->desiredY = mode.y;
 		crtc->desiredTransformPresent = FALSE;
-
-		sna_crtc->kmode = mode.mode;
 	}
 
 	/* Reconstruct outputs pointing to active CRTC */
@@ -5713,8 +5711,6 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 
 	scrn->virtualX = width;
 	scrn->virtualY = height;
-
-	sna->mode.dirty = true;
 
 	xf86SetScrnInfoModes(sna->scrn);
 	DBG(("%s: SetScrnInfoModes = %p\n", __FUNCTION__, scrn->modes));
