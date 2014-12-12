@@ -821,14 +821,13 @@ trap_upload(PicturePtr picture,
 void
 sna_add_traps(PicturePtr picture, INT16 x, INT16 y, int n, xTrap *t)
 {
-	struct sna *sna;
-	PixmapPtr pixmap;
+	PixmapPtr pixmap = get_drawable_pixmap(picture->pDrawable);
+	struct sna *sna = to_sna_from_pixmap(pixmap);
+	struct sna_pixmap *priv = sna_pixmap(pixmap);
 
 	DBG(("%s (%d, %d) x %d\n", __FUNCTION__, x, y, n));
 
-	pixmap = get_drawable_pixmap(picture->pDrawable);
-	sna = to_sna_from_pixmap(pixmap);
-	if (is_gpu_dst(sna_pixmap(pixmap))) {
+	if (priv && is_gpu_dst(priv)) {
 		if (trap_span_converter(sna, picture, x, y, n, t))
 			return;
 	}
