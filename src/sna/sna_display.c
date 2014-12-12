@@ -1549,6 +1549,8 @@ static void update_flush_interval(struct sna *sna)
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
 	int i, max_vrefresh = 0;
 
+	DBG(("%s: front_active=%d\n", __FUNCTION__, sna->mode.front_active));
+
 	for (i = 0; i < sna->mode.num_real_crtc; i++) {
 		xf86CrtcPtr crtc = config->crtc[i];
 
@@ -2299,6 +2301,7 @@ retry: /* Attach per-crtc pixmap or direct */
 		sna_crtc_damage(crtc);
 	sna->mode.front_active += saved_bo == NULL;
 	sna->mode.dirty = true;
+	DBG(("%s: front_active=%d\n", __FUNCTION__, sna->mode.front_active));
 
 	return TRUE;
 
@@ -5573,6 +5576,8 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 		crtc->desiredX = mode.x;
 		crtc->desiredY = mode.y;
 		crtc->desiredTransformPresent = FALSE;
+
+		sna_crtc->kmode = mode.mode;
 	}
 
 	/* Reconstruct outputs pointing to active CRTC */
@@ -5708,6 +5713,8 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 
 	scrn->virtualX = width;
 	scrn->virtualY = height;
+
+	sna->mode.dirty = true;
 
 	xf86SetScrnInfoModes(sna->scrn);
 	DBG(("%s: SetScrnInfoModes = %p\n", __FUNCTION__, scrn->modes));
@@ -5960,6 +5967,7 @@ sna_mode_disable(struct sna *sna)
 	sna_hide_cursors(sna->scrn);
 	for (i = 0; i < sna->mode.num_real_crtc; i++)
 		sna_crtc_disable(config->crtc[i]);
+	assert(sna->mode.front_active == 0);
 
 	sna_mode_wakeup(sna);
 	kgem_clean_scanout_cache(&sna->kgem);
@@ -5972,6 +5980,8 @@ sna_mode_enable(struct sna *sna)
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
 	int i;
 
+	DBG(("%s\n", __FUNCTION__));
+
 	if (sna->flags & SNA_IS_HOSTED)
 		return;
 
@@ -5981,8 +5991,12 @@ sna_mode_enable(struct sna *sna)
 	for (i = 0; i < sna->mode.num_real_crtc; i++) {
 		xf86CrtcPtr crtc = config->crtc[i];
 
+		DBG(("%s: crtc[%d].enabled?=%d\n", __FUNCTION__, i, crtc->enabled));
 		assert(to_sna_crtc(crtc) != NULL);
 		if (!crtc->enabled)
+			continue;
+
+		if (crtc->mode.Clock == 0)
 			continue;
 
 		__sna_crtc_set_mode(crtc);
@@ -6622,7 +6636,7 @@ sna_crtc_redisplay__fallback(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo 
 	int depth, error;
 	void *ptr;
 
-	DBG(("%s: compositing transformed damage boxes\n", __FUNCTION__));
+	DBG(("%s: compositing transformed damage boxes, target handle=%d\n", __FUNCTION__, bo->handle));
 
 	error = sna_render_format_for_depth(draw->depth);
 	depth = PIXMAN_FORMAT_DEPTH(error);
@@ -6991,6 +7005,11 @@ void sna_mode_redisplay(struct sna *sna)
 			if (RegionNotEmpty(&damage)) {
 				struct kgem_bo *bo = NULL;
 
+				DBG(("%s: fallback intersects pipe=%d [(%d, %d), (%d, %d)]\n",
+				     __FUNCTION__, sna_crtc->pipe,
+				     damage.extents.x1, damage.extents.y1,
+				     damage.extents.x2, damage.extents.y2));
+
 				if (sna->flags & SNA_TEAR_FREE) {
 					RegionRec new_damage;
 
@@ -7009,6 +7028,9 @@ void sna_mode_redisplay(struct sna *sna)
 								CREATE_SCANOUT);
 					} else
 						RegionUnion(&damage, &damage, &sna_crtc->client_damage);
+
+					DBG(("%s: TearFree fallback, shadow handle=%d, crtc handle=%d\n", __FUNCTION__, bo->handle, sna_crtc->bo->handle));
+
 					sna_crtc->client_damage = new_damage;
 				}
 
@@ -7035,9 +7057,9 @@ void sna_mode_redisplay(struct sna *sna)
 							sna_crtc->bo->active_scanout--;
 							kgem_bo_destroy(&sna->kgem, sna_crtc->bo);
 
-							sna_crtc->bo = kgem_bo_reference(bo);
+							sna_crtc->bo = bo;
 							sna_crtc->bo->active_scanout++;
-							sna_crtc->client_bo = kgem_bo_reference(bo);
+							sna_crtc->client_bo = NULL;
 						} else {
 							DBG(("%s: flip [fb=%d] on crtc %d [%d, pipe=%d] failed - %d\n",
 							     __FUNCTION__, arg.fb_id, i, sna_crtc->id, sna_crtc->pipe, errno));
