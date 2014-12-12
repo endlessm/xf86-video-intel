@@ -5924,7 +5924,7 @@ sna_mode_set_primary(struct sna *sna)
 	rrScrPrivPtr rr = rrGetScrPriv(xf86ScrnToScreen(sna->scrn));
 	int i;
 
-	if (rr->primaryOutput)
+	if (rr == NULL || rr->primaryOutput)
 		return;
 
 	for (i = 0; i < sna->mode.num_real_output; i++) {
