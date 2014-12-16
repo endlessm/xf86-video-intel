@@ -78,15 +78,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "xassert.h"
 #include "compiler.h"
-
-#if HAS_DEBUG_FULL
-void LogF(const char *f, ...);
-#define DBG(x) LogF x
-#define ERR(x) ErrorF x
-#else
-#define DBG(x)
-#define ERR(x)
-#endif
+#include "debug.h"
 
 #define DEBUG_NO_BLT 0
 

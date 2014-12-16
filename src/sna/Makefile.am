@@ -41,6 +41,7 @@ libsna_la_SOURCES = \
 	atomic.h \
 	blt.c \
 	compiler.h \
+	debug.h \
 	kgem.c \
 	kgem.h \
 	rop.h \
