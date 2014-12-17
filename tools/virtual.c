@@ -3117,6 +3117,9 @@ static void context_cleanup(struct context *ctx)
 	for (i = 1; i < ctx->ndisplay; i++)
 		display_cleanup(&ctx->display[i]);
 
+	if (dpy == NULL)
+		return;
+
 	res = _XRRGetScreenResourcesCurrent(dpy, ctx->display->root);
 	if (res == NULL)
 		return;
