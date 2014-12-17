@@ -3214,6 +3214,12 @@ int main(int argc, char **argv)
 		}
 	}
 
+	if (verbose)
+		printf("intel-virtual-output: version %d.%d.%d\n",
+		       PACKAGE_VERSION_MAJOR,
+		       PACKAGE_VERSION_MINOR,
+		       PACKAGE_VERSION_PATCHLEVEL);
+
 	ret = context_init(&ctx);
 	if (ret)
 		return -ret;
