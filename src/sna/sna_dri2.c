@@ -446,10 +446,11 @@ sna_dri2_create_buffer(DrawablePtr draw,
 	uint32_t size;
 	int bpp;
 
-	DBG(("%s pixmap=%ld, (attachment=%d, format=%d, drawable=%dx%d)\n",
+	DBG(("%s pixmap=%ld, (attachment=%d, format=%d, drawable=%dx%d), window?=%d\n",
 	     __FUNCTION__,
 	     get_drawable_pixmap(draw)->drawable.serialNumber,
-	     attachment, format, draw->width, draw->height));
+	     attachment, format, draw->width, draw->height,
+	     draw->type != DRAWABLE_PIXMAP));
 
 	pixmap = NULL;
 	size = (uint32_t)draw->height << 16 | draw->width;
@@ -464,11 +465,12 @@ sna_dri2_create_buffer(DrawablePtr draw,
 		if (buffer) {
 			private = get_private(buffer);
 
-			DBG(("%s: reusing front buffer attachment, win=%lu %dx%d, pixmap=%ld %dx%d, handle=%d, name=%d\n",
+			DBG(("%s: reusing front buffer attachment, win=%lu %dx%d, pixmap=%ld [%ld] %dx%d, handle=%d, name=%d\n",
 			     __FUNCTION__,
 			     draw->type != DRAWABLE_PIXMAP ? (long)draw->id : (long)0,
 			     draw->width, draw->height,
 			     pixmap->drawable.serialNumber,
+			     private->pixmap->drawable.serialNumber,
 			     pixmap->drawable.width,
 			     pixmap->drawable.height,
 			     private->bo->handle, buffer->name));
@@ -1400,19 +1402,37 @@ sna_dri2_add_event(struct sna *sna, DrawablePtr draw, ClientPtr client)
 	return info;
 }
 
-void sna_dri2_destroy_window(WindowPtr win)
+void sna_dri2_decouple_window(WindowPtr win)
 {
-	struct sna *sna;
 	struct dri2_window *priv;
 
 	priv = dri2_window(win);
 	if (priv == NULL)
 		return;
 
-	DBG(("%s: window=%ld\n", __FUNCTION__, win->drawable.serialNumber));
-	sna = to_sna_from_drawable(&win->drawable);
+	DBG(("%s: window=%ld\n", __FUNCTION__, win->drawable.id));
 
 	if (priv->front) {
+		struct sna *sna = to_sna_from_drawable(&win->drawable);
+		assert(priv->crtc);
+		sna_shadow_unset_crtc(sna, priv->crtc);
+		_sna_dri2_destroy_buffer(sna, priv->front);
+		priv->front = NULL;
+	}
+}
+
+void sna_dri2_destroy_window(WindowPtr win)
+{
+	struct dri2_window *priv;
+
+	priv = dri2_window(win);
+	if (priv == NULL)
+		return;
+
+	DBG(("%s: window=%ld\n", __FUNCTION__, win->drawable.id));
+
+	if (priv->front) {
+		struct sna *sna = to_sna_from_drawable(&win->drawable);
 		assert(priv->crtc);
 		sna_shadow_unset_crtc(sna, priv->crtc);
 		_sna_dri2_destroy_buffer(sna, priv->front);
@@ -3120,6 +3140,7 @@ out_complete:
 }
 #else
 void sna_dri2_destroy_window(WindowPtr win) { }
+void sna_dri2_decouple_window(WindowPtr win) { }
 #endif
 
 static bool has_i830_dri(void)

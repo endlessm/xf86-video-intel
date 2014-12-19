@@ -539,6 +539,7 @@ bool sna_dri2_open(struct sna *sna, ScreenPtr pScreen);
 void sna_dri2_page_flip_handler(struct sna *sna, struct drm_event_vblank *event);
 void sna_dri2_vblank_handler(struct drm_event_vblank *event);
 void sna_dri2_pixmap_update_bo(struct sna *sna, PixmapPtr pixmap, struct kgem_bo *bo);
+void sna_dri2_decouple_window(WindowPtr win);
 void sna_dri2_destroy_window(WindowPtr win);
 void sna_dri2_close(struct sna *sna, ScreenPtr pScreen);
 #else
@@ -546,6 +547,7 @@ static inline bool sna_dri2_open(struct sna *sna, ScreenPtr pScreen) { return fa
 static inline void sna_dri2_page_flip_handler(struct sna *sna, struct drm_event_vblank *event) { }
 static inline void sna_dri2_vblank_handler(struct drm_event_vblank *event) { }
 static inline void sna_dri2_pixmap_update_bo(struct sna *sna, PixmapPtr pixmap, struct kgem_bo *bo) { }
+static inline void sna_dri2_decouple_window(WindowPtr win) { }
 static inline void sna_dri2_destroy_window(WindowPtr win) { }
 static inline void sna_dri2_close(struct sna *sna, ScreenPtr pScreen) { }
 #endif

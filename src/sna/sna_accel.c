@@ -17593,6 +17593,13 @@ sna_get_window_pixmap(WindowPtr window)
 static void
 sna_set_window_pixmap(WindowPtr window, PixmapPtr pixmap)
 {
+	DBG(("%s: window=%ld, old pixmap=%ld new pixmap=%ld\n",
+	     __FUNCTION__, window->drawable.id,
+	     get_window_pixmap(window) ? get_window_pixmap(window)->drawable.serialNumber : 0,
+	     pixmap->drawable.serialNumber));
+
+	sna_dri2_decouple_window(window);
+
 	*(PixmapPtr *)__get_private(window, sna_window_key) = pixmap;
 }
 
