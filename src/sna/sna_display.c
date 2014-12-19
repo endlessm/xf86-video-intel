@@ -1736,7 +1736,7 @@ static bool use_shadow(struct sna *sna, xf86CrtcPtr crtc)
 	}
 
 	if (sna->flags & SNA_TEAR_FREE && to_sna_crtc(crtc)->slave_pixmap) {
-		DBG(("%s: tear-free shadow required\n", __FUNCTION__));
+		DBG(("%s: TearFree shadow required\n", __FUNCTION__));
 		return true;
 	}
 
@@ -6998,7 +6998,7 @@ void sna_mode_redisplay(struct sna *sna)
 			damage.extents = crtc->bounds;
 			damage.data = NULL;
 			RegionIntersect(&damage, &damage, region);
-			if (RegionNotEmpty(&damage)) {
+			if (!box_empty(&damage.extents)) {
 				struct kgem_bo *bo = NULL;
 
 				DBG(("%s: fallback intersects pipe=%d [(%d, %d), (%d, %d)]\n",
@@ -7138,7 +7138,13 @@ void sna_mode_redisplay(struct sna *sna)
 		damage.data = NULL;
 
 		RegionIntersect(&damage, &damage, region);
-		if (RegionNotEmpty(&damage)) {
+		DBG(("%s: crtc[%d] damage? %d[%d]: %dx[(%d, %d), (%d, %d)]\n",
+		     __FUNCTION__, i,
+		     !box_empty(&damage.extents), RegionNotEmpty(&damage),
+		     region_num_rects(&damage),
+		     damage.extents.x1, damage.extents.y1,
+		     damage.extents.x2, damage.extents.y2));
+		if (!box_empty(&damage.extents)) {
 			if (sna->flags & SNA_TEAR_FREE) {
 				struct drm_mode_crtc_page_flip arg;
 				struct kgem_bo *bo;
@@ -7242,7 +7248,7 @@ disable1:
 		struct drm_mode_crtc_page_flip arg;
 		uint32_t fb = 0;
 
-		DBG(("%s: flipping tear-free outputs, current scanout handle=%d [active?=%d], new handle=%d [active=%d]\n",
+		DBG(("%s: flipping TearFree outputs, current scanout handle=%d [active?=%d], new handle=%d [active=%d]\n",
 		     __FUNCTION__, old->handle, old->active_scanout, new->handle, new->active_scanout));
 
 		assert(new != old);
@@ -7314,7 +7320,7 @@ fixup_shadow:
 				continue;
 
 			if (flip_bo->pitch != crtc->bo->pitch || (y << 16 | x)  != crtc->offset) {
-				DBG(("%s: changing pitch (%d == %d) or offset (%x == %x)\n",
+				DBG(("%s: changing pitch (new %d =?= old %d) or offset (new %x =?= old %x)\n",
 				     __FUNCTION__,
 				     flip_bo->pitch, crtc->bo->pitch,
 				     y << 16 | x, crtc->offset));

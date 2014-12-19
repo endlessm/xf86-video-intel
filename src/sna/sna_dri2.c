@@ -427,6 +427,7 @@ sna_dri2_pixmap_update_bo(struct sna *sna, PixmapPtr pixmap, struct kgem_bo *bo)
 	kgem_bo_destroy(&sna->kgem, private->bo);
 
 	buffer->name = kgem_bo_flink(&sna->kgem, bo);
+	buffer->pitch = bo->pitch;
 	private->bo = ref(bo);
 
 	DBG(("%s: adding flush hint to handle=%d\n", __FUNCTION__, bo->handle));
@@ -1471,6 +1472,7 @@ sna_dri2_flip(struct sna_dri2_event *info)
 	struct kgem_bo *bo = get_private(info->back)->bo;
 	struct kgem_bo *tmp_bo;
 	uint32_t tmp_name;
+	int tmp_pitch;
 
 	DBG(("%s(type=%d)\n", __FUNCTION__, info->type));
 
@@ -1494,13 +1496,16 @@ sna_dri2_flip(struct sna_dri2_event *info)
 
 	tmp_bo = get_private(info->front)->bo;
 	tmp_name = info->front->name;
+	tmp_pitch = info->front->pitch;
 
 	set_bo(info->sna->front, bo);
 
 	info->front->name = info->back->name;
+	info->front->pitch = info->back->pitch;
 	get_private(info->front)->bo = bo;
 
 	info->back->name = tmp_name;
+	info->back->pitch = tmp_pitch;
 	get_private(info->back)->bo = tmp_bo;
 	mark_stale(info->back);
 
