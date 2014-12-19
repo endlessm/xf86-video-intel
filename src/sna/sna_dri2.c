@@ -234,7 +234,11 @@ dri2_chain(DrawablePtr d)
 	assert(priv != NULL);
 	return priv->chain;
 }
-inline static DRI2BufferPtr dri2_window_get_front(WindowPtr win) { return dri2_window(win)->front; }
+inline static DRI2BufferPtr dri2_window_get_front(WindowPtr win)
+{
+	struct dri2_window *priv = dri2_window(win);
+	return priv ? priv->front : NULL;
+}
 #else
 inline static void *dri2_window_get_front(WindowPtr win) { return NULL; }
 #endif
