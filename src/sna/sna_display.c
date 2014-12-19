@@ -1114,14 +1114,13 @@ static bool wait_for_shadow(struct sna *sna,
 
 	if ((flags & MOVE_WRITE) == 0) {
 		if ((flags & __MOVE_SCANOUT) == 0) {
-			while (!list_is_empty(&sna->mode.shadow_crtc)) {
-				struct sna_crtc *crtc =
-					list_first_entry(&sna->mode.shadow_crtc,
-							 struct sna_crtc,
-							 shadow_link);
+			struct sna_crtc *crtc;
+
+			list_for_each_entry(crtc, &sna->mode.shadow_crtc, shadow_link) {
 				if (overlap(&sna->mode.shadow_region.extents,
 					    &crtc->base->bounds)) {
 					DrawableRec draw;
+					RegionRec region;
 
 					draw.width = crtc->base->mode.HDisplay;
 					draw.height = crtc->base->mode.VDisplay;
@@ -1141,11 +1140,11 @@ static bool wait_for_shadow(struct sna *sna,
 								      &pixmap->drawable, priv->gpu_bo, 0, 0,
 								      &crtc->base->bounds, 1,
 								      0);
-				}
 
-				kgem_bo_destroy(&sna->kgem, crtc->client_bo);
-				crtc->client_bo = NULL;
-				list_del(&crtc->shadow_link);
+					region.extents = crtc->base->bounds;
+					region.data = NULL;
+					RegionSubtract(&sna->mode.shadow_region, &sna->mode.shadow_region, &region);
+				}
 			}
 		}
 
@@ -6913,6 +6912,37 @@ void sna_shadow_set_crtc(struct sna *sna,
 	assert(priv->gpu_bo);
 	priv->move_to_gpu = wait_for_shadow;
 	priv->move_to_gpu_data = sna;
+}
+
+void sna_shadow_steal_crtcs(struct sna *sna, struct list *list)
+{
+	list_init(list);
+	while (!list_is_empty(&sna->mode.shadow_crtc)) {
+		RegionRec sub, *damage;
+		struct sna_crtc *crtc =
+			list_first_entry(&sna->mode.shadow_crtc,
+					 struct sna_crtc,
+					 shadow_link);
+
+		damage = DamageRegion(sna->mode.shadow_damage);
+		sub.extents = crtc->base->bounds;
+		sub.data = NULL;
+		RegionSubtract(damage, damage, &sub);
+
+		list_move(&crtc->shadow_link, list);
+	}
+}
+
+void sna_shadow_unsteal_crtcs(struct sna *sna, struct list *list)
+{
+	while (!list_is_empty(list)) {
+		struct sna_crtc *crtc =
+			list_first_entry(list,
+					 struct sna_crtc,
+					 shadow_link);
+		assert(crtc->client_bo);
+		sna_shadow_set_crtc(sna, crtc->base, crtc->client_bo);
+	}
 }
 
 void sna_shadow_unset_crtc(struct sna *sna,

@@ -1006,6 +1006,10 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 	assert(dst_bo->refcnt);
 	if (is_front(dst->attachment)) {
 		struct sna_pixmap *priv;
+		struct list shadow;
+
+		/* Preserve the CRTC shadow overrides */
+		sna_shadow_steal_crtcs(sna, &shadow);
 
 		flags = MOVE_WRITE | __MOVE_FORCE;
 		if (clip.data)
@@ -1020,6 +1024,8 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		DBG(("%s: updated FrontLeft dst_bo from handle=%d to handle=%d\n",
 		     __FUNCTION__, dst_priv->bo->handle, dst_bo->handle));
 		assert(dst_bo->refcnt);
+
+		sna_shadow_unsteal_crtcs(sna, &shadow);
 	} else {
 		RegionRec target;
 

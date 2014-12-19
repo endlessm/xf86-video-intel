@@ -428,6 +428,8 @@ extern void sna_mode_reset(struct sna *sna);
 extern int sna_mode_wakeup(struct sna *sna);
 extern void sna_mode_redisplay(struct sna *sna);
 extern void sna_shadow_set_crtc(struct sna *sna, xf86CrtcPtr crtc, struct kgem_bo *bo);
+extern void sna_shadow_steal_crtcs(struct sna *sna, struct list *list);
+extern void sna_shadow_unsteal_crtcs(struct sna *sna, struct list *list);
 extern void sna_shadow_unset_crtc(struct sna *sna, xf86CrtcPtr crtc);
 extern bool sna_pixmap_discard_shadow_damage(struct sna_pixmap *priv,
 					     const RegionRec *region);
