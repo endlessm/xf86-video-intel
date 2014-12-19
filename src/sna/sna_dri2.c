@@ -1230,19 +1230,13 @@ draw_target_seq(DrawablePtr draw, uint64_t msc)
 static xf86CrtcPtr
 sna_dri2_get_crtc(DrawablePtr draw)
 {
-	struct sna *sna = to_sna_from_drawable(draw);
-	BoxRec box;
-
 	if (draw->type == DRAWABLE_PIXMAP)
 		return NULL;
 
-	box.x1 = draw->x;
-	box.y1 = draw->y;
-	box.x2 = box.x1 + draw->width;
-	box.y2 = box.y1 + draw->height;
-
 	/* Make sure the CRTC is valid and this is the real front buffer */
-	return sna_covering_crtc(sna, &box, NULL);
+	return sna_covering_crtc(to_sna_from_drawable(draw),
+				 &((WindowPtr)draw)->clipList.extents,
+				 NULL);
 }
 
 static void
