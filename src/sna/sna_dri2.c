@@ -432,6 +432,8 @@ sna_dri2_pixmap_update_bo(struct sna *sna, PixmapPtr pixmap, struct kgem_bo *bo)
 
 	DBG(("%s: adding flush hint to handle=%d\n", __FUNCTION__, bo->handle));
 	bo->flush = true;
+	if (bo->exec)
+		sna->kgem.flush = 1;
 	assert(sna_pixmap(pixmap)->flush);
 
 	/* XXX DRI2InvalidateDrawable(&pixmap->drawable); */
