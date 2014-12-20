@@ -2704,6 +2704,13 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 		return _sna_pixmap_move_to_cpu(pixmap, flags);
 	}
 
+	assert(priv->gpu_bo == NULL || priv->gpu_bo->proxy == NULL || (flags & MOVE_WRITE) == 0);
+
+	if (get_drawable_deltas(drawable, pixmap, &dx, &dy)) {
+		DBG(("%s: delta=(%d, %d)\n", __FUNCTION__, dx, dy));
+		RegionTranslate(region, dx, dy);
+	}
+
 	if (priv->move_to_gpu) {
 		DBG(("%s: applying move-to-gpu override\n", __FUNCTION__));
 		if ((flags & MOVE_READ) == 0)
@@ -2712,13 +2719,6 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 			DBG(("%s: move-to-gpu override failed\n", __FUNCTION__));
 			return NULL;
 		}
-	}
-
-	assert(priv->gpu_bo == NULL || priv->gpu_bo->proxy == NULL || (flags & MOVE_WRITE) == 0);
-
-	if (get_drawable_deltas(drawable, pixmap, &dx, &dy)) {
-		DBG(("%s: delta=(%d, %d)\n", __FUNCTION__, dx, dy));
-		RegionTranslate(region, dx, dy);
 	}
 
 	if (operate_inplace(priv, flags) &&
