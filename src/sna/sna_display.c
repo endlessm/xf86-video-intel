@@ -127,6 +127,7 @@ struct sna_crtc {
 	bool shadow;
 	bool fallback_shadow;
 	bool transform;
+	bool flip_pending;
 	uint8_t id;
 	uint8_t pipe;
 
@@ -1100,6 +1101,7 @@ static bool wait_for_shadow(struct sna *sna,
 	PixmapPtr pixmap = priv->pixmap;
 	DamagePtr damage;
 	struct kgem_bo *bo, *tmp;
+	int flip_active;
 	bool ret = true;
 
 	DBG(("%s: flags=%x, flips=%d, handle=%d, shadow=%d\n",
@@ -1156,17 +1158,32 @@ static bool wait_for_shadow(struct sna *sna,
 	damage = sna->mode.shadow_damage;
 	sna->mode.shadow_damage = NULL;
 
-	if (sna->mode.flip_active) {
+	flip_active = sna->mode.flip_active;
+	if (flip_active) {
+		struct sna_crtc *crtc;
+		list_for_each_entry(crtc, &sna->mode.shadow_crtc, shadow_link)
+			flip_active -= crtc->flip_pending;
+		DBG(("%s: %d flips still pending, shadow flip_active=%d\n",
+		     __FUNCTION__, sna->mode.flip_active, flip_active));
+	}
+	if (flip_active) {
 		/* raw cmd to avoid setting wedged in the middle of an op */
 		drmIoctl(sna->kgem.fd, DRM_IOCTL_I915_GEM_THROTTLE, 0);
 		sna->kgem.need_throttle = false;
 
-		while (sna->mode.flip_active && sna_mode_wakeup(sna))
-			;
+		while (flip_active && sna_mode_wakeup(sna)) {
+			struct sna_crtc *crtc;
+
+			flip_active = sna->mode.flip_active;
+			list_for_each_entry(crtc, &sna->mode.shadow_crtc, shadow_link)
+				flip_active -= crtc->flip_pending;
+		}
+		DBG(("%s: after waiting %d flips outstanding, flip_active=%d\n",
+		     __FUNCTION__, sna->mode.flip_active, flip_active));
 	}
 
 	bo = sna->mode.shadow;
-	if (sna->mode.flip_active) {
+	if (flip_active) {
 		bo = kgem_create_2d(&sna->kgem,
 				    pixmap->drawable.width,
 				    pixmap->drawable.height,
@@ -5372,6 +5389,7 @@ retry_flip:
 			crtc->flip_bo = kgem_bo_reference(bo);
 			crtc->flip_bo->active_scanout++;
 			crtc->flip_serial = crtc->mode_serial;
+			crtc->flip_pending = true;
 			sna->mode.flip_active++;
 		}
 
@@ -7259,6 +7277,7 @@ disable1:
 				sna_crtc->flip_bo = bo;
 				sna_crtc->flip_bo->active_scanout++;
 				sna_crtc->flip_serial = sna_crtc->mode_serial;
+				sna_crtc->flip_pending = true;
 
 				sna_crtc->client_bo = kgem_bo_reference(sna_crtc->bo);
 			} else {
@@ -7400,6 +7419,7 @@ fixup_flip:
 			crtc->flip_bo = kgem_bo_reference(flip_bo);
 			crtc->flip_bo->active_scanout++;
 			crtc->flip_serial = crtc->mode_serial;
+			crtc->flip_pending = true;
 
 			{
 				struct drm_i915_gem_busy busy = { flip_bo->handle };
@@ -7482,6 +7502,7 @@ again:
 				crtc->swap.tv_sec = vbl->tv_sec;
 				crtc->swap.tv_usec = vbl->tv_usec;
 				crtc->swap.msc = msc64(crtc, vbl->sequence);
+				crtc->flip_pending = false;
 
 				assert(crtc->flip_bo);
 				assert(crtc->flip_bo->active_scanout);
