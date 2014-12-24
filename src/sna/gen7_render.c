@@ -149,7 +149,7 @@ static const struct gt_info hsw_gt1_info = {
 	.max_vs_threads = 70,
 	.max_gs_threads = 70,
 	.max_wm_threads =
-		(102 - 1) << HSW_PS_MAX_THREADS_SHIFT |
+		(70 - 1) << HSW_PS_MAX_THREADS_SHIFT |
 		1 << HSW_PS_SAMPLE_MASK_SHIFT,
 	.urb = { 128, 640, 256, 8 },
 	.gt = 1,
