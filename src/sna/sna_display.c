@@ -299,34 +299,48 @@ bool sna_crtc_is_transformed(xf86CrtcPtr crtc)
 	return to_sna_crtc(crtc)->transform;
 }
 
-static inline uint64_t msc64(struct sna_crtc *sna_crtc, uint32_t seq)
+static inline bool msc64(struct sna_crtc *sna_crtc, uint32_t seq, uint64_t *msc)
 {
+	bool record = true;
 	if (seq < sna_crtc->last_seq) {
 		if (sna_crtc->last_seq - seq > 0x40000000) {
 			sna_crtc->wrap_seq++;
 			DBG(("%s: pipe=%d wrapped; was %u, now %u, wraps=%u\n",
 			     __FUNCTION__, sna_crtc->pipe,
 			     sna_crtc->last_seq, seq, sna_crtc->wrap_seq));
-		} else  {
-			ERR(("%s: pipe=%d msc went backwards; was %u, now %u\n",
+		} else {
+			DBG(("%s: pipe=%d msc went backwards; was %u, now %u; ignoring for last_swap\n",
 			     __FUNCTION__, sna_crtc->pipe, sna_crtc->last_seq, seq));
-			seq = sna_crtc->last_seq;
+
+			record = false;
 		}
 	}
-	sna_crtc->last_seq = seq;
-	return (uint64_t)sna_crtc->wrap_seq << 32 | seq;
+	*msc = (uint64_t)sna_crtc->wrap_seq << 32 | seq;
+	return record;
 }
 
 uint64_t sna_crtc_record_swap(xf86CrtcPtr crtc,
 			      int tv_sec, int tv_usec, unsigned seq)
 {
 	struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
+	uint64_t msc;
+
 	assert(sna_crtc);
-	DBG(("%s: recording last swap on pipe=%d, frame %d, time %d.%06d\n",
-	     __FUNCTION__, sna_crtc->pipe, seq, tv_sec, tv_usec));
-	sna_crtc->swap.tv_sec = tv_sec;
-	sna_crtc->swap.tv_usec = tv_usec;
-	return sna_crtc->swap.msc = msc64(sna_crtc, seq);
+
+	if (msc64(sna_crtc, seq, &msc)) {
+		DBG(("%s: recording last swap on pipe=%d, frame %d [%08llx], time %d.%06d\n",
+		     __FUNCTION__, sna_crtc->pipe, seq, (long long)msc,
+		     tv_sec, tv_usec));
+		sna_crtc->swap.tv_sec = tv_sec;
+		sna_crtc->swap.tv_usec = tv_usec;
+		sna_crtc->swap.msc = msc;
+	} else {
+		DBG(("%s: swap event on pipe=%d, frame %d [%08llx], time %d.%06d\n",
+		     __FUNCTION__, sna_crtc->pipe, seq, (long long)msc,
+		     tv_sec, tv_usec));
+	}
+
+	return msc;
 }
 
 const struct ust_msc *sna_crtc_last_swap(xf86CrtcPtr crtc)
@@ -7495,13 +7509,18 @@ again:
 			{
 				struct drm_event_vblank *vbl = (struct drm_event_vblank *)e;
 				struct sna_crtc *crtc = (void *)(uintptr_t)vbl->user_data;
+				uint64_t msc;
 
 				/* Beware Zaphod! */
 				sna = to_sna(crtc->base->scrn);
 
-				crtc->swap.tv_sec = vbl->tv_sec;
-				crtc->swap.tv_usec = vbl->tv_usec;
-				crtc->swap.msc = msc64(crtc, vbl->sequence);
+				if (msc64(crtc, vbl->sequence, &msc)) {
+					DBG(("%s: recording last swap on pipe=%d, frame %d [%08llx], time %d.%06d\n",
+					     __FUNCTION__, crtc->pipe, vbl->sequence, (long long)msc, vbl->tv_sec, vbl->tv_usec));
+					crtc->swap.tv_sec = vbl->tv_sec;
+					crtc->swap.tv_usec = vbl->tv_usec;
+					crtc->swap.msc = msc;
+				}
 				crtc->flip_pending = false;
 
 				assert(crtc->flip_bo);
