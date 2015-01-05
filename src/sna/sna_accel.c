@@ -11811,14 +11811,29 @@ sna_poly_fill_rect_blt(DrawablePtr drawable,
 				if (nbox > ARRAY_SIZE(boxes))
 					nbox = ARRAY_SIZE(boxes);
 				n -= nbox;
-				do {
+				while (nbox >= 2) {
+					b[0].x1 = rect[0].x + dx;
+					b[0].y1 = rect[0].y + dy;
+					b[0].x2 = b[0].x1 + rect[0].width;
+					b[0].y2 = b[0].y1 + rect[0].height;
+
+					b[1].x1 = rect[1].x + dx;
+					b[1].y1 = rect[1].y + dy;
+					b[1].x2 = b[1].x1 + rect[1].width;
+					b[1].y2 = b[1].y1 + rect[1].height;
+
+					b += 2;
+					rect += 2;
+					nbox -= 2;
+				}
+				if (nbox) {
 					b->x1 = rect->x + dx;
 					b->y1 = rect->y + dy;
 					b->x2 = b->x1 + rect->width;
 					b->y2 = b->y1 + rect->height;
 					b++;
 					rect++;
-				} while (--nbox);
+				}
 				fill.boxes(sna, &fill, boxes, b-boxes);
 				b = boxes;
 			} while (n);
@@ -11828,14 +11843,29 @@ sna_poly_fill_rect_blt(DrawablePtr drawable,
 				if (nbox > ARRAY_SIZE(boxes))
 					nbox = ARRAY_SIZE(boxes);
 				n -= nbox;
-				do {
+				while (nbox >= 2) {
+					b[0].x1 = rect[0].x;
+					b[0].y1 = rect[0].y;
+					b[0].x2 = b[0].x1 + rect[0].width;
+					b[0].y2 = b[0].y1 + rect[0].height;
+
+					b[1].x1 = rect[1].x + dx;
+					b[1].y1 = rect[1].y + dy;
+					b[1].x2 = b[1].x1 + rect[1].width;
+					b[1].y2 = b[1].y1 + rect[1].height;
+
+					b += 2;
+					rect += 2;
+					nbox -= 2;
+				}
+				if (nbox) {
 					b->x1 = rect->x;
 					b->y1 = rect->y;
 					b->x2 = b->x1 + rect->width;
 					b->y2 = b->y1 + rect->height;
 					b++;
 					rect++;
-				} while (--nbox);
+				}
 				fill.boxes(sna, &fill, boxes, b-boxes);
 				b = boxes;
 			} while (n);
