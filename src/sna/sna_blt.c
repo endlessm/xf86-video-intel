@@ -237,17 +237,11 @@ static bool sna_blt_fill_init(struct sna *sna,
 	return true;
 }
 
-noinline static void sna_blt_fill_begin(struct sna *sna,
-					const struct sna_blt_state *blt)
+noinline static void __sna_blt_fill_begin(struct sna *sna,
+					  const struct sna_blt_state *blt)
 {
 	struct kgem *kgem = &sna->kgem;
 	uint32_t *b;
-
-	if (kgem->nreloc) {
-		_kgem_submit(kgem);
-		_kgem_set_mode(kgem, KGEM_BLT);
-		assert(kgem->nbatch == 0);
-	}
 
 	assert(kgem->mode == KGEM_BLT);
 	b = kgem->batch + kgem->nbatch;
@@ -291,6 +285,20 @@ noinline static void sna_blt_fill_begin(struct sna *sna,
 		b[8] = 0;
 		kgem->nbatch += 9;
 	}
+}
+
+inline static void sna_blt_fill_begin(struct sna *sna,
+				      const struct sna_blt_state *blt)
+{
+	struct kgem *kgem = &sna->kgem;
+
+	if (kgem->nreloc) {
+		_kgem_submit(kgem);
+		_kgem_set_mode(kgem, KGEM_BLT);
+		assert(kgem->nbatch == 0);
+	}
+
+	__sna_blt_fill_begin(sna, blt);
 }
 
 inline static void sna_blt_fill_one(struct sna *sna,
@@ -3062,7 +3070,7 @@ static void sna_blt_fill_op_blt(struct sna *sna,
 	if (sna->blt_state.fill_bo != op->base.u.blt.bo[0]->unique_id) {
 		const struct sna_blt_state *blt = &op->base.u.blt;
 
-		sna_blt_fill_begin(sna, blt);
+		__sna_blt_fill_begin(sna, blt);
 
 		sna->blt_state.fill_bo = blt->bo[0]->unique_id;
 		sna->blt_state.fill_pixel = blt->pixel;
@@ -3079,7 +3087,7 @@ fastcall static void sna_blt_fill_op_box(struct sna *sna,
 	if (sna->blt_state.fill_bo != op->base.u.blt.bo[0]->unique_id) {
 		const struct sna_blt_state *blt = &op->base.u.blt;
 
-		sna_blt_fill_begin(sna, blt);
+		__sna_blt_fill_begin(sna, blt);
 
 		sna->blt_state.fill_bo = blt->bo[0]->unique_id;
 		sna->blt_state.fill_pixel = blt->pixel;
@@ -3097,7 +3105,7 @@ fastcall static void sna_blt_fill_op_boxes(struct sna *sna,
 	if (sna->blt_state.fill_bo != op->base.u.blt.bo[0]->unique_id) {
 		const struct sna_blt_state *blt = &op->base.u.blt;
 
-		sna_blt_fill_begin(sna, blt);
+		__sna_blt_fill_begin(sna, blt);
 
 		sna->blt_state.fill_bo = blt->bo[0]->unique_id;
 		sna->blt_state.fill_pixel = blt->pixel;
@@ -3132,7 +3140,7 @@ fastcall static void sna_blt_fill_op_points(struct sna *sna,
 	DBG(("%s: %08x x %d\n", __FUNCTION__, blt->pixel, n));
 
 	if (sna->blt_state.fill_bo != op->base.u.blt.bo[0]->unique_id) {
-		sna_blt_fill_begin(sna, blt);
+		__sna_blt_fill_begin(sna, blt);
 
 		sna->blt_state.fill_bo = blt->bo[0]->unique_id;
 		sna->blt_state.fill_pixel = blt->pixel;
