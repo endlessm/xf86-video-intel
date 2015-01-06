@@ -96,11 +96,6 @@ search_snoop_cache(struct kgem *kgem, unsigned int num_pages, unsigned flags);
 #define SHOW_BATCH_BEFORE 0
 #define SHOW_BATCH_AFTER 0
 
-#if !USE_WC_MMAP
-#undef DBG_NO_WC_MMAP
-#define DBG_NO_WC_MMAP 1
-#endif
-
 #if 0
 #define ASSERT_IDLE(kgem__, handle__) assert(!__kgem_busy(kgem__, handle__))
 #define ASSERT_MAYBE_IDLE(kgem__, handle__, expect__) assert(!(expect__) || !__kgem_busy(kgem__, handle__))
