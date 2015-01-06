@@ -3215,7 +3215,7 @@ __sna_pixmap_for_gpu(struct sna *sna, PixmapPtr pixmap, unsigned flags)
 	priv = sna_pixmap(pixmap);
 	if (priv == NULL) {
 		DBG(("%s: not attached\n", __FUNCTION__));
-		if ((flags & __MOVE_DRI) == 0)
+		if ((flags & (__MOVE_DRI | __MOVE_SCANOUT)) == 0)
 			return NULL;
 
 		if (pixmap->usage_hint == -1) {
