@@ -2383,4 +2383,5 @@ void
 sna_render_mark_wedged(struct sna *sna)
 {
 	sna->render.copy_boxes = memcpy_copy_boxes;
+	sna->render.prefer_gpu = 0;
 }
