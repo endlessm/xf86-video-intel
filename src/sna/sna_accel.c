@@ -1311,7 +1311,7 @@ static PixmapPtr sna_create_pixmap(ScreenPtr screen,
 
 	if (unlikely((sna->render.prefer_gpu & PREFER_GPU_RENDER) == 0))
 		flags &= ~KGEM_CAN_CREATE_GPU;
-	if (wedged(sna))
+	if (wedged(sna) && usage != SNA_CREATE_FB)
 		flags &= ~KGEM_CAN_CREATE_GTT;
 
 	DBG(("%s: usage=%d, flags=%x\n", __FUNCTION__, usage, flags));
