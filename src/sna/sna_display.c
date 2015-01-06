@@ -1992,7 +1992,6 @@ force_shadow:
 		}
 
 		if (__sna_pixmap_get_bo(sna->front) && !crtc->transformPresent) {
-			DrawableRec tmp;
 			BoxRec b;
 
 			b.x1 = crtc->x;
@@ -2000,21 +1999,34 @@ force_shadow:
 			b.x2 = crtc->x + crtc->mode.HDisplay;
 			b.y2 = crtc->y + crtc->mode.VDisplay;
 
-			DBG(("%s: copying onto shadow CRTC: (%d, %d)x(%d, %d), handle=%d\n",
-			     __FUNCTION__,
-			     b.x1, b.y1,
-			     b.x2, b.y2,
-			     bo->handle));
+			if (b.x1 < 0)
+				b.x1 = 0;
+			if (b.y1 < 0)
+				b.y1 = 0;
+			if (b.x2 > scrn->virtualX)
+				b.x2 = scrn->virtualX;
+			if (b.y2 > scrn->virtualY)
+				b.y2 = scrn->virtualY;
+			if (b.y2 > b.y1 && b.x2 > b.x1) {
+				DrawableRec tmp;
 
-			tmp.width = crtc->mode.HDisplay;
-			tmp.height = crtc->mode.VDisplay;
-			tmp.depth = sna->front->drawable.depth;
-			tmp.bitsPerPixel = sna->front->drawable.bitsPerPixel;
+				DBG(("%s: copying onto shadow CRTC: (%d, %d)x(%d, %d) [fb=%dx%d], handle=%d\n",
+				     __FUNCTION__,
+				     b.x1, b.y1,
+				     b.x2-b.x1, b.y2-b.y1,
+				     scrn->virtualX, scrn->virtualY,
+				     bo->handle));
 
-			(void)sna->render.copy_boxes(sna, GXcopy,
-						     &sna->front->drawable, __sna_pixmap_get_bo(sna->front), 0, 0,
-						     &tmp, bo, -b.x1, -b.y1,
-						     &b, 1, 0);
+				tmp.width = crtc->mode.HDisplay;
+				tmp.height = crtc->mode.VDisplay;
+				tmp.depth = sna->front->drawable.depth;
+				tmp.bitsPerPixel = sna->front->drawable.bitsPerPixel;
+
+				(void)sna->render.copy_boxes(sna, GXcopy,
+							     &sna->front->drawable, __sna_pixmap_get_bo(sna->front), 0, 0,
+							     &tmp, bo, -crtc->x, -crtc->y,
+							     &b, 1, 0);
+			}
 		}
 
 		sna_crtc->shadow_bo_width = crtc->mode.HDisplay;
