@@ -795,6 +795,7 @@ mode_from_kmode(ScrnInfoPtr scrn,
 	mode->VTotal = kmode->vtotal;
 	mode->VScan = kmode->vscan;
 
+	mode->VRefresh = kmode->vrefresh;
 	mode->Flags = kmode->flags;
 	mode->name = get_kmode_name(kmode);
 
@@ -828,6 +829,7 @@ mode_to_kmode(struct drm_mode_modeinfo *kmode, DisplayModePtr mode)
 	kmode->vtotal = mode->VTotal;
 	kmode->vscan = mode->VScan;
 
+	kmode->vrefresh = mode->VRefresh;
 	kmode->flags = mode->Flags;
 	if (mode->name)
 		strncpy(kmode->name, mode->name, DRM_DISPLAY_MODE_LEN);
