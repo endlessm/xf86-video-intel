@@ -2336,6 +2336,9 @@ memcpy_copy_boxes(struct sna *sna, uint8_t op,
 	if (op != GXcopy)
 		return false;
 
+	if (src_draw->depth != dst_draw->depth)
+		return false;
+
 	clipped = (n > 1 ||
 		   box->x1 + dx > 0 ||
 		   box->y1 + dy > 0 ||
