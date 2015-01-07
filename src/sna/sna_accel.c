@@ -1557,6 +1557,11 @@ static inline bool has_coherent_ptr(struct sna *sna, struct sna_pixmap *priv, un
 		return true;
 	}
 
+	if (priv->pixmap->devPrivate.ptr == MAP(priv->gpu_bo->map__wc)) {
+		assert(priv->mapped == MAPPED_GTT);
+		return true;
+	}
+
 	return false;
 }
 
