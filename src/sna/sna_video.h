@@ -193,6 +193,9 @@ bool
 sna_video_copy_data(struct sna_video *video,
 		    struct sna_video_frame *frame,
 		    const uint8_t *buf);
+void
+sna_video_fill_colorkey(struct sna_video *video,
+			const RegionRec *clip);
 
 void sna_video_buffer_fini(struct sna_video *video);
 

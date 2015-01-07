@@ -527,14 +527,7 @@ off:
 			goto err;
 	}
 
-	if (!video->AlwaysOnTop && !RegionEqual(&video->clip, &clip) &&
-	    sna_blt_fill_boxes(sna, GXcopy,
-			       __sna_pixmap_get_bo(sna->front),
-			       sna->front->drawable.bitsPerPixel,
-			       video->color_key,
-			       region_rects(&clip),
-			       region_num_rects(&clip)))
-		RegionCopy(&video->clip, &clip);
+	sna_video_fill_colorkey(video, &clip);
 	sna_window_set_port((WindowPtr)draw, port);
 
 	return Success;

@@ -591,6 +591,72 @@ use_gtt: /* copy data, must use GTT so that we keep the overlay uncached */
 	return true;
 }
 
+void sna_video_fill_colorkey(struct sna_video *video,
+			     const RegionRec *clip)
+{
+	struct sna *sna = video->sna;
+	PixmapPtr front = sna->front;
+	struct kgem_bo *bo = __sna_pixmap_get_bo(front);
+	uint8_t *dst, *tmp;
+	int w, width;
+
+	if (video->AlwaysOnTop || RegionEqual(&video->clip, (RegionPtr)clip))
+		return;
+
+	assert(bo);
+	if (!wedged(sna) &&
+	    sna_blt_fill_boxes(sna, GXcopy, bo,
+			       front->drawable.bitsPerPixel,
+			       video->color_key,
+			       region_rects(clip),
+			       region_num_rects(clip))) {
+		RegionCopy(&video->clip, (RegionPtr)clip);
+		return;
+	}
+
+	dst = kgem_bo_map__gtt(&sna->kgem, bo);
+	if (dst == NULL)
+		return;
+
+	w = front->drawable.bitsPerPixel/8;
+	width = (clip->extents.x2 - clip->extents.x1) * w;
+	tmp = malloc(width);
+	if (tmp == NULL)
+		return;
+
+	memcpy(tmp, &video->color_key, w);
+	while (2 * w < width) {
+		memcpy(tmp + w, tmp, w);
+		w *= 2;
+	}
+	if (w < width)
+		memcpy(tmp + w, tmp, width - w);
+
+	if (sigtrap_get() == 0) {
+		const BoxRec *box = region_rects(clip);
+		int n = region_num_rects(clip);
+
+		w = front->drawable.bitsPerPixel/8;
+		do {
+			int y = box->y1;
+			uint8_t *row = dst + y*bo->pitch + w*box->x1;
+
+			width = (box->x2 - box->x1) * w;
+			while (y < box->y2) {
+				memcpy(row, tmp, width);
+				row += bo->pitch;
+				y++;
+			}
+			box++;
+		} while (--n);
+		sigtrap_put();
+
+		RegionCopy(&video->clip, (RegionPtr)clip);
+	}
+
+	free(tmp);
+}
+
 XvAdaptorPtr sna_xv_adaptor_alloc(struct sna *sna)
 {
 	XvAdaptorPtr new_adaptors;
