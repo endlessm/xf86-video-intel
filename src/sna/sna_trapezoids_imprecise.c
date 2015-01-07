@@ -3874,7 +3874,7 @@ imprecise_tristrip_span_converter(struct sna *sna,
 				break;
 		} while (1);
 		polygon_add_line(tor.polygon,
-				 &points[cw], &points[2+ccw],
+				 &points[cw], &points[ccw],
 				 dx, dy);
 		assert(tor.polygon->num_edges <= 2*count);
 
