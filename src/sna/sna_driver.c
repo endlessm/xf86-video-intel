@@ -279,27 +279,65 @@ static Bool sna_create_screen_resources(ScreenPtr screen)
 	return TRUE;
 }
 
+static void sna_dpms_set(ScrnInfoPtr scrn, int mode, int flags)
+{
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(scrn);
+	int i;
+
+	DBG(("%s(mode=%d, flags=%d), vtSema=%d\n",
+	     __FUNCTION__, mode, flags, scrn->vtSema));
+	if (!scrn->vtSema)
+		return;
+
+	/* Opencoded version of xf86DPMSSet().
+	 *
+	 * The principle difference is to skip calling crtc->dpms() when
+	 * turning off the display. This (on recent enough kernels at
+	 * least) should be equivalent in power consumption, but require
+	 * less work (hence quicker and less likely to fail) when switching
+	 * back on.
+	 */
+	if (mode == DPMSModeOff) {
+		for (i = 0; i < config->num_output; i++) {
+			xf86OutputPtr output = config->output[i];
+			if (output->crtc != NULL)
+				output->funcs->dpms(output, mode);
+		}
+	} else {
+		/* Re-enable CRTC that have been forced off via other means */
+		for (i = 0; i < config->num_crtc; i++) {
+			xf86CrtcPtr crtc = config->crtc[i];
+			if (crtc->enabled)
+				crtc->funcs->dpms(crtc, mode);
+		}
+
+		for (i = 0; i < config->num_output; i++) {
+			xf86OutputPtr output = config->output[i];
+			if (output->crtc != NULL)
+				output->funcs->dpms(output, mode);
+		}
+	}
+
+	sna_crtc_config_notify(xf86ScrnToScreen(scrn));
+	to_sna(scrn)->mode.hidden = mode == DPMSModeOff;
+	DBG(("%s: hiding outputs? %d\n", __FUNCTION__, to_sna(scrn)->mode.hidden));
+}
+
 static Bool sna_save_screen(ScreenPtr screen, int mode)
 {
 	ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
 
-	DBG(("%s(mode=%d)\n", __FUNCTION__, mode));
-	if (!scrn->vtSema)
-		return FALSE;
+	DBG(("%s(mode=%d [unblank=%d])\n",
+	     __FUNCTION__, mode, xf86IsUnblank(mode)));
 
-	xf86SaveScreen(screen, mode);
-	sna_crtc_config_notify(screen);
+	/* We have to unroll xf86SaveScreen() here as it is called
+	 * by DPMSSet() nullifying our special handling crtc->dpms()
+	 * in sna_dpms_set().
+	 */
+	sna_dpms_set(scrn,
+		     xf86IsUnblank(mode) ? DPMSModeOn : DPMSModeOff,
+		     0);
 	return TRUE;
-}
-
-static void sna_dpms_set(ScrnInfoPtr scrn, int mode, int flags)
-{
-	DBG(("%s(mode=%d, flags=%d)\n", __FUNCTION__, mode));
-	if (!scrn->vtSema)
-		return;
-
-	xf86DPMSSet(scrn, mode, flags);
-	sna_crtc_config_notify(xf86ScrnToScreen(scrn));
 }
 
 static void sna_selftest(void)

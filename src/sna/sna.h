@@ -286,6 +286,7 @@ struct sna {
 		unsigned shadow_active;
 		unsigned flip_active;
 		bool dirty;
+		bool hidden;
 
 		int max_crtc_width, max_crtc_height;
 		RegionRec shadow_region;

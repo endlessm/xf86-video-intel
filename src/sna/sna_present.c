@@ -224,6 +224,16 @@ sna_present_check_flip(RRCrtcPtr crtc,
 	     pixmap->drawable.serialNumber,
 	     sync_flip));
 
+	if (!sna->scrn->vtSema) {
+		DBG(("%s: VT switched away, no flips\n", __FUNCTION__));
+		return FALSE;
+	}
+
+	if (sna->mode.hidden) {
+		DBG(("%s: DPMS off, no flips\n", __FUNCTION__));
+		return FALSE;
+	}
+
 	if (sna->flags & SNA_NO_FLIP) {
 		DBG(("%s: flips not suported\n", __FUNCTION__));
 		return FALSE;

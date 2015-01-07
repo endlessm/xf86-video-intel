@@ -537,6 +537,7 @@ sna_backlight_uevent(int fd, void *closure)
 					       TRUE, FALSE);
 		}
 	}
+	DBG(("%s: complete\n", __FUNCTION__));
 }
 
 static void sna_backlight_pre_init(struct sna *sna)
@@ -584,6 +585,7 @@ static void sna_backlight_drain_uevents(struct sna *sna)
 	if (sna->mode.backlight_monitor == NULL)
 		return;
 
+	DBG(("%s()\n", __FUNCTION__));
 	sna_backlight_uevent(udev_monitor_get_fd(sna->mode.backlight_monitor),
 			     sna);
 }
@@ -4108,6 +4110,8 @@ static bool disable_unused_crtc(struct sna *sna)
 	bool update = false;
 	int o, c;
 
+	DBG(("%s\n", __FUNCTION__));
+
 	for (c = 0; c < sna->mode.num_real_crtc; c++) {
 		xf86CrtcPtr crtc = config->crtc[c];
 
@@ -6029,6 +6033,11 @@ sna_mode_enable(struct sna *sna)
 	if (!sna->scrn->vtSema)
 		return;
 
+	if (sna->mode.hidden) {
+		DBG(("%s: hidden outputs\n", __FUNCTION__));
+		return;
+	}
+
 	for (i = 0; i < sna->mode.num_real_crtc; i++) {
 		xf86CrtcPtr crtc = config->crtc[i];
 
@@ -6112,8 +6121,15 @@ sna_covering_crtc(struct sna *sna, const BoxRec *box, xf86CrtcPtr desired)
 		return NULL;
 
 	/* If we do not own the VT, we do not own the CRTC either */
-	if (!sna->scrn->vtSema)
+	if (!sna->scrn->vtSema) {
+		DBG(("%s: none, VT switched\n", __FUNCTION__));
 		return NULL;
+	}
+
+	if (sna->mode.hidden) {
+		DBG(("%s: none, hidden outputs\n", __FUNCTION__));
+		return NULL;
+	}
 
 	DBG(("%s for box=(%d, %d), (%d, %d)\n",
 	     __FUNCTION__, box->x1, box->y1, box->x2, box->y2));
@@ -7015,6 +7031,11 @@ void sna_mode_redisplay(struct sna *sna)
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
 	RegionPtr region;
 	int i;
+
+	if (sna->mode.hidden) {
+		DBG(("%s: hidden outputs, skipping\n", __FUNCTION__));
+		return;
+	}
 
 	if (!sna->mode.shadow_damage)
 		return;
