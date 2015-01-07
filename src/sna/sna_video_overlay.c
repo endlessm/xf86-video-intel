@@ -449,6 +449,70 @@ sna_video_overlay_show(struct sna *sna,
 	return true;
 }
 
+static bool fill_colorkey(struct sna_video *video, const RegionRec *clip)
+{
+	struct sna *sna = video->sna;
+	PixmapPtr front = sna->front;
+	struct kgem_bo *bo = __sna_pixmap_get_bo(front);
+	uint8_t *dst, *tmp;
+	int w, width;
+	bool ret;
+
+	assert(bo);
+
+	if (!wedged(sna) &&
+	    sna_blt_fill_boxes(sna, GXcopy, bo,
+			       front->drawable.bitsPerPixel,
+			       video->color_key,
+			       region_rects(clip),
+			       region_num_rects(clip)))
+		return true;
+
+	dst = kgem_bo_map__gtt(&sna->kgem, bo);
+	if (dst == NULL)
+		return false;
+
+	w = front->drawable.bitsPerPixel/8;
+	width = (clip->extents.x2 - clip->extents.x1) * w;
+	tmp = malloc(width);
+	if (tmp == NULL)
+		return false;
+
+	memcpy(tmp, &video->color_key, w);
+	while (2 * w < width) {
+		memcpy(tmp + w, tmp, w);
+		w *= 2;
+	}
+	if (w < width)
+		memcpy(tmp + w, tmp, width - w);
+
+	ret = false;
+	if (sigtrap_get() == 0) {
+		const BoxRec *box = region_rects(clip);
+		int n = region_num_rects(clip);
+
+		w = front->drawable.bitsPerPixel/8;
+		do {
+			int y = box->y1;
+			uint8_t *row = dst + y*bo->pitch + w*box->x1;
+
+			width = (box->x2 - box->x1) * w;
+			while (y < box->y2) {
+				memcpy(row, tmp, width);
+				row += bo->pitch;
+				y++;
+			}
+			box++;
+		} while (--n);
+		sigtrap_put();
+
+		ret = true;
+	}
+
+	free(tmp);
+	return ret;
+}
+
 static int
 sna_video_overlay_put_image(ddPutImage_ARGS)
 {
@@ -552,13 +616,9 @@ sna_video_overlay_put_image(ddPutImage_ARGS)
 	if (sna_video_overlay_show
 	    (sna, video, &frame, crtc, &dstBox, src_w, src_h, drw_w, drw_h)) {
 		//xf86XVFillKeyHelperDrawable(draw, video->color_key, &clip);
-		if (!video->AlwaysOnTop && !RegionEqual(&video->clip, &clip) &&
-		    sna_blt_fill_boxes(sna, GXcopy,
-				       __sna_pixmap_get_bo(sna->front),
-				       sna->front->drawable.bitsPerPixel,
-				       video->color_key,
-				       region_rects(&clip),
-				       region_num_rects(&clip)))
+		if (!video->AlwaysOnTop &&
+		    !RegionEqual(&video->clip, &clip) &&
+		    fill_colorkey(video, &clip))
 			RegionCopy(&video->clip, &clip);
 		sna_window_set_port((WindowPtr)draw, port);
 	} else {
