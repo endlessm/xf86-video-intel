@@ -16794,7 +16794,8 @@ sna_get_image__inplace(PixmapPtr pixmap,
 		break;
 	}
 
-	if (!kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, FORCE_FULL_SYNC))
+	if ((flags & MOVE_INPLACE_HINT) == 0 &&
+	    !kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, FORCE_FULL_SYNC))
 		return false;
 
 	if (idle && __kgem_bo_is_busy(&sna->kgem, priv->gpu_bo))
@@ -16806,11 +16807,19 @@ sna_get_image__inplace(PixmapPtr pixmap,
 	assert(sna_damage_contains_box(&priv->gpu_damage, &region->extents) == PIXMAN_REGION_IN);
 	assert(sna_damage_contains_box(&priv->cpu_damage, &region->extents) == PIXMAN_REGION_OUT);
 
-	src = kgem_bo_map__cpu(&sna->kgem, priv->gpu_bo);
-	if (src == NULL)
-		return false;
+	if (kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, FORCE_FULL_SYNC)) {
+		src = kgem_bo_map__cpu(&sna->kgem, priv->gpu_bo);
+		if (src == NULL)
+			return false;
 
-	kgem_bo_sync__cpu_full(&sna->kgem, priv->gpu_bo, FORCE_FULL_SYNC);
+		kgem_bo_sync__cpu_full(&sna->kgem, priv->gpu_bo, FORCE_FULL_SYNC);
+	} else {
+		src = kgem_bo_map__wc(&sna->kgem, priv->gpu_bo);
+		if (src == NULL)
+			return false;
+
+		kgem_bo_sync__gtt(&sna->kgem, priv->gpu_bo);
+	}
 
 	if (sigtrap_get())
 		return false;
@@ -16838,10 +16847,9 @@ sna_get_image__inplace(PixmapPtr pixmap,
 			   region->extents.x2 - region->extents.x1,
 			   region->extents.y2 - region->extents.y1);
 		if (!priv->shm) {
-			assert(src == MAP(priv->gpu_bo->map__cpu));
 			pixmap->devPrivate.ptr = src;
 			pixmap->devKind = priv->gpu_bo->pitch;
-			priv->mapped = MAPPED_CPU;
+			priv->mapped = src == MAP(priv->gpu_bo->map__cpu) ? MAPPED_CPU : MAPPED_GTT;
 			assert_pixmap_map(pixmap, priv);
 			priv->cpu = true;
 		}

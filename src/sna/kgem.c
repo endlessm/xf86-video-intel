@@ -6314,7 +6314,6 @@ void *kgem_bo_map__wc(struct kgem *kgem, struct kgem_bo *bo)
 	     bo->handle, (long)bo->presumed_offset, bo->tiling, bo->map__gtt, bo->map__cpu, bo->domain));
 
 	assert(bo->proxy == NULL);
-	assert(bo->exec == NULL);
 	assert(list_is_empty(&bo->list));
 	assert_tiling(kgem, bo);
 	assert(!bo->purged || bo->reusable);
@@ -6322,6 +6321,7 @@ void *kgem_bo_map__wc(struct kgem *kgem, struct kgem_bo *bo)
 	if (bo->map__wc)
 		return bo->map__wc;
 
+	kgem_trim_vma_cache(kgem, MAP_GTT, bucket(bo));
 	return __kgem_bo_map__wc(kgem, bo);
 }
 
