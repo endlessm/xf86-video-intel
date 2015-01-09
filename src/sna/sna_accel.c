@@ -2336,6 +2336,7 @@ skip_inplace_map:
 
 			if (priv->cpu_bo) {
 				if ((flags & MOVE_ASYNC_HINT || priv->cpu_bo->exec) &&
+				    sna->kgem.can_blt_cpu &&
 				    sna->render.fill_one(sna,
 							  pixmap, priv->cpu_bo, priv->clear_color,
 							  0, 0,
@@ -2535,6 +2536,9 @@ static bool cpu_clear_boxes(struct sna *sna,
 			    const BoxRec *box, int n)
 {
 	struct sna_fill_op fill;
+
+	if (!sna->kgem.can_blt_cpu)
+		return false;
 
 	if (!sna_fill_init_blt(&fill, sna,
 			       pixmap, priv->cpu_bo,
