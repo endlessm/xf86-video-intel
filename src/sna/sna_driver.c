@@ -899,7 +899,8 @@ sna_uevent_init(struct sna *sna)
 
 	sna->uevent_monitor = mon;
 out:
-	xf86DrvMsg(sna->scrn->scrnIndex, from, "display hotplug detection %s\n",
+	xf86DrvMsg(sna->scrn->scrnIndex, from,
+		   "Display hotplug detection %s\n",
 		   sna->uevent_monitor ? "enabled" : "disabled");
 	return;
 
