@@ -747,6 +747,11 @@ memcpy_from_tiled_x__swizzle_9_11(const void *src, void *dst, int bpp,
 
 void choose_memcpy_tiled_x(struct kgem *kgem, int swizzling)
 {
+	if (kgem->gen < 30) {
+		DBG(("%s: no detiling functions for gen2\n", __FUNCTION__));
+		return;
+	}
+
 	switch (swizzling) {
 	default:
 		DBG(("%s: unknown swizzling, %d\n", __FUNCTION__, swizzling));
