@@ -4873,6 +4873,7 @@ try_upload__inplace(PixmapPtr pixmap, RegionRec *region,
 	pixmap->devPrivate.ptr = dst;
 	pixmap->devKind = priv->gpu_bo->pitch;
 	priv->mapped = dst == MAP(priv->gpu_bo->map__cpu) ? MAPPED_CPU : MAPPED_GTT;
+	priv->cpu &= priv->mapped == MAPPED_CPU;
 	assert(has_coherent_ptr(sna, priv, MOVE_WRITE));
 
 	box = region_rects(region);
@@ -6274,12 +6275,14 @@ upload_inplace:
 		} while (--n);
 
 		if (!dst_priv->shm) {
-			assert(ptr == MAP(dst_priv->gpu_bo->map__cpu));
 			dst_pixmap->devPrivate.ptr = ptr;
 			dst_pixmap->devKind = dst_priv->gpu_bo->pitch;
-			dst_priv->mapped = MAPPED_CPU;
+			if (ptr == MAP(dst_priv->gpu_bo->map__cpu)) {
+				dst_priv->mapped = MAPPED_CPU;
+				dst_priv->cpu = true;
+			} else
+				dst_priv->cpu = false;
 			assert_pixmap_map(dst_pixmap, dst_priv);
-			dst_priv->cpu = true;
 		}
 	}
 
@@ -16855,7 +16858,7 @@ sna_get_image__inplace(PixmapPtr pixmap,
 			pixmap->devKind = priv->gpu_bo->pitch;
 			priv->mapped = src == MAP(priv->gpu_bo->map__cpu) ? MAPPED_CPU : MAPPED_GTT;
 			assert_pixmap_map(pixmap, priv);
-			priv->cpu = true;
+			priv->cpu &= priv->mapped == MAPPED_CPU;
 		}
 	}
 
