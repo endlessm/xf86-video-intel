@@ -6108,6 +6108,9 @@ sna_copy_boxes__inplace(struct sna *sna, RegionPtr region, int alu,
 
 	kgem_bo_sync__cpu_full(&sna->kgem, src_priv->gpu_bo, FORCE_FULL_SYNC);
 
+	if (sigtrap_get())
+		return false;
+
 	box = region_rects(region);
 	n = region_num_rects(region);
 	if (src_priv->gpu_bo->tiling) {
@@ -6146,6 +6149,8 @@ sna_copy_boxes__inplace(struct sna *sna, RegionPtr region, int alu,
 			src_priv->cpu = true;
 		}
 	}
+
+	sigtrap_put();
 
 	return true;
 
@@ -6244,6 +6249,9 @@ upload_inplace:
 
 	assert(has_coherent_ptr(sna, src_priv, MOVE_READ));
 
+	if (sigtrap_get())
+		return false;
+
 	box = region_rects(region);
 	n = region_num_rects(region);
 	if (dst_priv->gpu_bo->tiling) {
@@ -6285,6 +6293,8 @@ upload_inplace:
 			assert_pixmap_map(dst_pixmap, dst_priv);
 		}
 	}
+
+	sigtrap_put();
 
 	return true;
 }
