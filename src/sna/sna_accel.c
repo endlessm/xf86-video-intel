@@ -6289,7 +6289,7 @@ upload_inplace:
 				dst_priv->mapped = MAPPED_CPU;
 				dst_priv->cpu = true;
 			} else
-				dst_priv->cpu = false;
+				dst_priv->mapped = MAPPED_GTT;
 			assert_pixmap_map(dst_pixmap, dst_priv);
 		}
 	}
