@@ -859,7 +859,7 @@ memcpy_from_tiled_x__gen2(const void *src, void *dst, int bpp,
 
 void choose_memcpy_tiled_x(struct kgem *kgem, int swizzling)
 {
-	if (kgem->gen < 30) {
+	if (kgem->gen < 030) {
 		if (swizzling == I915_BIT_6_SWIZZLE_NONE) {
 			DBG(("%s: gen2, no swizzling\n", __FUNCTION__));
 			kgem->memcpy_to_tiled_x = memcpy_to_tiled_x__gen2;
