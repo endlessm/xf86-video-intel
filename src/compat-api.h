@@ -223,4 +223,10 @@ static inline void FreePixmap(PixmapPtr pixmap)
 			  dstx, dsty)
 #endif
 
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,12,99,901,0)
+#define isGPU(S) (S)->is_gpu
+#else
+#define isGPU(S) 0
+#endif
+
 #endif

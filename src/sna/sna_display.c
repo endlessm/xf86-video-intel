@@ -1662,7 +1662,7 @@ void sna_copy_fbcon(struct sna *sna)
 	int dx, dy;
 	int i;
 
-	if (wedged(sna))
+	if (wedged(sna) || isGPU(sna->scrn))
 		return;
 
 	DBG(("%s\n", __FUNCTION__));
@@ -1756,7 +1756,6 @@ static bool use_shadow(struct sna *sna, xf86CrtcPtr crtc)
 	PictTransform crtc_to_fb;
 	struct pict_f_transform f_crtc_to_fb, f_fb_to_crtc;
 	unsigned pitch_limit;
-	struct sna_pixmap *priv;
 	BoxRec b;
 
 	assert(sna->scrn->virtualX && sna->scrn->virtualY);
@@ -1785,27 +1784,31 @@ static bool use_shadow(struct sna *sna, xf86CrtcPtr crtc)
 		return true;
 	}
 
-	priv = sna_pixmap_force_to_gpu(sna->front, MOVE_READ | __MOVE_SCANOUT);
-	if (priv == NULL)
-		return true; /* maybe we can create a bo for the scanout? */
+	if (!isGPU(sna->scrn)) {
+		struct sna_pixmap *priv;
 
-	if (sna->kgem.gen == 071)
-		pitch_limit = priv->gpu_bo->tiling ? 16 * 1024 : 32 * 1024;
-	else if ((sna->kgem.gen >> 3) > 4)
-		pitch_limit = 32 * 1024;
-	else if ((sna->kgem.gen >> 3) == 4)
-		pitch_limit = priv->gpu_bo->tiling ? 16 * 1024 : 32 * 1024;
-	else if ((sna->kgem.gen >> 3) == 3)
-		pitch_limit = priv->gpu_bo->tiling ? 8 * 1024 : 16 * 1024;
-	else
-		pitch_limit = 8 * 1024;
-	DBG(("%s: gpu bo handle=%d tiling=%d pitch=%d, limit=%d\n", __FUNCTION__, priv->gpu_bo->handle, priv->gpu_bo->tiling, priv->gpu_bo->pitch, pitch_limit));
-	if (priv->gpu_bo->pitch > pitch_limit)
-		return true;
+		priv = sna_pixmap_force_to_gpu(sna->front, MOVE_READ | __MOVE_SCANOUT);
+		if (priv == NULL)
+			return true; /* maybe we can create a bo for the scanout? */
 
-	if (priv->gpu_bo->tiling && sna->flags & SNA_LINEAR_FB) {
-		DBG(("%s: gpu bo is tiled, need linear, forcing shadow\n", __FUNCTION__));
-		return true;
+		if (sna->kgem.gen == 071)
+			pitch_limit = priv->gpu_bo->tiling ? 16 * 1024 : 32 * 1024;
+		else if ((sna->kgem.gen >> 3) > 4)
+			pitch_limit = 32 * 1024;
+		else if ((sna->kgem.gen >> 3) == 4)
+			pitch_limit = priv->gpu_bo->tiling ? 16 * 1024 : 32 * 1024;
+		else if ((sna->kgem.gen >> 3) == 3)
+			pitch_limit = priv->gpu_bo->tiling ? 8 * 1024 : 16 * 1024;
+		else
+			pitch_limit = 8 * 1024;
+		DBG(("%s: gpu bo handle=%d tiling=%d pitch=%d, limit=%d\n", __FUNCTION__, priv->gpu_bo->handle, priv->gpu_bo->tiling, priv->gpu_bo->pitch, pitch_limit));
+		if (priv->gpu_bo->pitch > pitch_limit)
+			return true;
+
+		if (priv->gpu_bo->tiling && sna->flags & SNA_LINEAR_FB) {
+			DBG(("%s: gpu bo is tiled, need linear, forcing shadow\n", __FUNCTION__));
+			return true;
+		}
 	}
 
 	transform = NULL;
@@ -1943,6 +1946,7 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 	sna_crtc->rotation = RR_Rotate_0;
 
 	if (use_shadow(sna, crtc)) {
+		PixmapPtr front;
 		unsigned long tiled_limit;
 		int tiling;
 
@@ -1997,7 +2001,8 @@ force_shadow:
 			return NULL;
 		}
 
-		if (__sna_pixmap_get_bo(sna->front) && !crtc->transformPresent) {
+		front = sna_crtc->slave_pixmap ?: sna->front;
+		if (__sna_pixmap_get_bo(front) && !crtc->transformPresent) {
 			BoxRec b;
 
 			b.x1 = crtc->x;
@@ -2025,11 +2030,11 @@ force_shadow:
 
 				tmp.width = crtc->mode.HDisplay;
 				tmp.height = crtc->mode.VDisplay;
-				tmp.depth = sna->front->drawable.depth;
-				tmp.bitsPerPixel = sna->front->drawable.bitsPerPixel;
+				tmp.depth = front->drawable.depth;
+				tmp.bitsPerPixel = front->drawable.bitsPerPixel;
 
 				(void)sna->render.copy_boxes(sna, GXcopy,
-							     &sna->front->drawable, __sna_pixmap_get_bo(sna->front), 0, 0,
+							     &front->drawable, __sna_pixmap_get_bo(front), 0, 0,
 							     &tmp, bo, -crtc->x, -crtc->y,
 							     &b, 1, 0);
 			}
@@ -4248,7 +4253,7 @@ static void copy_front(struct sna *sna, PixmapPtr old, PixmapPtr new)
 
 	DBG(("%s\n", __FUNCTION__));
 
-	if (wedged(sna))
+	if (wedged(sna) || isGPU(sna->scrn))
 		return;
 
 	old_priv = sna_pixmap_force_to_gpu(old, MOVE_READ);
@@ -7046,6 +7051,34 @@ void sna_shadow_unset_crtc(struct sna *sna,
 	sna_crtc_damage(crtc);
 }
 
+static bool move_crtc_to_gpu(struct sna *sna)
+{
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	int i;
+
+	for (i = 0; i < sna->mode.num_real_crtc; i++) {
+		struct sna_crtc *crtc = to_sna_crtc(config->crtc[i]);
+
+		assert(crtc);
+
+		if (crtc->bo == NULL)
+			continue;
+
+		if (crtc->slave_pixmap)
+			continue;
+
+		if (crtc->client_bo)
+			continue;
+
+		DBG(("%s: CRTC %d [pipe=%d] requires frontbuffer\n",
+		     __FUNCTION__, crtc->id, crtc->pipe));
+		return sna_pixmap_move_to_gpu(sna->front,
+					      MOVE_READ | MOVE_ASYNC_HINT | __MOVE_SCANOUT);
+	}
+
+	return true;
+}
+
 void sna_mode_redisplay(struct sna *sna)
 {
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
@@ -7095,7 +7128,7 @@ void sna_mode_redisplay(struct sna *sna)
 	if (sna->mode.flip_active)
 		return;
 
-	if (wedged(sna) || !sna_pixmap_move_to_gpu(sna->front, MOVE_READ | MOVE_ASYNC_HINT | __MOVE_SCANOUT)) {
+	if (wedged(sna) || !move_crtc_to_gpu(sna)) {
 		DBG(("%s: forcing scanout update using the CPU\n", __FUNCTION__));
 		if (!sna_pixmap_move_to_cpu(sna->front, MOVE_READ))
 			return;
