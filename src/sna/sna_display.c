@@ -6696,6 +6696,7 @@ sna_crtc_redisplay__fallback(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo 
 	ScreenPtr screen = sna->scrn->pScreen;
 	DrawablePtr draw = crtc_source(crtc, &sx, &sy);
 	PictFormatPtr format;
+	PictTransform T;
 	PicturePtr src, dst;
 	PixmapPtr pixmap;
 	int depth, error;
@@ -6735,9 +6736,14 @@ sna_crtc_redisplay__fallback(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo 
 	if (!src)
 		goto free_pixmap;
 
-	error = SetPictureTransform(src, &crtc->crtc_to_framebuffer);
-	if (error)
-		goto free_src;
+	pixman_transform_init_translate(&T, sx << 16, sy << 16);
+	pixman_transform_multiply(&T, &T, &crtc->crtc_to_framebuffer);
+	if (!sna_transform_is_integer_translation(&T, &sx, &sy)) {
+		error = SetPictureTransform(src, &T);
+		if (error)
+			goto free_src;
+		sx = sy = 0;
+	}
 
 	if (crtc->filter && crtc->transform_in_use)
 		SetPicturePictFilter(src, crtc->filter,
@@ -6789,6 +6795,7 @@ sna_crtc_redisplay__composite(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo
 	DrawablePtr draw = crtc_source(crtc, &sx, &sy);
 	struct sna_composite_op tmp;
 	PictFormatPtr format;
+	PictTransform T;
 	PicturePtr src, dst;
 	PixmapPtr pixmap;
 	const BoxRec *b;
@@ -6829,9 +6836,14 @@ sna_crtc_redisplay__composite(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo
 	if (!src)
 		goto free_pixmap;
 
-	error = SetPictureTransform(src, &crtc->crtc_to_framebuffer);
-	if (error)
-		goto free_src;
+	pixman_transform_init_translate(&T, sx << 16, sy << 16);
+	pixman_transform_multiply(&T, &T, &crtc->crtc_to_framebuffer);
+	if (!sna_transform_is_integer_translation(&T, &sx, &sy)) {
+		error = SetPictureTransform(src, &T);
+		if (error)
+			goto free_src;
+		sx = sy = 0;
+	}
 
 	if (crtc->filter && crtc->transform_in_use)
 		SetPicturePictFilter(src, crtc->filter,
