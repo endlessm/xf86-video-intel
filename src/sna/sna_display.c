@@ -1461,6 +1461,8 @@ static bool sna_crtc_enable_shadow(struct sna *sna, struct sna_crtc *crtc)
 	if (crtc->slave_pixmap) {
 		assert(crtc->slave_damage == NULL);
 
+		DBG(("%s: enabling PRIME slave tracking on CRTC %d [pipe=%d], pixmap=%ld\n",
+		     __FUNCTION__, crtc->id, crtc->pipe, crtc->slave_pixmap->drawable.serialNumber));
 		crtc->slave_damage = DamageCreate(sna_crtc_slave_damage, NULL,
 						  DamageReportRawRegion, TRUE,
 						  sna->scrn->pScreen, crtc);
