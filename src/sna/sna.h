@@ -462,6 +462,11 @@ to_sna_from_screen(ScreenPtr screen)
 	return to_sna(xf86ScreenToScrn(screen));
 }
 
+pure static inline ScreenPtr to_screen_from_sna(struct sna *sna)
+{
+	return xf86ScrnToScreen(sna->scrn);
+}
+
 pure static inline struct sna *
 to_sna_from_pixmap(PixmapPtr pixmap)
 {

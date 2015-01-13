@@ -185,7 +185,7 @@ void sna_glyphs_close(struct sna *sna)
  */
 bool sna_glyphs_create(struct sna *sna)
 {
-	ScreenPtr screen = sna->scrn->pScreen;
+	ScreenPtr screen = to_screen_from_sna(sna);
 	pixman_color_t white = { 0xffff, 0xffff, 0xffff, 0xffff };
 	unsigned int formats[] = {
 		PIXMAN_a8,

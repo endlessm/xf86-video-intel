@@ -1378,7 +1378,7 @@ bool sna_pixmap_discard_shadow_damage(struct sna_pixmap *priv,
 
 static bool sna_mode_enable_shadow(struct sna *sna)
 {
-	ScreenPtr screen = sna->scrn->pScreen;
+	ScreenPtr screen = to_screen_from_sna(sna);
 
 	DBG(("%s\n", __FUNCTION__));
 	assert(sna->mode.shadow == NULL);
@@ -1465,7 +1465,8 @@ static bool sna_crtc_enable_shadow(struct sna *sna, struct sna_crtc *crtc)
 		     __FUNCTION__, crtc->id, crtc->pipe, crtc->slave_pixmap->drawable.serialNumber));
 		crtc->slave_damage = DamageCreate(sna_crtc_slave_damage, NULL,
 						  DamageReportRawRegion, TRUE,
-						  sna->scrn->pScreen, crtc);
+						  to_screen_from_sna(sna),
+						  crtc);
 		if (crtc->slave_damage == NULL) {
 			if (!--sna->mode.shadow_active)
 				sna_mode_disable_shadow(sna);
@@ -1746,7 +1747,7 @@ void sna_copy_fbcon(struct sna *sna)
 	kgem_bo_destroy(&sna->kgem, bo);
 
 #if ABI_VIDEODRV_VERSION >= SET_ABI_VERSION(10, 0)
-	sna->scrn->pScreen->canDoBGNoneRoot = ok;
+	to_screen_from_sna(sna)->canDoBGNoneRoot = ok;
 #endif
 }
 
@@ -2221,7 +2222,7 @@ static void sna_crtc_randr(xf86CrtcPtr crtc)
 static void
 sna_crtc_damage(xf86CrtcPtr crtc)
 {
-	ScreenPtr screen = crtc->scrn->pScreen;
+	ScreenPtr screen = xf86ScrnToScreen(crtc->scrn);
 	struct sna *sna = to_sna(crtc->scrn);
 	RegionRec region, *damage;
 
@@ -4347,7 +4348,7 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 {
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(scrn);
 	struct sna *sna = to_sna(scrn);
-	ScreenPtr screen = scrn->pScreen;
+	ScreenPtr screen = xf86ScrnToScreen(scrn);
 	PixmapPtr new_front;
 	int i;
 
@@ -6698,7 +6699,7 @@ sna_crtc_redisplay__fallback(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo 
 {
 	int16_t sx, sy;
 	struct sna *sna = to_sna(crtc->scrn);
-	ScreenPtr screen = sna->scrn->pScreen;
+	ScreenPtr screen = xf86ScrnToScreen(crtc->scrn);
 	DrawablePtr draw = crtc_source(crtc, &sx, &sy);
 	PictFormatPtr format;
 	PictTransform T;
@@ -6796,7 +6797,7 @@ sna_crtc_redisplay__composite(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo
 {
 	int16_t sx, sy;
 	struct sna *sna = to_sna(crtc->scrn);
-	ScreenPtr screen = crtc->scrn->pScreen;
+	ScreenPtr screen = xf86ScrnToScreen(crtc->scrn);
 	DrawablePtr draw = crtc_source(crtc, &sx, &sy);
 	struct sna_composite_op tmp;
 	PictFormatPtr format;

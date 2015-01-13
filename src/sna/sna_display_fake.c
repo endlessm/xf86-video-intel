@@ -192,7 +192,7 @@ static const xf86OutputFuncsRec sna_output_funcs = {
 static Bool
 sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 {
-	ScreenPtr screen = scrn->pScreen;
+	ScreenPtr screen = xf86ScrnToScreen(scrn);
 	PixmapPtr new_front;
 
 	DBG(("%s (%d, %d) -> (%d, %d)\n", __FUNCTION__,

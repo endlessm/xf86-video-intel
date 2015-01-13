@@ -1420,7 +1420,7 @@ static void __sna_free_pixmap(struct sna *sna,
 		sna_accel_watch_flush(sna, -1);
 
 	if (priv->header) {
-		assert(pixmap->drawable.pScreen == sna->scrn->pScreen);
+		assert(pixmap->drawable.pScreen == to_screen_from_sna(sna));
 		assert(!priv->shm);
 		pixmap->devPrivate.ptr = sna->freed_pixmap;
 		sna->freed_pixmap = pixmap;
@@ -17247,7 +17247,7 @@ static void sna_accel_disarm_timer(struct sna *sna, int id)
 static bool has_offload_slaves(struct sna *sna)
 {
 #if HAS_PIXMAP_SHARING
-	ScreenPtr screen = sna->scrn->pScreen;
+	ScreenPtr screen = to_screen_from_sna(sna);
 	PixmapDirtyUpdatePtr dirty;
 
 	xorg_list_for_each_entry(dirty, &screen->pixmap_dirty_list, ent) {
@@ -17395,7 +17395,7 @@ static bool sna_accel_do_expire(struct sna *sna)
 static void sna_accel_post_damage(struct sna *sna)
 {
 #if HAS_PIXMAP_SHARING
-	ScreenPtr screen = sna->scrn->pScreen;
+	ScreenPtr screen = to_screen_from_sna(sna);
 	PixmapDirtyUpdatePtr dirty;
 	bool flush = false;
 

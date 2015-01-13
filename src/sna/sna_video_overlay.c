@@ -130,7 +130,7 @@ static int sna_video_overlay_stop(ddStopVideo_ARGS)
 
 	DBG(("%s()\n", __FUNCTION__));
 
-	REGION_EMPTY(scrn->pScreen, &video->clip);
+	REGION_EMPTY(to_screen_from_sna(sna), &video->clip);
 
 	request.flags = 0;
 	(void)drmIoctl(sna->kgem.fd,

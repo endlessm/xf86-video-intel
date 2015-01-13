@@ -185,8 +185,8 @@ sna_set_fallback_mode(ScrnInfoPtr scrn)
 
 	xf86DisableUnusedFunctions(scrn);
 #ifdef RANDR_12_INTERFACE
-	if (get_root_window(scrn->pScreen))
-		xf86RandR12TellChanged(scrn->pScreen);
+	if (get_root_window(xf86ScrnToScreen(scrn)))
+		xf86RandR12TellChanged(xf86ScrnToScreen(scrn));
 #endif
 }
 
@@ -222,7 +222,7 @@ static Bool sna_create_screen_resources(ScreenPtr screen)
 	     screen->width, screen->height, screen->rootDepth));
 
 	assert(sna->scrn == xf86ScreenToScrn(screen));
-	assert(sna->scrn->pScreen == screen);
+	assert(to_screen_from_sna(sna) == screen);
 
 	/* free the data used during miInitScreen */
 	free(screen->devPrivate);
@@ -1137,7 +1137,7 @@ sna_screen_init(SCREEN_INIT_ARGS_DECL)
 	DBG(("%s\n", __FUNCTION__));
 
 	assert(sna->scrn == scrn);
-	assert(scrn->pScreen == NULL); /* set afterwards */
+	assert(to_screen_from_sna(sna) == NULL); /* set afterwards */
 
 	assert(sna->freed_pixmap == NULL);
 

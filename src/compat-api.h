@@ -39,7 +39,13 @@
 
 #ifndef XF86_HAS_SCRN_CONV
 #define xf86ScreenToScrn(s) xf86Screens[(s)->myNum]
+#if XORG_VERSION_CURRENT < XORG_VERSION_NUMERIC(1,1,0,0,0)
 #define xf86ScrnToScreen(s) screenInfo.screens[(s)->scrnIndex]
+#else
+#define xf86ScrnToScreen(s) ((s)->pScreen)
+#endif
+#else
+#define xf86ScrnToScreen(s) ((s)->pScreen)
 #endif
 
 #ifndef XF86_SCRN_INTERFACE
