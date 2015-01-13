@@ -2230,6 +2230,12 @@ sna_crtc_damage(xf86CrtcPtr crtc)
 	if (region.extents.y2 > screen->height)
 		region.extents.y2 = screen->height;
 
+	if (region.extents.x2 <= region.extents.x1 ||
+	    region.extents.y2 <= region.extents.y1) {
+		DBG(("%s: crtc not damaged, all-clipped\n", __FUNCTION__));
+		return;
+	}
+
 	DBG(("%s: marking crtc %d as completely damaged (%d, %d), (%d, %d)\n",
 	     __FUNCTION__, to_sna_crtc(crtc)->id,
 	     region.extents.x1, region.extents.y1,
