@@ -6320,6 +6320,8 @@ void *kgem_bo_map__wc(struct kgem *kgem, struct kgem_bo *bo)
 
 	if (bo->map__wc)
 		return bo->map__wc;
+	if (!kgem->has_wc_mmap)
+		return NULL;
 
 	kgem_trim_vma_cache(kgem, MAP_GTT, bucket(bo));
 	return __kgem_bo_map__wc(kgem, bo);
