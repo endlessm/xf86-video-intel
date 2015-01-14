@@ -3305,6 +3305,7 @@ bool sna_dri2_open(struct sna *sna, ScreenPtr screen)
 
 #if DRI2INFOREC_VERSION >= 6
 	if (xorg_can_triple_buffer()) {
+		DBG(("%s: enabling Xorg triple buffering\n", __FUNCTION__));
 		info.version = 6;
 		info.SwapLimitValidate = sna_dri2_swap_limit_validate;
 		info.ReuseBufferNotify = sna_dri2_reuse_buffer;
