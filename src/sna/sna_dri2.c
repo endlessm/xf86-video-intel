@@ -98,6 +98,7 @@ struct dri_bo {
 	struct list link;
 	struct kgem_bo *bo;
 	uint32_t name;
+	int flags;
 };
 
 struct sna_dri2_event {
@@ -134,6 +135,7 @@ sna_dri2_get_back(struct sna *sna,
 {
 	struct kgem_bo *bo;
 	uint32_t name;
+	int flags;
 	bool reuse;
 
 	DBG(("%s: draw size=%dx%d, buffer size=%dx%d\n",
@@ -144,7 +146,7 @@ sna_dri2_get_back(struct sna *sna,
 		bo = get_private(back)->bo;
 		assert(bo->refcnt);
 		DBG(("%s: back buffer handle=%d, scanout?=%d, refcnt=%d\n",
-					__FUNCTION__, bo->handle, bo->active_scanout, get_private(back)->refcnt));
+		     __FUNCTION__, bo->handle, bo->active_scanout, get_private(back)->refcnt));
 		if (bo->active_scanout == 0) {
 			DBG(("%s: reuse unattached back\n", __FUNCTION__));
 			get_private(back)->stale = false;
@@ -156,13 +158,17 @@ sna_dri2_get_back(struct sna *sna,
 	if (info) {
 		struct dri_bo *c;
 		list_for_each_entry(c, &info->cache, link) {
-			if (c->bo && c->bo->scanout == 0) {
+			if (c->bo && c->bo->active_scanout == 0) {
 				bo = c->bo;
 				name = c->name;
-				DBG(("%s: reuse cache handle=%d\n", __FUNCTION__, bo->handle));
+				flags = c->flags;
+				DBG(("%s: reuse cache handle=%d, name=%d, flags=%d\n", __FUNCTION__, bo->handle, name, flags));
 				list_move_tail(&c->link, &info->cache);
 				c->bo = NULL;
+				break;
 			}
+			DBG(("%s: cache: handle=%d, active=%d\n",
+			     __FUNCTION__, c->bo ? c->bo->handle : 0, c->bo ? c->bo->active_scanout : -1));
 		}
 	}
 	if (bo == NULL) {
@@ -179,6 +185,8 @@ sna_dri2_get_back(struct sna *sna,
 			kgem_bo_destroy(&sna->kgem, bo);
 			return;
 		}
+
+		flags = 0;
 	}
 	assert(bo->active_scanout == 0);
 
@@ -198,8 +206,9 @@ sna_dri2_get_back(struct sna *sna,
 		if (c != NULL) {
 			c->bo = ref(get_private(back)->bo);
 			c->name = back->name;
+			c->flags = back->flags;
 			list_add(&c->link, &info->cache);
-			DBG(("%s: cacheing handle=%d (name=%d)\n", __FUNCTION__, c->bo->handle, c->name));
+			DBG(("%s: cacheing handle=%d (name=%d, flags=%d, active_scanout=%d)\n", __FUNCTION__, c->bo->handle, c->name, c->flags, c->bo->active_scanout));
 		}
 	}
 
@@ -210,6 +219,7 @@ sna_dri2_get_back(struct sna *sna,
 	get_private(back)->size = draw->height << 16 | draw->width;
 	back->pitch = bo->pitch;
 	back->name = name;
+	back->flags = flags;
 
 	get_private(back)->stale = false;
 }
@@ -301,7 +311,9 @@ sna_dri2_reuse_buffer(DrawablePtr draw, DRI2BufferPtr buffer)
 		assert(kgem_bo_flink(&to_sna_from_drawable(draw)->kgem, get_private(buffer)->bo) == buffer->name);
 		assert(get_private(buffer)->bo->refcnt);
 		assert(get_private(buffer)->bo->active_scanout == 0);
+		DBG(("reusing back buffer, age = %d\n", buffer->flags));
 	}
+
 }
 
 static bool swap_limit(DrawablePtr draw, int limit)
@@ -473,7 +485,7 @@ sna_dri2_create_buffer(DrawablePtr draw,
 		if (buffer) {
 			private = get_private(buffer);
 
-			DBG(("%s: reusing front buffer attachment, win=%lu %dx%d, pixmap=%ld [%ld] %dx%d, handle=%d, name=%d\n",
+			DBG(("%s: reusing front buffer attachment, win=%lu %dx%d, pixmap=%ld [%ld] %dx%d, handle=%d, name=%d, active_scanout=%d\n",
 			     __FUNCTION__,
 			     draw->type != DRAWABLE_PIXMAP ? (long)draw->id : (long)0,
 			     draw->width, draw->height,
@@ -481,7 +493,8 @@ sna_dri2_create_buffer(DrawablePtr draw,
 			     private->pixmap->drawable.serialNumber,
 			     pixmap->drawable.width,
 			     pixmap->drawable.height,
-			     private->bo->handle, buffer->name));
+			     private->bo->handle, buffer->name,
+			     private->bo->active_scanout));
 
 			assert(private->pixmap == pixmap);
 			assert(sna_pixmap(pixmap)->flush);
@@ -3313,8 +3326,10 @@ bool sna_dri2_open(struct sna *sna, ScreenPtr screen)
 #endif
 
 #if USE_ASYNC_SWAP
+	DBG(("%s: enabled async swap and buffer age\n", __FUNCTION__));
 	info.version = 10;
 	info.scheduleSwap0 = 1;
+	info.bufferAge = 1;
 #endif
 
 	return DRI2ScreenInit(screen, &info);

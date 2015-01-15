@@ -1538,6 +1538,8 @@ __sna_crtc_disable(struct sna *sna, struct sna_crtc *sna_crtc)
 	sna_crtc_disable_shadow(sna, sna_crtc);
 
 	if (sna_crtc->bo) {
+		DBG(("%s: releasing handle=%d from scanout, active=%d\n",
+		     __FUNCTION__,sna_crtc->bo->handle, sna_crtc->bo->active_scanout-1));
 		assert(sna_crtc->bo->active_scanout);
 		assert(sna_crtc->bo->refcnt >= sna_crtc->bo->active_scanout);
 		sna_crtc->bo->active_scanout--;
@@ -2349,6 +2351,9 @@ retry: /* Attach per-crtc pixmap or direct */
 	}
 
 	bo->active_scanout++;
+	DBG(("%s: marking handle=%d as active=%d (removing %d from scanout, active=%d)\n",
+	     __FUNCTION__, bo->handle, bo->active_scanout,
+	     saved_bo ? saved_bo->handle : 0, saved_bo ? saved_bo->active_scanout - 1: -1));
 	if (saved_bo) {
 		assert(saved_bo->active_scanout);
 		assert(saved_bo->refcnt >= saved_bo->active_scanout);
@@ -2361,7 +2366,8 @@ retry: /* Attach per-crtc pixmap or direct */
 		sna_crtc_damage(crtc);
 	sna->mode.front_active += saved_bo == NULL;
 	sna->mode.dirty = true;
-	DBG(("%s: front_active=%d\n", __FUNCTION__, sna->mode.front_active));
+	DBG(("%s: handle=%d, scanout_active=%d, front_active=%d\n",
+	     __FUNCTION__, bo->handle, bo->active_scanout, sna->mode.front_active));
 
 	return TRUE;
 
@@ -5350,6 +5356,9 @@ sna_page_flip(struct sna *sna,
 			     crtc_offset, crtc->offset));
 fixup_flip:
 			if (crtc->bo != bo && sna_crtc_flip(sna, crtc, bo, crtc->base->x, crtc->base->y)) {
+				DBG(("%s: removing handle=%d [active_scanout=%d] from scanout, installing handle=%d [active_scanout=%d]\n",
+				     __FUNCTION__, crtc->bo->handle, crtc->bo->active_scanout,
+				     bo->handle, bo->active_scanout));
 				assert(crtc->bo->active_scanout);
 				assert(crtc->bo->refcnt >= crtc->bo->active_scanout);
 				crtc->bo->active_scanout--;
@@ -5437,6 +5446,9 @@ retry_flip:
 			crtc->flip_serial = crtc->mode_serial;
 			crtc->flip_pending = true;
 			sna->mode.flip_active++;
+
+			DBG(("%s: recording flip on CRTC:%d handle=%d, active_scanout=%d, serial=%d\n",
+			     __FUNCTION__, crtc->id, crtc->flip_bo->handle, crtc->flip_bo->active_scanout, crtc->flip_serial));
 		}
 
 next_crtc:
@@ -7199,6 +7211,9 @@ void sna_mode_redisplay(struct sna *sna)
 
 					if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_PAGE_FLIP, &arg)) {
 						if (sna_crtc_flip(sna, sna_crtc, bo, 0, 0)) {
+							DBG(("%s: removing handle=%d [active_scanout=%d] from scanout, installing handle=%d [active_scanout=%d]\n",
+							     __FUNCTION__, sna_crtc->bo->handle, sna_crtc->bo->active_scanout,
+							     bo->handle, bo->active_scanout));
 							assert(sna_crtc->bo->active_scanout);
 							assert(sna_crtc->bo->refcnt >= sna_crtc->bo->active_scanout);
 							sna_crtc->bo->active_scanout--;
@@ -7232,6 +7247,9 @@ void sna_mode_redisplay(struct sna *sna)
 						sna_crtc->flip_serial = sna_crtc->mode_serial;
 
 						sna_crtc->client_bo = kgem_bo_reference(sna_crtc->bo);
+
+						DBG(("%s: recording flip on CRTC:%d handle=%d, active_scanout=%d, serial=%d\n",
+						     __FUNCTION__, sna_crtc->id, sna_crtc->flip_bo->handle, sna_crtc->flip_bo->active_scanout, sna_crtc->flip_serial));
 					}
 				}
 			}
@@ -7331,6 +7349,9 @@ void sna_mode_redisplay(struct sna *sna)
 
 				if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_PAGE_FLIP, &arg)) {
 					if (sna_crtc_flip(sna, sna_crtc, bo, 0, 0)) {
+						DBG(("%s: removing handle=%d [active_scanout=%d] from scanout, installing handle=%d [active_scanout=%d]\n",
+						     __FUNCTION__, sna_crtc->bo->handle, sna_crtc->bo->active_scanout - 1,
+						     bo->handle, bo->active_scanout));
 						assert(sna_crtc->bo->active_scanout);
 						assert(sna_crtc->bo->refcnt >= sna_crtc->bo->active_scanout);
 						sna_crtc->bo->active_scanout--;
@@ -7383,6 +7404,8 @@ disable1:
 				sna_crtc->flip_pending = true;
 
 				sna_crtc->client_bo = kgem_bo_reference(sna_crtc->bo);
+				DBG(("%s: recording flip on CRTC:%d handle=%d, active_scanout=%d, serial=%d\n",
+				     __FUNCTION__, sna_crtc->id, sna_crtc->flip_bo->handle, sna_crtc->flip_bo->active_scanout, sna_crtc->flip_serial));
 			} else {
 				sna_crtc_redisplay(crtc, &damage, sna_crtc->bo);
 				kgem_scanout_flush(&sna->kgem, sna_crtc->bo);
@@ -7478,6 +7501,9 @@ fixup_shadow:
 				     y << 16 | x, crtc->offset));
 fixup_flip:
 				if (sna_crtc_flip(sna, crtc, flip_bo, x, y)) {
+					DBG(("%s: removing handle=%d [active_scanout=%d] from scanout, installing handle=%d [active_scanout=%d]\n",
+					     __FUNCTION__, crtc->bo->handle, crtc->bo->active_scanout-1,
+					     flip_bo->handle, flip_bo->active_scanout));
 					assert(flip_bo != crtc->bo);
 					assert(crtc->bo->active_scanout);
 					assert(crtc->bo->refcnt >= crtc->bo->active_scanout);
@@ -7523,6 +7549,9 @@ fixup_flip:
 			crtc->flip_bo->active_scanout++;
 			crtc->flip_serial = crtc->mode_serial;
 			crtc->flip_pending = true;
+
+			DBG(("%s: recording flip on CRTC:%d handle=%d, active_scanout=%d, serial=%d\n",
+			     __FUNCTION__, crtc->id, crtc->flip_bo->handle, crtc->flip_bo->active_scanout, crtc->flip_serial));
 
 			{
 				struct drm_i915_gem_busy busy = { flip_bo->handle };
@@ -7617,8 +7646,9 @@ again:
 				assert(crtc->flip_bo->refcnt >= crtc->flip_bo->active_scanout);
 
 				if (crtc->flip_serial == crtc->mode_serial) {
-					DBG(("%s: removing handle=%d from scanout, installing handle=%d\n",
-					     __FUNCTION__, crtc->bo->handle, crtc->flip_bo->handle));
+					DBG(("%s: removing handle=%d [active_scanout=%d] from scanout, installing handle=%d [active_scanout=%d]\n",
+					     __FUNCTION__, crtc->bo->handle, crtc->bo->active_scanout - 1,
+					     crtc->flip_bo->handle, crtc->flip_bo->active_scanout));
 					assert(crtc->bo->active_scanout);
 					assert(crtc->bo->refcnt >= crtc->bo->active_scanout);
 					crtc->bo->active_scanout--;
