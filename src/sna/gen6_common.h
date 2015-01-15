@@ -90,7 +90,7 @@ static inline bool untiled_tlb_miss(struct kgem_bo *bo)
 	return bo->tiling == I915_TILING_NONE && bo->pitch >= 4096;
 }
 
-static int prefer_blt_bo(struct sna *sna, struct kgem_bo *bo)
+static int prefer_blt_bo(struct sna *sna, struct kgem_bo *bo, bool dst)
 {
 	if (PREFER_RENDER)
 		return PREFER_RENDER < 0;
@@ -100,6 +100,9 @@ static int prefer_blt_bo(struct sna *sna, struct kgem_bo *bo)
 
 	if (sna->flags & SNA_POWERSAVE)
 		return true;
+
+	if (dst && sna->render_state.gt > 1)
+		return false;
 
 	return bo->tiling == I915_TILING_NONE || is_uncached(sna, bo);
 }
@@ -166,7 +169,8 @@ prefer_blt_composite(struct sna *sna, struct sna_composite_op *tmp)
 	if (!prefer_blt_ring(sna, tmp->dst.bo, 0))
 		return false;
 
-	return prefer_blt_bo(sna, tmp->dst.bo) || prefer_blt_bo(sna, tmp->src.bo);
+	return (prefer_blt_bo(sna, tmp->dst.bo, true) ||
+		prefer_blt_bo(sna, tmp->src.bo, false));
 }
 
 static inline bool prefer_blt_fill(struct sna *sna,
@@ -196,7 +200,7 @@ static inline bool prefer_blt_fill(struct sna *sna,
 		    return true;
 	}
 
-	return prefer_blt_bo(sna, bo);
+	return prefer_blt_bo(sna, bo, false);
 }
 
 void gen6_render_context_switch(struct kgem *kgem, int new_mode);

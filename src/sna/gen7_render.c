@@ -2215,7 +2215,7 @@ try_blt(struct sna *sna,
 		if (bo == NULL)
 			return true;
 
-		if (prefer_blt_bo(sna, bo))
+		if (prefer_blt_bo(sna, bo, false))
 			return true;
 	}
 
@@ -2898,7 +2898,8 @@ prefer_blt_copy(struct sna *sna,
 	if (!prefer_blt_ring(sna, dst_bo, flags))
 		return false;
 
-	return prefer_blt_bo(sna, src_bo) || prefer_blt_bo(sna, dst_bo);
+	return (prefer_blt_bo(sna, dst_bo, true) ||
+		prefer_blt_bo(sna, src_bo, false));
 }
 
 static bool
