@@ -1493,7 +1493,7 @@ sna_dri2_flip(struct sna_dri2_event *info)
 {
 	struct kgem_bo *bo = get_private(info->back)->bo;
 	struct kgem_bo *tmp_bo;
-	uint32_t tmp_name;
+	uint32_t tmp_name, tmp_flags;
 	int tmp_pitch;
 
 	DBG(("%s(type=%d)\n", __FUNCTION__, info->type));
@@ -1519,13 +1519,16 @@ sna_dri2_flip(struct sna_dri2_event *info)
 	tmp_bo = get_private(info->front)->bo;
 	tmp_name = info->front->name;
 	tmp_pitch = info->front->pitch;
+	tmp_flags = info->front->flags;
 
 	set_bo(info->sna->front, bo);
 
+	info->front->flags = info->back->flags;
 	info->front->name = info->back->name;
 	info->front->pitch = info->back->pitch;
 	get_private(info->front)->bo = bo;
 
+	info->back->flags = tmp_flags;
 	info->back->name = tmp_name;
 	info->back->pitch = tmp_pitch;
 	get_private(info->back)->bo = tmp_bo;
@@ -1916,6 +1919,10 @@ sna_dri2_xchg(DrawablePtr draw, DRI2BufferPtr front, DRI2BufferPtr back)
 	front->pitch = back->pitch;
 	back->pitch = tmp;
 
+	tmp = front->flags;
+	front->flags = back->flags;
+	back->flags = tmp;
+
 	assert(front_bo->refcnt);
 	assert(back_bo->refcnt);
 
@@ -1966,6 +1973,7 @@ static void sna_dri2_xchg_crtc(struct sna *sna, DrawablePtr draw, xf86CrtcPtr cr
 
 	DBG(("%s: allocating new backbuffer\n", __FUNCTION__));
 	back->name = 0;
+	back->flags = 0;
 	bo = kgem_create_2d(&sna->kgem,
 			    draw->width, draw->height, draw->bitsPerPixel,
 			    get_private(back)->bo->tiling,
