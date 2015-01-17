@@ -61,6 +61,9 @@ inline static bool can_switch_to_blt(struct sna *sna,
 	if (sna->render_state.gt < 2)
 		return true;
 
+	if (bo && RQ_IS_RENDER(bo->rq))
+		return false;
+
 	return kgem_ring_is_idle(&sna->kgem, KGEM_BLT);
 }
 
