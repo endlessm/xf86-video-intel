@@ -124,9 +124,8 @@ inline static bool force_blt_ring(struct sna *sna)
 	return false;
 }
 
-inline static bool prefer_blt_ring(struct sna *sna,
-				   struct kgem_bo *bo,
-				   unsigned flags)
+nonnull inline static bool
+prefer_blt_ring(struct sna *sna, struct kgem_bo *bo, unsigned flags)
 {
 	if (PREFER_RENDER)
 		return PREFER_RENDER < 0;
@@ -137,8 +136,8 @@ inline static bool prefer_blt_ring(struct sna *sna,
 	return can_switch_to_blt(sna, bo, flags);
 }
 
-inline static bool prefer_render_ring(struct sna *sna,
-				      struct kgem_bo *bo)
+nonnull inline static bool
+prefer_render_ring(struct sna *sna, struct kgem_bo *bo)
 {
 	if (sna->flags & SNA_POWERSAVE)
 		return false;
@@ -176,9 +175,8 @@ prefer_blt_composite(struct sna *sna, struct sna_composite_op *tmp)
 		prefer_blt_bo(sna, tmp->src.bo, false));
 }
 
-static inline bool prefer_blt_fill(struct sna *sna,
-				   struct kgem_bo *bo,
-				   unsigned flags)
+nonnull static inline bool
+prefer_blt_fill(struct sna *sna, struct kgem_bo *bo, unsigned flags)
 {
 	if (PREFER_RENDER)
 		return PREFER_RENDER < 0;

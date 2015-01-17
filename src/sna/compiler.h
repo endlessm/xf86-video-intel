@@ -39,6 +39,7 @@
 #define pure __attribute__((pure))
 #define tightly_packed __attribute__((__packed__))
 #define flatten __attribute__((flatten))
+#define nonnull __attribute__((nonnull))
 #define page_aligned __attribute__((aligned(4096)))
 #else
 #define likely(expr) (expr)
@@ -51,6 +52,7 @@
 #define pure
 #define tighly_packed
 #define flatten
+#define nonnull
 #define page_aligned
 #endif
 
