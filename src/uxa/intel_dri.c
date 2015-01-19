@@ -1544,7 +1544,7 @@ Bool I830DRI2ScreenInit(ScreenPtr screen)
 	info.numDrivers = 2;
 	info.driverNames = driverNames;
 	driverNames[0] = info.driverName;
-	driverNames[1] = info.driverName;
+	driverNames[1] = "va_gl";
 #endif
 
 	return DRI2ScreenInit(screen, &info);

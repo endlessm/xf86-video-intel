@@ -3321,7 +3321,7 @@ bool sna_dri2_open(struct sna *sna, ScreenPtr screen)
 	info.numDrivers = 2;
 	info.driverNames = driverNames;
 	driverNames[0] = info.driverName;
-	driverNames[1] = info.driverName;
+	driverNames[1] = "va_gl";
 #endif
 
 #if DRI2INFOREC_VERSION >= 6
