@@ -1419,8 +1419,7 @@ static void describe_sna(ScrnInfoPtr scrn)
 		   "SNA compiled: %s\n", BUILDER_DESCRIPTION);
 #endif
 #if HAS_DEBUG_FULL
-	ErrorF(scrn->scrnIndex, X_INFO,
-	       "SNA compiled with full debug logging; expect to run slowly\n");
+	ErrorF("SNA compiled with full debug logging; expect to run slowly\n");
 #endif
 #if !NDEBUG
 	xf86DrvMsg(scrn->scrnIndex, X_INFO,
