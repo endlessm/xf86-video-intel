@@ -57,6 +57,13 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <mi.h>
 #include <micmap.h>
 
+#if defined(HAVE_X11_EXTENSIONS_DPMSCONST_H)
+#include <X11/extensions/dpmsconst.h>
+#else
+#define DPMSModeOn 0
+#define DPMSModeOff 3
+#endif
+
 #include <sys/ioctl.h>
 #include <sys/fcntl.h>
 #include <sys/poll.h>
