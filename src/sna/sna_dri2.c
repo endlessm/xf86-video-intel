@@ -1566,6 +1566,7 @@ can_flip(struct sna * sna,
 	}
 
 	assert(sna->scrn->vtSema);
+	assert(!sna->mode.hidden);
 
 	if ((sna->flags & (SNA_HAS_FLIP | SNA_HAS_ASYNC_FLIP)) == 0) {
 		DBG(("%s: no, pageflips disabled\n", __FUNCTION__));

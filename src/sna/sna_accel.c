@@ -17229,6 +17229,7 @@ static struct sna_pixmap *sna_accel_scanout(struct sna *sna)
 
 	assert(sna->vblank_interval);
 	assert(sna->front);
+	assert(!sna->mode.hidden);
 
 	priv = sna_pixmap(sna->front);
 	if (priv->gpu_bo == NULL)

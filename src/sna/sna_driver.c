@@ -289,6 +289,7 @@ static Bool sna_create_screen_resources(ScreenPtr screen)
 static void sna_dpms_set(ScrnInfoPtr scrn, int mode, int flags)
 {
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(scrn);
+	struct sna *sna = to_sna(scrn);
 	int i;
 
 	DBG(("%s(mode=%d, flags=%d), vtSema=%d\n",
@@ -310,8 +311,12 @@ static void sna_dpms_set(ScrnInfoPtr scrn, int mode, int flags)
 			if (output->crtc != NULL)
 				output->funcs->dpms(output, mode);
 		}
+		sna->mode.hidden = sna->mode.front_active + 1;
+		sna->mode.front_active = 0;
 	} else {
 		/* Re-enable CRTC that have been forced off via other means */
+		sna->mode.front_active = sna->mode.hidden - 1;
+		sna->mode.hidden = 0;
 		for (i = 0; i < config->num_crtc; i++) {
 			xf86CrtcPtr crtc = config->crtc[i];
 			if (crtc->enabled)
@@ -326,8 +331,7 @@ static void sna_dpms_set(ScrnInfoPtr scrn, int mode, int flags)
 	}
 
 	sna_crtc_config_notify(xf86ScrnToScreen(scrn));
-	to_sna(scrn)->mode.hidden = mode == DPMSModeOff;
-	DBG(("%s: hiding outputs? %d\n", __FUNCTION__, to_sna(scrn)->mode.hidden));
+	DBG(("%s: hiding outputs? %d\n", __FUNCTION__, sna->mode.hidden));
 }
 
 static Bool sna_save_screen(ScreenPtr screen, int mode)

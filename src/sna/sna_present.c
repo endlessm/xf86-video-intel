@@ -229,7 +229,7 @@ sna_present_check_flip(RRCrtcPtr crtc,
 		return FALSE;
 	}
 
-	if (sna->mode.hidden) {
+	if (!sna->mode.front_active) {
 		DBG(("%s: DPMS off, no flips\n", __FUNCTION__));
 		return FALSE;
 	}

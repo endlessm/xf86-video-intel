@@ -2315,7 +2315,10 @@ __sna_crtc_set_mode(xf86CrtcPtr crtc)
 	uint32_t saved_offset;
 	bool saved_transform;
 
-	DBG(("%s\n", __FUNCTION__));
+	DBG(("%s: CRTC=%d, pipe=%d, hidden?=%d\n", __FUNCTION__,
+	     sna_crtc->id, sna_crtc->pipe, sna->mode.hidden));
+	if (sna->mode.hidden)
+		return TRUE;
 
 	saved_bo = sna_crtc->bo;
 	saved_transform = sna_crtc->transform;
@@ -5318,6 +5321,7 @@ sna_page_flip(struct sna *sna,
 	assert((sna->flags & SNA_TEAR_FREE) == 0);
 	assert(sna->mode.flip_active == 0);
 	assert(sna->mode.front_active);
+	assert(!sna->mode.hidden);
 	assert(sna->scrn->vtSema);
 
 	if ((sna->flags & (data ? SNA_HAS_FLIP : SNA_HAS_ASYNC_FLIP)) == 0)
