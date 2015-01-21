@@ -837,6 +837,12 @@ static void sna_dri2_select_mode(struct sna *sna, struct kgem_bo *dst, struct kg
 		return;
 	}
 
+	if (sna->render_state.gt < 2) {
+		DBG(("%s: small GT [%d], not forcing selection\n",
+		     __FUNCTION__, sna->render_state.gt));
+		return;
+	}
+
 	VG_CLEAR(busy);
 	busy.handle = src->handle;
 	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_I915_GEM_BUSY, &busy))
