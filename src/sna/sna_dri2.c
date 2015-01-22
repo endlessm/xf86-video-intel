@@ -82,6 +82,18 @@ get_private(void *buffer)
 	return (struct sna_dri2_private *)((DRI2Buffer2Ptr)buffer+1);
 }
 
+pure static inline DRI2BufferPtr sna_pixmap_get_buffer(PixmapPtr pixmap)
+{
+	assert(pixmap->refcnt);
+	return ((void **)__get_private(pixmap, sna_pixmap_key))[2];
+}
+
+static inline void sna_pixmap_set_buffer(PixmapPtr pixmap, void *ptr)
+{
+	assert(pixmap->refcnt);
+	((void **)__get_private(pixmap, sna_pixmap_key))[2] = ptr;
+}
+
 #if DRI2INFOREC_VERSION >= 4
 enum event_type {
 	WAITMSC = 0,
@@ -138,10 +150,14 @@ sna_dri2_get_back(struct sna *sna,
 	int flags;
 	bool reuse;
 
-	DBG(("%s: draw size=%dx%d, buffer size=%dx%d\n",
+	DBG(("%s: draw size=%dx%d, buffer size=%dx%d, is-scanout? %d, pitch=%d, front pitch=%d\n",
 	     __FUNCTION__, draw->width, draw->height,
-	     get_private(back)->size & 0xffff, get_private(back)->size >> 16));
+	     get_private(back)->size & 0xffff, get_private(back)->size >> 16,
+	     get_private(back)->bo->scanout,
+	     back->pitch, sna_pixmap_get_buffer(get_drawable_pixmap(draw))->pitch ));
 	reuse = (draw->height << 16 | draw->width) == get_private(back)->size;
+	if (reuse && get_private(back)->bo->scanout)
+		reuse = sna_pixmap_get_buffer(get_drawable_pixmap(draw))->pitch == back->pitch;
 	if (reuse) {
 		bo = get_private(back)->bo;
 		assert(bo->refcnt);
@@ -399,18 +415,6 @@ static struct kgem_bo *sna_pixmap_set_dri(struct sna *sna,
 		sna_pixmap_change_tiling(pixmap, tiling);
 
 	return priv->gpu_bo;
-}
-
-pure static inline void *sna_pixmap_get_buffer(PixmapPtr pixmap)
-{
-	assert(pixmap->refcnt);
-	return ((void **)__get_private(pixmap, sna_pixmap_key))[2];
-}
-
-static inline void sna_pixmap_set_buffer(PixmapPtr pixmap, void *ptr)
-{
-	assert(pixmap->refcnt);
-	((void **)__get_private(pixmap, sna_pixmap_key))[2] = ptr;
 }
 
 void
