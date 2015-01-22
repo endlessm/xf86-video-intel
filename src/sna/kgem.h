@@ -637,14 +637,14 @@ static inline bool __kgem_bo_is_busy(struct kgem *kgem, struct kgem_bo *bo)
 	if (bo->exec)
 		return true;
 
-	if (bo->rq && !__kgem_busy(kgem, bo->handle)) {
-		__kgem_retire_requests_upto(kgem, bo);
-		assert(list_is_empty(&bo->request));
-		assert(bo->rq == NULL);
-		assert(bo->domain == DOMAIN_NONE);
-	}
+	if (bo->rq == NULL)
+		return false;
 
-	return kgem_bo_is_busy(bo);
+	if (__kgem_busy(kgem, bo->handle))
+		return true;
+
+	__kgem_retire_requests_upto(kgem, bo);
+	return false;
 }
 
 static inline bool kgem_bo_is_render(struct kgem_bo *bo)

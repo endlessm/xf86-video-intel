@@ -2680,6 +2680,7 @@ static bool __kgem_retire_rq(struct kgem *kgem, struct kgem_request *rq)
 		if (bo->needs_flush) {
 			DBG(("%s: moving %d to flushing\n",
 			     __FUNCTION__, bo->handle));
+			assert(bo != rq->bo);
 			list_add(&bo->request, &kgem->flushing);
 			bo->rq = MAKE_REQUEST(kgem, RQ_RING(bo->rq));
 			kgem->need_retire = true;
@@ -2845,6 +2846,9 @@ void __kgem_retire_requests_upto(struct kgem *kgem, struct kgem_bo *bo)
 	struct kgem_request *rq = bo->rq, *tmp;
 	struct list *requests = &kgem->requests[RQ_RING(rq) == I915_EXEC_BLT];
 
+	DBG(("%s(handle=%d)\n", __FUNCTION__, bo->handle));
+	assert(!__kgem_busy(kgem, bo->handle));
+
 	rq = RQ(rq);
 	assert(rq != &kgem->static_request);
 	if (rq == (struct kgem_request *)kgem) {
@@ -2857,6 +2861,11 @@ void __kgem_retire_requests_upto(struct kgem *kgem, struct kgem_bo *bo)
 		assert(tmp->ring == rq->ring);
 		__kgem_retire_rq(kgem, tmp);
 	} while (tmp != rq);
+
+	assert(bo->rq == NULL);
+	assert(list_is_empty(&bo->request));
+	assert(!bo->needs_flush);
+	assert(bo->domain == DOMAIN_NONE);
 }
 
 #if 0
