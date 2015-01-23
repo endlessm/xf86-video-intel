@@ -76,6 +76,8 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #if HAVE_DOT_GIT
 #include "git_version.h"
+#else
+#define git_version "not compiled from git"
 #endif
 
 #ifdef TEARFREE
@@ -1463,6 +1465,7 @@ static void describe_sna(ScrnInfoPtr scrn)
 		   "SNA compiled for use with valgrind\n");
 	VALGRIND_PRINTF("SNA compiled for use with valgrind\n");
 #endif
+	DBG(("xf86-video-intel version: %s\n", git_version));
 	DBG(("pixman version: %s\n", pixman_version_string()));
 }
 
