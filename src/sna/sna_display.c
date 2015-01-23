@@ -3002,9 +3002,11 @@ sna_output_attach_edid(xf86OutputPtr output)
 
 		VG(memset(raw, 0, blob.length));
 		blob.data = (uintptr_t)raw;
-		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPBLOB, &blob))
-			goto done;
 	}
+
+	if (blob.length != sna_output->edid_len &&
+	    drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPBLOB, &blob))
+		goto done;
 
 	if (old &&
 	    blob.length == sna_output->edid_len &&
