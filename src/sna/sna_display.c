@@ -2133,6 +2133,8 @@ out_shadow:
 					goto force_shadow;
 				}
 
+				assert(__sna_pixmap_get_bo(sna->front) == NULL ||
+				       __sna_pixmap_get_bo(sna->front)->pitch == shadow->pitch);
 				sna->mode.shadow = shadow;
 				set_shadow(sna, &region);
 			}
