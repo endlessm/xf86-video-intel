@@ -82,6 +82,9 @@ inline static bool can_switch_to_render(struct sna *sna,
 	if (bo && !RQ_IS_BLT(bo->rq) && !is_uncached(sna, bo))
 		return true;
 
+	if (sna->render_state.gt > 2)
+		return true;
+
 	return !kgem_ring_is_idle(&sna->kgem, KGEM_RENDER);
 }
 
@@ -93,21 +96,26 @@ static inline bool untiled_tlb_miss(struct kgem_bo *bo)
 	return bo->tiling == I915_TILING_NONE && bo->pitch >= 4096;
 }
 
-static int prefer_blt_bo(struct sna *sna, struct kgem_bo *bo, bool dst)
+static int prefer_blt_bo(struct sna *sna,
+			 struct kgem_bo *src,
+			 struct kgem_bo *dst)
 {
 	if (PREFER_RENDER)
 		return PREFER_RENDER < 0;
 
-	if (bo->rq)
-		return RQ_IS_BLT(bo->rq);
+	if (dst && dst->rq)
+		return RQ_IS_BLT(dst->rq);
 
 	if (sna->flags & SNA_POWERSAVE)
 		return true;
 
-	if (dst && sna->render_state.gt > 1)
+	if (src && sna->render_state.gt > 1)
 		return false;
 
-	return bo->tiling == I915_TILING_NONE || is_uncached(sna, bo);
+	if (src && src->rq)
+		return RQ_IS_BLT(src->rq);
+
+	return dst == NULL || dst->tiling == I915_TILING_NONE || is_uncached(sna, dst);
 }
 
 inline static bool force_blt_ring(struct sna *sna)
@@ -133,12 +141,18 @@ prefer_blt_ring(struct sna *sna, struct kgem_bo *bo, unsigned flags)
 	assert(!force_blt_ring(sna));
 	assert(!kgem_bo_is_render(bo));
 
+	if (kgem_bo_is_blt(bo))
+		return true;
+
 	return can_switch_to_blt(sna, bo, flags);
 }
 
 nonnull inline static bool
 prefer_render_ring(struct sna *sna, struct kgem_bo *bo)
 {
+	if (kgem_bo_is_render(bo))
+		return true;
+
 	if (sna->flags & SNA_POWERSAVE)
 		return false;
 
@@ -161,18 +175,13 @@ prefer_blt_composite(struct sna *sna, struct sna_composite_op *tmp)
 	if (force_blt_ring(sna))
 		return true;
 
-	if (kgem_bo_is_render(tmp->dst.bo) ||
-	    kgem_bo_is_render(tmp->src.bo))
-		return false;
-
 	if (prefer_render_ring(sna, tmp->dst.bo))
 		return false;
 
 	if (!prefer_blt_ring(sna, tmp->dst.bo, 0))
 		return false;
 
-	return (prefer_blt_bo(sna, tmp->dst.bo, true) ||
-		prefer_blt_bo(sna, tmp->src.bo, false));
+	return prefer_blt_bo(sna, tmp->src.bo, tmp->dst.bo);
 }
 
 nonnull static inline bool
@@ -188,9 +197,6 @@ prefer_blt_fill(struct sna *sna, struct kgem_bo *bo, unsigned flags)
 		return true;
 
 	if ((flags & (FILL_POINTS | FILL_SPANS)) == 0) {
-		if (kgem_bo_is_render(bo))
-			return false;
-
 		if (prefer_render_ring(sna, bo))
 			return false;
 
@@ -201,7 +207,7 @@ prefer_blt_fill(struct sna *sna, struct kgem_bo *bo, unsigned flags)
 		    return true;
 	}
 
-	return prefer_blt_bo(sna, bo, false);
+	return prefer_blt_bo(sna, NULL, bo);
 }
 
 void gen6_render_context_switch(struct kgem *kgem, int new_mode);

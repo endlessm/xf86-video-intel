@@ -652,7 +652,15 @@ static inline bool kgem_bo_is_render(struct kgem_bo *bo)
 	DBG(("%s: handle=%d, rq? %d [%d]\n", __FUNCTION__,
 	     bo->handle, bo->rq != NULL, (int)RQ_RING(bo->rq)));
 	assert(bo->refcnt);
-	return bo->rq && RQ_RING(bo->rq) == I915_EXEC_RENDER;
+	return bo->rq && RQ_RING(bo->rq) != I915_EXEC_BLT;
+}
+
+static inline bool kgem_bo_is_blt(struct kgem_bo *bo)
+{
+	DBG(("%s: handle=%d, rq? %d\n", __FUNCTION__,
+	     bo->handle, bo->rq != NULL, (int)RQ_RING(bo->rq)));
+	assert(bo->refcnt);
+	return RQ_RING(bo->rq) == I915_EXEC_BLT;
 }
 
 static inline void kgem_bo_mark_unreusable(struct kgem_bo *bo)

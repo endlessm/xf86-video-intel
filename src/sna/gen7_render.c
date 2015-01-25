@@ -2204,6 +2204,10 @@ try_blt(struct sna *sna,
 	bo = __sna_drawable_peek_bo(dst->pDrawable);
 	if (bo == NULL)
 		return true;
+
+	if (untiled_tlb_miss(bo))
+		return true;
+
 	if (bo->rq)
 		return RQ_IS_BLT(bo->rq);
 
@@ -2211,11 +2215,11 @@ try_blt(struct sna *sna,
 		return true;
 
 	if (src->pDrawable) {
-		bo = __sna_drawable_peek_bo(src->pDrawable);
-		if (bo == NULL)
+		struct kgem_bo *s = __sna_drawable_peek_bo(src->pDrawable);
+		if (s == NULL)
 			return true;
 
-		if (prefer_blt_bo(sna, bo, false))
+		if (prefer_blt_bo(sna, s, bo))
 			return true;
 	}
 
@@ -2898,8 +2902,7 @@ prefer_blt_copy(struct sna *sna,
 	if (!prefer_blt_ring(sna, dst_bo, flags))
 		return false;
 
-	return (prefer_blt_bo(sna, dst_bo, true) ||
-		prefer_blt_bo(sna, src_bo, false));
+	return prefer_blt_bo(sna, src_bo, dst_bo);
 }
 
 static bool
