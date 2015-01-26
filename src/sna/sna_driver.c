@@ -677,8 +677,10 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int probe)
 	}
 
 	intel_detect_chipset(scrn, sna->dev);
-	xf86DrvMsg(scrn->scrnIndex, X_PROBED, "CPU: %s\n",
-		   sna_cpu_features_to_string(sna->cpu_features, buf));
+	xf86DrvMsg(scrn->scrnIndex, X_PROBED,
+		   "CPU: %s; using a maximum of %d threads\n",
+		   sna_cpu_features_to_string(sna->cpu_features, buf),
+		   sna_use_threads(64*1024, 64*1024, 1));
 
 	if (!xf86SetDepthBpp(scrn, 24, 0, 0,
 			     Support32bppFb |
