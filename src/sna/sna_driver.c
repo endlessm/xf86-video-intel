@@ -295,8 +295,8 @@ static void sna_dpms_set(ScrnInfoPtr scrn, int mode, int flags)
 	bool changed = false;
 	int i;
 
-	DBG(("%s(mode=%d, flags=%d), vtSema=%d\n",
-	     __FUNCTION__, mode, flags, scrn->vtSema));
+	DBG(("%s(mode=%d, flags=%d), vtSema=%d => off?=%d\n",
+	     __FUNCTION__, mode, flags, scrn->vtSema, mode!=DPMSModeOn));
 	if (!scrn->vtSema)
 		return;
 
@@ -308,8 +308,10 @@ static void sna_dpms_set(ScrnInfoPtr scrn, int mode, int flags)
 	 * less work (hence quicker and less likely to fail) when switching
 	 * back on.
 	 */
-	if (mode == DPMSModeOff) {
+	if (mode != DPMSModeOn) {
 		if (sna->mode.hidden == 0) {
+			DBG(("%s: hiding %d outputs\n",
+			     __FUNCTION__, config->num_output));
 			for (i = 0; i < config->num_output; i++) {
 				xf86OutputPtr output = config->output[i];
 				if (output->crtc != NULL)
@@ -320,8 +322,10 @@ static void sna_dpms_set(ScrnInfoPtr scrn, int mode, int flags)
 			changed = true;
 		}
 	} else {
+		/* Re-enable CRTC that have been forced off via other means */
 		if (sna->mode.hidden != 0) {
-			/* Re-enable CRTC that have been forced off via other means */
+			DBG(("%s: unhiding %d crtc, %d outputs\n",
+			     __FUNCTION__, config->num_crtc, config->num_output));
 			sna->mode.front_active = sna->mode.hidden - 1;
 			sna->mode.hidden = 0;
 			for (i = 0; i < config->num_crtc; i++) {

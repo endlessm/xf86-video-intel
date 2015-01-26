@@ -6544,7 +6544,9 @@ void sna_mode_check(struct sna *sna)
 	if (sna->flags & SNA_IS_HOSTED)
 		return;
 
-	DBG(("%s\n", __FUNCTION__));
+	DBG(("%s: hidden?=%d\n", __FUNCTION__, sna->mode.hidden));
+	if (sna->mode.hidden)
+		return;
 
 	/* Validate CRTC attachments and force consistency upon the kernel */
 	for (i = 0; i < sna->mode.num_real_crtc; i++) {
