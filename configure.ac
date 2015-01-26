@@ -847,7 +847,7 @@ AC_OUTPUT
 
 echo ""
 echo ""
-test -e `pwd $0`/README && cat `pwd $0`/README
+cat $srcdir/README
 
 accel_msg=""
 if test "x$SNA" != "xno"; then
