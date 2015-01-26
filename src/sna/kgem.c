@@ -6417,8 +6417,8 @@ struct kgem_bo *kgem_create_map(struct kgem *kgem,
 	first_page = (uintptr_t)ptr;
 	last_page = first_page + size + PAGE_SIZE - 1;
 
-	first_page &= ~(PAGE_SIZE-1);
-	last_page &= ~(PAGE_SIZE-1);
+	first_page &= ~(uintptr_t)(PAGE_SIZE-1);
+	last_page &= ~(uintptr_t)(PAGE_SIZE-1);
 	assert(last_page > first_page);
 
 	handle = gem_userptr(kgem->fd,
