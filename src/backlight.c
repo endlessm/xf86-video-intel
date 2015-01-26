@@ -84,7 +84,7 @@ void backlight_init(struct backlight *b)
 	b->has_power = 0;
 }
 
-#ifdef __OpenBSD__
+#ifdef HAVE_DEV_WSCONS_WSCONSIO_H
 
 #include <dev/wscons/wsconsio.h>
 #include <xf86Priv.h>
