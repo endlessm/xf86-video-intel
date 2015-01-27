@@ -139,6 +139,12 @@ struct sna_dri2_event {
 
 static void sna_dri2_flip_event(struct sna_dri2_event *flip);
 
+static int front_pitch(DrawablePtr draw)
+{
+	DRI2BufferPtr buffer = sna_pixmap_get_buffer(get_drawable_pixmap(draw));
+	return buffer ? buffer->pitch : 0;
+}
+
 static void
 sna_dri2_get_back(struct sna *sna,
 		  DrawablePtr draw,
@@ -154,10 +160,10 @@ sna_dri2_get_back(struct sna *sna,
 	     __FUNCTION__, draw->width, draw->height,
 	     get_private(back)->size & 0xffff, get_private(back)->size >> 16,
 	     get_private(back)->bo->scanout,
-	     back->pitch, sna_pixmap_get_buffer(get_drawable_pixmap(draw))->pitch ));
+	     back->pitch, front_pitch(draw)));
 	reuse = (draw->height << 16 | draw->width) == get_private(back)->size;
 	if (reuse && get_private(back)->bo->scanout)
-		reuse = sna_pixmap_get_buffer(get_drawable_pixmap(draw))->pitch == back->pitch;
+		reuse = front_pitch(draw) == back->pitch;
 	if (reuse) {
 		bo = get_private(back)->bo;
 		assert(bo->refcnt);
@@ -504,6 +510,7 @@ sna_dri2_create_buffer(DrawablePtr draw,
 			assert(sna_pixmap(pixmap)->flush);
 			assert(sna_pixmap(pixmap)->pinned & PIN_DRI2);
 			assert(kgem_bo_flink(&sna->kgem, private->bo) == buffer->name);
+			assert(private->bo->pitch == buffer->pitch);
 
 			private->refcnt++;
 			return buffer;
