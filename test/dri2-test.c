@@ -6,6 +6,10 @@
 #include <X11/Xutil.h>
 #include <X11/extensions/Xfixes.h>
 #include <X11/extensions/Xrandr.h>
+#include <X11/Xlib-xcb.h>
+#include <xcb/xcb.h>
+#include <xcb/xcbext.h>
+#include <xcb/dri2.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <string.h>
@@ -101,10 +105,29 @@ static uint64_t check_msc(Display *dpy, Window win, uint64_t last_msc)
 	return current_msc;
 }
 
+static void swap_buffers(xcb_connection_t *c, Window win,
+		unsigned int *attachments, int nattachments)
+{
+	unsigned int seq[2];
+
+	seq[0] = xcb_dri2_swap_buffers_unchecked(c, win,
+						 0, 0, 0, 0, 0, 0).sequence;
+
+
+	seq[1] = xcb_dri2_get_buffers_unchecked(c, win,
+						nattachments, nattachments,
+						attachments).sequence;
+
+	xcb_flush(c);
+	xcb_discard_reply(c, seq[0]);
+	xcb_discard_reply(c, seq[1]);
+}
+
 static void run(Display *dpy, int width, int height,
 		unsigned int *attachments, int nattachments,
 		const char *name)
 {
+	xcb_connection_t *c = XGetXCBConnection(dpy);
 	Window win;
 	XSetWindowAttributes attr;
 	int count;
@@ -132,15 +155,17 @@ static void run(Display *dpy, int width, int height,
 	if (count != nattachments)
 		return;
 
+	swap_buffers(c, win, attachments, nattachments);
 	msc = check_msc(dpy, win, msc);
 	clock_gettime(CLOCK_MONOTONIC, &start);
 	for (count = 0; count < COUNT; count++)
-		DRI2SwapBuffers(dpy, win, 0, 0, 0);
+		swap_buffers(c, win, attachments, nattachments);
 	msc = check_msc(dpy, win, msc);
 	clock_gettime(CLOCK_MONOTONIC, &end);
 	printf("%d %s (%dx%d) swaps in %fs.\n",
 	       count, name, width, height, elapsed(&start, &end));
 
+	swap_buffers(c, win, attachments, nattachments);
 	msc = check_msc(dpy, win, msc);
 	clock_gettime(CLOCK_MONOTONIC, &start);
 	for (count = 0; count < COUNT; count++)
@@ -153,10 +178,11 @@ static void run(Display *dpy, int width, int height,
 
 	DRI2SwapInterval(dpy, win, 0);
 
+	swap_buffers(c, win, attachments, nattachments);
 	msc = check_msc(dpy, win, msc);
 	clock_gettime(CLOCK_MONOTONIC, &start);
 	for (count = 0; count < COUNT; count++)
-		DRI2SwapBuffers(dpy, win, 0, 0, 0);
+		swap_buffers(c, win, attachments, nattachments);
 	msc = check_msc(dpy, win, msc);
 	clock_gettime(CLOCK_MONOTONIC, &end);
 	printf("%d %s (%dx%d) vblank=0 swaps in %fs.\n",
