@@ -2021,6 +2021,19 @@ force_shadow:
 				b.x2 = scrn->virtualX;
 			if (b.y2 > scrn->virtualY)
 				b.y2 = scrn->virtualY;
+			if (b.x2 - b.x1 < crtc->mode.HDisplay ||
+			    b.y2 - b.y1 < crtc->mode.VDisplay) {
+				bool ok = false;
+				if (!wedged(sna))
+					ok = sna->render.fill_one(sna, front, bo, 0,
+								  0, 0, crtc->mode.HDisplay, crtc->mode.VDisplay,
+								  GXclear);
+				if (!ok) {
+					void *ptr = kgem_bo_map__gtt(&sna->kgem, bo);
+					if (ptr)
+						memset(ptr, 0, bo->pitch * crtc->mode.VDisplay);
+				}
+			}
 			if (b.y2 > b.y1 && b.x2 > b.x1) {
 				DrawableRec tmp;
 
