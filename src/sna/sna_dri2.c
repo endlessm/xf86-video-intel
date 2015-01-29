@@ -134,14 +134,23 @@ struct sna_dri2_event {
 	struct list cache;
 	struct list link;
 
-	int mode;
+	int flip_continue;
+	int keepalive;
 };
 
 static void sna_dri2_flip_event(struct sna_dri2_event *flip);
+inline static DRI2BufferPtr dri2_window_get_front(WindowPtr win);
 
 static int front_pitch(DrawablePtr draw)
 {
-	DRI2BufferPtr buffer = sna_pixmap_get_buffer(get_drawable_pixmap(draw));
+	DRI2BufferPtr buffer;
+
+	buffer = NULL;
+	if (draw->type != DRAWABLE_PIXMAP)
+		buffer = dri2_window_get_front((WindowPtr)draw);
+	if (buffer == NULL)
+		buffer = sna_pixmap_get_buffer(get_drawable_pixmap(draw));
+
 	return buffer ? buffer->pitch : 0;
 }
 
@@ -156,14 +165,16 @@ sna_dri2_get_back(struct sna *sna,
 	int flags;
 	bool reuse;
 
-	DBG(("%s: draw size=%dx%d, buffer size=%dx%d, is-scanout? %d, pitch=%d, front pitch=%d\n",
+	DBG(("%s: draw size=%dx%d, back buffer handle=%d size=%dx%d, is-scanout? %d, pitch=%d, front pitch=%d, has-cache?=%d\n",
 	     __FUNCTION__, draw->width, draw->height,
+	     get_private(back)->bo->handle,
 	     get_private(back)->size & 0xffff, get_private(back)->size >> 16,
 	     get_private(back)->bo->scanout,
-	     back->pitch, front_pitch(draw)));
+	     back->pitch, front_pitch(draw), info!=NULL));
 	reuse = (draw->height << 16 | draw->width) == get_private(back)->size;
 	if (reuse && get_private(back)->bo->scanout)
 		reuse = front_pitch(draw) == back->pitch;
+	DBG(("%s: reuse backbuffer? %d\n", __FUNCTION__, reuse));
 	if (reuse) {
 		bo = get_private(back)->bo;
 		assert(bo->refcnt);
@@ -180,6 +191,8 @@ sna_dri2_get_back(struct sna *sna,
 	if (info) {
 		struct dri_bo *c;
 		list_for_each_entry(c, &info->cache, link) {
+			DBG(("%s: cache: handle=%d, active=%d\n",
+			     __FUNCTION__, c->bo ? c->bo->handle : 0, c->bo ? c->bo->active_scanout : -1));
 			if (c->bo && c->bo->active_scanout == 0) {
 				bo = c->bo;
 				name = c->name;
@@ -189,8 +202,6 @@ sna_dri2_get_back(struct sna *sna,
 				c->bo = NULL;
 				break;
 			}
-			DBG(("%s: cache: handle=%d, active=%d\n",
-			     __FUNCTION__, c->bo ? c->bo->handle : 0, c->bo ? c->bo->active_scanout : -1));
 		}
 	}
 	if (bo == NULL) {
@@ -306,6 +317,8 @@ mark_stale(DRI2BufferPtr back)
 	 * stale frame. (This is mostly useful for tracking down
 	 * driver bugs!)
 	 */
+	DBG(("%s(handle=%d) => %d\n", __FUNCTION__,
+	     get_private(back)->bo->handle, xorg_can_triple_buffer()));
 	get_private(back)->stale = xorg_can_triple_buffer();
 }
 
@@ -327,7 +340,7 @@ sna_dri2_reuse_buffer(DrawablePtr draw, DRI2BufferPtr buffer)
 
 	if (buffer->attachment == DRI2BufferBackLeft &&
 	    draw->type != DRAWABLE_PIXMAP) {
-		DBG(("%s: replacing back buffer\n", __FUNCTION__));
+		DBG(("%s: replacing back buffer on window %ld\n", __FUNCTION__, draw->id));
 		sna_dri2_get_back(to_sna_from_drawable(draw), draw, buffer, dri2_chain(draw));
 
 		assert(kgem_bo_flink(&to_sna_from_drawable(draw)->kgem, get_private(buffer)->bo) == buffer->name);
@@ -335,7 +348,6 @@ sna_dri2_reuse_buffer(DrawablePtr draw, DRI2BufferPtr buffer)
 		assert(get_private(buffer)->bo->active_scanout == 0);
 		DBG(("reusing back buffer, age = %d\n", buffer->flags));
 	}
-
 }
 
 static bool swap_limit(DrawablePtr draw, int limit)
@@ -352,6 +364,12 @@ static bool swap_limit(DrawablePtr draw, int limit)
 #if DRI2INFOREC_VERSION < 10
 #undef USE_ASYNC_SWAP
 #define USE_ASYNC_SWAP 0
+#endif
+
+#if USE_ASYNC_SWAP
+#define KEEPALIVE 4 /* wait ~50ms before discarding swap caches */
+#else
+#define KEEPALIVE 1
 #endif
 
 #define COLOR_PREFER_TILING_Y 0
@@ -1555,6 +1573,7 @@ sna_dri2_flip(struct sna_dri2_event *info)
 	assert(get_private(info->back)->bo->refcnt);
 	assert(get_private(info->front)->bo != get_private(info->back)->bo);
 
+	info->keepalive = KEEPALIVE;
 	info->queued = true;
 	return true;
 }
@@ -1911,10 +1930,10 @@ sna_dri2_xchg(DrawablePtr draw, DRI2BufferPtr front, DRI2BufferPtr back)
 	     pixmap->drawable.width,
 	     pixmap->drawable.height));
 
-	DBG(("%s: back_bo pitch=%d, size=%d, ref=%d, active_scanout?=%d\n",
-	     __FUNCTION__, back_bo->pitch, kgem_bo_size(back_bo), back_bo->refcnt, back_bo->active_scanout));
-	DBG(("%s: front_bo pitch=%d, size=%d, ref=%d, active_scanout?=%d\n",
-	     __FUNCTION__, front_bo->pitch, kgem_bo_size(front_bo), front_bo->refcnt, front_bo->active_scanout));
+	DBG(("%s: back_bo handle=%d, pitch=%d, size=%d, ref=%d, active_scanout?=%d\n",
+	     __FUNCTION__, back_bo->handle, back_bo->pitch, kgem_bo_size(back_bo), back_bo->refcnt, back_bo->active_scanout));
+	DBG(("%s: front_bo handle=%d, pitch=%d, size=%d, ref=%d, active_scanout?=%d\n",
+	     __FUNCTION__, front_bo->handle, front_bo->pitch, kgem_bo_size(front_bo), front_bo->refcnt, front_bo->active_scanout));
 	assert(front_bo->refcnt);
 	assert(back_bo->refcnt);
 
@@ -1972,8 +1991,8 @@ static void sna_dri2_xchg_crtc(struct sna *sna, DrawablePtr draw, xf86CrtcPtr cr
 	if (tmp == NULL) {
 		back->attachment = -1;
 		if (get_private(back)->proxy == NULL) {
-			get_private(back)->pixmap = get_window_pixmap(win);
-			get_private(back)->proxy = sna_dri2_reference_buffer(sna_pixmap_get_buffer(get_private(back)->pixmap));
+			get_private(back)->pixmap = get_private(front)->pixmap;
+			get_private(back)->proxy = sna_dri2_reference_buffer(get_private(front)->proxy ?: front);
 		}
 		dri2_window(win)->front = sna_dri2_reference_buffer(back);
 		return;
@@ -1985,27 +2004,35 @@ static void sna_dri2_xchg_crtc(struct sna *sna, DrawablePtr draw, xf86CrtcPtr cr
 	get_private(tmp)->refcnt = 1;
 	get_private(tmp)->bo = get_private(back)->bo;
 	get_private(tmp)->size = get_private(back)->size;
-	get_private(tmp)->pixmap = get_window_pixmap(win);
-	get_private(tmp)->proxy = sna_dri2_reference_buffer(sna_pixmap_get_buffer(get_private(tmp)->pixmap));
+	get_private(tmp)->pixmap = get_private(front)->pixmap;
+	get_private(tmp)->proxy = sna_dri2_reference_buffer(get_private(front)->proxy ?: front);
+
 	dri2_window(win)->front = tmp;
 
-	DBG(("%s: allocating new backbuffer\n", __FUNCTION__));
-	back->name = 0;
-	back->flags = 0;
-	bo = kgem_create_2d(&sna->kgem,
-			    draw->width, draw->height, draw->bitsPerPixel,
-			    get_private(back)->bo->tiling,
-			    CREATE_SCANOUT);
-	if (bo != NULL) {
-		get_private(back)->bo = bo;
-		back->pitch = bo->pitch;
-		back->name = kgem_bo_flink(&sna->kgem, bo);
-	}
-	if (back->name == 0) {
-		if (bo != NULL)
-			kgem_bo_destroy(&sna->kgem, bo);
-		get_private(back)->bo = NULL;
+	if (get_private(front)->proxy) {
+		DBG(("%s: reusing current proxy frontbuffer\n", __FUNCTION__));
+		front->attachment = DRI2BufferBackLeft;
+		ref(get_private(tmp)->bo);
 		back->attachment = -1;
+	} else {
+		DBG(("%s: allocating new backbuffer\n", __FUNCTION__));
+		back->name = 0;
+		back->flags = 0;
+		bo = kgem_create_2d(&sna->kgem,
+				    draw->width, draw->height, draw->bitsPerPixel,
+				    get_private(back)->bo->tiling,
+				    CREATE_SCANOUT);
+		if (bo != NULL) {
+			get_private(back)->bo = bo;
+			back->pitch = bo->pitch;
+			back->name = kgem_bo_flink(&sna->kgem, bo);
+		}
+		if (back->name == 0) {
+			if (bo != NULL)
+				kgem_bo_destroy(&sna->kgem, bo);
+			get_private(back)->bo = NULL;
+			back->attachment = -1;
+		}
 	}
 }
 
@@ -2326,45 +2353,38 @@ sna_dri2_immediate_blit(struct sna *sna,
 static bool
 sna_dri2_flip_continue(struct sna_dri2_event *info)
 {
-	DBG(("%s(mode=%d)\n", __FUNCTION__, info->mode));
+	struct kgem_bo *bo = get_private(info->front)->bo;
 
-	if (info->mode > 0){
-		struct kgem_bo *bo = get_private(info->front)->bo;
+	DBG(("%s(mode=%d)\n", __FUNCTION__, info->flip_continue));
+	assert(info->flip_continue > 0);
 
-		info->type = info->mode;
+	info->type = info->flip_continue;
 
-		if (bo != sna_pixmap(info->sna->front)->gpu_bo)
-			return false;
+	if (bo != sna_pixmap(info->sna->front)->gpu_bo)
+		return false;
 
-		if (!sna_page_flip(info->sna, bo, sna_dri2_flip_handler, info))
-			return false;
+	if (!sna_page_flip(info->sna, bo, sna_dri2_flip_handler, info))
+		return false;
 
-		assert(info->sna->dri2.flip_pending == NULL ||
-		       info->sna->dri2.flip_pending == info);
-		info->sna->dri2.flip_pending = info;
-		assert(info->queued);
-	} else {
-		info->type = -info->mode;
+	assert(info->sna->dri2.flip_pending == NULL ||
+	       info->sna->dri2.flip_pending == info);
+	info->sna->dri2.flip_pending = info;
+	assert(info->queued);
 
-		if (!info->draw)
-			return false;
-
-		if (!can_flip(info->sna, info->draw, info->front, info->back, info->crtc))
-			return false;
-
-		assert(sna_pixmap_get_buffer(get_drawable_pixmap(info->draw)) == info->front);
-		if (!sna_dri2_flip(info))
-			return false;
-
-		if (!xorg_can_triple_buffer()) {
-			sna_dri2_get_back(info->sna, info->draw, info->back, info);
-			DBG(("%s: fake triple buffering, unblocking client\n", __FUNCTION__));
-			frame_swap_complete(info, DRI2_FLIP_COMPLETE);
-		}
-	}
-
-	info->mode = 0;
+	info->flip_continue = 0;
 	return true;
+}
+
+static bool
+sna_dri2_flip_keepalive(struct sna_dri2_event *info)
+{
+	DBG(("%s(keepalive?=%d)\n", __FUNCTION__, info->keepalive-1));
+	assert(info->keepalive > 0);
+	if (!--info->keepalive)
+		return false;
+
+	info->flip_continue = FLIP_COMPLETE;
+	return sna_dri2_flip_continue(info);
 }
 
 static void chain_flip(struct sna *sna)
@@ -2443,22 +2463,24 @@ static void sna_dri2_flip_event(struct sna_dri2_event *flip)
 		frame_swap_complete(flip, DRI2_FLIP_COMPLETE);
 	case FLIP_COMPLETE:
 		if (sna->dri2.flip_pending) {
+			DBG(("%s: pending flip\n", __FUNCTION__));
 			sna_dri2_event_free(flip);
 			chain_flip(sna);
-		} else if (!flip->mode) {
+		} else if (!flip->flip_continue) {
 			DBG(("%s: flip chain complete\n", __FUNCTION__));
+			if (!sna_dri2_flip_keepalive(flip)) {
+				if (flip->chain) {
+					sna_dri2_remove_event((WindowPtr)flip->draw,
+							      flip);
+					chain_swap(flip->chain);
+					flip->draw = NULL;
+				}
 
-			if (flip->chain) {
-				sna_dri2_remove_event((WindowPtr)flip->draw,
-						      flip);
-				chain_swap(flip->chain);
-				flip->draw = NULL;
+				sna_dri2_event_free(flip);
 			}
-
-			sna_dri2_event_free(flip);
 		} else if (!sna_dri2_flip_continue(flip)) {
 			DBG(("%s: no longer able to flip\n", __FUNCTION__));
-			if (flip->draw == NULL || !sna_dri2_immediate_blit(sna, flip, false, flip->mode < 0))
+			if (flip->draw == NULL || !sna_dri2_immediate_blit(sna, flip, false, flip->flip_continue == FLIP_COMPLETE))
 				sna_dri2_event_free(flip);
 		}
 		break;
@@ -2579,7 +2601,7 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 		info = sna->dri2.flip_pending;
 		DBG(("%s: performing immediate swap on pipe %d, pending? %d, mode: %d, continuation? %d\n",
 		     __FUNCTION__, sna_crtc_to_pipe(crtc),
-		     info != NULL, info ? info->mode : 0,
+		     info != NULL, info ? info->flip_continue : 0,
 		     info && info->draw == draw));
 
 		if (info && info->draw == draw) {
@@ -2589,21 +2611,16 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 				_sna_dri2_destroy_buffer(sna, info->back);
 				info->back = sna_dri2_reference_buffer(back);
 			}
-			if (info->mode || current_msc >= *target_msc) {
-				DBG(("%s: executing xchg of pending flip\n",
-				     __FUNCTION__));
-				sna_dri2_xchg(draw, front, back);
-				info->mode = type = FLIP_COMPLETE;
-				goto new_back;
-			} else {
+			DBG(("%s: executing xchg of pending flip\n", __FUNCTION__));
+			sna_dri2_xchg(draw, front, back);
+			if (!info->flip_continue && current_msc < *target_msc) {
 				DBG(("%s: chaining flip\n", __FUNCTION__));
-				type = FLIP_THROTTLE;
+				info->flip_continue = FLIP_THROTTLE;
+				info->keepalive++;
 				if (xorg_can_triple_buffer())
-					info->mode = -type;
-				else
-					info->mode = -FLIP_COMPLETE;
-				goto out;
+					goto out;
 			}
+			goto new_back;
 		}
 
 		info = sna_dri2_add_event(sna, draw, client);
@@ -2626,7 +2643,7 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 			     __FUNCTION__));
 			info->type = type = FLIP;
 			sna->dri2.flip_pending = info;
-			assert(info->queued);
+			assert(!info->queued);
 			current_msc++;
 		} else {
 			info->type = type = use_triple_buffer(sna, client, *target_msc == 0);
@@ -2727,8 +2744,9 @@ sna_dri2_schedule_xchg(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 	if (!immediate_swap(sna, *target_msc, divisor, draw, crtc, &current_msc))
 		return false;
 
-	sync = current_msc < *target_msc;
+	sync = current_msc < *target_msc && xorg_can_triple_buffer();
 	event = dri2_chain(draw) == NULL;
+	DBG(("%s: synchronous?=%d, send-event?=%d\n", __FUNCTION__, sync, event));
 	if (!sync || event) {
 		DBG(("%s: performing immediate xchg on pipe %d\n",
 		     __FUNCTION__, sna_crtc_to_pipe(crtc)));
@@ -2760,6 +2778,7 @@ sna_dri2_schedule_xchg(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 
 			info->queued = true;
 			if (sna_wait_vblank(sna, &vbl, info->pipe)) {
+				DBG(("%s: vblank queue failed, unblocking client\n", __FUNCTION__));
 				sna_dri2_event_free(info);
 				goto complete;
 			}
@@ -2788,8 +2807,9 @@ sna_dri2_schedule_xchg_crtc(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc
 	if (!immediate_swap(sna, *target_msc, divisor, draw, crtc, &current_msc))
 		return false;
 
-	sync = current_msc < *target_msc;
+	sync = current_msc < *target_msc && xorg_can_triple_buffer();
 	event = dri2_chain(draw) == NULL;
+	DBG(("%s: synchronous?=%d, send-event?=%d\n", __FUNCTION__, sync, event));
 	if (!sync || event) {
 		DBG(("%s: performing immediate xchg only on pipe %d\n",
 		     __FUNCTION__, sna_crtc_to_pipe(crtc)));
@@ -2821,6 +2841,7 @@ sna_dri2_schedule_xchg_crtc(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc
 
 			info->queued = true;
 			if (sna_wait_vblank(sna, &vbl, info->pipe)) {
+				DBG(("%s: vblank queue failed, unblocking client\n", __FUNCTION__));
 				sna_dri2_event_free(info);
 				goto complete;
 			}
@@ -3089,8 +3110,8 @@ sna_dri2_get_msc(DrawablePtr draw, CARD64 *ust, CARD64 *msc)
 	swap = sna_crtc_last_swap(crtc);
 	*msc = draw_current_msc(draw, crtc, swap->msc);
 	*ust = ust64(swap->tv_sec, swap->tv_usec);
-	DBG(("%s: msc=%llu, ust=%llu\n", __FUNCTION__,
-	     (long long)*msc, (long long)*ust));
+	DBG(("%s: msc=%llu [raw=%llu], ust=%llu\n", __FUNCTION__,
+	     (long long)*msc, swap->msc, (long long)*ust));
 	return TRUE;
 }
 

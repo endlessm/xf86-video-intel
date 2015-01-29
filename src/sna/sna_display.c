@@ -1486,6 +1486,8 @@ static void sna_crtc_disable_override(struct sna *sna, struct sna_crtc *crtc)
 	if (crtc->client_bo == NULL)
 		return;
 
+	assert(crtc->client_bo->refcnt > crtc->client_bo->active_scanout);
+
 	if (!crtc->transform) {
 		DrawableRec tmp;
 
@@ -7022,10 +7024,13 @@ void sna_shadow_set_crtc(struct sna *sna,
 	assert(!sna_crtc->transform);
 
 	if (sna_crtc->client_bo != bo) {
-		if (sna_crtc->client_bo)
+		if (sna_crtc->client_bo) {
+			assert(sna_crtc->client_bo->refcnt > sna_crtc->client_bo->active_scanout);
 			kgem_bo_destroy(&sna->kgem, sna_crtc->client_bo);
+		}
 
 		sna_crtc->client_bo = kgem_bo_reference(bo);
+		assert(sna_crtc->client_bo->refcnt > sna_crtc->client_bo->active_scanout);
 		sna_crtc_damage(crtc);
 	}
 
@@ -7080,6 +7085,7 @@ void sna_shadow_unset_crtc(struct sna *sna,
 	if (sna_crtc->client_bo == NULL)
 		return;
 
+	assert(sna_crtc->client_bo->refcnt > sna_crtc->client_bo->active_scanout);
 	kgem_bo_destroy(&sna->kgem, sna_crtc->client_bo);
 	sna_crtc->client_bo = NULL;
 	list_del(&sna_crtc->shadow_link);
@@ -7515,8 +7521,10 @@ fixup_shadow:
 				y = crtc->base->y;
 			}
 
-			if (crtc->bo == flip_bo)
+			if (crtc->bo == flip_bo) {
+				assert(crtc->bo->refcnt >= crtc->bo->active_scanout);
 				continue;
+			}
 
 			if (flip_bo->pitch != crtc->bo->pitch || (y << 16 | x)  != crtc->offset) {
 				DBG(("%s: changing pitch (new %d =?= old %d) or offset (new %x =?= old %x)\n",
