@@ -2613,14 +2613,15 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 			}
 			DBG(("%s: executing xchg of pending flip\n", __FUNCTION__));
 			sna_dri2_xchg(draw, front, back);
-			if (!info->flip_continue && current_msc < *target_msc) {
+			info->keepalive++;
+			if (xorg_can_triple_buffer() &&
+			    !info->flip_continue &&
+			    current_msc < *target_msc) {
 				DBG(("%s: chaining flip\n", __FUNCTION__));
 				info->flip_continue = FLIP_THROTTLE;
-				info->keepalive++;
-				if (xorg_can_triple_buffer())
-					goto out;
-			}
-			goto new_back;
+				goto out;
+			} else
+				goto new_back;
 		}
 
 		info = sna_dri2_add_event(sna, draw, client);
