@@ -1330,6 +1330,9 @@ sna_dri2_event_free(struct sna_dri2_event *info)
 	DrawablePtr draw = info->draw;
 
 	DBG(("%s(draw?=%d)\n", __FUNCTION__, draw != NULL));
+	if (info->sna->dri2.flip_pending == info)
+		info->sna->dri2.flip_pending = info->chain;
+	assert(info->sna->dri2.flip_pending != info);
 	if (draw && draw->type == DRAWABLE_WINDOW)
 		sna_dri2_remove_event((WindowPtr)draw, info);
 
@@ -1501,6 +1504,7 @@ void sna_dri2_destroy_window(WindowPtr win)
 
 		chain = priv->chain;
 		while ((info = chain)) {
+			assert(info->draw == &win->drawable);
 			info->draw = NULL;
 			info->client = NULL;
 			list_del(&info->link);
@@ -2089,9 +2093,9 @@ static void chain_swap(struct sna_dri2_event *chain)
 	if (chain->queued) /* too early! */
 		return;
 
-	assert(chain == dri2_chain(chain->draw));
 	DBG(("%s: chaining draw=%ld, type=%d\n",
 	     __FUNCTION__, (long)chain->draw->id, chain->type));
+	assert(chain == dri2_chain(chain->draw));
 	chain->queued = true;
 
 	switch (chain->type) {
@@ -2392,8 +2396,8 @@ static void chain_flip(struct sna *sna)
 	struct sna_dri2_event *chain = sna->dri2.flip_pending;
 
 	assert(chain->type == FLIP);
-	DBG(("%s: chaining type=%d, cancelled?=%d\n",
-	     __FUNCTION__, chain->type, chain->draw == NULL));
+	DBG(("%s: chaining type=%d, cancelled?=%d window=%ld\n",
+	     __FUNCTION__, chain->type, chain->draw == NULL, chain->draw ? chain->draw->id : 0));
 
 	sna->dri2.flip_pending = NULL;
 	if (chain->draw == NULL) {

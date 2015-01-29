@@ -5,6 +5,10 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/extensions/Xfixes.h>
+#include <X11/Xlib-xcb.h>
+#include <xcb/xcb.h>
+#include <xcb/xcbext.h>
+#include <xcb/dri2.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <string.h>
@@ -41,6 +45,25 @@ static int dri2_open(Display *dpy)
 	return fd;
 }
 
+static void swap_buffers(Display *dpy, Window win,
+			 unsigned int *attachments, int nattachments)
+{
+	xcb_connection_t *c = XGetXCBConnection(dpy);
+	unsigned int seq[2];
+
+	seq[0] = xcb_dri2_swap_buffers_unchecked(c, win,
+						 0, 0, 0, 0, 0, 0).sequence;
+
+
+	seq[1] = xcb_dri2_get_buffers_unchecked(c, win,
+						nattachments, nattachments,
+						attachments).sequence;
+
+	xcb_flush(c);
+	xcb_discard_reply(c, seq[0]);
+	xcb_discard_reply(c, seq[1]);
+}
+
 static void run(Display *dpy, int width, int height,
 		unsigned int *attachments, int nattachments,
 		const char *name)
@@ -74,6 +97,29 @@ static void run(Display *dpy, int width, int height,
 		free(buffers);
 		for (count = 0; count < loop; count++)
 			DRI2SwapBuffers(dpy, win, 0, 0, 0);
+		XDestroyWindow(dpy, win);
+	} while (--loop);
+
+	loop = 100;
+	do {
+		win = XCreateWindow(dpy, DefaultRootWindow(dpy),
+				    0, 0, width, height, 0,
+				    DefaultDepth(dpy, DefaultScreen(dpy)),
+				    InputOutput,
+				    DefaultVisual(dpy, DefaultScreen(dpy)),
+				    CWOverrideRedirect, &attr);
+		XMapWindow(dpy, win);
+
+		DRI2CreateDrawable(dpy, win);
+
+		buffers = DRI2GetBuffers(dpy, win, &width, &height,
+					 attachments, nattachments, &count);
+		if (count != nattachments)
+			return;
+
+		free(buffers);
+		for (count = 0; count < loop; count++)
+			swap_buffers(dpy, win, attachments, nattachments);
 		XDestroyWindow(dpy, win);
 	} while (--loop);
 
