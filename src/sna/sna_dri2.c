@@ -2600,8 +2600,6 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 	uint64_t current_msc;
 
 	if (immediate_swap(sna, *target_msc, divisor, draw, crtc, &current_msc)) {
-		int type;
-
 		info = sna->dri2.flip_pending;
 		DBG(("%s: performing immediate swap on pipe %d, pending? %d, mode: %d, continuation? %d\n",
 		     __FUNCTION__, sna_crtc_to_pipe(crtc),
@@ -2622,7 +2620,8 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 			    !info->flip_continue &&
 			    current_msc < *target_msc) {
 				DBG(("%s: chaining flip\n", __FUNCTION__));
-				info->flip_continue = FLIP_THROTTLE;
+				info->type = FLIP_THROTTLE;
+				info->flip_continue = FLIP_COMPLETE;
 				goto out;
 			} else
 				goto new_back;
@@ -2646,12 +2645,12 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 			 */
 			DBG(("%s: queueing flip after pending completion\n",
 			     __FUNCTION__));
-			info->type = type = FLIP;
+			info->type = FLIP;
 			sna->dri2.flip_pending = info;
 			assert(!info->queued);
 			current_msc++;
 		} else {
-			info->type = type = use_triple_buffer(sna, client, *target_msc == 0);
+			info->type = use_triple_buffer(sna, client, *target_msc == 0);
 			if (!sna_dri2_flip(info)) {
 				DBG(("%s: flip failed, falling back\n", __FUNCTION__));
 				sna_dri2_event_free(info);
@@ -2659,8 +2658,8 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 			}
 		}
 
-		swap_limit(draw, 1 + (type == FLIP_THROTTLE));
-		if (type >= FLIP_COMPLETE) {
+		swap_limit(draw, 1 + (info->type == FLIP_THROTTLE));
+		if (info->type >= FLIP_COMPLETE) {
 new_back:
 			if (!xorg_can_triple_buffer())
 				sna_dri2_get_back(sna, draw, back, info);
