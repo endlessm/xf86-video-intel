@@ -64,9 +64,9 @@ static void swap_buffers(Display *dpy, Window win,
 	xcb_discard_reply(c, seq[1]);
 }
 
-static void run(Display *dpy, int width, int height,
-		unsigned int *attachments, int nattachments,
-		const char *name)
+static void race_window(Display *dpy, int width, int height,
+			unsigned int *attachments, int nattachments,
+			const char *name)
 {
 	Window win;
 	XSetWindowAttributes attr;
@@ -123,9 +123,107 @@ static void run(Display *dpy, int width, int height,
 		XDestroyWindow(dpy, win);
 	} while (--loop);
 
+	loop = 100;
+	do {
+		uint64_t ignore;
+
+		win = XCreateWindow(dpy, DefaultRootWindow(dpy),
+				    0, 0, width, height, 0,
+				    DefaultDepth(dpy, DefaultScreen(dpy)),
+				    InputOutput,
+				    DefaultVisual(dpy, DefaultScreen(dpy)),
+				    CWOverrideRedirect, &attr);
+		XMapWindow(dpy, win);
+
+		DRI2CreateDrawable(dpy, win);
+
+		for (count = 0; count < loop; count++)
+			DRI2WaitMSC(dpy, win, 0, 1, 0,
+				    &ignore, &ignore, &ignore);
+		XDestroyWindow(dpy, win);
+	} while (--loop);
+
 	XSync(dpy, 1);
 	sleep(2);
 	XSync(dpy, 1);
+}
+
+static void race_client(int width, int height,
+			unsigned int *attachments, int nattachments,
+			const char *name)
+{
+	XSetWindowAttributes attr;
+	int count, loop;
+
+	/* Be nasty and install a fullscreen window on top so that we
+	 * can guarantee we do not get clipped by children.
+	 */
+	attr.override_redirect = 1;
+	loop = 100;
+	do {
+		Display *dpy = XOpenDisplay(NULL);
+		Window win = XCreateWindow(dpy, DefaultRootWindow(dpy),
+					   0, 0, width, height, 0,
+					   DefaultDepth(dpy, DefaultScreen(dpy)),
+					   InputOutput,
+					   DefaultVisual(dpy, DefaultScreen(dpy)),
+					   CWOverrideRedirect, &attr);
+
+		XMapWindow(dpy, win);
+
+		DRI2CreateDrawable(dpy, win);
+		free(DRI2GetBuffers(dpy, win, &width, &height,
+				    attachments, nattachments, &count));
+		if (count != nattachments)
+			return;
+
+		for (count = 0; count < loop; count++)
+			DRI2SwapBuffers(dpy, win, 0, 0, 0);
+		XCloseDisplay(dpy);
+	} while (--loop);
+
+	loop = 100;
+	do {
+		Display *dpy = XOpenDisplay(NULL);
+		Window win = XCreateWindow(dpy, DefaultRootWindow(dpy),
+					   0, 0, width, height, 0,
+					   DefaultDepth(dpy, DefaultScreen(dpy)),
+					   InputOutput,
+					   DefaultVisual(dpy, DefaultScreen(dpy)),
+					   CWOverrideRedirect, &attr);
+
+		XMapWindow(dpy, win);
+
+		DRI2CreateDrawable(dpy, win);
+		free(DRI2GetBuffers(dpy, win, &width, &height,
+				    attachments, nattachments, &count));
+		if (count != nattachments)
+			return;
+
+		for (count = 0; count < loop; count++)
+			swap_buffers(dpy, win, attachments, nattachments);
+		XCloseDisplay(dpy);
+	} while (--loop);
+
+	loop = 100;
+	do {
+		uint64_t ignore;
+		Display *dpy = XOpenDisplay(NULL);
+		Window win = XCreateWindow(dpy, DefaultRootWindow(dpy),
+					   0, 0, width, height, 0,
+					   DefaultDepth(dpy, DefaultScreen(dpy)),
+					   InputOutput,
+					   DefaultVisual(dpy, DefaultScreen(dpy)),
+					   CWOverrideRedirect, &attr);
+
+		XMapWindow(dpy, win);
+
+		DRI2CreateDrawable(dpy, win);
+		for (count = 0; count < loop; count++)
+			DRI2WaitMSC(dpy, win, 0, 1, 0,
+				    &ignore, &ignore, &ignore);
+		XCloseDisplay(dpy);
+	} while (--loop);
 }
 
 int main(void)
@@ -147,13 +245,17 @@ int main(void)
 
 	width = WidthOfScreen(DefaultScreenOfDisplay(dpy));
 	height = HeightOfScreen(DefaultScreenOfDisplay(dpy));
-	run(dpy, width, height, attachments, 1, "fullscreen");
-	run(dpy, width, height, attachments, 2, "fullscreen (with front)");
+	race_window(dpy, width, height, attachments, 1, "fullscreen");
+	race_window(dpy, width, height, attachments, 2, "fullscreen (with front)");
+	race_client(width, height, attachments, 1, "fullscreen");
+	race_client(width, height, attachments, 2, "fullscreen (with front)");
 
 	width /= 2;
 	height /= 2;
-	run(dpy, width, height, attachments, 1, "windowed");
-	run(dpy, width, height, attachments, 2, "windowed (with front)");
+	race_window(dpy, width, height, attachments, 1, "windowed");
+	race_window(dpy, width, height, attachments, 2, "windowed (with front)");
+	race_client(width, height, attachments, 1, "windowed");
+	race_client(width, height, attachments, 2, "windowed (with front)");
 
 	return 0;
 }
