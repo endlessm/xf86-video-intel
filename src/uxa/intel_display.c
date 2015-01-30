@@ -89,9 +89,11 @@ struct intel_mode {
 	struct list outputs;
 	struct list crtcs;
 
-	void *pageflip_data;
-	intel_pageflip_handler_proc pageflip_handler;
-	intel_pageflip_abort_proc pageflip_abort;
+	struct {
+		intel_pageflip_handler_proc handler;
+		intel_pageflip_abort_proc abort;
+		void *data;
+	} pageflip;
 
 	Bool delete_dp_12_displays;
 };
@@ -1671,22 +1673,29 @@ intel_do_pageflip(intel_screen_private *intel,
 	uint32_t new_fb_id;
 	uint32_t flags;
 	uint32_t seq;
+	int err = 0;
 	int i;
+
+	/*
+	 * We only have a single length queue in the kernel, so any
+	 * attempts to schedule a second flip before processing the first
+	 * is a bug. Punt it back to the caller.
+	 */
+	if (mode->pageflip.handler)
+		return FALSE;
 
 	/*
 	 * Create a new handle for the back buffer
 	 */
 	if (drmModeAddFB(mode->fd, scrn->virtualX, scrn->virtualY,
 			 scrn->depth, scrn->bitsPerPixel, pitch,
-			 new_front->handle, &new_fb_id))
+			 new_front->handle, &new_fb_id)) {
+		err = errno;
 		goto error_out;
+	}
 
 	drm_intel_bo_disable_reuse(new_front);
         intel_flush(intel);
-
-	mode->pageflip_data = pageflip_data;
-	mode->pageflip_handler = pageflip_handler;
-	mode->pageflip_abort = pageflip_abort;
 
 	/*
 	 * Queue flips on all enabled CRTCs
@@ -1711,8 +1720,7 @@ intel_do_pageflip(intel_screen_private *intel,
 
 		flip = calloc(1, sizeof(struct intel_pageflip));
 		if (flip == NULL) {
-			xf86DrvMsg(scrn->scrnIndex, X_WARNING,
-				   "flip queue: carrier alloc failed.\n");
+			err = errno;
 			goto error_undo;
 		}
 
@@ -1724,25 +1732,17 @@ intel_do_pageflip(intel_screen_private *intel,
 
 		seq = intel_drm_queue_alloc(scrn, config->crtc[i], flip, intel_pageflip_handler, intel_pageflip_abort);
 		if (!seq) {
+			err = errno;
 			free(flip);
 			goto error_undo;
 		}
 
-again:
 		if (drmModePageFlip(mode->fd,
 				    crtc_id(crtc),
 				    new_fb_id,
 				    flags, (void *)(uintptr_t)seq)) {
-			if (intel_mode_read_drm_events(intel)) {
-				xf86DrvMsg(scrn->scrnIndex, X_WARNING,
-					   "flip queue retry\n");
-				goto again;
-			}
-			xf86DrvMsg(scrn->scrnIndex, X_WARNING,
-				   "flip queue failed: %s\n", strerror(errno));
-			if (seq)
-				intel_drm_abort_seq(scrn, seq);
-			free(flip);
+			err = errno;
+			intel_drm_abort_seq(scrn, seq);
 			goto error_undo;
 		}
 		mode->flip_count++;
@@ -1750,6 +1750,10 @@ again:
 
 	mode->old_fb_id = mode->fb_id;
 	mode->fb_id = new_fb_id;
+
+	mode->pageflip.data = pageflip_data;
+	mode->pageflip.handler = pageflip_handler;
+	mode->pageflip.abort = pageflip_abort;
 
 	if (!mode->flip_count)
 		intel_pageflip_complete(mode);
@@ -1765,7 +1769,7 @@ error_undo:
 
 error_out:
 	xf86DrvMsg(scrn->scrnIndex, X_WARNING, "Page flip failed: %s\n",
-		   strerror(errno));
+		   strerror(err));
 
 	mode->flip_count = 0;
 	return FALSE;
@@ -2001,11 +2005,12 @@ intel_pageflip_complete(struct intel_mode *mode)
 	/* Release framebuffer */
 	drmModeRmFB(mode->fd, mode->old_fb_id);
 
-	if (!mode->pageflip_handler)
+	if (!mode->pageflip.handler)
 		return;
 
-	mode->pageflip_handler(mode->fe_msc, mode->fe_usec,
-			       mode->pageflip_data);
+	mode->pageflip.handler(mode->fe_msc, mode->fe_usec,
+			       mode->pageflip.data);
+	memset(&mode->pageflip, 0, sizeof(mode->pageflip));
 }
 
 /*
@@ -2063,10 +2068,11 @@ intel_pageflip_abort(ScrnInfoPtr scrn, xf86CrtcPtr crtc, void *data)
 	/* Release framebuffer */
 	drmModeRmFB(mode->fd, mode->old_fb_id);
 
-	if (!mode->pageflip_abort)
+	if (!mode->pageflip.abort)
 		return;
 
-	mode->pageflip_abort(mode->pageflip_data);
+	mode->pageflip.abort(mode->pageflip.data);
+	memset(&mode->pageflip, 0, sizeof(mode->pageflip));
 }
 
 /*
