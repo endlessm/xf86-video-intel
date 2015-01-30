@@ -1652,9 +1652,6 @@ intel_pageflip_abort(ScrnInfoPtr scrn, xf86CrtcPtr crtc, void *data);
 static void
 intel_pageflip_complete(struct intel_mode *mode);
 
-static void
-intel_drm_abort_seq (ScrnInfoPtr scrn, uint32_t seq);
-
 Bool
 intel_do_pageflip(intel_screen_private *intel,
 		  dri_bo *new_front,
@@ -1843,7 +1840,7 @@ intel_drm_abort(ScrnInfoPtr scrn, Bool (*match)(void *data, void *match_data), v
 /*
  * Abort by drm queue sequence number
  */
-static void
+void
 intel_drm_abort_seq(ScrnInfoPtr scrn, uint32_t seq)
 {
 	struct intel_drm_queue *q;
