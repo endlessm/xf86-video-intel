@@ -456,10 +456,6 @@ extern xf86CrtcPtr intel_covering_crtc(ScrnInfoPtr scrn, BoxPtr box,
 
 Bool I830DRI2ScreenInit(ScreenPtr pScreen);
 void I830DRI2CloseScreen(ScreenPtr pScreen);
-void I830DRI2FrameEventHandler(unsigned int frame, unsigned int tv_sec,
-			       unsigned int tv_usec, DRI2FrameEventPtr flip_info);
-void I830DRI2FlipEventHandler(unsigned int frame, unsigned int tv_sec,
-			      unsigned int tv_usec, DRI2FrameEventPtr flip_info);
 
 /* intel_dri3.c */
 Bool intel_dri3_screen_init(ScreenPtr screen);

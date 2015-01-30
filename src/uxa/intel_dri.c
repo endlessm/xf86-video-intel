@@ -81,6 +81,11 @@ static DevPrivateKeyRec i830_client_key;
 static int i830_client_key;
 #endif
 
+static void I830DRI2FlipEventHandler(unsigned int frame,
+				     unsigned int tv_sec,
+				     unsigned int tv_usec,
+				     DRI2FrameEventPtr flip_info);
+
 static uint32_t pixmap_flink(PixmapPtr pixmap)
 {
 	struct intel_uxa_pixmap *priv = intel_uxa_get_pixmap_private(pixmap);
@@ -889,8 +894,10 @@ can_exchange(DrawablePtr drawable, DRI2BufferPtr front, DRI2BufferPtr back)
 	return TRUE;
 }
 
-void I830DRI2FrameEventHandler(unsigned int frame, unsigned int tv_sec,
-			       unsigned int tv_usec, DRI2FrameEventPtr swap_info)
+static void I830DRI2FrameEventHandler(unsigned int frame,
+				      unsigned int tv_sec,
+				      unsigned int tv_usec,
+				      DRI2FrameEventPtr swap_info)
 {
 	intel_screen_private *intel = swap_info->intel;
 	DrawablePtr drawable;
@@ -939,8 +946,10 @@ void I830DRI2FrameEventHandler(unsigned int frame, unsigned int tv_sec,
 	i830_dri2_del_frame_event(swap_info);
 }
 
-void I830DRI2FlipEventHandler(unsigned int frame, unsigned int tv_sec,
-			      unsigned int tv_usec, DRI2FrameEventPtr flip_info)
+static void I830DRI2FlipEventHandler(unsigned int frame,
+				     unsigned int tv_sec,
+				     unsigned int tv_usec,
+				     DRI2FrameEventPtr flip_info)
 {
 	struct intel_screen_private *intel = flip_info->intel;
 	DrawablePtr drawable;
