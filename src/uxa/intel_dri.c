@@ -1130,8 +1130,6 @@ I830DRI2ScheduleSwap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 	    flip = 1;
 	}
 
-	swap_info->type = swap_type;
-
 	/* Correct target_msc by 'flip' if swap_type == DRI2_FLIP.
 	 * Do it early, so handling of different timing constraints
 	 * for divisor, remainder and msc vs. target_msc works.
@@ -1140,20 +1138,22 @@ I830DRI2ScheduleSwap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 		*target_msc -= flip;
 
 	/*
+	 * If we can, schedule the flip directly from here rather
+	 * than waiting for an event from the kernel for the current
+	 * (or a past) MSC.
+	 */
+	if (flip && divisor == 0 && current_msc >= *target_msc &&
+	    I830DRI2ScheduleFlip(intel, draw, swap_info))
+		return TRUE;
+
+	swap_info->type = swap_type;
+
+	/*
 	 * If divisor is zero, or current_msc is smaller than target_msc
 	 * we just need to make sure target_msc passes before initiating
 	 * the swap.
 	 */
 	if (divisor == 0 || current_msc < *target_msc) {
-		/*
-		 * If we can, schedule the flip directly from here rather
-		 * than waiting for an event from the kernel for the current
-		 * (or a past) MSC.
-		 */
-		if (flip && divisor == 0 && current_msc >= *target_msc &&
-		    I830DRI2ScheduleFlip(intel, draw, swap_info))
-			return TRUE;
-
 		vbl.request.type =
 			DRM_VBLANK_ABSOLUTE | DRM_VBLANK_EVENT | pipe_select(pipe);
 
