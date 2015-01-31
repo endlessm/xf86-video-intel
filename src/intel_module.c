@@ -582,10 +582,17 @@ intel_scrn_create(DriverPtr		driver,
 	case NOACCEL:
 #endif
 	case UXA:
-		  return intel_init_scrn(scrn);
+		return intel_init_scrn(scrn);
 #endif
 
-	default: break;
+	default:
+#if USE_SNA
+		return sna_init_scrn(scrn, entity_num);
+#elif USE_UXA
+		return intel_init_scrn(scrn);
+#else
+		break;
+#endif
 	}
 #endif
 
