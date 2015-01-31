@@ -2848,6 +2848,7 @@ void __kgem_retire_requests_upto(struct kgem *kgem, struct kgem_bo *bo)
 
 	DBG(("%s(handle=%d)\n", __FUNCTION__, bo->handle));
 	assert(!__kgem_busy(kgem, bo->handle));
+	bo->needs_flush = false;
 
 	rq = RQ(rq);
 	assert(rq != &kgem->static_request);
