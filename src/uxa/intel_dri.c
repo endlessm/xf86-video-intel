@@ -1438,13 +1438,92 @@ static int has_i830_dri(void)
 	return access(DRI_DRIVER_PATH "/i830_dri.so", R_OK) == 0;
 }
 
-static const char *dri_driver_name(intel_screen_private *intel)
+static int
+namecmp(const char *s1, const char *s2)
+{
+	char c1, c2;
+
+	if (!s1 || *s1 == 0) {
+		if (!s2 || *s2 == 0)
+			return 0;
+		else
+			return 1;
+	}
+
+	while (*s1 == '_' || *s1 == ' ' || *s1 == '\t')
+		s1++;
+
+	while (*s2 == '_' || *s2 == ' ' || *s2 == '\t')
+		s2++;
+
+	c1 = isupper(*s1) ? tolower(*s1) : *s1;
+	c2 = isupper(*s2) ? tolower(*s2) : *s2;
+	while (c1 == c2) {
+		if (c1 == '\0')
+			return 0;
+
+		s1++;
+		while (*s1 == '_' || *s1 == ' ' || *s1 == '\t')
+			s1++;
+
+		s2++;
+		while (*s2 == '_' || *s2 == ' ' || *s2 == '\t')
+			s2++;
+
+		c1 = isupper(*s1) ? tolower(*s1) : *s1;
+		c2 = isupper(*s2) ? tolower(*s2) : *s2;
+	}
+
+	return c1 - c2;
+}
+
+static bool is_level(const char **str)
+{
+	const char *s = *str;
+	char *end;
+	unsigned val;
+
+	if (s == NULL || *s == '\0')
+		return true;
+
+	if (namecmp(s, "on") == 0)
+		return true;
+	if (namecmp(s, "true") == 0)
+		return true;
+	if (namecmp(s, "yes") == 0)
+		return true;
+
+	if (namecmp(s, "0") == 0)
+		return true;
+	if (namecmp(s, "off") == 0)
+		return true;
+	if (namecmp(s, "false") == 0)
+		return true;
+	if (namecmp(s, "no") == 0)
+		return true;
+
+	val = strtoul(s, &end, 0);
+	if (val && *end == '\0')
+		return true;
+	if (val && *end == ':')
+		*str = end + 1;
+	return false;
+}
+
+static const char *options_get_dri(intel_screen_private *intel)
 {
 #if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,7,99,901,0)
-	const char *s = xf86GetOptValString(intel->Options, OPTION_DRI);
-	Bool dummy;
+	return xf86GetOptValString(intel->Options, OPTION_DRI);
+#else
+	return NULL;
+#endif
+}
 
-	if (s == NULL || xf86getBoolValue(&dummy, s)) {
+static const char *dri_driver_name(intel_screen_private *intel)
+{
+	const char *s = options_get_dri(intel);
+
+	if (is_level(&s)) {
 		if (INTEL_INFO(intel)->gen < 030)
 			return has_i830_dri() ? "i830" : "i915";
 		else if (INTEL_INFO(intel)->gen < 040)
@@ -1454,14 +1533,6 @@ static const char *dri_driver_name(intel_screen_private *intel)
 	}
 
 	return s;
-#else
-	if (INTEL_INFO(intel)->gen < 030)
-		return has_i830_dri() ? "i830" : "i915";
-	else if (INTEL_INFO(intel)->gen < 040)
-		return "i915";
-	else
-		return "i965";
-#endif
 }
 
 Bool I830DRI2ScreenInit(ScreenPtr screen)

@@ -3297,9 +3297,18 @@ static bool is_level(const char **str)
 	return false;
 }
 
+static const char *options_get_dri(struct sna *sna)
+{
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,7,99,901,0)
+	return xf86GetOptValString(sna->Options, OPTION_DRI);
+#else
+	return NULL;
+#endif
+}
+
 static const char *dri_driver_name(struct sna *sna)
 {
-	const char *s = xf86GetOptValString(sna->Options, OPTION_DRI);
+	const char *s = options_get_dri(sna);
 
 	if (is_level(&s)) {
 		if (sna->kgem.gen < 030)
@@ -3325,7 +3334,7 @@ bool sna_dri2_open(struct sna *sna, ScreenPtr screen)
 
 	if (wedged(sna)) {
 		xf86DrvMsg(sna->scrn->scrnIndex, X_WARNING,
-			   "loading DRI2 whilst the GPU is wedged.\n");
+			   "loading DRI2 whilst acceleration is disabled.\n");
 	}
 
 	if (xf86LoaderCheckSymbol("DRI2Version"))

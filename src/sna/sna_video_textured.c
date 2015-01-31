@@ -319,7 +319,7 @@ void sna_video_textured_setup(struct sna *sna, ScreenPtr screen)
 
 	if (!sna->render.video) {
 		xf86DrvMsg(sna->scrn->scrnIndex, X_INFO,
-			   "Textured video not supported on this hardware\n");
+			   "Textured video not supported on this hardware or backend\n");
 		return;
 	}
 

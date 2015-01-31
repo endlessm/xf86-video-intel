@@ -51,5 +51,7 @@ enum intel_options {
 
 extern const OptionInfoRec intel_options[];
 OptionInfoPtr intel_options_get(ScrnInfoPtr scrn);
+unsigned intel_option_cast_to_unsigned(OptionInfoPtr, int id, unsigned val);
+Bool intel_option_cast_to_bool(OptionInfoPtr, int id, Bool val);
 
 #endif /* INTEL_OPTIONS_H */

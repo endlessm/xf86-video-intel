@@ -17824,11 +17824,20 @@ static bool sna_option_accel_none(struct sna *sna)
 	if (xf86ReturnOptValBool(sna->Options, OPTION_ACCEL_DISABLE, FALSE))
 		return true;
 
+	if (!intel_option_cast_to_bool(sna->Options,
+				       OPTION_ACCEL_METHOD,
+				       !IS_DEFAULT_ACCEL_METHOD(NOACCEL)))
+		return false;
+
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,7,99,901,0)
 	s = xf86GetOptValString(sna->Options, OPTION_ACCEL_METHOD);
 	if (s == NULL)
 		return IS_DEFAULT_ACCEL_METHOD(NOACCEL);
 
 	return strcasecmp(s, "none") == 0;
+#else
+	return IS_DEFAULT_ACCEL_METHOD(NOACCEL);
+#endif
 }
 
 static bool sna_option_accel_blt(struct sna *sna)

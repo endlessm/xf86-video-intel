@@ -237,24 +237,17 @@ static Bool I830GetEarlyOptions(ScrnInfoPtr scrn)
 	return TRUE;
 }
 
-static Bool intel_option_cast_string_to_bool(intel_screen_private *intel,
-					     int id, Bool val)
-{
-#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,7,99,901,0)
-	xf86getBoolValue(&val, xf86GetOptValString(intel->Options, id));
-	return val;
-#else
-	return val;
-#endif
-}
-
 static void intel_check_dri_option(ScrnInfoPtr scrn)
 {
 	intel_screen_private *intel = intel_get_screen_private(scrn);
+	unsigned level;
 
 	intel->dri2 = intel->dri3 = DRI_NONE;
-	if (!intel_option_cast_string_to_bool(intel, OPTION_DRI, TRUE))
-		intel->dri2 = intel->dri3 = DRI_DISABLED;
+	level = intel_option_cast_to_unsigned(intel->Options, OPTION_DRI, ~0);
+	if (level < 3)
+		intel->dri3 = DRI_DISABLED;
+	if (level < 2)
+		intel->dri2 = DRI_DISABLED;
 
 	if (scrn->depth != 16 && scrn->depth != 24 && scrn->depth != 30) {
 		xf86DrvMsg(scrn->scrnIndex, X_CONFIG,
@@ -372,7 +365,7 @@ static Bool can_accelerate_blt(struct intel_screen_private *intel)
 		return FALSE;
 
 	if (xf86ReturnOptValBool(intel->Options, OPTION_ACCEL_DISABLE, FALSE) ||
-	    !intel_option_cast_string_to_bool(intel, OPTION_ACCEL_METHOD, TRUE)) {
+	    !intel_option_cast_to_bool(intel->Options, OPTION_ACCEL_METHOD, TRUE)) {
 		xf86DrvMsg(intel->scrn->scrnIndex, X_CONFIG,
 			   "Disabling hardware acceleration.\n");
 		return FALSE;
