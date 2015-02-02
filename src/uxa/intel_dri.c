@@ -709,7 +709,14 @@ i830_dri2_del_frame_event(DRI2FrameEventPtr info)
 		I830DRI2DestroyBuffer(NULL, info->back);
 
 	if (info->old_buffer) {
-		if (info->intel->back_buffer == NULL)
+		/* Check that the old buffer still matches the front buffer
+		 * in case a mode change occurred before we woke up.
+		 */
+		if (info->intel->back_buffer == NULL &&
+		    info->old_width  == info->intel->scrn->virtualX &&
+		    info->old_height == info->intel->scrn->virtualY &&
+		    info->old_pitch  == info->intel->front_pitch &&
+		    info->old_tiling == info->intel->front_tiling)
 			info->intel->back_buffer = info->old_buffer;
 		else
 			dri_bo_unreference(info->old_buffer);
@@ -895,6 +902,10 @@ queue_flip(struct intel_screen_private *intel,
 
 #if DRI2INFOREC_VERSION >= 6
 	if (intel->use_triple_buffer && allocate_back_buffer(intel)) {
+		info->old_width  = intel->scrn->virtualX;
+		info->old_height = intel->scrn->virtualY;
+		info->old_pitch  = intel->front_pitch;
+		info->old_tiling = intel->front_tiling;
 		info->old_buffer = intel->front_buffer;
 		dri_bo_reference(info->old_buffer);
 

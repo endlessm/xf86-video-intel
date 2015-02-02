@@ -415,6 +415,11 @@ typedef struct _DRI2FrameEvent {
 	DRI2BufferPtr front;
 	DRI2BufferPtr back;
 
+	/* current scanout for triple buffer */
+	int old_width;
+	int old_height;
+	int old_pitch;
+	int old_tiling;
 	dri_bo *old_buffer;
 } DRI2FrameEventRec, *DRI2FrameEventPtr;
 
