@@ -117,7 +117,6 @@ extern XF86ConfigPtr xf86configptr;
 struct sna_crtc {
 	xf86CrtcPtr base;
 	struct drm_mode_modeinfo kmode;
-	int dpms_mode;
 	PixmapPtr slave_pixmap;
 	DamagePtr slave_damage;
 	struct kgem_bo *bo, *shadow_bo, *client_bo;
@@ -845,8 +844,7 @@ sna_crtc_force_outputs_on(xf86CrtcPtr crtc)
 	int i;
 
 	assert(to_sna_crtc(crtc));
-	DBG(("%s(pipe=%d), currently? %d\n", __FUNCTION__,
-	     to_sna_crtc(crtc)->pipe, to_sna_crtc(crtc)->dpms_mode));
+	DBG(("%s(pipe=%d)\n", __FUNCTION__, to_sna_crtc(crtc)->pipe));
 
 	/* DPMS handling by the kernel is inconsistent, so after setting a
 	 * mode on an output presume that we intend for it to be on, or that
@@ -864,7 +862,6 @@ sna_crtc_force_outputs_on(xf86CrtcPtr crtc)
 		output->funcs->dpms(output, DPMSModeOn);
 	}
 
-	to_sna_crtc(crtc)->dpms_mode = DPMSModeOn;
 #if XF86_CRTC_VERSION >= 3
 	crtc->active = TRUE;
 #endif
@@ -877,8 +874,7 @@ sna_crtc_force_outputs_off(xf86CrtcPtr crtc)
 	int i;
 
 	assert(to_sna_crtc(crtc));
-	DBG(("%s(pipe=%d), currently? %d\n", __FUNCTION__,
-	     to_sna_crtc(crtc)->pipe, to_sna_crtc(crtc)->dpms_mode));
+	DBG(("%s(pipe=%d)\n", __FUNCTION__, to_sna_crtc(crtc)->pipe));
 
 	/* DPMS handling by the kernel is inconsistent, so after setting a
 	 * mode on an output presume that we intend for it to be on, or that
@@ -895,8 +891,6 @@ sna_crtc_force_outputs_off(xf86CrtcPtr crtc)
 
 		output->funcs->dpms(output, DPMSModeOff);
 	}
-
-	to_sna_crtc(crtc)->dpms_mode = DPMSModeOff;
 }
 
 static unsigned
@@ -1563,7 +1557,7 @@ __sna_crtc_disable(struct sna *sna, struct sna_crtc *sna_crtc)
 }
 
 static void
-sna_crtc_disable(xf86CrtcPtr crtc)
+sna_crtc_disable(xf86CrtcPtr crtc, bool force)
 {
 	struct sna *sna = to_sna(crtc->scrn);
 	struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
@@ -1572,11 +1566,13 @@ sna_crtc_disable(xf86CrtcPtr crtc)
 	if (sna_crtc == NULL)
 		return;
 
-	DBG(("%s: disabling crtc [%d, pipe=%d]\n", __FUNCTION__,
-	     sna_crtc->id, sna_crtc->pipe));
+	if (!force && sna_crtc->bo == NULL)
+		return;
+
+	DBG(("%s: disabling crtc [%d, pipe=%d], force?=%d\n", __FUNCTION__,
+	     sna_crtc->id, sna_crtc->pipe, force));
 
 	sna_crtc_force_outputs_off(crtc);
-	assert(sna_crtc->dpms_mode == DPMSModeOff);
 
 	memset(&arg, 0, sizeof(arg));
 	arg.crtc_id = sna_crtc->id;
@@ -1604,7 +1600,7 @@ static void update_flush_interval(struct sna *sna)
 			continue;
 		}
 
-		if (to_sna_crtc(crtc)->dpms_mode != DPMSModeOn) {
+		if (to_sna_crtc(crtc)->bo == NULL) {
 			DBG(("%s: CRTC:%d (pipe %d) turned off\n",
 			     __FUNCTION__,i, to_sna_crtc(crtc)->pipe));
 			continue;
@@ -2442,17 +2438,10 @@ sna_crtc_set_mode_major(xf86CrtcPtr crtc, DisplayModePtr mode,
 static void
 sna_crtc_dpms(xf86CrtcPtr crtc, int mode)
 {
-	struct sna_crtc *priv = to_sna_crtc(crtc);
-
 	DBG(("%s(pipe %d, dpms mode -> %d):= active=%d\n",
-	     __FUNCTION__, priv->pipe, mode, mode == DPMSModeOn));
-	if (priv->dpms_mode == mode)
-		return;
+	     __FUNCTION__, to_sna_crtc(crtc)->pipe, mode, mode == DPMSModeOn));
 
-	assert(priv);
-	priv->dpms_mode = mode;
-
-	if (mode == DPMSModeOn && crtc->enabled && priv->bo == NULL) {
+	if (mode == DPMSModeOn && crtc->enabled) {
 		if (__sna_crtc_set_mode(crtc))
 			update_flush_interval(to_sna(crtc->scrn));
 		else
@@ -2460,7 +2449,7 @@ sna_crtc_dpms(xf86CrtcPtr crtc, int mode)
 	}
 
 	if (mode != DPMSModeOn)
-		sna_crtc_disable(crtc);
+		sna_crtc_disable(crtc, false);
 }
 
 void sna_mode_adjust_frame(struct sna *sna, int x, int y)
@@ -2790,7 +2779,6 @@ sna_crtc_add(ScrnInfoPtr scrn, int id)
 		return false;
 
 	sna_crtc->id = id;
-	sna_crtc->dpms_mode = -1;
 
 	VG_CLEAR(get_pipe);
 	get_pipe.pipe = 0;
@@ -4445,7 +4433,7 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 			continue;
 
 		if (!__sna_crtc_set_mode(crtc))
-			sna_crtc_disable(crtc);
+			sna_crtc_disable(crtc, false);
 	}
 
 	sna_mode_wakeup(sna);
@@ -5404,7 +5392,7 @@ fixup_flip:
 					xf86DrvMsg(sna->scrn->scrnIndex, X_ERROR,
 						   "failed to restore display configuration\n");
 					for (; i < sna->mode.num_real_crtc; i++)
-						sna_crtc_disable(config->crtc[i]);
+						sna_crtc_disable(config->crtc[i], false);
 				}
 				return 0;
 			}
@@ -6061,7 +6049,7 @@ sna_mode_disable(struct sna *sna)
 	 */
 	sna_hide_cursors(sna->scrn);
 	for (i = 0; i < sna->mode.num_real_crtc; i++)
-		sna_crtc_disable(config->crtc[i]);
+		sna_crtc_disable(config->crtc[i], false);
 	assert(sna->mode.front_active == 0);
 
 	sna_mode_wakeup(sna);
@@ -6592,7 +6580,7 @@ void sna_mode_check(struct sna *sna)
 			xf86DrvMsg(crtc->scrn->scrnIndex, X_ERROR,
 				   "%s: invalid state found on pipe %d, disabling CRTC:%d\n",
 				   __FUNCTION__, sna_crtc->pipe, sna_crtc->id);
-			sna_crtc_disable(crtc);
+			sna_crtc_disable(crtc, true);
 		}
 	}
 
@@ -6660,14 +6648,13 @@ void sna_mode_reset(struct sna *sna)
 	sna_hide_cursors(sna->scrn);
 	for (i = 0; i < sna->mode.num_real_crtc; i++)
 		if (!sna_crtc_hide_planes(sna, to_sna_crtc(config->crtc[i])))
-			sna_crtc_disable(config->crtc[i]);
+			sna_crtc_disable(config->crtc[i], true);
 	assert(sna->mode.front_active == 0);
 
 	for (i = 0; i < sna->mode.num_real_crtc; i++) {
 		struct sna_crtc *sna_crtc = to_sna_crtc(config->crtc[i]);
 
 		assert(sna_crtc != NULL);
-		sna_crtc->dpms_mode = -1;
 
 		/* Force the rotation property to be reset on next use */
 		rotation_reset(&sna_crtc->primary);
@@ -7415,7 +7402,7 @@ disable1:
 							xf86DrvMsg(crtc->scrn->scrnIndex, X_ERROR,
 								   "%s: page flipping failed, disabling CRTC:%d (pipe=%d)\n",
 								   __FUNCTION__, sna_crtc->id, sna_crtc->pipe);
-							sna_crtc_disable(crtc);
+							sna_crtc_disable(crtc, false);
 						}
 
 						kgem_bo_destroy(&sna->kgem, bo);
@@ -7476,7 +7463,6 @@ disable1:
 				continue;
 
 			assert(config->crtc[i]->enabled);
-			assert(crtc->dpms_mode <= DPMSModeOn);
 			assert(crtc->flip_bo == NULL);
 
 			arg.crtc_id = crtc->id;
@@ -7562,7 +7548,7 @@ fixup_flip:
 					xf86DrvMsg(sna->scrn->scrnIndex, X_ERROR,
 						   "%s: page flipping failed, disabling CRTC:%d (pipe=%d)\n",
 						   __FUNCTION__, crtc->id, crtc->pipe);
-					sna_crtc_disable(crtc->base);
+					sna_crtc_disable(crtc->base, false);
 				}
 				continue;
 			}
