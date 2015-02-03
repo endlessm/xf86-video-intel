@@ -863,6 +863,12 @@ sna_composite_rectangles(CARD8		 op,
 		case  PictOpXor:
 			op = PictOpOut;
 			break;
+		case PictOpAdd:
+			if (color->red >= 0xff00 &&
+			    color->green >= 0xff00 &&
+			    color->blue >= 0xff00)
+				op = PictOpSrc;
+			break;
 		}
 	}
 
