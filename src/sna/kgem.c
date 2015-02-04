@@ -2844,7 +2844,7 @@ bool __kgem_ring_is_idle(struct kgem *kgem, int ring)
 void __kgem_retire_requests_upto(struct kgem *kgem, struct kgem_bo *bo)
 {
 	struct kgem_request *rq = bo->rq, *tmp;
-	struct list *requests = &kgem->requests[RQ_RING(rq) == I915_EXEC_BLT];
+	struct list *requests = &kgem->requests[RQ_RING(rq) == KGEM_BLT];
 
 	DBG(("%s(handle=%d)\n", __FUNCTION__, bo->handle));
 	assert(!__kgem_busy(kgem, bo->handle));
