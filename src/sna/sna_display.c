@@ -5673,6 +5673,7 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 
 		crtc_id = (uintptr_t)output->crtc;
 		output->crtc = NULL;
+		output->status = XF86OutputStatusUnknown;
 		if (sna->flags & SNA_IS_SLAVED)
 			continue;
 
@@ -5713,6 +5714,7 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 					   to_sna_crtc(crtc)->pipe);
 
 				output->crtc = crtc;
+				output->status = XF86OutputStatusConnected;
 				crtc->enabled = TRUE;
 
 				if (output->mm_width == 0 || output->mm_height == 0) {
