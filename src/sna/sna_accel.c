@@ -6953,7 +6953,8 @@ sna_do_copy(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 
 	/* Short cut for unmapped windows */
 	if (dst->type == DRAWABLE_WINDOW && !((WindowPtr)dst)->realized) {
-		DBG(("%s: unmapped\n", __FUNCTION__));
+		DBG(("%s: unmapped/unrealized dst (pixmap=%ld)\n",
+		     __FUNCTION__, get_window_pixmap((WindowPtr)dst)));
 		return NULL;
 	}
 
