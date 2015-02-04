@@ -1722,7 +1722,21 @@ span_thread_box(struct sna *sna,
 		const BoxRec *box,
 		int coverage)
 {
+	struct span_thread_boxes *b = (struct span_thread_boxes *)op;
+
 	__DBG(("%s: %d -> %d @ %d\n", __FUNCTION__, box->x1, box->x2, coverage));
+	if (b->num_boxes) {
+		struct sna_opacity_box *bb = &b->boxes[b->num_boxes-1];
+		if (bb->box.x1 == box->x1 &&
+		    bb->box.x2 == box->x2 &&
+		    bb->box.y2 == box->y1 &&
+		    bb->alpha == AREA_TO_ALPHA(coverage)) {
+			bb->box.y2 = box->y2;
+			__DBG(("%s: contracted double row: %d -> %d\n", __func__, bb->box.y1, bb->box.y2));
+			return;
+		}
+	}
+
 	span_thread_add_boxes(sna, op, box, 1, AREA_TO_ALPHA(coverage));
 }
 
@@ -1741,11 +1755,26 @@ span_thread_clipped_box(struct sna *sna,
 	pixman_region_init_rects(&region, box, 1);
 	RegionIntersect(&region, &region, clip);
 	if (region_num_rects(&region)) {
+		struct span_thread_boxes *b = (struct span_thread_boxes *)op;
+
+		if (region.data == NULL && b->num_boxes) {
+			struct sna_opacity_box *bb = &b->boxes[b->num_boxes-1];
+			if (bb->box.x1 == region.extents.x1 &&
+			    bb->box.x2 == region.extents.x2 &&
+			    bb->box.y2 == region.extents.y1 &&
+			    bb->alpha == AREA_TO_ALPHA(coverage)) {
+				bb->box.y2 = region.extents.y2;
+				__DBG(("%s: contracted double row: %d -> %d\n", __func__, bb->box.y1, bb->box.y2));
+				goto out;
+			}
+		}
+
 		span_thread_add_boxes(sna, op,
 				      region_rects(&region),
 				      region_num_rects(&region),
 				      AREA_TO_ALPHA(coverage));
 	}
+out:
 	pixman_region_fini(&region);
 }
 
