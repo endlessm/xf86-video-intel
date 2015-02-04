@@ -339,10 +339,20 @@ AC_ARG_ENABLE(dri2,
 	      [DRI2=$enableval],
 	      [DRI2=yes])
 AC_ARG_ENABLE(dri3,
-	      AS_HELP_STRING([--enable-dri3],
-			     [Enable DRI3 support [[default=no]]]),
+	      AS_HELP_STRING([--disable-dri3],
+			     [Disable DRI3 support [[default=yes]]]),
 	      [DRI3=$enableval],
-	      [DRI3=no])
+	      [DRI3=yes])
+AC_ARG_WITH(default-dri,
+	    AS_HELP_STRING([--with-default-dri],
+			   [Select the default maximum DRI level [default 2]]),
+	      [DRI_DEFAULT=$withval],
+	      [DRI_DEFAULT=2])
+if test "x$DRI_DEFAULT" = "x0"; then
+	AC_DEFINE(DEFAULT_DRI_LEVEL, 0,[Default DRI level])
+else
+	AC_DEFINE(DEFAULT_DRI_LEVEL, ~0, [Default DRI level])
+fi
 
 AC_ARG_ENABLE(xvmc, AS_HELP_STRING([--disable-xvmc],
                                   [Disable XvMC support [[default=yes]]]),
@@ -521,7 +531,12 @@ AC_MSG_RESULT([$have_dri1])
 AM_CONDITIONAL(DRI1, test "x$have_dri1" != "xno")
 if test "x$have_dri1" != "xno"; then
         AC_DEFINE(HAVE_DRI1,1,[Enable DRI1 driver support])
-	dri_msg="$dri_msg DRI1"
+	str="DRI1"
+	if test "x$DRI_DEFAULT" = "x1"; then
+		AC_DEFINE(DEFAULT_DRI_LEVEL,1,[Default DRI level])
+		str="*$str"
+	fi
+	dri_msg="$dri_msg $str"
 else
         DRI1_CFLAGS=""
         DRI1_LIBS=""
@@ -578,7 +593,12 @@ AM_CONDITIONAL(DRI2, test "x$have_dri2" != "xno")
 AC_MSG_RESULT([$have_dri2])
 if test "x$have_dri2" != "xno"; then
         AC_DEFINE(HAVE_DRI2,1,[Enable DRI2 driver support])
-	dri_msg="$dri_msg DRI2"
+	str="DRI2"
+	if test "x$DRI_DEFAULT" = "x2"; then
+		AC_DEFINE(DEFAULT_DRI_LEVEL,2,[Default DRI level])
+		str="*$str"
+	fi
+	dri_msg="$dri_msg $str"
 else
 	if test "x$DRI" = "xyes" -a "x$DRI2" != "xno" -a "x$KMS" = "xyes"; then
 		AC_MSG_ERROR([DRI2 requested but prerequisites not found])
@@ -593,12 +613,20 @@ AM_CONDITIONAL(DRI3, test "x$have_dri3" != "xno")
 AC_MSG_RESULT([$have_dri3])
 if test "x$have_dri3" != "xno"; then
         AC_DEFINE(HAVE_DRI3,1,[Enable DRI3 driver support])
-	dri_msg="$dri_msg DRI3"
+	str="DRI3"
+	if test "x$DRI_DEFAULT" = "x3"; then
+		AC_DEFINE(DEFAULT_DRI_LEVEL,3,[Default DRI level])
+		str="*$str"
+	fi
+	dri_msg="$dri_msg $str"
 else
 	if test "x$DRI" = "xyes" -a "x$DRI3" != "xno" -a "x$KMS" = "xyes"; then
 		AC_MSG_ERROR([DRI3 requested but prerequisites not found])
 	fi
 fi
+
+AC_MSG_CHECKING([default DRI support])
+AC_MSG_RESULT([$DEFAULT_DRI_DEFAULT])
 
 AC_CHECK_HEADERS([X11/extensions/dpmsconst.h])
 

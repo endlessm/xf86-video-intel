@@ -243,7 +243,7 @@ static void intel_check_dri_option(ScrnInfoPtr scrn)
 	unsigned level;
 
 	intel->dri2 = intel->dri3 = DRI_NONE;
-	level = intel_option_cast_to_unsigned(intel->Options, OPTION_DRI, ~0);
+	level = intel_option_cast_to_unsigned(intel->Options, OPTION_DRI, DEFAULT_DRI_LEVEL);
 	if (level < 3)
 		intel->dri3 = DRI_DISABLED;
 	if (level < 2)
