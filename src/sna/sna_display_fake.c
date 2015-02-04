@@ -262,6 +262,7 @@ static bool add_fake_output(struct sna *sna, bool late)
 	output->mm_height = 0;
 	output->interlaceAllowed = FALSE;
 	output->subpixel_order = SubPixelNone;
+	output->status = XF86OutputStatusDisconnected;
 
 	output->possible_crtcs = ~((1 << sna->mode.num_real_crtc) - 1);
 	output->possible_clones = ~((1 << sna->mode.num_real_output) - 1);
