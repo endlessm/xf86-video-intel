@@ -4282,12 +4282,19 @@ static void copy_front(struct sna *sna, PixmapPtr old, PixmapPtr new)
 		return;
 
 	if (old_priv->clear) {
-		(void)sna->render.fill_one(sna, new, new_priv->gpu_bo,
-					   old_priv->clear_color,
-					   0, 0,
-					   new->drawable.width,
-					   new->drawable.height,
-					   GXcopy);
+		bool ok = false;
+		if (!wedged(sna))
+			ok = sna->render.fill_one(sna, new, new_priv->gpu_bo,
+						  old_priv->clear_color,
+						  0, 0,
+						  new->drawable.width,
+						  new->drawable.height,
+						  GXcopy);
+		if (!ok) {
+			void *ptr = kgem_bo_map__gtt(&sna->kgem, new_priv->gpu_bo);
+			if (ptr)
+				memset(ptr, 0, new_priv->gpu_bo->pitch*new->drawable.height);
+		}
 		new_priv->clear = true;
 		new_priv->clear_color = old_priv->clear_color;
 	} else {
@@ -4343,11 +4350,18 @@ static void copy_front(struct sna *sna, PixmapPtr old, PixmapPtr new)
 			     __FUNCTION__, box.x2, box.y2, sx, sy, dx, dy));
 
 			if (box.x2 != new->drawable.width || box.y2 != new->drawable.height) {
-				(void)sna->render.fill_one(sna, new, new_priv->gpu_bo, 0,
-							   0, 0,
-							   new->drawable.width,
-							   new->drawable.height,
-							   GXclear);
+				bool ok = false;
+				if (!wedged(sna))
+					ok = sna->render.fill_one(sna, new, new_priv->gpu_bo, 0,
+								  0, 0,
+								  new->drawable.width,
+								  new->drawable.height,
+								  GXclear);
+				if (!ok) {
+					void *ptr = kgem_bo_map__gtt(&sna->kgem, new_priv->gpu_bo);
+					if (ptr)
+						memset(ptr, 0, new_priv->gpu_bo->pitch*new->drawable.height);
+				}
 			}
 			(void)sna->render.copy_boxes(sna, GXcopy,
 						     &old->drawable, old_priv->gpu_bo, sx, sy,
