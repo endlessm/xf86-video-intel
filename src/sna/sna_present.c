@@ -42,6 +42,8 @@ struct sna_present_event {
 	xf86CrtcPtr crtc;
 };
 
+static void sna_present_unflip(ScreenPtr screen, uint64_t event_id);
+
 static inline struct sna_present_event *
 to_present_event(uintptr_t  data)
 {
@@ -201,8 +203,18 @@ check_flip__crtc(struct sna *sna,
 
 	assert(sna->scrn->vtSema);
 
+	if (!sna->mode.front_active) {
+		DBG(("%s: DPMS off, no flips\n", __FUNCTION__));
+		return FALSE;
+	}
+
 	if (sna->mode.shadow_active) {
 		DBG(("%s: shadow buffer active\n", __FUNCTION__));
+		return false;
+	}
+
+	if (sna->mode.flip_active) {
+		DBG(("%s: flips still pending\n", __FUNCTION__));
 		return false;
 	}
 
@@ -226,11 +238,6 @@ sna_present_check_flip(RRCrtcPtr crtc,
 
 	if (!sna->scrn->vtSema) {
 		DBG(("%s: VT switched away, no flips\n", __FUNCTION__));
-		return FALSE;
-	}
-
-	if (!sna->mode.front_active) {
-		DBG(("%s: DPMS off, no flips\n", __FUNCTION__));
 		return FALSE;
 	}
 
@@ -312,6 +319,7 @@ present_flip_handler(struct drm_event_vblank *event, void *data)
 {
 	struct sna_present_event *info = data;
 	struct ust_msc swap;
+	struct sna *sna;
 
 	DBG(("%s(sequence=%d)\n", __FUNCTION__, event->sequence));
 
@@ -327,6 +335,14 @@ present_flip_handler(struct drm_event_vblank *event, void *data)
 	     swap.tv_sec, swap.tv_usec, (long long)swap.msc,
 	     (long long)info->event_id));
 	present_event_notify(info->event_id, ust64(swap.tv_sec, swap.tv_usec), swap.msc);
+
+	sna = info->crtc ? to_sna(info->crtc->scrn) : NULL;
+	if (sna && sna->present.unflip) {
+		DBG(("%s: executing queued unflip\n", __FUNCTION__));
+		sna_present_unflip(xf86ScrnToScreen(sna->scrn),
+				   sna->present.unflip);
+		sna->present.unflip = 0;
+	}
 	free(info);
 }
 
@@ -412,6 +428,8 @@ sna_present_flip(RRCrtcPtr crtc,
 		return FALSE;
 	}
 
+	assert(to_sna_from_pixmap(pixmap)->present.unflip == 0);
+
 	bo = get_flip_bo(pixmap);
 	if (bo == NULL) {
 		DBG(("%s: flip invalid bo\n", __FUNCTION__));
@@ -445,6 +463,13 @@ notify:
 		present_event_notify(event_id,
 				     ust64(swap->tv_sec, swap->tv_usec),
 				     swap->msc);
+		return;
+	}
+
+	if (sna->mode.flip_active) {
+		DBG(("%s: outstanding flips, queueing unflip\n", __FUNCTION__));
+		assert(sna->present.unflip == 0);
+		sna->present.unflip = event_id;
 		return;
 	}
 

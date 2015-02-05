@@ -354,6 +354,7 @@ struct sna {
 		bool available;
 		bool open;
 #if HAVE_PRESENT
+		uint64_t unflip;
 #endif
 	} present;
 
