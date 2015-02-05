@@ -410,15 +410,17 @@ static int test_crtc(Display *dpy, void *queue, uint64_t last_msc)
 
 	printf("Testing each crtc, without waiting for each flip\n");
 	test.flags = 0;
+	test.msc = check_msc(dpy, test.win, test.queue, test.msc);
 	err += for_each_crtc(dpy, __test_crtc, &test);
+	test.msc = check_msc(dpy, test.win, test.queue, test.msc);
 
 	printf("Testing each crtc, waiting for flips to complete\n");
 	test.flags = SYNC;
-	err += for_each_crtc(dpy, __test_crtc, &test);
-
 	test.msc = check_msc(dpy, test.win, test.queue, test.msc);
-	dri3_fence_free(dpy, &test.fence);
+	err += for_each_crtc(dpy, __test_crtc, &test);
+	test.msc = check_msc(dpy, test.win, test.queue, test.msc);
 
+	dri3_fence_free(dpy, &test.fence);
 	XSync(dpy, True);
 	err += !!_x_error_occurred;
 
