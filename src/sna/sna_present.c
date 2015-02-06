@@ -213,11 +213,6 @@ check_flip__crtc(struct sna *sna,
 		return false;
 	}
 
-	if (sna->mode.flip_active) {
-		DBG(("%s: flips still pending\n", __FUNCTION__));
-		return false;
-	}
-
 	return true;
 }
 
@@ -414,6 +409,7 @@ sna_present_flip(RRCrtcPtr crtc,
 		 PixmapPtr pixmap,
 		 Bool sync_flip)
 {
+	struct sna *sna = to_sna_from_pixmap(pixmap);
 	struct kgem_bo *bo;
 
 	DBG(("%s(pipe=%d, event=%lld, msc=%lld, pixmap=%ld, sync?=%d)\n",
@@ -423,12 +419,17 @@ sna_present_flip(RRCrtcPtr crtc,
 	     (long long)target_msc,
 	     pixmap->drawable.serialNumber, sync_flip));
 
-	if (!check_flip__crtc(to_sna_from_pixmap(pixmap), crtc)) {
+	if (!check_flip__crtc(sna, crtc)) {
 		DBG(("%s: flip invalid for CRTC\n", __FUNCTION__));
 		return FALSE;
 	}
 
-	assert(to_sna_from_pixmap(pixmap)->present.unflip == 0);
+	if (sna->mode.flip_active) {
+		DBG(("%s: flips still pending\n", __FUNCTION__));
+		return false;
+	}
+
+	assert(sna->present.unflip == 0);
 
 	bo = get_flip_bo(pixmap);
 	if (bo == NULL) {
