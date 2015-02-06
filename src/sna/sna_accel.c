@@ -1866,7 +1866,9 @@ sna_pixmap_undo_cow(struct sna *sna, struct sna_pixmap *priv, unsigned flags)
 	assert(priv->gpu_bo == cow->bo);
 	assert(cow->refcnt);
 
-	if (flags && (flags & MOVE_WRITE) == 0 && IS_COW_OWNER(priv->cow))
+	if (flags && /* flags == 0 => force decouple */
+	    (flags & MOVE_WRITE) == 0 &&
+	    (((flags & __MOVE_FORCE) == 0) || IS_COW_OWNER(priv->cow)))
 		return true;
 
 	if (!IS_COW_OWNER(priv->cow))
@@ -3218,6 +3220,7 @@ __sna_pixmap_for_gpu(struct sna *sna, PixmapPtr pixmap, unsigned flags)
 {
 	struct sna_pixmap *priv;
 
+	assert(flags & (MOVE_READ | MOVE_WRITE | __MOVE_FORCE));
 	if ((flags & __MOVE_FORCE) == 0 && wedged(sna))
 		return NULL;
 
@@ -3296,12 +3299,14 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 	if (priv->cow) {
 		unsigned cow = flags & (MOVE_READ | MOVE_WRITE | __MOVE_FORCE);
 
+		assert(cow);
+
 		if ((flags & MOVE_READ) == 0) {
 			if (priv->gpu_damage) {
 				r.extents = *box;
 				r.data = NULL;
 				if (!region_subsumes_damage(&r, priv->gpu_damage))
-					cow |= MOVE_READ;
+					cow |= MOVE_READ | __MOVE_FORCE;
 			}
 		} else {
 			if (priv->cpu_damage) {
@@ -3312,13 +3317,11 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 			}
 		}
 
-		if (cow) {
-			if (!sna_pixmap_undo_cow(sna, priv, cow))
-				return NULL;
+		if (!sna_pixmap_undo_cow(sna, priv, cow))
+			return NULL;
 
-			if (priv->gpu_bo == NULL)
-				sna_damage_destroy(&priv->gpu_damage);
-		}
+		if (priv->gpu_bo == NULL)
+			sna_damage_destroy(&priv->gpu_damage);
 	}
 
 	if (sna_damage_is_all(&priv->gpu_damage,
@@ -3536,7 +3539,8 @@ sna_drawable_use_bo(DrawablePtr drawable, unsigned flags, const BoxRec *box,
 	}
 
 	if (priv->cow) {
-		unsigned cow = MOVE_WRITE | MOVE_READ;
+		unsigned cow = MOVE_WRITE | MOVE_READ | __MOVE_FORCE;
+		assert(cow);
 
 		if (flags & IGNORE_DAMAGE) {
 			if (priv->gpu_damage) {
@@ -4130,15 +4134,14 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 
 	if (priv->cow) {
 		unsigned cow = flags & (MOVE_READ | MOVE_WRITE | __MOVE_FORCE);
+		assert(cow);
 		if (flags & MOVE_READ && priv->cpu_damage)
 			cow |= MOVE_WRITE;
-		if (cow) {
-			if (!sna_pixmap_undo_cow(sna, priv, cow))
-				return NULL;
+		if (!sna_pixmap_undo_cow(sna, priv, cow))
+			return NULL;
 
-			if (priv->gpu_bo == NULL)
-				sna_damage_destroy(&priv->gpu_damage);
-		}
+		if (priv->gpu_bo == NULL)
+			sna_damage_destroy(&priv->gpu_damage);
 	}
 
 	if (sna_damage_is_all(&priv->gpu_damage,
