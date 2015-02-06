@@ -119,7 +119,7 @@ struct sna_crtc {
 	struct drm_mode_modeinfo kmode;
 	PixmapPtr slave_pixmap;
 	DamagePtr slave_damage;
-	struct kgem_bo *bo, *shadow_bo, *client_bo;
+	struct kgem_bo *bo, *shadow_bo, *client_bo, *cache_bo;
 	struct sna_cursor *cursor;
 	unsigned int last_cursor_size;
 	uint32_t offset;
@@ -7208,7 +7208,7 @@ void sna_mode_redisplay(struct sna *sna)
 					RegionNull(&new_damage);
 					RegionCopy(&new_damage, &damage);
 
-					bo = sna_crtc->client_bo;
+					bo = sna_crtc->cache_bo;
 					if (bo == NULL) {
 						damage.extents = crtc->bounds;
 						damage.data = NULL;
@@ -7254,7 +7254,7 @@ void sna_mode_redisplay(struct sna *sna)
 
 							sna_crtc->bo = bo;
 							sna_crtc->bo->active_scanout++;
-							sna_crtc->client_bo = NULL;
+							sna_crtc->cache_bo = NULL;
 						} else {
 							DBG(("%s: flip [fb=%d] on crtc %d [%d, pipe=%d] failed - %d\n",
 							     __FUNCTION__, arg.fb_id, i, sna_crtc->id, sna_crtc->pipe, errno));
@@ -7267,7 +7267,7 @@ void sna_mode_redisplay(struct sna *sna)
 							sna_crtc_redisplay__fallback(crtc, &damage, sna_crtc->bo);
 
 							kgem_bo_destroy(&sna->kgem, bo);
-							sna_crtc->client_bo = NULL;
+							sna_crtc->cache_bo = NULL;
 						}
 					} else {
 						sna->mode.flip_active++;
@@ -7279,7 +7279,7 @@ void sna_mode_redisplay(struct sna *sna)
 						sna_crtc->flip_bo->active_scanout++;
 						sna_crtc->flip_serial = sna_crtc->mode_serial;
 
-						sna_crtc->client_bo = kgem_bo_reference(sna_crtc->bo);
+						sna_crtc->cache_bo = kgem_bo_reference(sna_crtc->bo);
 
 						DBG(("%s: recording flip on CRTC:%d handle=%d, active_scanout=%d, serial=%d\n",
 						     __FUNCTION__, sna_crtc->id, sna_crtc->flip_bo->handle, sna_crtc->flip_bo->active_scanout, sna_crtc->flip_serial));
@@ -7355,7 +7355,7 @@ void sna_mode_redisplay(struct sna *sna)
 				damage.extents = crtc->bounds;
 				damage.data = NULL;
 
-				bo = sna_crtc->client_bo;
+				bo = sna_crtc->cache_bo;
 				if (bo == NULL)
 					bo = kgem_create_2d(&sna->kgem,
 							    crtc->mode.HDisplay,
@@ -7392,7 +7392,7 @@ void sna_mode_redisplay(struct sna *sna)
 
 						sna_crtc->bo = kgem_bo_reference(bo);
 						sna_crtc->bo->active_scanout++;
-						sna_crtc->client_bo = kgem_bo_reference(bo);
+						sna_crtc->cache_bo = kgem_bo_reference(bo);
 					} else {
 						BoxRec box;
 						DrawableRec tmp;
@@ -7422,7 +7422,7 @@ disable1:
 						}
 
 						kgem_bo_destroy(&sna->kgem, bo);
-						sna_crtc->client_bo = NULL;
+						sna_crtc->cache_bo = NULL;
 					}
 					continue;
 				}
@@ -7436,7 +7436,7 @@ disable1:
 				sna_crtc->flip_serial = sna_crtc->mode_serial;
 				sna_crtc->flip_pending = true;
 
-				sna_crtc->client_bo = kgem_bo_reference(sna_crtc->bo);
+				sna_crtc->cache_bo = kgem_bo_reference(sna_crtc->bo);
 				DBG(("%s: recording flip on CRTC:%d handle=%d, active_scanout=%d, serial=%d\n",
 				     __FUNCTION__, sna_crtc->id, sna_crtc->flip_bo->handle, sna_crtc->flip_bo->active_scanout, sna_crtc->flip_serial));
 			} else {
