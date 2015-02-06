@@ -137,6 +137,17 @@ region_rects(const RegionRec *r)
 	return r->data ? (const BoxRec *)(r->data + 1) :  &r->extents;
 }
 
+inline static void
+region_get_boxes(const RegionRec *r, const BoxRec **s, const BoxRec **e)
+{
+	int n;
+	if (r->data)
+		*s = region_boxptr(r), n = r->data->numRects;
+	else
+		*s = &r->extents, n = 1;
+	*e = *s + n;
+}
+
 #ifndef INCLUDE_LEGACY_REGION_DEFINES
 #define RegionCreate(r, s) REGION_CREATE(NULL, r, s)
 #define RegionBreak(r) REGION_BREAK(NULL, r)

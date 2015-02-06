@@ -1687,31 +1687,28 @@ struct span_thread {
 #define SPAN_THREAD_MAX_BOXES (8192/sizeof(struct sna_opacity_box))
 struct span_thread_boxes {
 	const struct sna_composite_spans_op *op;
+	const BoxRec *clip_start, *clip_end;
 	int num_boxes;
 	struct sna_opacity_box boxes[SPAN_THREAD_MAX_BOXES];
 };
 
-static void span_thread_add_boxes(struct sna *sna, void *data,
-				  const BoxRec *box, int count, float alpha)
+static void span_thread_add_box(struct sna *sna, void *data,
+				const BoxRec *box, float alpha)
 {
 	struct span_thread_boxes *b = data;
 
 	__DBG(("%s: adding %d boxes with alpha=%f\n",
 	       __FUNCTION__, count, alpha));
 
-	assert(count > 0 && count <= SPAN_THREAD_MAX_BOXES);
-	if (unlikely(b->num_boxes + count > SPAN_THREAD_MAX_BOXES)) {
-		DBG(("%s: flushing %d boxes, adding %d\n", __FUNCTION__, b->num_boxes, count));
-		assert(b->num_boxes <= SPAN_THREAD_MAX_BOXES);
+	if (unlikely(b->num_boxes == SPAN_THREAD_MAX_BOXES)) {
+		DBG(("%s: flushing %d boxes\n", __FUNCTION__, b->num_boxes));
 		b->op->thread_boxes(sna, b->op, b->boxes, b->num_boxes);
 		b->num_boxes = 0;
 	}
 
-	do {
-		b->boxes[b->num_boxes].box = *box++;
-		b->boxes[b->num_boxes].alpha = alpha;
-		b->num_boxes++;
-	} while (--count);
+	b->boxes[b->num_boxes].box = *box++;
+	b->boxes[b->num_boxes].alpha = alpha;
+	b->num_boxes++;
 	assert(b->num_boxes <= SPAN_THREAD_MAX_BOXES);
 }
 
@@ -1737,7 +1734,7 @@ span_thread_box(struct sna *sna,
 		}
 	}
 
-	span_thread_add_boxes(sna, op, box, 1, AREA_TO_ALPHA(coverage));
+	span_thread_add_box(sna, op, box, AREA_TO_ALPHA(coverage));
 }
 
 static void
@@ -1747,35 +1744,28 @@ span_thread_clipped_box(struct sna *sna,
 			const BoxRec *box,
 			int coverage)
 {
-	pixman_region16_t region;
+	struct span_thread_boxes *b = (struct span_thread_boxes *)op;
+	const BoxRec *c;
 
 	__DBG(("%s: %d -> %d @ %f\n", __FUNCTION__, box->x1, box->x2,
 	       AREA_TO_ALPHA(coverage)));
 
-	pixman_region_init_rects(&region, box, 1);
-	RegionIntersect(&region, &region, clip);
-	if (region_num_rects(&region)) {
-		struct span_thread_boxes *b = (struct span_thread_boxes *)op;
+	b->clip_start =
+		find_clip_box_for_y(b->clip_start, b->clip_end, box->y1);
 
-		if (region.data == NULL && b->num_boxes) {
-			struct sna_opacity_box *bb = &b->boxes[b->num_boxes-1];
-			if (bb->box.x1 == region.extents.x1 &&
-			    bb->box.x2 == region.extents.x2 &&
-			    bb->box.y2 == region.extents.y1 &&
-			    bb->alpha == AREA_TO_ALPHA(coverage)) {
-				bb->box.y2 = region.extents.y2;
-				__DBG(("%s: contracted double row: %d -> %d\n", __func__, bb->box.y1, bb->box.y2));
-				goto out;
-			}
-		}
+	c = b->clip_start;
+	while (c != b->clip_end) {
+		BoxRec clipped;
 
-		span_thread_add_boxes(sna, op,
-				      region_rects(&region),
-				      region_num_rects(&region),
-				      AREA_TO_ALPHA(coverage));
+		if (box->y2 <= c->y1)
+			break;
+
+		clipped = *box;
+		if (!box_intersect(&clipped, c++))
+			continue;
+
+		span_thread_add_box(sna, op, &clipped, AREA_TO_ALPHA(coverage));
 	}
-out:
-	pixman_region_fini(&region);
 }
 
 static span_func_t
@@ -1806,6 +1796,16 @@ thread_choose_span(struct sna_composite_spans_op *tmp,
 	return span;
 }
 
+inline static void
+span_thread_boxes_init(struct span_thread_boxes *boxes,
+		       const struct sna_composite_spans_op *op,
+		       const RegionRec *clip)
+{
+	boxes->op = op;
+	region_get_boxes(clip, &boxes->clip_start, &boxes->clip_end);
+	boxes->num_boxes = 0;
+}
+
 static void
 span_thread(void *arg)
 {
@@ -1818,8 +1818,7 @@ span_thread(void *arg)
 	if (!tor_init(&tor, &thread->extents, 2*thread->ntrap))
 		return;
 
-	boxes.op = thread->op;
-	boxes.num_boxes = 0;
+	span_thread_boxes_init(&boxes, thread->op, thread->clip);
 
 	y1 = thread->extents.y1 - thread->draw_y;
 	y2 = thread->extents.y2 - thread->draw_y;
@@ -2219,6 +2218,52 @@ static void _tor_blt_src(struct inplace *in, const BoxRec *box, uint8_t v)
 	} while (--h);
 }
 
+struct clipped_span {
+	span_func_t span;
+	const BoxRec *clip_start, *clip_end;
+};
+
+static void
+tor_blt_clipped(struct sna *sna,
+		struct sna_composite_spans_op *op,
+		pixman_region16_t *clip,
+		const BoxRec *box,
+		int coverage)
+{
+	struct clipped_span *cs = (struct clipped_span *)clip;
+	const BoxRec *c;
+
+	cs->clip_start =
+		find_clip_box_for_y(cs->clip_start, cs->clip_end, box->y1);
+
+	c = cs->clip_start;
+	while (c != cs->clip_end) {
+		BoxRec clipped;
+
+		if (box->y2 <= c->y1)
+			break;
+
+		clipped = *box;
+		if (!box_intersect(&clipped, c++))
+			continue;
+
+		cs->span(sna, op, NULL, &clipped, coverage);
+	}
+}
+
+inline static span_func_t
+clipped_span(struct clipped_span *cs,
+	     span_func_t span,
+	     const RegionRec *clip)
+{
+	if (clip->data) {
+		cs->span = span;
+		region_get_boxes(clip, &cs->clip_start, &cs->clip_end);
+		span = tor_blt_clipped;
+	}
+	return span;
+}
+
 static void
 tor_blt_src(struct sna *sna,
 	    struct sna_composite_spans_op *op,
@@ -2229,25 +2274,6 @@ tor_blt_src(struct sna *sna,
 	struct inplace *in = (struct inplace *)op;
 
 	_tor_blt_src(in, box, coverage_opacity(coverage, in->opacity));
-}
-
-static void
-tor_blt_src_clipped(struct sna *sna,
-		    struct sna_composite_spans_op *op,
-		    pixman_region16_t *clip,
-		    const BoxRec *box,
-		    int coverage)
-{
-	pixman_region16_t region;
-	int n;
-
-	pixman_region_init_rects(&region, box, 1);
-	RegionIntersect(&region, &region, clip);
-	n = region_num_rects(&region);
-	box = region_rects(&region);
-	while (n--)
-		tor_blt_src(sna, op, NULL, box++, coverage);
-	pixman_region_fini(&region);
 }
 
 static void
@@ -2279,25 +2305,6 @@ tor_blt_in(struct sna *sna,
 			ptr[i] = mul_8_8(ptr[i], coverage);
 		ptr += in->stride;
 	} while (--h);
-}
-
-static void
-tor_blt_in_clipped(struct sna *sna,
-		   struct sna_composite_spans_op *op,
-		   pixman_region16_t *clip,
-		   const BoxRec *box,
-		   int coverage)
-{
-	pixman_region16_t region;
-	int n;
-
-	pixman_region_init_rects(&region, box, 1);
-	RegionIntersect(&region, &region, clip);
-	n = region_num_rects(&region);
-	box = region_rects(&region);
-	while (n--)
-		tor_blt_in(sna, op, NULL, box++, coverage);
-	pixman_region_fini(&region);
 }
 
 static void
@@ -2336,25 +2343,6 @@ tor_blt_add(struct sna *sna,
 			ptr += in->stride;
 		} while (--h);
 	}
-}
-
-static void
-tor_blt_add_clipped(struct sna *sna,
-		    struct sna_composite_spans_op *op,
-		    pixman_region16_t *clip,
-		    const BoxRec *box,
-		    int coverage)
-{
-	pixman_region16_t region;
-	int n;
-
-	pixman_region_init_rects(&region, box, 1);
-	RegionIntersect(&region, &region, clip);
-	n = region_num_rects(&region);
-	box = region_rects(&region);
-	while (n--)
-		tor_blt_add(sna, op, NULL, box++, coverage);
-	pixman_region_fini(&region);
 }
 
 static void
@@ -2412,25 +2400,6 @@ tor_blt_lerp32(struct sna *sna,
 	}
 }
 
-static void
-tor_blt_lerp32_clipped(struct sna *sna,
-		       struct sna_composite_spans_op *op,
-		       pixman_region16_t *clip,
-		       const BoxRec *box,
-		       int coverage)
-{
-	pixman_region16_t region;
-	int n;
-
-	pixman_region_init_rects(&region, box, 1);
-	RegionIntersect(&region, &region, clip);
-	n = region_num_rects(&region);
-	box = region_rects(&region);
-	while (n--)
-		tor_blt_lerp32(sna, op, NULL, box++, coverage);
-	pixman_region_fini(&region);
-}
-
 struct pixman_inplace {
 	pixman_image_t *image, *source, *mask;
 	uint32_t color;
@@ -2460,24 +2429,6 @@ pixmask_span_solid(struct sna *sna,
 			       pi->dx + box->x1, pi->dy + box->y1,
 			       box->x2 - box->x1, box->y2 - box->y1);
 }
-static void
-pixmask_span_solid__clipped(struct sna *sna,
-			    struct sna_composite_spans_op *op,
-			    pixman_region16_t *clip,
-			    const BoxRec *box,
-			    int coverage)
-{
-	pixman_region16_t region;
-	int n;
-
-	pixman_region_init_rects(&region, box, 1);
-	RegionIntersect(&region, &region, clip);
-	n = region_num_rects(&region);
-	box = region_rects(&region);
-	while (n--)
-		pixmask_span_solid(sna, op, NULL, box++, coverage);
-	pixman_region_fini(&region);
-}
 
 static void
 pixmask_span(struct sna *sna,
@@ -2500,24 +2451,6 @@ pixmask_span(struct sna *sna,
 			       pi->dx + box->x1, pi->dy + box->y1,
 			       box->x2 - box->x1, box->y2 - box->y1);
 }
-static void
-pixmask_span__clipped(struct sna *sna,
-		      struct sna_composite_spans_op *op,
-		      pixman_region16_t *clip,
-		      const BoxRec *box,
-		      int coverage)
-{
-	pixman_region16_t region;
-	int n;
-
-	pixman_region_init_rects(&region, box, 1);
-	RegionIntersect(&region, &region, clip);
-	n = region_num_rects(&region);
-	box = region_rects(&region);
-	while (n--)
-		pixmask_span(sna, op, NULL, box++, coverage);
-	pixman_region_fini(&region);
-}
 
 struct inplace_x8r8g8b8_thread {
 	xTrapezoid *traps;
@@ -2536,6 +2469,7 @@ static void inplace_x8r8g8b8_thread(void *arg)
 	struct inplace_x8r8g8b8_thread *thread = arg;
 	struct tor tor;
 	span_func_t span;
+	struct clipped_span clipped;
 	RegionPtr clip;
 	int y1, y2, n;
 
@@ -2566,12 +2500,11 @@ static void inplace_x8r8g8b8_thread(void *arg)
 		inplace.stride = pixmap->devKind;
 		inplace.color = thread->color;
 
-		if (clip->data)
-			span = tor_blt_lerp32_clipped;
-		else
-			span = tor_blt_lerp32;
+		span = clipped_span(&clipped, tor_blt_lerp32, clip);
 
-		tor_render(NULL, &tor, (void*)&inplace, clip, span, false);
+		tor_render(NULL, &tor,
+			   (void*)&inplace, (void*)&clipped,
+			   span, false);
 	} else if (thread->is_solid) {
 		struct pixman_inplace pi;
 
@@ -2584,12 +2517,11 @@ static void inplace_x8r8g8b8_thread(void *arg)
 						     1, 1, pi.bits, 0);
 		pixman_image_set_repeat(pi.source, PIXMAN_REPEAT_NORMAL);
 
-		if (clip->data)
-			span = pixmask_span_solid__clipped;
-		else
-			span = pixmask_span_solid;
+		span = clipped_span(&clipped, pixmask_span_solid, clip);
 
-		tor_render(NULL, &tor, (void*)&pi, clip, span, false);
+		tor_render(NULL, &tor,
+			   (void*)&pi, (void *)&clipped,
+			   span, false);
 
 		pixman_image_unref(pi.source);
 		pixman_image_unref(pi.image);
@@ -2608,12 +2540,11 @@ static void inplace_x8r8g8b8_thread(void *arg)
 		pi.bits = pixman_image_get_data(pi.mask);
 		pi.op = thread->op;
 
-		if (clip->data)
-			span = pixmask_span__clipped;
-		else
-			span = pixmask_span;
+		span = clipped_span(&clipped, pixmask_span, clip);
 
-		tor_render(NULL, &tor, (void*)&pi, clip, span, false);
+		tor_render(NULL, &tor,
+			   (void*)&pi, (void *)&clipped,
+			   span, false);
 
 		pixman_image_unref(pi.mask);
 		pixman_image_unref(pi.source);
@@ -2727,6 +2658,7 @@ trapezoid_span_inplace__x8r8g8b8(CARD8 op,
 	if (num_threads == 1) {
 		struct tor tor;
 		span_func_t span;
+		struct clipped_span clipped;
 
 		if (!tor_init(&tor, &region.extents, 2*ntrap))
 			return true;
@@ -2752,17 +2684,15 @@ trapezoid_span_inplace__x8r8g8b8(CARD8 op,
 			inplace.stride = pixmap->devKind;
 			inplace.color = color;
 
-			if (dst->pCompositeClip->data)
-				span = tor_blt_lerp32_clipped;
-			else
-				span = tor_blt_lerp32;
+			span = clipped_span(&clipped, tor_blt_lerp32, dst->pCompositeClip);
 
 			DBG(("%s: render inplace op=%d, color=%08x\n",
 			     __FUNCTION__, op, color));
 
 			if (sigtrap_get() == 0) {
-				tor_render(NULL, &tor, (void*)&inplace,
-					   dst->pCompositeClip, span, false);
+				tor_render(NULL, &tor,
+					   (void*)&inplace, (void*)&clipped,
+					   span, false);
 				sigtrap_put();
 			}
 		} else if (is_solid) {
@@ -2777,15 +2707,12 @@ trapezoid_span_inplace__x8r8g8b8(CARD8 op,
 							     1, 1, pi.bits, 0);
 			pixman_image_set_repeat(pi.source, PIXMAN_REPEAT_NORMAL);
 
-			if (dst->pCompositeClip->data)
-				span = pixmask_span_solid__clipped;
-			else
-				span = pixmask_span_solid;
+			span = clipped_span(&clipped, pixmask_span_solid, dst->pCompositeClip);
 
 			if (sigtrap_get() == 0) {
-				tor_render(NULL, &tor, (void*)&pi,
-					   dst->pCompositeClip, span,
-					   false);
+				tor_render(NULL, &tor,
+					   (void*)&pi, (void*)&clipped,
+					   span, false);
 				sigtrap_put();
 			}
 
@@ -2806,15 +2733,12 @@ trapezoid_span_inplace__x8r8g8b8(CARD8 op,
 			pi.bits = pixman_image_get_data(pi.mask);
 			pi.op = op;
 
-			if (dst->pCompositeClip->data)
-				span = pixmask_span__clipped;
-			else
-				span = pixmask_span;
+			span = clipped_span(&clipped, pixmask_span, dst->pCompositeClip);
 
 			if (sigtrap_get() == 0) {
-				tor_render(NULL, &tor, (void*)&pi,
-					   dst->pCompositeClip, span,
-					   false);
+				tor_render(NULL, &tor,
+					   (void*)&pi, (void*)&clipped,
+					   span, false);
 				sigtrap_put();
 			}
 
@@ -2876,9 +2800,9 @@ trapezoid_span_inplace__x8r8g8b8(CARD8 op,
 
 struct inplace_thread {
 	xTrapezoid *traps;
-	RegionPtr clip;
 	span_func_t span;
 	struct inplace inplace;
+	struct clipped_span clipped;
 	BoxRec extents;
 	int dx, dy;
 	int draw_x, draw_y;
@@ -2903,8 +2827,9 @@ static void inplace_thread(void *arg)
 		tor_add_trapezoid(&tor, &thread->traps[n], thread->dx, thread->dy);
 	}
 
-	tor_render(NULL, &tor, (void*)&thread->inplace,
-		   thread->clip, thread->span, thread->unbounded);
+	tor_render(NULL, &tor,
+		   (void*)&thread->inplace, (void*)&thread->clipped,
+		   thread->span, thread->unbounded);
 
 	tor_fini(&tor);
 }
@@ -2918,6 +2843,7 @@ imprecise_trapezoid_span_inplace(struct sna *sna,
 				 bool fallback)
 {
 	struct inplace inplace;
+	struct clipped_span clipped;
 	span_func_t span;
 	PixmapPtr pixmap;
 	struct sna_pixmap *priv;
@@ -3034,21 +2960,12 @@ imprecise_trapezoid_span_inplace(struct sna *sna,
 	     region.extents.x2, region.extents.y2));
 
 	if (op == PictOpSrc) {
-		if (dst->pCompositeClip->data)
-			span = tor_blt_src_clipped;
-		else
-			span = tor_blt_src;
+		span = tor_blt_src;
 	} else if (op == PictOpIn) {
-		if (dst->pCompositeClip->data)
-			span = tor_blt_in_clipped;
-		else
-			span = tor_blt_in;
+		span = tor_blt_in;
 	} else {
 		assert(op == PictOpAdd);
-		if (dst->pCompositeClip->data)
-			span = tor_blt_add_clipped;
-		else
-			span = tor_blt_add;
+		span = tor_blt_add;
 	}
 
 	DBG(("%s: move-to-cpu\n", __FUNCTION__));
@@ -3065,6 +2982,8 @@ imprecise_trapezoid_span_inplace(struct sna *sna,
 		inplace.ptr += dst_y * pixmap->devKind + dst_x;
 	inplace.stride = pixmap->devKind;
 	inplace.opacity = color >> 24;
+
+	span = clipped_span(&clipped, span, dst->pCompositeClip);
 
 	num_threads = 1;
 	if ((flags & COMPOSITE_SPANS_RECTILINEAR) == 0)
@@ -3086,8 +3005,9 @@ imprecise_trapezoid_span_inplace(struct sna *sna,
 		}
 
 		if (sigtrap_get() == 0) {
-			tor_render(NULL, &tor, (void*)&inplace,
-				   dst->pCompositeClip, span, unbounded);
+			tor_render(NULL, &tor,
+				   (void*)&inplace, (void *)&clipped,
+				   span, unbounded);
 			sigtrap_put();
 		}
 
@@ -3104,8 +3024,8 @@ imprecise_trapezoid_span_inplace(struct sna *sna,
 		threads[0].traps = traps;
 		threads[0].ntrap = ntrap;
 		threads[0].inplace = inplace;
+		threads[0].clipped = clipped;
 		threads[0].extents = region.extents;
-		threads[0].clip = dst->pCompositeClip;
 		threads[0].span = span;
 		threads[0].unbounded = unbounded;
 		threads[0].dx = dx;
@@ -3736,8 +3656,7 @@ tristrip_thread(void *arg)
 	if (!tor_init(&tor, &thread->extents, 2*thread->count))
 		return;
 
-	boxes.op = thread->op;
-	boxes.num_boxes = 0;
+	span_thread_boxes_init(&boxes, thread->op, thread->clip);
 
 	cw = 0; ccw = 1;
 	polygon_add_line(tor.polygon,

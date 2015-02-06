@@ -72,6 +72,7 @@ struct mono {
 	struct sna *sna;
 	struct sna_composite_op op;
 	pixman_region16_t clip;
+	const BoxRec *clip_start, *clip_end;
 
 	fastcall void (*span)(struct mono *, int, int, BoxPtr);
 
@@ -474,6 +475,34 @@ mono_span__fast(struct mono *c, int x1, int x2, BoxPtr box)
 	c->op.box(c->sna, &c->op, box);
 }
 
+fastcall static void
+mono_span__clipped(struct mono *c, int x1, int x2, BoxPtr box)
+{
+	const BoxRec *b;
+
+	__DBG(("%s [%d, %d]\n", __FUNCTION__, x1, x2));
+
+	c->clip_start =
+		find_clip_box_for_y(c->clip_start, c->clip_end, box->y1);
+
+	b = c->clip_start;
+	while (b != c->clip_end) {
+		BoxRec clipped;
+
+		if (box->y2 <= b->y1)
+			break;
+
+		clipped.x1 = x1;
+		clipped.x2 = x2;
+		clipped.y1 = box->y1;
+		clipped.y2 = box->y2;
+		if (!box_intersect(&clipped, b++))
+			continue;
+
+		c->op.box(c->sna, &c->op, &clipped);
+	}
+}
+
 struct mono_span_thread_boxes {
 	const struct sna_composite_op *op;
 #define MONO_SPAN_MAX_BOXES (8192/sizeof(BoxRec))
@@ -482,40 +511,45 @@ struct mono_span_thread_boxes {
 };
 
 inline static void
-thread_mono_span_add_boxes(struct mono *c, const BoxRec *box, int count)
+thread_mono_span_add_box(struct mono *c, const BoxRec *box)
 {
 	struct mono_span_thread_boxes *b = c->op.priv;
 
-	assert(count > 0 && count <= MONO_SPAN_MAX_BOXES);
-	if (unlikely(b->num_boxes + count > MONO_SPAN_MAX_BOXES)) {
+	if (unlikely(b->num_boxes == MONO_SPAN_MAX_BOXES)) {
 		b->op->thread_boxes(c->sna, b->op, b->boxes, b->num_boxes);
 		b->num_boxes = 0;
 	}
 
-	memcpy(b->boxes + b->num_boxes, box, count*sizeof(BoxRec));
-	b->num_boxes += count;
+	b->boxes[b->num_boxes++] = *box;
 	assert(b->num_boxes <= MONO_SPAN_MAX_BOXES);
 }
 
 fastcall static void
 thread_mono_span_clipped(struct mono *c, int x1, int x2, BoxPtr box)
 {
-	pixman_region16_t region;
+	const BoxRec *b;
 
 	__DBG(("%s [%d, %d]\n", __FUNCTION__, x1, x2));
 
-	box->x1 = x1;
-	box->x2 = x2;
+	c->clip_start =
+		find_clip_box_for_y(c->clip_start, c->clip_end, box->y1);
 
-	assert(c->clip.data);
+	b = c->clip_start;
+	while (b != c->clip_end) {
+		BoxRec clipped;
 
-	pixman_region_init_rects(&region, box, 1);
-	RegionIntersect(&region, &region, &c->clip);
-	if (region_num_rects(&region))
-		thread_mono_span_add_boxes(c,
-					   region_rects(&region),
-					   region_num_rects(&region));
-	pixman_region_fini(&region);
+		if (box->y2 <= b->y1)
+			break;
+
+		clipped.x1 = x1;
+		clipped.x2 = x2;
+		clipped.y1 = box->y1;
+		clipped.y2 = box->y2;
+		if (!box_intersect(&clipped, b++))
+			continue;
+
+		thread_mono_span_add_box(c, &clipped);
+	}
 }
 
 fastcall static void
@@ -525,7 +559,7 @@ thread_mono_span(struct mono *c, int x1, int x2, BoxPtr box)
 
 	box->x1 = x1;
 	box->x2 = x2;
-	thread_mono_span_add_boxes(c, box, 1);
+	thread_mono_span_add_box(c, box);
 }
 
 inline static void
@@ -717,6 +751,7 @@ mono_span_thread(void *arg)
 		if (RegionNil(&mono.clip))
 			return;
 	}
+	region_get_boxes(&mono.clip, &mono.clip_start, &mono.clip_end);
 
 	boxes.op = thread->op;
 	boxes.num_boxes = 0;
@@ -891,9 +926,12 @@ mono_trapezoids_span_converter(struct sna *sna,
 
 	if (mono.clip.data == NULL && mono.op.damage == NULL)
 		mono.span = mono_span__fast;
+	else if (mono.clip.data != NULL && mono.op.damage == NULL)
+		mono.span = mono_span__clipped;
 	else
 		mono.span = mono_span;
 
+	region_get_boxes(&mono.clip, &mono.clip_start, &mono.clip_end);
 	mono_render(&mono);
 	mono.op.done(mono.sna, &mono.op);
 	mono_fini(&mono);
@@ -939,6 +977,7 @@ mono_trapezoids_span_converter(struct sna *sna,
 					       mono.clip.extents.x2 - mono.clip.extents.x1,
 					       mono.clip.extents.y2 - mono.clip.extents.y1,
 					       COMPOSITE_PARTIAL, memset(&mono.op, 0, sizeof(mono.op)))) {
+			region_get_boxes(&mono.clip, &mono.clip_start, &mono.clip_end);
 			mono_render(&mono);
 			mono.op.done(mono.sna, &mono.op);
 		}

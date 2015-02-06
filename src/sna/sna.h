@@ -1189,6 +1189,19 @@ box_intersect(BoxPtr a, const BoxRec *b)
 	return true;
 }
 
+const BoxRec *
+__find_clip_box_for_y(const BoxRec *begin, const BoxRec *end, int16_t y);
+inline static const BoxRec *
+find_clip_box_for_y(const BoxRec *begin, const BoxRec *end, int16_t y)
+{
+    if (begin->y2 > y)
+	    return begin;
+    if (end->y1 <= y)
+	    return end;
+
+    return __find_clip_box_for_y(begin, end, y);
+}
+
 unsigned sna_cpu_detect(void);
 char *sna_cpu_features_to_string(unsigned features, char *line);
 

@@ -7162,8 +7162,8 @@ sna_copy_area(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 			   copy, 0, NULL);
 }
 
-static const BoxRec *
-find_clip_box_for_y(const BoxRec *begin, const BoxRec *end, int16_t y)
+const BoxRec *
+__find_clip_box_for_y(const BoxRec *begin, const BoxRec *end, int16_t y)
 {
     const BoxRec *mid;
 
@@ -7183,9 +7183,9 @@ find_clip_box_for_y(const BoxRec *begin, const BoxRec *end, int16_t y)
 	 * will return @mid, which is then known to be the
 	 * correct answer.
 	 */
-	return find_clip_box_for_y(begin, mid, y);
+	return __find_clip_box_for_y(begin, mid, y);
     else
-	return find_clip_box_for_y(mid, end, y);
+	return __find_clip_box_for_y(mid, end, y);
 }
 
 struct sna_fill_spans {
