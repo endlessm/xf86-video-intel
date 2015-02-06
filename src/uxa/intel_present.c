@@ -360,9 +360,9 @@ intel_present_unflip(ScreenPtr screen, uint64_t event_id)
 
 	event->event_id = event_id;
 
-	if (intel_do_pageflip(intel, bo, -1, FALSE, event,
-			      intel_present_flip_event,
-			      intel_present_flip_abort))
+	if (!intel_do_pageflip(intel, bo, -1, FALSE, event,
+			       intel_present_flip_event,
+			       intel_present_flip_abort))
 		goto fail;
 
 	return;
