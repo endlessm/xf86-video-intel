@@ -357,11 +357,17 @@ const struct ust_msc *sna_crtc_last_swap(xf86CrtcPtr crtc)
 
 xf86CrtcPtr sna_mode_first_crtc(struct sna *sna)
 {
-	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	rrScrPrivPtr rr = rrGetScrPriv(xf86ScrnToScreen(sna->scrn));
+	if (rr && rr->primaryOutput) {
+		xf86OutputPtr output = rr->primaryOutput->devPrivate;
+		if (output->crtc && to_sna_crtc(output->crtc))
+			return output->crtc;
+	}
+
 	if (sna->mode.num_real_crtc)
-		return config->crtc[0];
-	else
-		return NULL;
+		return XF86_CRTC_CONFIG_PTR(sna->scrn)->crtc[0];
+
+	return NULL;
 }
 
 #ifndef NDEBUG
