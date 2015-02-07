@@ -40,6 +40,7 @@ static present_screen_info_rec present_info;
 struct sna_present_event {
 	uint64_t event_id;
 	xf86CrtcPtr crtc;
+	struct sna *sna;
 };
 
 static void sna_present_unflip(ScreenPtr screen, uint64_t event_id);
@@ -157,6 +158,7 @@ sna_present_queue_vblank(RRCrtcPtr crtc, uint64_t event_id, uint64_t msc)
 
 	event->event_id = event_id;
 	event->crtc = crtc->devPrivate;
+	event->sna = sna;
 
 	VG_CLEAR(vbl);
 	vbl.request.type = DRM_VBLANK_ABSOLUTE | DRM_VBLANK_EVENT;
@@ -315,9 +317,8 @@ present_flip_handler(struct drm_event_vblank *event, void *data)
 {
 	struct sna_present_event *info = data;
 	struct ust_msc swap;
-	struct sna *sna;
 
-	DBG(("%s(sequence=%d)\n", __FUNCTION__, event->sequence));
+	DBG(("%s(sequence=%d): event=%lld\n", __FUNCTION__, event->sequence, (long long)info->event_id));
 
 	if (info->crtc == NULL) {
 		swap.tv_sec = event->tv_sec;
@@ -332,12 +333,11 @@ present_flip_handler(struct drm_event_vblank *event, void *data)
 	     (long long)info->event_id));
 	present_event_notify(info->event_id, ust64(swap.tv_sec, swap.tv_usec), swap.msc);
 
-	sna = info->crtc ? to_sna(info->crtc->scrn) : NULL;
-	if (sna && sna->present.unflip) {
-		DBG(("%s: executing queued unflip\n", __FUNCTION__));
-		sna_present_unflip(xf86ScrnToScreen(sna->scrn),
-				   sna->present.unflip);
-		sna->present.unflip = 0;
+	if (info->sna->present.unflip) {
+		DBG(("%s: executing queued unflip (event=%lld)\n", __FUNCTION__, info->sna->present.unflip));
+		sna_present_unflip(xf86ScrnToScreen(info->sna->scrn),
+				   info->sna->present.unflip);
+		info->sna->present.unflip = 0;
 	}
 	free(info);
 }
@@ -362,6 +362,8 @@ page_flip(struct sna *sna,
 
 	event->event_id = event_id;
 	event->crtc = crtc ? crtc->devPrivate : NULL;
+	event->sna = sna;
+
 	if (!sna_page_flip(sna, bo, present_flip_handler, event)) {
 		DBG(("%s: pageflip failed\n", __FUNCTION__));
 		free(event);
@@ -468,7 +470,7 @@ notify:
 	}
 
 	if (sna->mode.flip_active) {
-		DBG(("%s: outstanding flips, queueing unflip\n", __FUNCTION__));
+		DBG(("%s: %d outstanding flips, queueing unflip\n", __FUNCTION__, sna->mode.flip_active));
 		assert(sna->present.unflip == 0);
 		sna->present.unflip = event_id;
 		return;
