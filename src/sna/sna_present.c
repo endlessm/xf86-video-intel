@@ -283,7 +283,8 @@ static uint64_t gettime_ust64(void)
 }
 
 static Bool
-page_flip__async(RRCrtcPtr crtc,
+page_flip__async(struct sna *sna,
+		 RRCrtcPtr crtc,
 		 uint64_t event_id,
 		 uint64_t target_msc,
 		 struct kgem_bo *bo)
@@ -294,7 +295,7 @@ page_flip__async(RRCrtcPtr crtc,
 	     (long long)event_id,
 	     bo->handle));
 
-	if (!sna_page_flip(to_sna_from_screen(crtc->pScreen), bo, NULL, NULL)) {
+	if (!sna_page_flip(sna, bo, NULL, NULL)) {
 		DBG(("%s: async pageflip failed\n", __FUNCTION__));
 		present_info.capabilities &= ~PresentCapabilityAsync;
 		return FALSE;
@@ -342,12 +343,11 @@ present_flip_handler(struct drm_event_vblank *event, void *data)
 }
 
 static Bool
-page_flip(ScreenPtr screen,
+page_flip(struct sna *sna,
 	  RRCrtcPtr crtc,
 	  uint64_t event_id,
 	  struct kgem_bo *bo)
 {
-	struct sna *sna = to_sna_from_screen(screen);
 	struct sna_present_event *event;
 
 	DBG(("%s(pipe=%d, event=%lld, handle=%d)\n",
@@ -438,9 +438,9 @@ sna_present_flip(RRCrtcPtr crtc,
 	}
 
 	if (sync_flip)
-		return page_flip(crtc->pScreen, crtc, event_id, bo);
+		return page_flip(sna, crtc, event_id, bo);
 	else
-		return page_flip__async(crtc, event_id, target_msc, bo);
+		return page_flip__async(sna, crtc, event_id, target_msc, bo);
 }
 
 static void
@@ -475,11 +475,21 @@ notify:
 	}
 
 	bo = get_flip_bo(screen->GetScreenPixmap(screen));
-	if (bo == NULL || !page_flip(screen, NULL, event_id, bo)) {
+	if (bo == NULL) {
+reset_mode:
 		DBG(("%s: failed, trying to restore original mode\n", __FUNCTION__));
 		xf86SetDesiredModes(sna->scrn);
 		goto notify;
 	}
+
+	if (sna->flags & SNA_HAS_ASYNC_FLIP) {
+		DBG(("%s: trying async flip restore\n", __FUNCTION__));
+		if (page_flip__async(sna, NULL, event_id, 0, bo))
+			return;
+	}
+
+	if (!page_flip(sna, NULL, event_id, bo))
+		goto reset_mode;
 }
 
 static present_screen_info_rec present_info = {
