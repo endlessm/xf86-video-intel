@@ -3080,7 +3080,7 @@ blit:
 skip:
 	DBG(("%s: unable to show frame, unblocking client\n", __FUNCTION__));
 	if (crtc == NULL)
-		crtc = sna_mode_first_crtc(sna);
+		crtc = sna_primary_crtc(sna);
 	fake_swap_complete(sna, client, draw, crtc, type, func, data);
 	*target_msc = 0; /* offscreen, so zero out target vblank count */
 	return TRUE;
@@ -3110,7 +3110,7 @@ sna_dri2_get_msc(DrawablePtr draw, CARD64 *ust, CARD64 *msc)
 			sna_crtc_record_vblank(crtc, &vbl);
 	} else
 		/* Drawable not displayed, make up a *monotonic* value */
-		crtc = sna_mode_first_crtc(sna);
+		crtc = sna_primary_crtc(sna);
 
 	swap = sna_crtc_last_swap(crtc);
 	*msc = draw_current_msc(draw, crtc, swap->msc);
@@ -3208,7 +3208,7 @@ out_free_info:
 	sna_dri2_event_free(info);
 out_complete:
 	if (crtc == NULL)
-		crtc = sna_mode_first_crtc(sna);
+		crtc = sna_primary_crtc(sna);
 	swap = sna_crtc_last_swap(crtc);
 	DRI2WaitMSCComplete(client, draw,
 			    draw_current_msc(draw, crtc, swap->msc),

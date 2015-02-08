@@ -95,6 +95,16 @@ sna_present_get_crtc(WindowPtr window)
 	if (crtc)
 		return crtc->randr_crtc;
 
+	/* Offscreen Window - use any CRTC as a clocksource.
+	 * This is likely to be either a Window on either VIRTUAL or PRIME
+	 * screen real estate, and ideally we would delegate to the
+	 * slave CRTC, but using our hardware is preferable to falling back
+	 * to Present's timer implemetation.
+	 */
+	crtc = sna_first_active_crtc(sna);
+	if (crtc)
+		return crtc->randr_crtc;
+
 	return NULL;
 }
 
@@ -458,7 +468,7 @@ sna_present_unflip(ScreenPtr screen, uint64_t event_id)
 		DBG(("%s: no CRTC active, perform no-op flip\n", __FUNCTION__));
 
 notify:
-		swap = sna_crtc_last_swap(sna_mode_first_crtc(sna));
+		swap = sna_crtc_last_swap(sna_primary_crtc(sna));
 		DBG(("%s: pipe=%d, tv=%d.%06d msc %lld, event %lld complete\n", __FUNCTION__,
 		     -1,
 		     swap->tv_sec, swap->tv_usec, (long long)swap->msc,
