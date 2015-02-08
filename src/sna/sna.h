@@ -1196,7 +1196,7 @@ find_clip_box_for_y(const BoxRec *begin, const BoxRec *end, int16_t y)
 {
     if (begin->y2 > y)
 	    return begin;
-    if (end->y1 <= y)
+    if (y > end[-1].y2)
 	    return end;
 
     return __find_clip_box_for_y(begin, end, y);
