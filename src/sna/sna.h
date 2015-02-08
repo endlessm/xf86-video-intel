@@ -1194,12 +1194,18 @@ __find_clip_box_for_y(const BoxRec *begin, const BoxRec *end, int16_t y);
 inline static const BoxRec *
 find_clip_box_for_y(const BoxRec *begin, const BoxRec *end, int16_t y)
 {
-    if (begin->y2 > y)
-	    return begin;
-    if (y > end[-1].y2)
-	    return end;
+	/* Special case for incremental trapezoid clipping */
+	if (begin == end)
+		return end;
 
-    return __find_clip_box_for_y(begin, end, y);
+	/* Quick test if scanline is within range of clip boxes */
+	if (begin->y2 > y)
+		return begin;
+	if (y > end[-1].y2)
+		return end;
+
+	/* Otherwise bisect to find the first box crossing y */
+	return __find_clip_box_for_y(begin, end, y);
 }
 
 unsigned sna_cpu_detect(void);
