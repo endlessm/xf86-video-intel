@@ -304,6 +304,12 @@ color_convert(uint32_t pixel,
 	return pixel;
 }
 
+inline static uint32_t
+solid_color(uint32_t format, uint32_t pixel)
+{
+	return color_convert(pixel, format, PICT_a8r8g8b8);
+}
+
 inline static bool dst_use_gpu(PixmapPtr pixmap)
 {
 	struct sna_pixmap *priv = sna_pixmap(pixmap);

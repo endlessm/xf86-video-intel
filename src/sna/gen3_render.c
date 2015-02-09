@@ -3065,7 +3065,7 @@ gen3_composite_picture(struct sna *sna,
 
 	if (sna_picture_is_clear(picture, x, y, w, h, &color)) {
 		DBG(("%s: clear drawable [%08x]\n", __FUNCTION__, color));
-		return gen3_init_solid(channel, color_convert(color, picture->format, PICT_a8r8g8b8));
+		return gen3_init_solid(channel, solid_color(picture->format, color));
 	}
 
 	if (!gen3_check_repeat(picture))
@@ -3097,12 +3097,12 @@ gen3_composite_picture(struct sna *sna,
 		if (channel->repeat ||
 		    (x >= 0 &&
 		     y >= 0 &&
-		     x + w < pixmap->drawable.width &&
-		     y + h < pixmap->drawable.height)) {
+		     x + w <= pixmap->drawable.width &&
+		     y + h <= pixmap->drawable.height)) {
 			struct sna_pixmap *priv = sna_pixmap(pixmap);
 			if (priv && priv->clear) {
 				DBG(("%s: converting large pixmap source into solid [%08x]\n", __FUNCTION__, priv->clear_color));
-				return gen3_init_solid(channel, priv->clear_color);
+				return gen3_init_solid(channel, solid_color(picture->format, priv->clear_color));
 			}
 		}
 	} else {

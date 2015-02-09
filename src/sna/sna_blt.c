@@ -2624,24 +2624,20 @@ clear:
 				op = PictOpSrc;
 			if (op == PictOpOver) {
 				color = over(get_solid_color(src, PICT_a8r8g8b8),
-					     color_convert(sna_pixmap(tmp->dst.pixmap)->clear_color,
-							   dst->format, PICT_a8r8g8b8));
+					     solid_color(dst->format, sna_pixmap(tmp->dst.pixmap)->clear_color));
 				op = PictOpSrc;
 				DBG(("%s: precomputing solid OVER (%08x, %08x) -> %08x\n",
 				     __FUNCTION__, get_solid_color(src, PICT_a8r8g8b8),
-				     color_convert(sna_pixmap(tmp->dst.pixmap)->clear_color,
-						   dst->format, PICT_a8r8g8b8),
+				     solid_color(dst->format, sna_pixmap(tmp->dst.pixmap)->clear_color),
 				     color));
 			}
 			if (op == PictOpAdd) {
 				color = add(get_solid_color(src, PICT_a8r8g8b8),
-					    color_convert(sna_pixmap(tmp->dst.pixmap)->clear_color,
-							  dst->format, PICT_a8r8g8b8));
+					    solid_color(dst->format, sna_pixmap(tmp->dst.pixmap)->clear_color));
 				op = PictOpSrc;
 				DBG(("%s: precomputing solid ADD (%08x, %08x) -> %08x\n",
 				     __FUNCTION__, get_solid_color(src, PICT_a8r8g8b8),
-				     color_convert(sna_pixmap(tmp->dst.pixmap)->clear_color,
-						   dst->format, PICT_a8r8g8b8),
+				     solid_color(dst->format, sna_pixmap(tmp->dst.pixmap)->clear_color),
 				     color));
 			}
 		}
@@ -2747,8 +2743,8 @@ fill:
 	if (is_clear(src_pixmap)) {
 		if (src->repeat ||
 		    (x >= 0 && y >= 0 &&
-		     x + width  < src_pixmap->drawable.width &&
-		     y + height < src_pixmap->drawable.height)) {
+		     x + width  <= src_pixmap->drawable.width &&
+		     y + height <= src_pixmap->drawable.height)) {
 			color = color_convert(sna_pixmap(src_pixmap)->clear_color,
 					      src->format, tmp->dst.format);
 			goto fill;
