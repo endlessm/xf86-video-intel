@@ -673,13 +673,6 @@ sna_composite(CARD8 op,
 			src = sna->clear;
 	}
 
-	if (mask && sna_composite_mask_is_opaque(mask)) {
-		DBG(("%s: removing opaque %smask\n",
-		     __FUNCTION__,
-		     mask->componentAlpha && PICT_FORMAT_RGB(mask->format) ? "CA " : ""));
-		mask = NULL;
-	}
-
 	if (!sna_compute_composite_region(&region,
 					  src, mask, dst,
 					  src_x,  src_y,
@@ -687,6 +680,13 @@ sna_composite(CARD8 op,
 					  dst_x,  dst_y,
 					  width,  height))
 		return;
+
+	if (mask && sna_composite_mask_is_opaque(mask)) {
+		DBG(("%s: removing opaque %smask\n",
+		     __FUNCTION__,
+		     mask->componentAlpha && PICT_FORMAT_RGB(mask->format) ? "CA " : ""));
+		mask = NULL;
+	}
 
 	if (NO_COMPOSITE)
 		goto fallback;

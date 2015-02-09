@@ -920,8 +920,27 @@ sna_composite_mask_is_opaque(PicturePtr mask)
 		return is_solid(mask) && is_white(mask);
 	else if (!PICT_FORMAT_A(mask->format))
 		return true;
-	else
-		return is_solid(mask) && is_opaque_solid(mask);
+	else if (mask->pSourcePict) {
+		PictSolidFill *fill = (PictSolidFill *) mask->pSourcePict;
+		return (fill->color >> 24) == 0xff;
+	} else {
+		struct sna_pixmap *priv;
+		assert(mask->pDrawable);
+
+		if (mask->pDrawable->width  == 1 &&
+		    mask->pDrawable->height == 1 &&
+		    mask->repeat)
+			return pixel_is_opaque(get_pixel(mask), mask->format);
+
+		if (mask->transform)
+			return false;
+
+		priv = sna_pixmap_from_drawable(mask->pDrawable);
+		if (priv == NULL || !priv->clear)
+			return false;
+
+		return pixel_is_opaque(priv->clear_color, mask->format);
+	}
 }
 
 fastcall
