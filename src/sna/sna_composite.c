@@ -653,8 +653,9 @@ sna_composite(CARD8 op,
 	RegionRec region;
 	int dx, dy;
 
-	DBG(("%s(%d src=%ld+(%d, %d), mask=%ld+(%d, %d), dst=%ld+(%d, %d)+(%d, %d), size=(%d, %d)\n",
-	     __FUNCTION__, op,
+	DBG(("%s(pixmap=%ld, op=%d, src=%ld+(%d, %d), mask=%ld+(%d, %d), dst=%ld+(%d, %d)+(%d, %d), size=(%d, %d)\n",
+	     __FUNCTION__,
+	     pixmap->drawable.serialNumber, op,
 	     get_picture_id(src), src_x, src_y,
 	     get_picture_id(mask), mask_x, mask_y,
 	     get_picture_id(dst), dst_x, dst_y,
@@ -797,8 +798,10 @@ sna_composite_rectangles(CARD8		 op,
 	int i, num_boxes;
 	unsigned hint;
 
-	DBG(("%s(op=%d, %08x x %d [(%d, %d)x(%d, %d) ...])\n",
-	     __FUNCTION__, op,
+	DBG(("%s(pixmap=%ld, op=%d, %08x x %d [(%d, %d)x(%d, %d) ...])\n",
+	     __FUNCTION__,
+	     get_drawable_pixmap(dst->pDrawable)->drawable.serialNumber,
+	     op,
 	     (color->alpha >> 8 << 24) |
 	     (color->red   >> 8 << 16) |
 	     (color->green >> 8 << 8) |
@@ -814,38 +817,40 @@ sna_composite_rectangles(CARD8		 op,
 		return;
 	}
 
-	if ((color->red|color->green|color->blue|color->alpha) <= 0x00ff) {
-		switch (op) {
-		case PictOpOver:
-		case PictOpOutReverse:
-		case PictOpAdd:
-			return;
-		case  PictOpInReverse:
-		case  PictOpSrc:
-			op = PictOpClear;
-			break;
-		case  PictOpAtopReverse:
-			op = PictOpOut;
-			break;
-		case  PictOpXor:
-			op = PictOpOverReverse;
-			break;
-		}
-	}
 	if (color->alpha <= 0x00ff) {
-		switch (op) {
-		case PictOpOver:
-		case PictOpOutReverse:
-			return;
-		case  PictOpInReverse:
-			op = PictOpClear;
-			break;
-		case  PictOpAtopReverse:
-			op = PictOpOut;
-			break;
-		case  PictOpXor:
-			op = PictOpOverReverse;
-			break;
+		if (PICT_FORMAT_TYPE(dst->format) == PICT_TYPE_A ||
+		    (color->red|color->green|color->blue) <= 0x00ff) {
+			switch (op) {
+			case PictOpOver:
+			case PictOpOutReverse:
+			case PictOpAdd:
+				return;
+			case  PictOpInReverse:
+			case  PictOpSrc:
+				op = PictOpClear;
+				break;
+			case  PictOpAtopReverse:
+				op = PictOpOut;
+				break;
+			case  PictOpXor:
+				op = PictOpOverReverse;
+				break;
+			}
+		} else {
+			switch (op) {
+			case PictOpOver:
+			case PictOpOutReverse:
+				return;
+			case  PictOpInReverse:
+				op = PictOpClear;
+				break;
+			case  PictOpAtopReverse:
+				op = PictOpOut;
+				break;
+			case  PictOpXor:
+				op = PictOpOverReverse;
+				break;
+			}
 		}
 	} else if (color->alpha >= 0xff00) {
 		switch (op) {
@@ -864,16 +869,15 @@ sna_composite_rectangles(CARD8		 op,
 			op = PictOpOut;
 			break;
 		case PictOpAdd:
-			if (color->red >= 0xff00 &&
-			    color->green >= 0xff00 &&
-			    color->blue >= 0xff00)
+			if (PICT_FORMAT_TYPE(dst->format) == PICT_TYPE_A ||
+			    (color->red&color->green&color->blue) >= 0xff00)
 				op = PictOpSrc;
 			break;
 		}
 	}
 
 	/* Avoid reducing overlapping translucent rectangles */
-	if (op == PictOpOver &&
+	if ((op == PictOpOver || op == PictOpAdd) &&
 	    num_rects == 1 &&
 	    sna_drawable_is_clear(dst->pDrawable))
 		op = PictOpSrc;
@@ -985,6 +989,9 @@ sna_composite_rectangles(CARD8		 op,
 			bool ok;
 
 			if (op == PictOpClear) {
+				if (priv->clear_color == 0)
+					goto done;
+
 				ok = sna_get_pixel_from_rgba(&pixel,
 							     0, 0, 0, 0,
 							     dst->format);
@@ -996,8 +1003,11 @@ sna_composite_rectangles(CARD8		 op,
 							     color->alpha,
 							     dst->format);
 			}
-			if (ok && priv->clear_color == pixel)
+			if (ok && priv->clear_color == pixel) {
+				DBG(("%s: matches current clear, skipping\n",
+				     __FUNCTION__));
 				goto done;
+			}
 		}
 
 		if (region.data == NULL) {
