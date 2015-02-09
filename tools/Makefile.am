@@ -31,6 +31,12 @@ bin_PROGRAMS = intel-virtual-output
 driverman_DATA = intel-virtual-output.$(DRIVER_MAN_SUFFIX)
 endif
 
+if X11_DRI3
+noinst_PROGRAMS = dri3info
+dri3info_SOURCES = dri3info.c
+dri3info_LDADD = $(X11_DRI3_LIBS)
+endif
+
 if BUILD_BACKLIGHT_HELPER
 libexec_PROGRAMS = xf86-video-intel-backlight-helper
 nodist_policy_DATA = org.x.xf86-video-intel.backlight-helper.policy
