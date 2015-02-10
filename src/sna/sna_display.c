@@ -4877,6 +4877,23 @@ sna_crtc_disable_cursor(struct sna *sna, struct sna_crtc *crtc)
 }
 
 static void
+sna_disable_cursors(ScrnInfoPtr scrn)
+{
+	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
+	struct sna *sna = to_sna(scrn);
+	int sigio, c;
+
+	DBG(("%s\n", __FUNCTION__));
+
+	sigio = sigio_block();
+	for (c = 0; c < sna->mode.num_real_crtc; c++) {
+		assert(to_sna_crtc(xf86_config->crtc[c]));
+		sna_crtc_disable_cursor(sna, to_sna_crtc(xf86_config->crtc[c]));
+	}
+	sigio_unblock(sigio);
+}
+
+static void
 sna_hide_cursors(ScrnInfoPtr scrn)
 {
 	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
@@ -6051,10 +6068,7 @@ sna_mode_disable(struct sna *sna)
 	if (!sna->scrn->vtSema)
 		return false;
 
-	/* XXX we will cause previously hidden cursors to be reshown, but
-	 * this should be a rare fixup case for severe fragmentation.
-	 */
-	sna_hide_cursors(sna->scrn);
+	sna_disable_cursors(sna->scrn);
 	for (i = 0; i < sna->mode.num_real_crtc; i++)
 		sna_crtc_disable(config->crtc[i], false);
 	assert(sna->mode.front_active == 0);
@@ -6098,7 +6112,7 @@ sna_mode_enable(struct sna *sna)
 	}
 
 	update_flush_interval(sna);
-	sna_show_cursors(sna->scrn);
+	sna_cursors_reload(sna);
 	sna->mode.dirty = false;
 }
 
@@ -6667,7 +6681,7 @@ void sna_mode_reset(struct sna *sna)
 
 	DBG(("%s\n", __FUNCTION__));
 
-	sna_hide_cursors(sna->scrn);
+	sna_disable_cursors(sna->scrn);
 	for (i = 0; i < sna->mode.num_real_crtc; i++)
 		if (!sna_crtc_hide_planes(sna, to_sna_crtc(config->crtc[i])))
 			sna_crtc_disable(config->crtc[i], true);
