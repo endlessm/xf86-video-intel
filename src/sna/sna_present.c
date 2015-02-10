@@ -95,16 +95,6 @@ sna_present_get_crtc(WindowPtr window)
 	if (crtc)
 		return crtc->randr_crtc;
 
-	/* Offscreen Window - use any CRTC as a clocksource.
-	 * This is likely to be either a Window on either VIRTUAL or PRIME
-	 * screen real estate, and ideally we would delegate to the
-	 * slave CRTC, but using our hardware is preferable to falling back
-	 * to Present's timer implemetation.
-	 */
-	crtc = sna_first_active_crtc(sna);
-	if (crtc)
-		return crtc->randr_crtc;
-
 	return NULL;
 }
 

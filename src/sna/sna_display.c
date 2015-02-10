@@ -6159,8 +6159,8 @@ xf86CrtcPtr
 sna_covering_crtc(struct sna *sna, const BoxRec *box, xf86CrtcPtr desired)
 {
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
-	xf86CrtcPtr best_crtc;
-	int best_coverage, c;
+	xf86CrtcPtr best_crtc = NULL;
+	int best_coverage = -1, c;
 
 	if (sna->flags & SNA_IS_HOSTED)
 		return NULL;
@@ -6196,10 +6196,10 @@ sna_covering_crtc(struct sna *sna, const BoxRec *box, xf86CrtcPtr desired)
 			     cover_box.x2, cover_box.y2));
 			return desired;
 		}
+		best_crtc = desired;
+		best_coverage = 0;
 	}
 
-	best_crtc = NULL;
-	best_coverage = 0;
 	for (c = 0; c < sna->mode.num_real_crtc; c++) {
 		xf86CrtcPtr crtc = config->crtc[c];
 		BoxRec cover_box;
@@ -6243,44 +6243,6 @@ sna_covering_crtc(struct sna *sna, const BoxRec *box, xf86CrtcPtr desired)
 	DBG(("%s: best crtc = %p, coverage = %d\n",
 	     __FUNCTION__, best_crtc, best_coverage));
 	return best_crtc;
-}
-
-xf86CrtcPtr sna_first_active_crtc(struct sna *sna)
-{
-	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
-	rrScrPrivPtr rr;
-	int c;
-
-	if (sna->flags & SNA_IS_HOSTED)
-		return NULL;
-
-	/* If we do not own the VT, we do not own the CRTC either */
-	if (!sna->scrn->vtSema) {
-		DBG(("%s: none, VT switched\n", __FUNCTION__));
-		return NULL;
-	}
-
-	if (sna->mode.hidden) {
-		DBG(("%s: none, hidden outputs\n", __FUNCTION__));
-		return NULL;
-	}
-
-	rr = rrGetScrPriv(xf86ScrnToScreen(sna->scrn));
-	if (rr && rr->primaryOutput) {
-		xf86OutputPtr output = rr->primaryOutput->devPrivate;
-		xf86CrtcPtr crtc = output->crtc;
-		if (crtc && to_sna_crtc(crtc) && to_sna_crtc(crtc)->bo)
-			return crtc;
-	}
-
-	for (c = 0; c < sna->mode.num_real_crtc; c++) {
-		if (to_sna_crtc(config->crtc[c])->bo == NULL)
-			continue;
-
-		return config->crtc[c];
-	}
-
-	return NULL;
 }
 
 xf86CrtcPtr sna_primary_crtc(struct sna *sna)

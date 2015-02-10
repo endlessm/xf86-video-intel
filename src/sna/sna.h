@@ -506,7 +506,6 @@ extern xf86CrtcPtr sna_covering_crtc(struct sna *sna,
 				     const BoxRec *box,
 				     xf86CrtcPtr desired);
 extern xf86CrtcPtr sna_primary_crtc(struct sna *sna);
-extern xf86CrtcPtr sna_first_active_crtc(struct sna *sna);
 
 extern bool sna_wait_for_scanline(struct sna *sna, PixmapPtr pixmap,
 				  xf86CrtcPtr crtc, const BoxRec *clip);
