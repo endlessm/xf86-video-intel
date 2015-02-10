@@ -461,7 +461,6 @@ static int is_render_node(int fd, struct stat *st)
 
 static char *find_render_node(int fd)
 {
-#if defined(USE_RENDERNODE)
 	struct stat master, render;
 	char buf[128];
 	int i;
@@ -484,7 +483,6 @@ static char *find_render_node(int fd)
 		    render.st_rdev == (master.st_rdev | 0x80))
 			return strdup(buf);
 	}
-#endif
 
 	return NULL;
 }
