@@ -56,7 +56,7 @@ to_present_event(uintptr_t  data)
 
 static int pipe_from_crtc(RRCrtcPtr crtc)
 {
-	return crtc ? sna_crtc_to_pipe(crtc->devPrivate) : -1;
+	return crtc ? sna_crtc_to_pipe__safe(crtc->devPrivate) : -1;
 }
 
 static uint32_t pipe_select(int pipe)

@@ -280,6 +280,14 @@ int sna_crtc_to_pipe(xf86CrtcPtr crtc)
 	return to_sna_crtc(crtc)->pipe;
 }
 
+int sna_crtc_to_pipe__safe(xf86CrtcPtr crtc)
+{
+	if (to_sna_crtc(crtc))
+		return sna_crtc_to_pipe(crtc);
+	else
+		return sna_crtc_to_pipe(sna_primary_crtc(to_sna(crtc->scrn)));
+}
+
 uint32_t sna_crtc_to_sprite(xf86CrtcPtr crtc)
 {
 	assert(to_sna_crtc(crtc));
