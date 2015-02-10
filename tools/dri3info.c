@@ -60,8 +60,16 @@ static void get_device_path(int fd, char *buf, int len)
 	if (fstat(fd, &remote))
 		goto out;
 
-	for (i = 0; i < 64; i++) {
+	for (i = 0; i < 16; i++) {
 		snprintf(buf, len, "/dev/dri/card%d", i);
+		if (stat(buf, &local))
+			continue;
+
+		if (local.st_mode == remote.st_mode &&
+		    local.st_rdev == remote.st_rdev)
+			return;
+
+		snprintf(buf, len, "/dev/dri/renderD%d", i + 128);
 		if (stat(buf, &local))
 			continue;
 
@@ -71,7 +79,7 @@ static void get_device_path(int fd, char *buf, int len)
 	}
 
 out:
-	strncpy(buf, "unknown card", len);
+	strncpy(buf, "unknown path", len);
 }
 
 static void get_driver_name(int fd, char *name, int len)
