@@ -682,6 +682,12 @@ struct intel_device *intel_get_device(ScrnInfoPtr scrn, int *fd)
 	return dev;
 }
 
+const char *intel_get_master_name(struct intel_device *dev)
+{
+	assert(dev && dev->master_node);
+	return dev->master_node;
+}
+
 const char *intel_get_client_name(struct intel_device *dev)
 {
 	assert(dev && dev->render_node);
