@@ -31,6 +31,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <drm.h>
+#include <xf86drm.h>
 
 static int dri3_open(Display *dpy)
 {
@@ -50,7 +52,7 @@ static int dri3_open(Display *dpy)
 	return xcb_dri3_open_reply_fds(c, reply)[0];
 }
 
-static void match_device(int fd, char *buf, int len)
+static void get_device_path(int fd, char *buf, int len)
 {
 	struct stat remote, local;
 	int i;
@@ -72,11 +74,24 @@ out:
 	strncpy(buf, "unknown card", len);
 }
 
+static void get_driver_name(int fd, char *name, int len)
+{
+	drm_version_t version;
+
+	memset(name, 0, len);
+	memset(&version, 0, sizeof(version));
+	version.name_len = len;
+	version.name = name;
+
+	(void)drmIoctl(fd, DRM_IOCTL_VERSION, &version);
+}
+
 static void info(const char *dpyname)
 {
 	Display *dpy;
 	int device;
-	char device_name[1024];
+	char device_path[1024];
+	char driver_name[1024];
 
 	dpy = XOpenDisplay(dpyname);
 	if (dpy == NULL) {
@@ -92,10 +107,11 @@ static void info(const char *dpyname)
 		return;
 	}
 
-	match_device(device, device_name, sizeof(device_name));
+	get_device_path(device, device_path, sizeof(device_path));
+	get_driver_name(device, driver_name, sizeof(driver_name));
 
-	printf("Connected to DRI3 on display '%s', using fd %d: matches %s\n",
-	       DisplayString(dpy), device, device_name);
+	printf("Connected to DRI3 on display '%s', using fd %d: matches %s, driver %s\n",
+	       DisplayString(dpy), device, device_path, driver_name);
 
 	XCloseDisplay(dpy);
 	close(device);
