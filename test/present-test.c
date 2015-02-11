@@ -434,7 +434,7 @@ static int for_each_crtc(Display *dpy,
 	free(original_crtc);
 	XRRFreeScreenResources(res);
 
-	return j;
+	return err;
 }
 
 struct test_crtc {
