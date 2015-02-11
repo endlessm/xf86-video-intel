@@ -2573,12 +2573,18 @@ static int use_triple_buffer(struct sna *sna, ClientPtr client, bool async)
 }
 
 static bool immediate_swap(struct sna *sna,
-			   uint64_t target_msc,
-			   uint64_t divisor,
 			   DrawablePtr draw,
 			   xf86CrtcPtr crtc,
+			   uint64_t *target_msc,
+			   uint64_t divisor,
+			   uint64_t remainder,
 			   uint64_t *current_msc)
 {
+	/*
+	 * If divisor is zero, or current_msc is smaller than target_msc
+	 * we just need to make sure target_msc passes before initiating
+	 * the swap.
+	 */
 	if (divisor == 0) {
 		*current_msc = -1;
 
@@ -2587,39 +2593,47 @@ static bool immediate_swap(struct sna *sna,
 			return true;
 		}
 
-		if (target_msc)
+		if (*target_msc)
 			*current_msc = get_current_msc(sna, draw, crtc);
 
 		DBG(("%s: current_msc=%ld, target_msc=%ld -- %s\n",
 		     __FUNCTION__, (long)*current_msc, (long)target_msc,
-		     (*current_msc >= target_msc - 1) ? "yes" : "no"));
-		return *current_msc >= target_msc - 1;
+		     (*current_msc >= *target_msc - 1) ? "yes" : "no"));
+		return *current_msc >= *target_msc - 1;
 	}
 
 	DBG(("%s: explicit waits requests, divisor=%ld\n",
 	     __FUNCTION__, (long)divisor));
 	*current_msc = get_current_msc(sna, draw, crtc);
-	if (sna->mode.flip_active) {
-		DBG(("%s: %d flips still active, bumping current_msc\n",
-		     __FUNCTION__, sna->mode.flip_active));
-		*current_msc += 1;
+	if (*current_msc >= *target_msc) {
+		DBG(("%s: missed target, queueing event for next: current=%lld, target=%lld, divisor=%lld, remainder=%lld\n",
+		     __FUNCTION__,
+		     (long long)*current_msc,
+		     (long long)*target_msc,
+		     (long long)divisor,
+		     (long long)remainder));
+
+		*target_msc = *current_msc + remainder - *current_msc % divisor;
+		if (*target_msc <= *current_msc)
+			*target_msc += divisor;
 	}
-	DBG(("%s: target_msc=%lld, current_msc=%lld\n",
-	     __FUNCTION__, (long long)target_msc, (long long)*current_msc));
-	return false;
+
+	DBG(("%s: target_msc=%lld, current_msc=%lld, immediate?=%d\n",
+	     __FUNCTION__, (long long)*target_msc, (long long)*current_msc,
+	     *current_msc >= *target_msc - 1));
+	return *current_msc >= *target_msc - 1;
 }
 
 static bool
 sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 		       DRI2BufferPtr front, DRI2BufferPtr back,
-		       CARD64 *target_msc, CARD64 divisor, CARD64 remainder,
+		       bool immediate, CARD64 *target_msc, CARD64 current_msc,
 		       DRI2SwapEventPtr func, void *data)
 {
 	struct sna *sna = to_sna_from_drawable(draw);
 	struct sna_dri2_event *info;
-	uint64_t current_msc;
 
-	if (immediate_swap(sna, *target_msc, divisor, draw, crtc, &current_msc)) {
+	if (immediate) {
 		info = sna->dri2.flip_pending;
 		DBG(("%s: performing immediate swap on pipe %d, pending? %d, mode: %d, continuation? %d\n",
 		     __FUNCTION__, sna_crtc_to_pipe(crtc),
@@ -2716,24 +2730,6 @@ queue:
 	info->front = sna_dri2_reference_buffer(front);
 	info->back = sna_dri2_reference_buffer(back);
 
-	/*
-	 * If divisor is zero, or current_msc is smaller than target_msc
-	 * we just need to make sure target_msc passes before initiating
-	 * the swap.
-	 */
-	if (divisor && current_msc >= *target_msc) {
-		DBG(("%s: missed target, queueing event for next: current=%lld, target=%lld, divisor=%lld, remainder=%lld\n",
-		     __FUNCTION__,
-		     (long long)current_msc,
-		     (long long)*target_msc,
-		     (long long)divisor,
-		     (long long)remainder));
-
-		*target_msc = current_msc + remainder - current_msc % divisor;
-		if (*target_msc <= current_msc)
-			*target_msc += divisor;
-	}
-
 	if (*target_msc <= current_msc + 1 && sna_dri2_flip(info)) {
 		*target_msc = current_msc + 1;
 	} else {
@@ -2764,14 +2760,13 @@ queue:
 static bool
 sna_dri2_schedule_xchg(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 		       DRI2BufferPtr front, DRI2BufferPtr back,
-		       CARD64 *target_msc, CARD64 divisor, CARD64 remainder,
+		       bool immediate, CARD64 *target_msc, CARD64 current_msc,
 		       DRI2SwapEventPtr func, void *data)
 {
 	struct sna *sna = to_sna_from_drawable(draw);
-	uint64_t current_msc;
 	bool sync, event;
 
-	if (!immediate_swap(sna, *target_msc, divisor, draw, crtc, &current_msc))
+	if (!immediate)
 		return false;
 
 	sync = current_msc < *target_msc && xorg_can_triple_buffer();
@@ -2827,14 +2822,13 @@ complete:
 static bool
 sna_dri2_schedule_xchg_crtc(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 			    DRI2BufferPtr front, DRI2BufferPtr back,
-			    CARD64 *target_msc, CARD64 divisor, CARD64 remainder,
+			    bool immediate, CARD64 *target_msc, CARD64 current_msc,
 			    DRI2SwapEventPtr func, void *data)
 {
 	struct sna *sna = to_sna_from_drawable(draw);
-	uint64_t current_msc;
 	bool sync, event;
 
-	if (!immediate_swap(sna, *target_msc, divisor, draw, crtc, &current_msc))
+	if (!immediate)
 		return false;
 
 	sync = current_msc < *target_msc && xorg_can_triple_buffer();
@@ -2926,6 +2920,7 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 	struct sna_dri2_event *info = NULL;
 	int type = DRI2_EXCHANGE_COMPLETE;
 	CARD64 current_msc;
+	bool immediate;
 
 	DBG(("%s: draw=%lu %dx%d, pixmap=%ld %dx%d, back=%u (refs=%d/%d, flush=%d) , front=%u (refs=%d/%d, flush=%d)\n",
 	     __FUNCTION__,
@@ -3005,21 +3000,25 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 		sna_mode_wakeup(sna);
 	}
 
+	immediate = immediate_swap(sna, draw, crtc,
+				   target_msc, divisor, remainder,
+				   &current_msc);
+
 	if (can_xchg(sna, draw, front, back) &&
 	    sna_dri2_schedule_xchg(client, draw, crtc, front, back,
-				   target_msc, divisor, remainder,
+				   immediate, target_msc, current_msc,
 				   func, data))
 		return TRUE;
 
 	if (can_xchg_crtc(sna, draw, front, back, crtc) &&
 	    sna_dri2_schedule_xchg_crtc(client, draw, crtc, front, back,
-					target_msc, divisor, remainder,
+					immediate, target_msc, current_msc,
 					func, data))
 		return TRUE;
 
 	if (can_flip(sna, draw, front, back, crtc) &&
 	    sna_dri2_schedule_flip(client, draw, crtc, front, back,
-				  target_msc, divisor, remainder,
+				  immediate, target_msc, current_msc,
 				  func, data))
 		return TRUE;
 
@@ -3036,7 +3035,7 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 	info->front = sna_dri2_reference_buffer(front);
 	info->back = sna_dri2_reference_buffer(back);
 
-	if (immediate_swap(sna, *target_msc, divisor, draw, crtc, &current_msc)) {
+	if (immediate) {
 		bool sync = current_msc < *target_msc;
 		if (!sna_dri2_immediate_blit(sna, info, sync, true))
 			sna_dri2_event_free(info);
@@ -3049,25 +3048,8 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 		DRM_VBLANK_EVENT;
 	vbl.request.signal = (uintptr_t)info;
 
-	/*
-	 * If divisor is zero, or current_msc is smaller than target_msc
-	 * we just need to make sure target_msc passes before initiating
-	 * the swap.
-	 */
 	info->type = SWAP;
 	info->queued = true;
-	if (divisor && current_msc >= *target_msc) {
-		DBG(("%s: missed target, queueing event for next: current=%lld, target=%lld, divisor=%lld, remainder=%lld\n",
-		     __FUNCTION__,
-		     (long long)current_msc,
-		     (long long)*target_msc,
-		     (long long)divisor,
-		     (long long)remainder));
-
-		*target_msc = current_msc + remainder - current_msc % divisor;
-		if (*target_msc <= current_msc)
-			*target_msc += divisor;
-	}
 	vbl.request.sequence = draw_target_seq(draw, *target_msc - 1);
 	if (*target_msc <= current_msc + 1) {
 		DBG(("%s: performing blit before queueing\n", __FUNCTION__));
