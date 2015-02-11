@@ -38,9 +38,10 @@
 static present_screen_info_rec present_info;
 
 struct sna_present_event {
-	uint64_t event_id;
 	xf86CrtcPtr crtc;
 	struct sna *sna;
+	uint64_t event_id;
+	uint64_t target_msc;
 };
 
 static void sna_present_unflip(ScreenPtr screen, uint64_t event_id);
@@ -75,6 +76,56 @@ static inline int sna_wait_vblank(struct sna *sna, union drm_wait_vblank *vbl, i
 	     vbl->request.type & DRM_VBLANK_RELATIVE ? " [relative]" : ""));
 	vbl->request.type |= pipe_select(pipe);
 	return drmIoctl(sna->kgem.fd, DRM_IOCTL_WAIT_VBLANK, vbl);
+}
+
+static uint32_t msc_to_delay(xf86CrtcPtr crtc, uint64_t msc)
+{
+	DisplayModePtr mode = &crtc->desiredMode;
+	return msc * mode->VTotal * mode->HTotal / mode->Clock;
+}
+
+static CARD32 sna_fake_vblank_handler(OsTimerPtr timer, CARD32 now, void *data)
+{
+	struct sna_present_event *info = data;
+	union drm_wait_vblank vbl;
+	uint64_t msc, ust;
+
+	DBG(("%s(now=%d)\n", __FUNCTION__, now));
+
+	VG_CLEAR(vbl);
+	vbl.request.type = DRM_VBLANK_RELATIVE;
+	vbl.request.sequence = 0;
+	if (sna_wait_vblank(info->sna, &vbl, sna_crtc_to_pipe(info->crtc)) == 0) {
+		ust = ust64(vbl.reply.tval_sec, vbl.reply.tval_usec);
+		msc = sna_crtc_record_vblank(info->crtc, &vbl);
+		if (msc < info->target_msc)
+			return msc_to_delay(info->crtc, msc - info->target_msc);
+	} else {
+		const struct ust_msc *swap = sna_crtc_last_swap(info->crtc);
+		ust = ust64(swap->tv_sec, swap->tv_usec);
+		msc = swap->msc;
+	}
+
+	present_event_notify(info->event_id, ust, msc);
+	free(info);
+	free(timer);
+	return 0;
+}
+
+static bool sna_fake_vblank(struct sna_present_event *event)
+{
+	uint64_t msc = sna_crtc_last_swap(event->crtc)->msc;
+	uint32_t delay;
+
+	if (msc < event->target_msc)
+		delay = msc_to_delay(event->crtc, event->target_msc - msc);
+	else
+		delay = 0;
+
+	DBG(("%s(target_msc=%lld, msc=%lld, delay=%ums)\n",
+	     __FUNCTION__, event->target_msc, msc, delay));
+
+	return TimerSet(NULL, 0, delay, sna_fake_vblank_handler, event);
 }
 
 static RRCrtcPtr
@@ -131,10 +182,11 @@ sna_present_vblank_handler(struct drm_event_vblank *event)
 {
 	struct sna_present_event *info = to_present_event(event->user_data);
 
-	DBG(("%s: pipe=%d tv=%d.%06d msc=%d, event %lld complete\n", __FUNCTION__,
+	DBG(("%s: pipe=%d tv=%d.%06d msc=%d, event %lld complete: target_msc=%lld\n", __FUNCTION__,
 	     sna_crtc_to_pipe(info->crtc),
 	     event->tv_sec, event->tv_usec, event->sequence,
-	     (long long)info->event_id));
+	     (long long)info->event_id,
+	     (long long)info->target_msc));
 	present_event_notify(info->event_id,
 			     ust64(event->tv_sec, event->tv_usec),
 			     sna_crtc_record_event(info->crtc, event));
@@ -156,9 +208,10 @@ sna_present_queue_vblank(RRCrtcPtr crtc, uint64_t event_id, uint64_t msc)
 	if (event == NULL)
 		return BadAlloc;
 
-	event->event_id = event_id;
 	event->crtc = crtc->devPrivate;
 	event->sna = sna;
+	event->target_msc = msc;
+	event->event_id = event_id;
 
 	VG_CLEAR(vbl);
 	vbl.request.type = DRM_VBLANK_ABSOLUTE | DRM_VBLANK_EVENT;
@@ -166,8 +219,10 @@ sna_present_queue_vblank(RRCrtcPtr crtc, uint64_t event_id, uint64_t msc)
 	vbl.request.signal = (uintptr_t)MARK_PRESENT(event);
 	if (sna_wait_vblank(sna, &vbl, sna_crtc_to_pipe(event->crtc))) {
 		DBG(("%s: vblank enqueue failed\n", __FUNCTION__));
-		free(event);
-		return BadMatch;
+		if (!sna_fake_vblank(event)) {
+			free(event);
+			return BadAlloc;
+		}
 	}
 
 	return Success;
@@ -360,9 +415,10 @@ page_flip(struct sna *sna,
 	if (event == NULL)
 		return FALSE;
 
-	event->event_id = event_id;
 	event->crtc = crtc ? crtc->devPrivate : NULL;
 	event->sna = sna;
+	event->event_id = event_id;
+	event->target_msc = 0;
 
 	if (!sna_page_flip(sna, bo, present_flip_handler, event)) {
 		DBG(("%s: pageflip failed\n", __FUNCTION__));
