@@ -21,6 +21,16 @@
 
 #define COUNT 60
 
+static uint32_t upper_32_bits(uint64_t val)
+{
+	return val >> 32;
+}
+
+static uint32_t lower_32_bits(uint64_t val)
+{
+	return val & 0xffffffff;
+}
+
 static int dri2_open(Display *dpy)
 {
 	drm_auth_t auth;
@@ -73,6 +83,8 @@ static void race_window(Display *dpy, int width, int height,
 	int count, loop;
 	DRI2Buffer *buffers;
 
+	printf("%s(%s)\n", __func__, name);
+
 	/* Be nasty and install a fullscreen window on top so that we
 	 * can guarantee we do not get clipped by children.
 	 */
@@ -98,7 +110,9 @@ static void race_window(Display *dpy, int width, int height,
 		for (count = 0; count < loop; count++)
 			DRI2SwapBuffers(dpy, win, 0, 0, 0);
 		XDestroyWindow(dpy, win);
+		printf("."); fflush(stdout);
 	} while (--loop);
+	printf("*\n");
 
 	loop = 100;
 	do {
@@ -121,11 +135,14 @@ static void race_window(Display *dpy, int width, int height,
 		for (count = 0; count < loop; count++)
 			swap_buffers(dpy, win, attachments, nattachments);
 		XDestroyWindow(dpy, win);
+		printf("."); fflush(stdout);
 	} while (--loop);
+	printf("*\n");
 
 	loop = 100;
 	do {
-		uint64_t ignore;
+		uint64_t ignore, msc;
+		xcb_connection_t *c = XGetXCBConnection(dpy);
 
 		win = XCreateWindow(dpy, DefaultRootWindow(dpy),
 				    0, 0, width, height, 0,
@@ -136,12 +153,18 @@ static void race_window(Display *dpy, int width, int height,
 		XMapWindow(dpy, win);
 
 		DRI2CreateDrawable(dpy, win);
-
+		DRI2GetMSC(dpy, win, &ignore, &msc, &ignore);
 		for (count = 0; count < loop; count++)
-			DRI2WaitMSC(dpy, win, 0, 1, 0,
-				    &ignore, &ignore, &ignore);
+			xcb_discard_reply(c,
+					  xcb_dri2_wait_msc(c, win,
+							    upper_32_bits(msc + count + 1),
+							    lower_32_bits(msc + count + 1),
+							    0, 1, 0, 0).sequence);
+		XFlush(dpy);
 		XDestroyWindow(dpy, win);
+		printf("."); fflush(stdout);
 	} while (--loop);
+	printf("*\n");
 
 	XSync(dpy, 1);
 	sleep(2);
@@ -155,6 +178,8 @@ static void race_client(int width, int height,
 	XSetWindowAttributes attr;
 	int count, loop;
 
+	printf("%s(%s)\n", __func__, name);
+
 	/* Be nasty and install a fullscreen window on top so that we
 	 * can guarantee we do not get clipped by children.
 	 */
@@ -180,7 +205,9 @@ static void race_client(int width, int height,
 		for (count = 0; count < loop; count++)
 			DRI2SwapBuffers(dpy, win, 0, 0, 0);
 		XCloseDisplay(dpy);
+		printf("."); fflush(stdout);
 	} while (--loop);
+	printf("*\n");
 
 	loop = 100;
 	do {
@@ -203,12 +230,15 @@ static void race_client(int width, int height,
 		for (count = 0; count < loop; count++)
 			swap_buffers(dpy, win, attachments, nattachments);
 		XCloseDisplay(dpy);
+		printf("."); fflush(stdout);
 	} while (--loop);
+	printf("*\n");
 
 	loop = 100;
 	do {
-		uint64_t ignore;
+		uint64_t ignore, msc;
 		Display *dpy = XOpenDisplay(NULL);
+		xcb_connection_t *c = XGetXCBConnection(dpy);
 		Window win = XCreateWindow(dpy, DefaultRootWindow(dpy),
 					   0, 0, width, height, 0,
 					   DefaultDepth(dpy, DefaultScreen(dpy)),
@@ -219,11 +249,18 @@ static void race_client(int width, int height,
 		XMapWindow(dpy, win);
 
 		DRI2CreateDrawable(dpy, win);
+		DRI2GetMSC(dpy, win, &ignore, &msc, &ignore);
 		for (count = 0; count < loop; count++)
-			DRI2WaitMSC(dpy, win, 0, 1, 0,
-				    &ignore, &ignore, &ignore);
+			xcb_discard_reply(c,
+					  xcb_dri2_wait_msc(c, win,
+							    upper_32_bits(msc + count + 1),
+							    lower_32_bits(msc + count + 1),
+							    0, 1, 0, 0).sequence);
+		XFlush(dpy);
 		XCloseDisplay(dpy);
+		printf("."); fflush(stdout);
 	} while (--loop);
+	printf("*\n");
 }
 
 int main(void)
