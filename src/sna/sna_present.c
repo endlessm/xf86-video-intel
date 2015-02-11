@@ -78,10 +78,34 @@ static inline int sna_wait_vblank(struct sna *sna, union drm_wait_vblank *vbl, i
 	return drmIoctl(sna->kgem.fd, DRM_IOCTL_WAIT_VBLANK, vbl);
 }
 
-static uint32_t msc_to_delay(xf86CrtcPtr crtc, uint64_t msc)
+static uint64_t gettime_ust64(void)
 {
-	DisplayModePtr mode = &crtc->desiredMode;
-	return msc * mode->VTotal * mode->HTotal / mode->Clock;
+	struct timespec tv;
+
+	if (clock_gettime(CLOCK_MONOTONIC, &tv))
+		return GetTimeInMicros();
+
+	return ust64(tv.tv_sec, tv.tv_nsec / 1000);
+}
+
+static uint32_t msc_to_delay(xf86CrtcPtr crtc, uint64_t target)
+{
+	const DisplayModeRec *mode = &crtc->desiredMode;
+	const struct ust_msc *swap = sna_crtc_last_swap(crtc);
+	int64_t delay, subframe;
+
+	delay = (target - swap->msc) * mode->VTotal * mode->HTotal / mode->Clock;
+	subframe = gettime_ust64() - swap_ust(swap);
+	subframe /= 1000;
+	if (subframe < delay)
+		delay -= subframe;
+	else
+		delay = 0;
+
+	DBG(("%s: sleep %d frames, %llu ms\n", __FUNCTION__,
+	     (int)(target - swap->msc), (long long)delay));
+	assert(delay >= 0);
+	return delay;
 }
 
 static CARD32 sna_fake_vblank_handler(OsTimerPtr timer, CARD32 now, void *data)
@@ -90,7 +114,7 @@ static CARD32 sna_fake_vblank_handler(OsTimerPtr timer, CARD32 now, void *data)
 	union drm_wait_vblank vbl;
 	uint64_t msc, ust;
 
-	DBG(("%s(now=%d)\n", __FUNCTION__, now));
+	DBG(("%s(event=%lld, now=%d)\n", __FUNCTION__, (long long)info->event_id, now));
 
 	VG_CLEAR(vbl);
 	vbl.request.type = DRM_VBLANK_RELATIVE;
@@ -98,12 +122,19 @@ static CARD32 sna_fake_vblank_handler(OsTimerPtr timer, CARD32 now, void *data)
 	if (sna_wait_vblank(info->sna, &vbl, sna_crtc_to_pipe(info->crtc)) == 0) {
 		ust = ust64(vbl.reply.tval_sec, vbl.reply.tval_usec);
 		msc = sna_crtc_record_vblank(info->crtc, &vbl);
-		if (msc < info->target_msc)
-			return msc_to_delay(info->crtc, msc - info->target_msc);
+		DBG(("%s: event=%lld, target msc=%lld, now %lld\n",
+		     __FUNCTION__, (long long)info->event_id, (long long)info->target_msc, (long long)msc));
+		if (msc < info->target_msc) {
+			uint32_t delay = msc_to_delay(info->crtc, info->target_msc);
+			if (delay)
+				return delay;
+		}
 	} else {
 		const struct ust_msc *swap = sna_crtc_last_swap(info->crtc);
-		ust = ust64(swap->tv_sec, swap->tv_usec);
+		ust = swap_ust(swap);
 		msc = swap->msc;
+		DBG(("%s: event=%lld, CRTC OFF, target msc=%lld, was %lld\n",
+		     __FUNCTION__, (long long)info->event_id, (long long)info->target_msc, (long long)msc));
 	}
 
 	present_event_notify(info->event_id, ust, msc);
@@ -112,20 +143,26 @@ static CARD32 sna_fake_vblank_handler(OsTimerPtr timer, CARD32 now, void *data)
 	return 0;
 }
 
-static bool sna_fake_vblank(struct sna_present_event *event)
+static bool sna_fake_vblank(struct sna_present_event *info)
 {
-	uint64_t msc = sna_crtc_last_swap(event->crtc)->msc;
+	uint64_t msc = sna_crtc_last_swap(info->crtc)->msc;
 	uint32_t delay;
 
-	if (msc < event->target_msc)
-		delay = msc_to_delay(event->crtc, event->target_msc - msc);
+	if (msc < info->target_msc)
+		delay = msc_to_delay(info->crtc, info->target_msc);
 	else
 		delay = 0;
 
-	DBG(("%s(target_msc=%lld, msc=%lld, delay=%ums)\n",
-	     __FUNCTION__, event->target_msc, msc, delay));
+	DBG(("%s(event=%lld, target_msc=%lld, msc=%lld, delay=%ums)\n",
+	     __FUNCTION__, (long long)info->event_id, (long long)info->target_msc, msc, delay));
+	if (delay == 0) {
+		const struct ust_msc *swap = sna_crtc_last_swap(info->crtc);
+		present_event_notify(info->event_id, swap_ust(swap), swap->msc);
+		free(info);
+		return true;
+	}
 
-	return TimerSet(NULL, 0, delay, sna_fake_vblank_handler, event);
+	return TimerSet(NULL, 0, delay, sna_fake_vblank_handler, info);
 }
 
 static RRCrtcPtr
@@ -166,7 +203,7 @@ sna_present_get_ust_msc(RRCrtcPtr crtc, CARD64 *ust, CARD64 *msc)
 		*msc = sna_crtc_record_vblank(crtc->devPrivate, &vbl);
 	} else {
 		const struct ust_msc *swap = sna_crtc_last_swap(crtc->devPrivate);
-		*ust = ust64(swap->tv_sec, swap->tv_usec);
+		*ust = swap_ust(swap);
 		*msc = swap->msc;
 	}
 
@@ -212,6 +249,8 @@ sna_present_queue_vblank(RRCrtcPtr crtc, uint64_t event_id, uint64_t msc)
 	event->sna = sna;
 	event->target_msc = msc;
 	event->event_id = event_id;
+
+	assert((int64_t)(msc - sna_crtc_last_swap(event->crtc)->msc) >= 0);
 
 	VG_CLEAR(vbl);
 	vbl.request.type = DRM_VBLANK_ABSOLUTE | DRM_VBLANK_EVENT;
@@ -300,7 +339,7 @@ sna_present_check_flip(RRCrtcPtr crtc,
 
 	if (sync_flip) {
 		if ((sna->flags & SNA_HAS_FLIP) == 0) {
-			DBG(("%s: async flips not suported\n", __FUNCTION__));
+			DBG(("%s: sync flips not suported\n", __FUNCTION__));
 			return FALSE;
 		}
 	} else {
@@ -327,16 +366,6 @@ sna_present_check_flip(RRCrtcPtr crtc,
 	}
 
 	return TRUE;
-}
-
-static uint64_t gettime_ust64(void)
-{
-	struct timespec tv;
-
-	if (clock_gettime(CLOCK_MONOTONIC, &tv))
-		return 0;
-
-	return ust64(tv.tv_sec, tv.tv_nsec / 1000);
 }
 
 static Bool
@@ -386,7 +415,7 @@ present_flip_handler(struct drm_event_vblank *event, void *data)
 	     info->crtc ? sna_crtc_to_pipe(info->crtc) : -1,
 	     swap.tv_sec, swap.tv_usec, (long long)swap.msc,
 	     (long long)info->event_id));
-	present_event_notify(info->event_id, ust64(swap.tv_sec, swap.tv_usec), swap.msc);
+	present_event_notify(info->event_id, swap_ust(&swap), swap.msc);
 
 	if (info->sna->present.unflip) {
 		DBG(("%s: executing queued unflip (event=%lld)\n", __FUNCTION__, info->sna->present.unflip));
@@ -519,9 +548,7 @@ notify:
 		     -1,
 		     swap->tv_sec, swap->tv_usec, (long long)swap->msc,
 		     (long long)event_id));
-		present_event_notify(event_id,
-				     ust64(swap->tv_sec, swap->tv_usec),
-				     swap->msc);
+		present_event_notify(event_id, swap_ust(swap), swap->msc);
 		return;
 	}
 

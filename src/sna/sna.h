@@ -542,6 +542,11 @@ static inline uint64_t ust64(int tv_sec, int tv_usec)
 	return (uint64_t)tv_sec * 1000000 + tv_usec;
 }
 
+static inline uint64_t swap_ust(const struct ust_msc *swap)
+{
+	return ust64(swap->tv_sec, swap->tv_usec);
+}
+
 #if HAVE_DRI2
 bool sna_dri2_open(struct sna *sna, ScreenPtr pScreen);
 void sna_dri2_page_flip_handler(struct sna *sna, struct drm_event_vblank *event);
