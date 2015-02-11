@@ -5331,6 +5331,37 @@ sna_crtc_flip(struct sna *sna, struct sna_crtc *crtc, struct kgem_bo *bo, int x,
 	return true;
 }
 
+static void sna_mode_restore(struct sna *sna)
+{
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	int error = 0;
+	int i;
+
+	assert(!sna->mode.hidden);
+
+	for (i = 0; i < sna->mode.num_real_crtc; i++) {
+		xf86CrtcPtr crtc = config->crtc[i];
+
+		assert(to_sna_crtc(crtc) != NULL);
+		if (to_sna_crtc(crtc)->bo == NULL)
+			continue;
+
+		assert(crtc->enabled);
+		if (!__sna_crtc_set_mode(crtc)) {
+			sna_crtc_disable(crtc, false);
+			error++;
+		}
+	}
+	sna_mode_wakeup(sna);
+	update_flush_interval(sna);
+	sna_cursors_reload(sna);
+	sna->mode.dirty = false;
+
+	if (error)
+		xf86DrvMsg(sna->scrn->scrnIndex, X_ERROR,
+			   "Failed to restore display configuration\n");
+}
+
 int
 sna_page_flip(struct sna *sna,
 	      struct kgem_bo *bo,
@@ -5410,12 +5441,8 @@ fixup_flip:
 
 				/* queue a flip in order to send the event */
 			} else {
-				if (count && !xf86SetDesiredModes(sna->scrn)) {
-					xf86DrvMsg(sna->scrn->scrnIndex, X_ERROR,
-						   "failed to restore display configuration\n");
-					for (; i < sna->mode.num_real_crtc; i++)
-						sna_crtc_disable(config->crtc[i], false);
-				}
+				if (count)
+					sna_mode_restore(sna);
 				return 0;
 			}
 		}
@@ -5463,11 +5490,17 @@ retry_flip:
 				goto retry_flip;
 			}
 
-			xf86DrvMsg(sna->scrn->scrnIndex, X_ERROR,
-				   "page flipping failed, on CRTC:%d (pipe=%d), disabling %s page flips\n",
-				   crtc->id, crtc->pipe, data ? "synchronous": "asynchronous");
-			sna->flags &= ~(data ? SNA_HAS_FLIP : SNA_HAS_ASYNC_FLIP);
-			goto fixup_flip;
+			if (sna->flags & (data ? SNA_HAS_FLIP : SNA_HAS_ASYNC_FLIP)) {
+				xf86DrvMsg(sna->scrn->scrnIndex, X_ERROR,
+					   "page flipping failed, on CRTC:%d (pipe=%d), disabling %s page flips\n",
+					   crtc->id, crtc->pipe, data ? "synchronous": "asynchronous");
+				sna->flags &= ~(data ? SNA_HAS_FLIP : SNA_HAS_ASYNC_FLIP);
+				goto fixup_flip;
+			}
+
+			if (count)
+				sna_mode_restore(sna);
+			return 0;
 		}
 
 		if (data) {
