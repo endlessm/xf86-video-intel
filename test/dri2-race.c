@@ -55,14 +55,14 @@ static int dri2_open(Display *dpy)
 	return fd;
 }
 
-static void swap_buffers(Display *dpy, Window win,
+static void swap_buffers(Display *dpy, Window win, int divisor,
 			 unsigned int *attachments, int nattachments)
 {
 	xcb_connection_t *c = XGetXCBConnection(dpy);
 	unsigned int seq[2];
 
 	seq[0] = xcb_dri2_swap_buffers_unchecked(c, win,
-						 0, 0, 0, 0, 0, 0).sequence;
+						 0, 0, 0, divisor, 0, 0).sequence;
 
 
 	seq[1] = xcb_dri2_get_buffers_unchecked(c, win,
@@ -133,7 +133,57 @@ static void race_window(Display *dpy, int width, int height,
 
 		free(buffers);
 		for (count = 0; count < loop; count++)
-			swap_buffers(dpy, win, attachments, nattachments);
+			DRI2SwapBuffers(dpy, win, 0, 1, 0);
+		XDestroyWindow(dpy, win);
+		printf("."); fflush(stdout);
+	} while (--loop);
+	printf("*\n");
+
+	loop = 100;
+	do {
+		win = XCreateWindow(dpy, DefaultRootWindow(dpy),
+				    0, 0, width, height, 0,
+				    DefaultDepth(dpy, DefaultScreen(dpy)),
+				    InputOutput,
+				    DefaultVisual(dpy, DefaultScreen(dpy)),
+				    CWOverrideRedirect, &attr);
+		XMapWindow(dpy, win);
+
+		DRI2CreateDrawable(dpy, win);
+
+		buffers = DRI2GetBuffers(dpy, win, &width, &height,
+					 attachments, nattachments, &count);
+		if (count != nattachments)
+			return;
+
+		free(buffers);
+		for (count = 0; count < loop; count++)
+			swap_buffers(dpy, win, 0, attachments, nattachments);
+		XDestroyWindow(dpy, win);
+		printf("."); fflush(stdout);
+	} while (--loop);
+	printf("*\n");
+
+	loop = 100;
+	do {
+		win = XCreateWindow(dpy, DefaultRootWindow(dpy),
+				    0, 0, width, height, 0,
+				    DefaultDepth(dpy, DefaultScreen(dpy)),
+				    InputOutput,
+				    DefaultVisual(dpy, DefaultScreen(dpy)),
+				    CWOverrideRedirect, &attr);
+		XMapWindow(dpy, win);
+
+		DRI2CreateDrawable(dpy, win);
+
+		buffers = DRI2GetBuffers(dpy, win, &width, &height,
+					 attachments, nattachments, &count);
+		if (count != nattachments)
+			return;
+
+		free(buffers);
+		for (count = 0; count < loop; count++)
+			swap_buffers(dpy, win, 1, attachments, nattachments);
 		XDestroyWindow(dpy, win);
 		printf("."); fflush(stdout);
 	} while (--loop);
@@ -228,7 +278,32 @@ static void race_client(int width, int height,
 			return;
 
 		for (count = 0; count < loop; count++)
-			swap_buffers(dpy, win, attachments, nattachments);
+			swap_buffers(dpy, win, 0, attachments, nattachments);
+		XCloseDisplay(dpy);
+		printf("."); fflush(stdout);
+	} while (--loop);
+	printf("*\n");
+
+	loop = 100;
+	do {
+		Display *dpy = XOpenDisplay(NULL);
+		Window win = XCreateWindow(dpy, DefaultRootWindow(dpy),
+					   0, 0, width, height, 0,
+					   DefaultDepth(dpy, DefaultScreen(dpy)),
+					   InputOutput,
+					   DefaultVisual(dpy, DefaultScreen(dpy)),
+					   CWOverrideRedirect, &attr);
+
+		XMapWindow(dpy, win);
+
+		DRI2CreateDrawable(dpy, win);
+		free(DRI2GetBuffers(dpy, win, &width, &height,
+				    attachments, nattachments, &count));
+		if (count != nattachments)
+			return;
+
+		for (count = 0; count < loop; count++)
+			swap_buffers(dpy, win, 1, attachments, nattachments);
 		XCloseDisplay(dpy);
 		printf("."); fflush(stdout);
 	} while (--loop);
