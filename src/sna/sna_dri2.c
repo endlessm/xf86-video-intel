@@ -1542,6 +1542,12 @@ sna_dri2_flip(struct sna_dri2_event *info)
 	assert(get_drawable_pixmap(info->draw)->drawable.height * bo->pitch <= kgem_bo_size(bo));
 	assert(bo->refcnt);
 
+	if (info->sna->mode.flip_active) {
+		DBG(("%s: %d flips still active, aborting\n",
+		     __FUNCTION__, info->sna->mode.flip_active));
+		return false;
+	}
+
 	if (!sna_page_flip(info->sna, bo, sna_dri2_flip_handler,
 			   info->type == FLIP_ASYNC ? NULL : info))
 		return false;
@@ -2365,6 +2371,9 @@ sna_dri2_flip_continue(struct sna_dri2_event *info)
 
 	info->type = info->flip_continue;
 
+	if (info->sna->mode.front_active == 0)
+		return false;
+
 	if (bo != sna_pixmap(info->sna->front)->gpu_bo)
 		return false;
 
@@ -2386,6 +2395,9 @@ sna_dri2_flip_keepalive(struct sna_dri2_event *info)
 	DBG(("%s(keepalive?=%d)\n", __FUNCTION__, info->keepalive-1));
 	assert(info->keepalive > 0);
 	if (!--info->keepalive)
+		return false;
+
+	if (info->draw == NULL)
 		return false;
 
 	info->flip_continue = FLIP_COMPLETE;
@@ -2587,6 +2599,13 @@ static bool immediate_swap(struct sna *sna,
 	DBG(("%s: explicit waits requests, divisor=%ld\n",
 	     __FUNCTION__, (long)divisor));
 	*current_msc = get_current_msc(sna, draw, crtc);
+	if (sna->mode.flip_active) {
+		DBG(("%s: %d flips still active, bumping current_msc\n",
+		     __FUNCTION__, sna->mode.flip_active));
+		*current_msc += 1;
+	}
+	DBG(("%s: target_msc=%lld, current_msc=%lld\n",
+	     __FUNCTION__, (long long)target_msc, (long long)*current_msc));
 	return false;
 }
 
@@ -2650,6 +2669,10 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 			sna->dri2.flip_pending = info;
 			assert(!info->queued);
 			current_msc++;
+		} else if (sna->mode.flip_active) {
+			DBG(("%s: %d outstanding flips from old client, queueing\n",
+			     __FUNCTION__, sna->mode.flip_active));
+			goto queue;
 		} else {
 			info->type = use_triple_buffer(sna, client, *target_msc == 0);
 			if (!sna_dri2_flip(info)) {
@@ -2673,6 +2696,12 @@ out:
 		DBG(("%s: target_msc=%llu\n", __FUNCTION__, current_msc + 1));
 		*target_msc = current_msc + 1;
 		return true;
+	}
+
+queue:
+	if (KEEPALIVE > 1 && sna->dri2.flip_pending) {
+		info = sna->dri2.flip_pending;
+		info->keepalive = 1;
 	}
 
 	info = sna_dri2_add_event(sna, draw, client);
@@ -2705,11 +2734,7 @@ out:
 			*target_msc += divisor;
 	}
 
-	if (*target_msc <= current_msc + 1) {
-		if (!sna_dri2_flip(info)) {
-			sna_dri2_event_free(info);
-			return false;
-		}
+	if (*target_msc <= current_msc + 1 && sna_dri2_flip(info)) {
 		*target_msc = current_msc + 1;
 	} else {
 		union drm_wait_vblank vbl;
