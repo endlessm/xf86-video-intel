@@ -351,15 +351,18 @@ static int test_future(Display *dpy, void *Q)
 		} else {
 			int msc = (uint32_t)ce->msc - ce->serial;
 			if (msc < 0) {
-				fprintf(stderr, "\tframe %d displayed early by %lld frames\n", (int)(ce->serial - target - 60)/(15*60), (long long)msc);
 				ret += -msc;
-				if (-msc > earliest)
+				if (-msc > earliest) {
+					fprintf(stderr, "\tframe %d displayed early by %lld frames\n", (int)(ce->serial - target - 60)/(15*60), (long long)msc);
 					earliest = -msc;
+				}
 				early++;
-			} else if (msc > 1) { /* allow the frame to slip by a vblank */
+			} else if (msc > 0) {
 				ret += msc;
-				if (msc > latest)
+				if (msc > latest) {
+					fprintf(stderr, "\tframe %d displayed late by %lld frames\n", (int)(ce->serial - target - 60), (long long)msc);
 					latest = msc;
+				}
 				late++;
 			}
 		}
@@ -609,15 +612,18 @@ static int test_accuracy(Display *dpy, void *Q)
 
 		msc = (uint32_t)ce->msc - ce->serial;
 		if (msc < 0) {
-			fprintf(stderr, "\tframe %d displayed early by %lld frames\n", (int)(ce->serial - target - 60), (long long)msc);
 			ret += -msc;
-			if (-msc > earliest)
+			if (-msc > earliest) {
+				fprintf(stderr, "\tframe %d displayed early by %lld frames\n", (int)(ce->serial - target - 60), (long long)msc);
 				earliest = -msc;
+			}
 			early++;
-		} else if (msc > 1) { /* allow the frame to slip by a vblank */
+		} else if (msc > 0) {
 			ret += msc;
-			if (msc > latest)
+			if (msc > latest) {
+				fprintf(stderr, "\tframe %d displayed late by %lld frames\n", (int)(ce->serial - target - 60), (long long)msc);
 				latest = msc;
+			}
 			late++;
 		}
 		complete = ce->serial == target + 60 + N_VBLANKS;
