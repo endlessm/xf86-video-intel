@@ -243,6 +243,141 @@ static int test_whole(Display *dpy)
 
 static int test_future(Display *dpy, void *Q)
 {
+	xcb_connection_t *c = XGetXCBConnection(dpy);
+	Pixmap pixmap;
+	struct dri3_fence fence;
+	Window root;
+	unsigned int width, height;
+	unsigned border, depth;
+	int x, y, ret = 0, n;
+	uint64_t target;
+	int complete;
+	int early = 0, late = 0;
+	int earliest = 0, latest = 0;
+
+	XGetGeometry(dpy, DefaultRootWindow(dpy),
+		     &root, &x, &y, &width, &height, &border, &depth);
+
+	if (dri3_create_fence(dpy, root, &fence))
+		return 0;
+
+	printf("Testing whole screen flips into the future: %dx%d\n", width, height);
+	_x_error_occurred = 0;
+
+	target = check_msc(dpy, root, Q, 0);
+	pixmap = XCreatePixmap(dpy, root, width, height, depth);
+	xcb_present_pixmap(c, root, pixmap,
+			   0xdeadbeef, /* serial */
+			   0, /* valid */
+			   0, /* update */
+			   0, /* x_off */
+			   0, /* y_off */
+			   None,
+			   None, /* wait fence */
+			   None,
+			   XCB_PRESENT_OPTION_NONE,
+			   target + 60, /* target msc */
+			   0, /* divisor */
+			   0, /* remainder */
+			   0, NULL);
+	xcb_flush(c);
+	complete = 0;
+	do {
+		xcb_present_complete_notify_event_t *ce;
+		xcb_generic_event_t *ev;
+
+		ev = xcb_wait_for_special_event(c, Q);
+		if (ev == NULL)
+			break;
+
+		ce = (xcb_present_complete_notify_event_t *)ev;
+		if (ce->kind != XCB_PRESENT_COMPLETE_KIND_PIXMAP)
+			break;
+
+		complete = ce->serial == 0xdeadbeef;
+		free(ev);
+	} while (!complete);
+	XSync(dpy, True);
+
+	target = check_msc(dpy, root, Q, 0);
+	for (n = 0; n <= 10; n++)
+		xcb_present_pixmap(c, root, pixmap,
+				   target + 60 + n*15*60, /* serial */
+				   0, /* valid */
+				   0, /* update */
+				   0, /* x_off */
+				   0, /* y_off */
+				   None,
+				   None, /* wait fence */
+				   None,
+				   XCB_PRESENT_OPTION_NONE,
+				   target + 60 + n*15*60, /* target msc */
+				   0, /* divisor */
+				   0, /* remainder */
+				   0, NULL);
+	xcb_present_pixmap(c, root, pixmap,
+			   0xdeadbeef, /* serial */
+			   0, /* valid */
+			   0, /* update */
+			   0, /* x_off */
+			   0, /* y_off */
+			   None,
+			   None, /* wait fence */
+			   None,
+			   XCB_PRESENT_OPTION_NONE,
+			   target + 60 + n*15*60, /* target msc */
+			   0, /* divisor */
+			   0, /* remainder */
+			   0, NULL);
+	xcb_flush(c);
+
+	complete = 0;
+	do {
+		xcb_present_complete_notify_event_t *ce;
+		xcb_generic_event_t *ev;
+
+		ev = xcb_wait_for_special_event(c, Q);
+		if (ev == NULL)
+			break;
+
+		ce = (xcb_present_complete_notify_event_t *)ev;
+		if (ce->kind != XCB_PRESENT_COMPLETE_KIND_PIXMAP)
+			break;
+
+		assert(ce->serial);
+
+		if (ce->serial == 0xdeadbeef) {
+			complete = 1;
+		} else {
+			int msc = (uint32_t)ce->msc - ce->serial;
+			if (msc < 0) {
+				fprintf(stderr, "\tframe %d displayed early by %lld frames\n", (int)(ce->serial - target - 60)/(15*60), (long long)msc);
+				ret += -msc;
+				if (-msc > earliest)
+					earliest = -msc;
+				early++;
+			} else if (msc > 1) { /* allow the frame to slip by a vblank */
+				ret += msc;
+				if (msc > latest)
+					latest = msc;
+				late++;
+			}
+		}
+		free(ev);
+	} while (!complete);
+
+	if (early)
+		printf("\t%d frames shown too early (worst %d)!\n", early, earliest);
+	if (late)
+		printf("\t%d frames shown too late (worst %d)!\n", late, latest);
+
+	ret += !!_x_error_occurred;
+
+	return ret;
+}
+
+static int test_exhaustion(Display *dpy, void *Q)
+{
 #define N_VBLANKS 256 /* kernel event queue length: 128 vblanks */
 	xcb_connection_t *c = XGetXCBConnection(dpy);
 	Pixmap pixmap;
@@ -261,7 +396,7 @@ static int test_future(Display *dpy, void *Q)
 	if (dri3_create_fence(dpy, root, &fence))
 		return 0;
 
-	printf("Testing whole screen flips into the future: %dx%d\n", width, height);
+	printf("Testing whole screen flips with long vblank queues: %dx%d\n", width, height);
 	_x_error_occurred = 0;
 
 	region = xcb_generate_id(c);
@@ -304,11 +439,11 @@ static int test_future(Display *dpy, void *Q)
 
 	final = check_msc(dpy, root, Q, 0);
 	if (final < target) {
-		printf("First flip too early, MSC was %llu, expected %llu\n",
+		printf("\tFirst flip too early, MSC was %llu, expected %llu\n",
 		       (long long)final, (long long)target);
 		ret++;
 	} else if (final > target + 1) {
-		printf("First flip too late, MSC was %llu, expected %llu\n",
+		printf("\tFirst flip too late, MSC was %llu, expected %llu\n",
 		       (long long)final, (long long)target);
 		ret++;
 	}
@@ -332,11 +467,11 @@ static int test_future(Display *dpy, void *Q)
 
 	final = check_msc(dpy, root, Q, 0);
 	if (final < target + N_VBLANKS) {
-		printf("Last flip too early, MSC was %llu, expected %llu\n",
+		printf("\tLast flip too early, MSC was %llu, expected %llu\n",
 		       (long long)final, (long long)(target + N_VBLANKS));
 		ret++;
 	} else if (final > target + N_VBLANKS + 1) {
-		printf("Last flip too late, MSC was %llu, expected %llu\n",
+		printf("\tLast flip too late, MSC was %llu, expected %llu\n",
 		       (long long)final, (long long)(target + N_VBLANKS));
 		ret++;
 	}
@@ -394,6 +529,7 @@ static int test_accuracy(Display *dpy, void *Q)
 	int x, y, ret = 0, n;
 	uint64_t target;
 	int early = 0, late = 0;
+	int earliest = 0, latest = 0;
 	int complete;
 
 	XGetGeometry(dpy, DefaultRootWindow(dpy),
@@ -471,13 +607,17 @@ static int test_accuracy(Display *dpy, void *Q)
 
 		assert(ce->serial);
 
-		msc = ce->msc - ce->serial;
+		msc = (uint32_t)ce->msc - ce->serial;
 		if (msc < 0) {
-			fprintf(stderr, "frame %d displayed early by %lld frames\n", (int)(ce->serial - target - 60), (long long)msc);
+			fprintf(stderr, "\tframe %d displayed early by %lld frames\n", (int)(ce->serial - target - 60), (long long)msc);
 			ret += -msc;
+			if (-msc > earliest)
+				earliest = -msc;
 			early++;
 		} else if (msc > 1) { /* allow the frame to slip by a vblank */
 			ret += msc;
+			if (msc > latest)
+				latest = msc;
 			late++;
 		}
 		complete = ce->serial == target + 60 + N_VBLANKS;
@@ -485,11 +625,9 @@ static int test_accuracy(Display *dpy, void *Q)
 	} while (!complete);
 
 	if (early)
-		printf("%d frames shown too early! ", early);
+		printf("\t%d frames shown too early (worst %d)!\n", early, earliest);
 	if (late)
-		printf("%d fames shown too late!", late);
-	if (early|late)
-		printf("\n");
+		printf("\t%d frames shown too late (worst %d)!\n", late, latest);
 
 	ret += !!_x_error_occurred;
 
@@ -541,8 +679,6 @@ static int for_each_crtc(Display *dpy,
 	original_crtc = malloc(sizeof(XRRCrtcInfo *)*res->ncrtc);
 	for (i = 0; i < res->ncrtc; i++)
 		original_crtc[i] = XRRGetCrtcInfo(dpy, res, res->crtcs[i]);
-
-	printf("noutput=%d, ncrtc=%d\n", res->noutput, res->ncrtc);
 
 	for (i = 0; i < res->noutput; i++) {
 		XRROutputInfo *output;
@@ -1014,6 +1150,9 @@ int main(void)
 	last_msc = check_msc(dpy, root, queue, last_msc);
 
 	error += test_accuracy(dpy, queue);
+	last_msc = check_msc(dpy, root, queue, last_msc);
+
+	error += test_exhaustion(dpy, queue);
 	last_msc = check_msc(dpy, root, queue, last_msc);
 
 	error += test_crtc(dpy, queue, last_msc);

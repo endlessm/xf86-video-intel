@@ -219,7 +219,7 @@ sna_present_vblank_handler(struct drm_event_vblank *event)
 {
 	struct sna_present_event *info = to_present_event(event->user_data);
 
-	DBG(("%s: pipe=%d tv=%d.%06d msc=%d (target=%lld), event %lld complete%s\n", __FUNCTION__,
+	DBG(("%s: pipe=%d tv=%d.%06d msc=%d (target=%lld), event=%lld complete%s\n", __FUNCTION__,
 	     sna_crtc_to_pipe(info->crtc),
 	     event->tv_sec, event->tv_usec, event->sequence,
 	     (long long)info->target_msc, (long long)info->event_id,
@@ -393,7 +393,7 @@ page_flip__async(struct sna *sna,
 		return FALSE;
 	}
 
-	DBG(("%s: pipe=%d tv=%d.%06d msc=%lld (target=%lld), event %lld complete\n", __FUNCTION__,
+	DBG(("%s: pipe=%d tv=%d.%06d msc=%lld (target=%lld), event=%lld complete\n", __FUNCTION__,
 	     pipe_from_crtc(crtc),
 	     gettime_ust64() / 1000000, gettime_ust64() % 1000000,
 	     (long long)sna_crtc_last_swap(crtc->devPrivate)->msc,
@@ -417,7 +417,7 @@ present_flip_handler(struct drm_event_vblank *event, void *data)
 	} else
 		swap = *sna_crtc_last_swap(info->crtc);
 
-	DBG(("%s: pipe=%d, tv=%d.%06d msc %lld (target %lld), event %lld complete%s\n", __FUNCTION__,
+	DBG(("%s: pipe=%d, tv=%d.%06d msc=%lld (target %lld), event=%lld complete%s\n", __FUNCTION__,
 	     info->crtc ? sna_crtc_to_pipe(info->crtc) : -1,
 	     swap.tv_sec, swap.tv_usec, (long long)swap.msc,
 	     (long long)info->target_msc,
@@ -553,7 +553,7 @@ sna_present_unflip(ScreenPtr screen, uint64_t event_id)
 
 notify:
 		swap = sna_crtc_last_swap(sna_primary_crtc(sna));
-		DBG(("%s: pipe=%d, tv=%d.%06d msc %lld, event %lld complete\n", __FUNCTION__,
+		DBG(("%s: pipe=%d, tv=%d.%06d msc=%lld, event=%lld complete\n", __FUNCTION__,
 		     -1,
 		     swap->tv_sec, swap->tv_usec, (long long)swap->msc,
 		     (long long)event_id));
