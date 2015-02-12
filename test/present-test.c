@@ -31,6 +31,7 @@
 #include <X11/xshmfence.h>
 #include <X11/Xutil.h>
 #include <X11/Xlibint.h>
+#include <X11/extensions/dpms.h>
 #include <X11/extensions/randr.h>
 #include <X11/extensions/Xrandr.h>
 #include <X11/extensions/Xrender.h>
@@ -220,6 +221,7 @@ static void teardown_msc(Display *dpy, void *q)
 {
 	xcb_unregister_for_special_event(XGetXCBConnection(dpy), q);
 }
+
 static int test_whole(Display *dpy)
 {
 	xcb_connection_t *c = XGetXCBConnection(dpy);
@@ -1344,6 +1346,7 @@ int main(void)
 {
 	Display *dpy;
 	Window root;
+	int dummy;
 	int error = 0;
 	uint64_t last_msc;
 	void *queue;
@@ -1354,6 +1357,9 @@ int main(void)
 
 	if (!has_present(dpy))
 		return 77;
+
+	if (DPMSQueryExtension(dpy, &dummy, &dummy))
+		DPMSDisable(dpy);
 
 	root = DefaultRootWindow(dpy);
 
@@ -1392,5 +1398,7 @@ int main(void)
 
 	teardown_msc(dpy, queue);
 
+	if (DPMSQueryExtension(dpy, &dummy, &dummy))
+		DPMSEnable(dpy);
 	return !!error;
 }
