@@ -1541,8 +1541,13 @@ __sna_crtc_disable(struct sna *sna, struct sna_crtc *sna_crtc)
 		kgem_bo_destroy(&sna->kgem, sna_crtc->bo);
 		sna_crtc->bo = NULL;
 
-		assert(sna->mode.front_active);
-		sna->mode.front_active--;
+		if (sna->mode.hidden) {
+			sna->mode.hidden--;
+			assert(sna->mode.hidden);
+		} else {
+			assert(sna->mode.front_active);
+			sna->mode.front_active--;
+		}
 		sna->mode.dirty = true;
 	}
 
@@ -2379,6 +2384,7 @@ retry: /* Attach per-crtc pixmap or direct */
 	sna_crtc_randr(crtc);
 	if (sna_crtc->transform)
 		sna_crtc_damage(crtc);
+	assert(!sna->mode.hidden);
 	sna->mode.front_active += saved_bo == NULL;
 	sna->mode.dirty = true;
 	DBG(("%s: handle=%d, scanout_active=%d, front_active=%d\n",
