@@ -324,6 +324,87 @@ static uint64_t flush_flips(Display *dpy, Window win, Pixmap pixmap, void *Q, ui
 	return check_msc(dpy, win, Q, msc, ust);
 }
 
+static int test_double(Display *dpy, void *Q)
+{
+#define COUNT (15*60)
+	xcb_connection_t *c = XGetXCBConnection(dpy);
+	Pixmap pixmap;
+	Window root;
+	unsigned int width, height;
+	unsigned border, depth;
+	int x, y, n, ret;
+	struct {
+		uint64_t msc, ust;
+	} frame[COUNT+1];
+	int offset = 0;
+
+	XGetGeometry(dpy, DefaultRootWindow(dpy),
+		     &root, &x, &y, &width, &height, &border, &depth);
+
+	printf("Testing whole screen flip double buffering: %dx%d\n", width, height);
+	_x_error_occurred = 0;
+
+	pixmap = XCreatePixmap(dpy, root, width, height, depth);
+	flush_flips(dpy, root, pixmap, Q, NULL);
+	for (n = 0; n <= COUNT; n++) {
+		int complete;
+
+		xcb_present_pixmap(c, root, pixmap, n,
+				   0, /* valid */
+				   0, /* update */
+				   0, /* x_off */
+				   0, /* y_off */
+				   None,
+				   None, /* wait fence */
+				   None,
+				   XCB_PRESENT_OPTION_NONE,
+				   0, /* target msc */
+				   0, /* divisor */
+				   0, /* remainder */
+				   0, NULL);
+		xcb_flush(c);
+
+		complete = 0;
+		do {
+			xcb_present_complete_notify_event_t *ce;
+			xcb_generic_event_t *ev;
+
+			ev = xcb_wait_for_special_event(c, Q);
+			if (ev == NULL)
+				break;
+
+			ce = (xcb_present_complete_notify_event_t *)ev;
+			if (ce->kind == XCB_PRESENT_COMPLETE_KIND_PIXMAP &&
+			    ce->serial == n) {
+				frame[n].msc = ce->msc;
+				frame[n].ust = ce->ust;
+				complete = 1;
+			}
+			free(ev);
+		} while (!complete);
+	}
+	XFreePixmap(dpy, pixmap);
+
+	XSync(dpy, True);
+	ret = !!_x_error_occurred;
+
+	if (frame[COUNT].msc - frame[0].msc != COUNT) {
+		printf("Expected %d frames interval, %d elapsed instead\n",
+		       COUNT, (int)(frame[COUNT].msc - frame[0].msc));
+		for (n = 0; n <= COUNT; n++) {
+			if (frame[n].msc - frame[0].msc != n + offset) {
+				printf("frame[%d]: msc=%03lld, ust=%lld\n", n,
+				       (long long)(frame[n].msc - frame[0].msc),
+				       (long long)(frame[n].ust - frame[0].ust));
+				offset = frame[n].msc - frame[0].msc - n;
+				ret++;
+			}
+		}
+	}
+
+	return ret;
+}
+
 static int test_future(Display *dpy, void *Q)
 {
 	xcb_connection_t *c = XGetXCBConnection(dpy);
@@ -1283,6 +1364,9 @@ int main(void)
 	last_msc = check_msc(dpy, root, queue, 0, NULL);
 
 	error += test_whole(dpy);
+	last_msc = check_msc(dpy, root, queue, last_msc, NULL);
+
+	error += test_double(dpy, queue);
 	last_msc = check_msc(dpy, root, queue, last_msc, NULL);
 
 	error += test_future(dpy, queue);
