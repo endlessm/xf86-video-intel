@@ -165,7 +165,7 @@ static uint64_t check_msc(Display *dpy, Window win, void *q, uint64_t last_msc, 
 		free(ev);
 	} while (!complete);
 
-	if (msc < last_msc) {
+	if ((int64_t)(msc - last_msc) < 0) {
 		printf("Invalid MSC: was %llu, now %llu\n",
 		       (long long)last_msc, (long long)msc);
 	}
