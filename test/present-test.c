@@ -576,7 +576,7 @@ static int test_accuracy(Display *dpy, void *Q)
 	} while (!complete);
 	XSync(dpy, True);
 
-	target = check_msc(dpy, root, Q, 0);
+	target = check_msc(dpy, root, Q, target);
 	for (n = 0; n <= N_VBLANKS; n++)
 		xcb_present_pixmap(c, root, pixmap,
 				   target + 60 + n, /* serial */
@@ -635,10 +635,168 @@ static int test_accuracy(Display *dpy, void *Q)
 	if (late)
 		printf("\t%d frames shown too late (worst %d)!\n", late, latest);
 
+	XFreePixmap(dpy, pixmap);
+
+	XSync(dpy, True);
 	ret += !!_x_error_occurred;
 
 	return ret;
 #undef N_VBLANKS
+}
+
+static int test_modulus(Display *dpy, void *Q)
+{
+	xcb_connection_t *c = XGetXCBConnection(dpy);
+	Pixmap pixmap;
+	Window root;
+	unsigned int width, height;
+	unsigned border, depth;
+	xcb_xfixes_region_t region;
+	int x, y, ret = 0;
+	uint64_t target;
+	int early = 0, late = 0;
+	int earliest = 0, latest = 0;
+	int complete;
+
+	XGetGeometry(dpy, DefaultRootWindow(dpy),
+		     &root, &x, &y, &width, &height, &border, &depth);
+
+	printf("Testing whole screen flip modulus: %dx%d\n", width, height);
+	_x_error_occurred = 0;
+
+	target = check_msc(dpy, root, Q, 0);
+	pixmap = XCreatePixmap(dpy, root, width, height, depth);
+	xcb_present_pixmap(c, root, pixmap,
+			   0xdeadbeef, /* serial */
+			   0, /* valid */
+			   0, /* update */
+			   0, /* x_off */
+			   0, /* y_off */
+			   None,
+			   None, /* wait fence */
+			   None,
+			   XCB_PRESENT_OPTION_NONE,
+			   target + 60, /* target msc */
+			   0, /* divisor */
+			   0, /* remainder */
+			   0, NULL);
+	xcb_flush(c);
+	complete = 0;
+	do {
+		xcb_present_complete_notify_event_t *ce;
+		xcb_generic_event_t *ev;
+
+		ev = xcb_wait_for_special_event(c, Q);
+		if (ev == NULL)
+			break;
+
+		ce = (xcb_present_complete_notify_event_t *)ev;
+		if (ce->kind != XCB_PRESENT_COMPLETE_KIND_PIXMAP)
+			break;
+
+		complete = ce->serial == 0xdeadbeef;
+		free(ev);
+	} while (!complete);
+	XSync(dpy, True);
+
+	region = xcb_generate_id(c);
+	xcb_xfixes_create_region(c, region, 0, NULL);
+
+	target = check_msc(dpy, root, Q, target);
+	for (x = 1; x <= 7; x++) {
+		for (y = 0; y < x; y++) {
+			xcb_present_pixmap(c, root, pixmap,
+					   y << 16 | x, /* serial */
+					   region, /* valid */
+					   region, /* update */
+					   0, /* x_off */
+					   0, /* y_off */
+					   None,
+					   None, /* wait fence */
+					   None,
+					   XCB_PRESENT_OPTION_NONE,
+					   0, /* target msc */
+					   x, /* divisor */
+					   y, /* remainder */
+					   0, NULL);
+		}
+	}
+	xcb_present_pixmap(c, root, pixmap,
+			   0xdeadbeef, /* serial */
+			   0, /* valid */
+			   0, /* update */
+			   0, /* x_off */
+			   0, /* y_off */
+			   None,
+			   None, /* wait fence */
+			   None,
+			   XCB_PRESENT_OPTION_NONE,
+			   target + 2*x, /* target msc */
+			   0, /* divisor */
+			   0, /* remainder */
+			   0, NULL);
+	xcb_flush(c);
+
+	complete = 0;
+	do {
+		xcb_present_complete_notify_event_t *ce;
+		xcb_generic_event_t *ev;
+
+		ev = xcb_wait_for_special_event(c, Q);
+		if (ev == NULL)
+			break;
+
+		ce = (xcb_present_complete_notify_event_t *)ev;
+		if (ce->kind != XCB_PRESENT_COMPLETE_KIND_PIXMAP)
+			break;
+
+		assert(ce->serial);
+		if (ce->serial != 0xdeadbeef) {
+			uint64_t msc;
+			int diff;
+
+			x = ce->serial & 0xffff;
+			y = ce->serial >> 16;
+
+			msc = target;
+			msc -= target % x;
+			msc += y;
+			if (msc <= target)
+				msc += x;
+
+			diff = (int64_t)(ce->msc - msc);
+			if (diff < 0) {
+				ret += -diff;
+				if (-diff > earliest) {
+					fprintf(stderr, "\tframe (%d, %d) displayed early by %d frames\n", y, x, -diff);
+					earliest = -diff;
+				}
+				early++;
+			} else if (diff > 0) {
+				ret += diff;
+				if (diff > latest) {
+					fprintf(stderr, "\tframe (%d, %d) displayed late by %d frames\n", y, x, diff);
+					latest = diff;
+				}
+				late++;
+			}
+		} else
+			complete = 1;
+		free(ev);
+	} while (!complete);
+
+	if (early)
+		printf("\t%d frames shown too early (worst %d)!\n", early, earliest);
+	if (late)
+		printf("\t%d frames shown too late (worst %d)!\n", late, latest);
+
+	XFreePixmap(dpy, pixmap);
+	xcb_xfixes_destroy_region(c, region);
+
+	XSync(dpy, True);
+	ret += !!_x_error_occurred;
+
+	return ret;
 }
 
 static inline XRRScreenResources *_XRRGetScreenResourcesCurrent(Display *dpy, Window window)
@@ -1156,6 +1314,9 @@ int main(void)
 	last_msc = check_msc(dpy, root, queue, last_msc);
 
 	error += test_accuracy(dpy, queue);
+	last_msc = check_msc(dpy, root, queue, last_msc);
+
+	error += test_modulus(dpy, queue);
 	last_msc = check_msc(dpy, root, queue, last_msc);
 
 	error += test_exhaustion(dpy, queue);
