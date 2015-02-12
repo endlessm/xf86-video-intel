@@ -136,7 +136,7 @@ static void *setup_msc(Display *dpy,  Window win)
 	return q;
 }
 
-static uint64_t check_msc(Display *dpy, Window win, void *q, uint64_t last_msc)
+static uint64_t check_msc(Display *dpy, Window win, void *q, uint64_t last_msc, uint64_t *ust)
 {
 	xcb_connection_t *c = XGetXCBConnection(dpy);
 	static uint32_t serial = 1;
@@ -158,6 +158,8 @@ static uint64_t check_msc(Display *dpy, Window win, void *q, uint64_t last_msc)
 		if (ce->kind == XCB_PRESENT_COMPLETE_KIND_NOTIFY_MSC &&
 		    ce->serial == serial) {
 			msc = ce->msc;
+			if (ust)
+				*ust = ce->ust;
 			complete = 1;
 		}
 		free(ev);
@@ -172,6 +174,46 @@ static uint64_t check_msc(Display *dpy, Window win, void *q, uint64_t last_msc)
 		serial = 1;
 
 	return msc;
+}
+
+static uint64_t msc_interval(Display *dpy, Window win, void *q)
+{
+	xcb_connection_t *c = XGetXCBConnection(dpy);
+	uint64_t msc, ust;
+	int complete = 0;
+
+	msc = check_msc(dpy, win, q, 0, NULL);
+
+	xcb_present_notify_msc(c, win, 0xc0ffee00, msc, 0, 0);
+	xcb_present_notify_msc(c, win, 0xc0ffee01, msc + 10, 0, 0);
+	xcb_flush(c);
+
+	ust = msc = 0;
+	do {
+		xcb_present_complete_notify_event_t *ce;
+		xcb_generic_event_t *ev;
+
+		ev = xcb_wait_for_special_event(c, q);
+		if (ev == NULL)
+			break;
+
+		ce = (xcb_present_complete_notify_event_t *)ev;
+		if (ce->kind == XCB_PRESENT_COMPLETE_KIND_NOTIFY_MSC &&
+		    ce->serial == 0xc0ffee00) {
+			msc -= ce->msc;
+			ust -= ce->ust;
+			complete++;
+		}
+		if (ce->kind == XCB_PRESENT_COMPLETE_KIND_NOTIFY_MSC &&
+		    ce->serial == 0xc0ffee01) {
+			msc += ce->msc;
+			ust += ce->ust;
+			complete++;
+		}
+		free(ev);
+	} while (complete != 2);
+
+	return (ust + msc/2) / msc;
 }
 
 static void teardown_msc(Display *dpy, void *q)
@@ -241,32 +283,14 @@ static int test_whole(Display *dpy)
 	return ret;
 }
 
-static int test_future(Display *dpy, void *Q)
+static uint64_t flush_flips(Display *dpy, Window win, Pixmap pixmap, void *Q, uint64_t *ust)
 {
 	xcb_connection_t *c = XGetXCBConnection(dpy);
-	Pixmap pixmap;
-	struct dri3_fence fence;
-	Window root;
-	unsigned int width, height;
-	unsigned border, depth;
-	int x, y, ret = 0, n;
-	uint64_t target;
+	uint64_t msc;
 	int complete;
-	int early = 0, late = 0;
-	int earliest = 0, latest = 0;
 
-	XGetGeometry(dpy, DefaultRootWindow(dpy),
-		     &root, &x, &y, &width, &height, &border, &depth);
-
-	if (dri3_create_fence(dpy, root, &fence))
-		return 0;
-
-	printf("Testing whole screen flips into the future: %dx%d\n", width, height);
-	_x_error_occurred = 0;
-
-	target = check_msc(dpy, root, Q, 0);
-	pixmap = XCreatePixmap(dpy, root, width, height, depth);
-	xcb_present_pixmap(c, root, pixmap,
+	msc = check_msc(dpy, win, Q, 0, NULL);
+	xcb_present_pixmap(c, win, pixmap,
 			   0xdeadbeef, /* serial */
 			   0, /* valid */
 			   0, /* update */
@@ -276,7 +300,7 @@ static int test_future(Display *dpy, void *Q)
 			   None, /* wait fence */
 			   None,
 			   XCB_PRESENT_OPTION_NONE,
-			   target + 60, /* target msc */
+			   msc + 60, /* target msc */
 			   0, /* divisor */
 			   0, /* remainder */
 			   0, NULL);
@@ -291,18 +315,46 @@ static int test_future(Display *dpy, void *Q)
 			break;
 
 		ce = (xcb_present_complete_notify_event_t *)ev;
-		if (ce->kind != XCB_PRESENT_COMPLETE_KIND_PIXMAP)
-			break;
-
-		complete = ce->serial == 0xdeadbeef;
+		complete = (ce->kind == XCB_PRESENT_COMPLETE_KIND_PIXMAP &&
+			    ce->serial == 0xdeadbeef);
 		free(ev);
 	} while (!complete);
 	XSync(dpy, True);
 
-	target = check_msc(dpy, root, Q, 0);
-	for (n = 0; n <= 10; n++)
+	return check_msc(dpy, win, Q, msc, ust);
+}
+
+static int test_future(Display *dpy, void *Q)
+{
+	xcb_connection_t *c = XGetXCBConnection(dpy);
+	Pixmap pixmap;
+	struct dri3_fence fence;
+	Window root;
+	unsigned int width, height;
+	unsigned border, depth;
+	int x, y, ret = 0, n;
+	uint64_t msc, ust;
+	int complete;
+	int early = 0, late = 0;
+	int earliest = 0, latest = 0;
+	uint64_t interval;
+
+	XGetGeometry(dpy, DefaultRootWindow(dpy),
+		     &root, &x, &y, &width, &height, &border, &depth);
+
+	if (dri3_create_fence(dpy, root, &fence))
+		return 0;
+
+	printf("Testing whole screen flips into the future: %dx%d\n", width, height);
+	_x_error_occurred = 0;
+
+	interval = msc_interval(dpy, root, Q);
+
+	pixmap = XCreatePixmap(dpy, root, width, height, depth);
+	msc = flush_flips(dpy, root, pixmap, Q, &ust);
+	for (n = 1; n <= 10; n++)
 		xcb_present_pixmap(c, root, pixmap,
-				   target + 60 + n*15*60, /* serial */
+				   n, /* serial */
 				   0, /* valid */
 				   0, /* update */
 				   0, /* x_off */
@@ -311,7 +363,7 @@ static int test_future(Display *dpy, void *Q)
 				   None, /* wait fence */
 				   None,
 				   XCB_PRESENT_OPTION_NONE,
-				   target + 60 + n*15*60, /* target msc */
+				   msc + 60 + n*15*60, /* target msc */
 				   0, /* divisor */
 				   0, /* remainder */
 				   0, NULL);
@@ -325,7 +377,7 @@ static int test_future(Display *dpy, void *Q)
 			   None, /* wait fence */
 			   None,
 			   XCB_PRESENT_OPTION_NONE,
-			   target + 60 + n*15*60, /* target msc */
+			   msc + 60 + n*15*60, /* target msc */
 			   0, /* divisor */
 			   0, /* remainder */
 			   0, NULL);
@@ -341,29 +393,38 @@ static int test_future(Display *dpy, void *Q)
 			break;
 
 		ce = (xcb_present_complete_notify_event_t *)ev;
-		if (ce->kind != XCB_PRESENT_COMPLETE_KIND_PIXMAP)
-			break;
-
-		assert(ce->serial);
+		assert(ce->kind == XCB_PRESENT_COMPLETE_KIND_PIXMAP);
 
 		if (ce->serial == 0xdeadbeef) {
+			int64_t time;
+
+			time = ce->ust - (ust + (60 + 15*60*n) * interval);
+			if (time < -(int64_t)interval) {
+				fprintf(stderr,
+					"\tflips completed too early by %lldms\n",
+					(long long)(-time / 1000));
+			} else if (time > (int64_t)interval) {
+				fprintf(stderr,
+					"\tflips completed too late by %lldms\n",
+					(long long)(time / 1000));
+			}
 			complete = 1;
 		} else {
-			int msc = (uint32_t)ce->msc - ce->serial;
-			if (msc < 0) {
-				ret += -msc;
-				if (-msc > earliest) {
-					fprintf(stderr, "\tframe %d displayed early by %lld frames\n", (int)(ce->serial - target - 60)/(15*60), (long long)msc);
-					earliest = -msc;
+			int diff = (int64_t)(ce->msc - (15*60*ce->serial + msc + 60));
+			if (diff < 0) {
+				if (-diff > earliest) {
+					fprintf(stderr, "\tframe %d displayed early by %d frames\n", ce->serial, diff);
+					earliest = -diff;
 				}
 				early++;
-			} else if (msc > 0) {
-				ret += msc;
-				if (msc > latest) {
-					fprintf(stderr, "\tframe %d displayed late by %lld frames\n", (int)(ce->serial - target - 60), (long long)msc);
-					latest = msc;
+				ret++;
+			} else if (diff > 0) {
+				if (diff > latest) {
+					fprintf(stderr, "\tframe %d displayed late by %d frames\n", ce->serial, diff);
+					latest = diff;
 				}
 				late++;
+				ret++;
 			}
 		}
 		free(ev);
@@ -391,7 +452,6 @@ static int test_exhaustion(Display *dpy, void *Q)
 	unsigned border, depth;
 	int x, y, ret = 0, n;
 	uint64_t target, final;
-	int complete;
 
 	XGetGeometry(dpy, DefaultRootWindow(dpy),
 		     &root, &x, &y, &width, &height, &border, &depth);
@@ -405,7 +465,7 @@ static int test_exhaustion(Display *dpy, void *Q)
 	region = xcb_generate_id(c);
 	xcb_xfixes_create_region(c, region, 0, NULL);
 
-	target = check_msc(dpy, root, Q, 0);
+	target = check_msc(dpy, root, Q, 0, NULL);
 	pixmap = XCreatePixmap(dpy, root, width, height, depth);
 	xshmfence_reset(fence.addr);
 	for (n = N_VBLANKS; n--; )
@@ -440,7 +500,7 @@ static int test_exhaustion(Display *dpy, void *Q)
 	XSync(dpy, True);
 	ret += !!xshmfence_await(fence.addr);
 
-	final = check_msc(dpy, root, Q, 0);
+	final = check_msc(dpy, root, Q, 0, NULL);
 	if (final < target) {
 		printf("\tFirst flip too early, MSC was %llu, expected %llu\n",
 		       (long long)final, (long long)target);
@@ -468,7 +528,7 @@ static int test_exhaustion(Display *dpy, void *Q)
 	xcb_flush(c);
 	ret += !!xshmfence_await(fence.addr);
 
-	final = check_msc(dpy, root, Q, 0);
+	final = check_msc(dpy, root, Q, 0, NULL);
 	if (final < target + N_VBLANKS) {
 		printf("\tLast flip too early, MSC was %llu, expected %llu\n",
 		       (long long)final, (long long)(target + N_VBLANKS));
@@ -479,36 +539,7 @@ static int test_exhaustion(Display *dpy, void *Q)
 		ret++;
 	}
 
-	xcb_present_pixmap(c, root, pixmap, 0xdeadbeef,
-			   0, /* valid */
-			   0, /* update */
-			   0, /* x_off */
-			   0, /* y_off */
-			   None,
-			   None, /* wait fence */
-			   0,
-			   XCB_PRESENT_OPTION_NONE,
-			   final + N_VBLANKS + 1, /* target msc */
-			   0, /* divisor */
-			   0, /* remainder */
-			   0, NULL);
-	xcb_flush(c);
-	complete = 0;
-	do {
-		xcb_present_complete_notify_event_t *ce;
-		xcb_generic_event_t *ev;
-
-		ev = xcb_wait_for_special_event(c, Q);
-		if (ev == NULL)
-			break;
-
-		ce = (xcb_present_complete_notify_event_t *)ev;
-		if (ce->kind != XCB_PRESENT_COMPLETE_KIND_PIXMAP)
-			break;
-
-		complete = ce->serial == 0xdeadbeef;
-		free(ev);
-	} while (!complete);
+	flush_flips(dpy, root, pixmap, Q, NULL);
 
 	XFreePixmap(dpy, pixmap);
 	xcb_xfixes_destroy_region(c, region);
@@ -538,48 +569,14 @@ static int test_accuracy(Display *dpy, void *Q)
 	XGetGeometry(dpy, DefaultRootWindow(dpy),
 		     &root, &x, &y, &width, &height, &border, &depth);
 
-	printf("Testing whole screen flip acccuracy: %dx%d\n", width, height);
+	printf("Testing whole screen flip accuracy: %dx%d\n", width, height);
 	_x_error_occurred = 0;
 
-	target = check_msc(dpy, root, Q, 0);
 	pixmap = XCreatePixmap(dpy, root, width, height, depth);
-	xcb_present_pixmap(c, root, pixmap,
-			   0xdeadbeef, /* serial */
-			   0, /* valid */
-			   0, /* update */
-			   0, /* x_off */
-			   0, /* y_off */
-			   None,
-			   None, /* wait fence */
-			   None,
-			   XCB_PRESENT_OPTION_NONE,
-			   target + 60, /* target msc */
-			   0, /* divisor */
-			   0, /* remainder */
-			   0, NULL);
-	xcb_flush(c);
-	complete = 0;
-	do {
-		xcb_present_complete_notify_event_t *ce;
-		xcb_generic_event_t *ev;
-
-		ev = xcb_wait_for_special_event(c, Q);
-		if (ev == NULL)
-			break;
-
-		ce = (xcb_present_complete_notify_event_t *)ev;
-		if (ce->kind != XCB_PRESENT_COMPLETE_KIND_PIXMAP)
-			break;
-
-		complete = ce->serial == 0xdeadbeef;
-		free(ev);
-	} while (!complete);
-	XSync(dpy, True);
-
-	target = check_msc(dpy, root, Q, target);
+	target = flush_flips(dpy, root, pixmap, Q, NULL);
 	for (n = 0; n <= N_VBLANKS; n++)
 		xcb_present_pixmap(c, root, pixmap,
-				   target + 60 + n, /* serial */
+				   n, /* serial */
 				   0, /* valid */
 				   0, /* update */
 				   0, /* x_off */
@@ -592,41 +589,53 @@ static int test_accuracy(Display *dpy, void *Q)
 				   0, /* divisor */
 				   0, /* remainder */
 				   0, NULL);
+	xcb_present_pixmap(c, root, pixmap,
+			   0xdeadbeef, /* serial */
+			   0, /* valid */
+			   0, /* update */
+			   0, /* x_off */
+			   0, /* y_off */
+			   None,
+			   None, /* wait fence */
+			   None,
+			   XCB_PRESENT_OPTION_NONE,
+			   target + 60 + n, /* target msc */
+			   0, /* divisor */
+			   0, /* remainder */
+			   0, NULL);
 	xcb_flush(c);
 
 	complete = 0;
 	do {
 		xcb_present_complete_notify_event_t *ce;
 		xcb_generic_event_t *ev;
-		int64_t msc;
 
 		ev = xcb_wait_for_special_event(c, Q);
 		if (ev == NULL)
 			break;
 
 		ce = (xcb_present_complete_notify_event_t *)ev;
-		if (ce->kind != XCB_PRESENT_COMPLETE_KIND_PIXMAP)
-			break;
+		assert(ce->kind == XCB_PRESENT_COMPLETE_KIND_PIXMAP);
 
-		assert(ce->serial);
-
-		msc = (uint32_t)ce->msc - ce->serial;
-		if (msc < 0) {
-			ret += -msc;
-			if (-msc > earliest) {
-				fprintf(stderr, "\tframe %d displayed early by %lld frames\n", (int)(ce->serial - target - 60), (long long)msc);
-				earliest = -msc;
+		if (ce->serial != 0xdeadbeef) {
+			int diff = (int64_t)(ce->msc - (target + ce->serial + 60));
+			if (diff < 0) {
+				if (-diff > earliest) {
+					fprintf(stderr, "\tframe %d displayed early by %d frames\n", ce->serial, -diff);
+					earliest = -diff;
+				}
+				early++;
+				ret++;
+			} else if (diff > 0) {
+				if (diff > latest) {
+					fprintf(stderr, "\tframe %d displayed late by %d frames\n", ce->serial, diff);
+					latest = diff;
+				}
+				ret++;
+				late++;
 			}
-			early++;
-		} else if (msc > 0) {
-			ret += msc;
-			if (msc > latest) {
-				fprintf(stderr, "\tframe %d displayed late by %lld frames\n", (int)(ce->serial - target - 60), (long long)msc);
-				latest = msc;
-			}
-			late++;
-		}
-		complete = ce->serial == target + 60 + N_VBLANKS;
+		} else
+			complete = 1;
 		free(ev);
 	} while (!complete);
 
@@ -664,45 +673,11 @@ static int test_modulus(Display *dpy, void *Q)
 	printf("Testing whole screen flip modulus: %dx%d\n", width, height);
 	_x_error_occurred = 0;
 
-	target = check_msc(dpy, root, Q, 0);
-	pixmap = XCreatePixmap(dpy, root, width, height, depth);
-	xcb_present_pixmap(c, root, pixmap,
-			   0xdeadbeef, /* serial */
-			   0, /* valid */
-			   0, /* update */
-			   0, /* x_off */
-			   0, /* y_off */
-			   None,
-			   None, /* wait fence */
-			   None,
-			   XCB_PRESENT_OPTION_NONE,
-			   target + 60, /* target msc */
-			   0, /* divisor */
-			   0, /* remainder */
-			   0, NULL);
-	xcb_flush(c);
-	complete = 0;
-	do {
-		xcb_present_complete_notify_event_t *ce;
-		xcb_generic_event_t *ev;
-
-		ev = xcb_wait_for_special_event(c, Q);
-		if (ev == NULL)
-			break;
-
-		ce = (xcb_present_complete_notify_event_t *)ev;
-		if (ce->kind != XCB_PRESENT_COMPLETE_KIND_PIXMAP)
-			break;
-
-		complete = ce->serial == 0xdeadbeef;
-		free(ev);
-	} while (!complete);
-	XSync(dpy, True);
-
 	region = xcb_generate_id(c);
 	xcb_xfixes_create_region(c, region, 0, NULL);
 
-	target = check_msc(dpy, root, Q, target);
+	pixmap = XCreatePixmap(dpy, root, width, height, depth);
+	target = flush_flips(dpy, root, pixmap, Q, NULL);
 	for (x = 1; x <= 7; x++) {
 		for (y = 0; y < x; y++) {
 			xcb_present_pixmap(c, root, pixmap,
@@ -908,7 +883,7 @@ static int __test_crtc(Display *dpy, RRCrtc crtc,
 	Pixmap pixmap;
 	int err = 0;
 
-	test->msc = check_msc(dpy, test->win, test->queue, test->msc);
+	test->msc = check_msc(dpy, test->win, test->queue, test->msc, NULL);
 
 	if (test->flags & SYNC)
 		xshmfence_reset(test->fence.addr);
@@ -952,7 +927,7 @@ static int __test_crtc(Display *dpy, RRCrtc crtc,
 	}
 	XFreePixmap(dpy, pixmap);
 
-	test->msc = check_msc(dpy, test->win, test->queue, test->msc);
+	test->msc = check_msc(dpy, test->win, test->queue, test->msc, NULL);
 	return err;
 }
 
@@ -973,21 +948,21 @@ static int test_crtc(Display *dpy, void *queue, uint64_t last_msc)
 
 	printf("Testing each crtc, without waiting for each flip\n");
 	test.flags = 0;
-	test.msc = check_msc(dpy, test.win, test.queue, test.msc);
+	test.msc = check_msc(dpy, test.win, test.queue, test.msc, NULL);
 	err += for_each_crtc(dpy, __test_crtc, &test);
-	test.msc = check_msc(dpy, test.win, test.queue, test.msc);
+	test.msc = check_msc(dpy, test.win, test.queue, test.msc, NULL);
 
 	printf("Testing each crtc, waiting for flips to complete\n");
 	test.flags = SYNC;
-	test.msc = check_msc(dpy, test.win, test.queue, test.msc);
+	test.msc = check_msc(dpy, test.win, test.queue, test.msc, NULL);
 	err += for_each_crtc(dpy, __test_crtc, &test);
-	test.msc = check_msc(dpy, test.win, test.queue, test.msc);
+	test.msc = check_msc(dpy, test.win, test.queue, test.msc, NULL);
 
 	printf("Testing each crtc, with future flips\n");
 	test.flags = FUTURE | SYNC;
-	test.msc = check_msc(dpy, test.win, test.queue, test.msc);
+	test.msc = check_msc(dpy, test.win, test.queue, test.msc, NULL);
 	err += for_each_crtc(dpy, __test_crtc, &test);
-	test.msc = check_msc(dpy, test.win, test.queue, test.msc);
+	test.msc = check_msc(dpy, test.win, test.queue, test.msc, NULL);
 
 	dri3_fence_free(dpy, &test.fence);
 	XSync(dpy, True);
@@ -1305,31 +1280,31 @@ int main(void)
 	XSetErrorHandler(_check_error_handler);
 
 	queue = setup_msc(dpy, root);
-	last_msc = check_msc(dpy, root, queue, 0);
+	last_msc = check_msc(dpy, root, queue, 0, NULL);
 
 	error += test_whole(dpy);
-	last_msc = check_msc(dpy, root, queue, last_msc);
+	last_msc = check_msc(dpy, root, queue, last_msc, NULL);
 
 	error += test_future(dpy, queue);
-	last_msc = check_msc(dpy, root, queue, last_msc);
+	last_msc = check_msc(dpy, root, queue, last_msc, NULL);
 
 	error += test_accuracy(dpy, queue);
-	last_msc = check_msc(dpy, root, queue, last_msc);
+	last_msc = check_msc(dpy, root, queue, last_msc, NULL);
 
 	error += test_modulus(dpy, queue);
-	last_msc = check_msc(dpy, root, queue, last_msc);
+	last_msc = check_msc(dpy, root, queue, last_msc, NULL);
 
 	error += test_exhaustion(dpy, queue);
-	last_msc = check_msc(dpy, root, queue, last_msc);
+	last_msc = check_msc(dpy, root, queue, last_msc, NULL);
 
 	error += test_crtc(dpy, queue, last_msc);
-	last_msc = check_msc(dpy, root, queue, last_msc);
+	last_msc = check_msc(dpy, root, queue, last_msc, NULL);
 
 	error += test_shm(dpy);
-	last_msc = check_msc(dpy, root, queue, last_msc);
+	last_msc = check_msc(dpy, root, queue, last_msc, NULL);
 
 	error += test_dri3(dpy);
-	last_msc = check_msc(dpy, root, queue, last_msc);
+	last_msc = check_msc(dpy, root, queue, last_msc, NULL);
 
 	teardown_msc(dpy, queue);
 
