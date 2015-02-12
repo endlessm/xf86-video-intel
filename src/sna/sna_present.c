@@ -219,11 +219,11 @@ sna_present_vblank_handler(struct drm_event_vblank *event)
 {
 	struct sna_present_event *info = to_present_event(event->user_data);
 
-	DBG(("%s: pipe=%d tv=%d.%06d msc=%d, event %lld complete: target_msc=%lld\n", __FUNCTION__,
+	DBG(("%s: pipe=%d tv=%d.%06d msc=%d (target=%lld), event %lld complete%s\n", __FUNCTION__,
 	     sna_crtc_to_pipe(info->crtc),
 	     event->tv_sec, event->tv_usec, event->sequence,
-	     (long long)info->event_id,
-	     (long long)info->target_msc));
+	     (long long)info->target_msc, (long long)info->event_id,
+	     info->target_msc && event->sequence == (uint32_t)info->target_msc ? "" : ": MISS"));
 	present_event_notify(info->event_id,
 			     ust64(event->tv_sec, event->tv_usec),
 			     sna_crtc_record_event(info->crtc, event));
@@ -234,32 +234,38 @@ static int
 sna_present_queue_vblank(RRCrtcPtr crtc, uint64_t event_id, uint64_t msc)
 {
 	struct sna *sna = to_sna_from_screen(crtc->pScreen);
-	struct sna_present_event *event;
+	struct sna_present_event *info;
+	const struct ust_msc *swap;
 	union drm_wait_vblank vbl;
 
 	DBG(("%s(pipe=%d, event=%lld, msc=%lld)\n",
 	     __FUNCTION__, pipe_from_crtc(crtc),
 	     (long long)event_id, (long long)msc));
 
-	event = malloc(sizeof(struct sna_present_event));
-	if (event == NULL)
+	swap = sna_crtc_last_swap(crtc->devPrivate);
+	assert((int64_t)(msc - swap->msc) >= 0);
+	if ((int64_t)(msc - swap->msc) <= 0) {
+		present_event_notify(event_id, swap_ust(swap), swap->msc);
+		return Success;
+	}
+
+	info = malloc(sizeof(struct sna_present_event));
+	if (info == NULL)
 		return BadAlloc;
 
-	event->crtc = crtc->devPrivate;
-	event->sna = sna;
-	event->target_msc = msc;
-	event->event_id = event_id;
-
-	assert((int64_t)(msc - sna_crtc_last_swap(event->crtc)->msc) >= 0);
+	info->crtc = crtc->devPrivate;
+	info->sna = sna;
+	info->target_msc = msc;
+	info->event_id = event_id;
 
 	VG_CLEAR(vbl);
 	vbl.request.type = DRM_VBLANK_ABSOLUTE | DRM_VBLANK_EVENT;
 	vbl.request.sequence = msc;
-	vbl.request.signal = (uintptr_t)MARK_PRESENT(event);
-	if (sna_wait_vblank(sna, &vbl, sna_crtc_to_pipe(event->crtc))) {
+	vbl.request.signal = (uintptr_t)MARK_PRESENT(info);
+	if (sna_wait_vblank(sna, &vbl, sna_crtc_to_pipe(info->crtc))) {
 		DBG(("%s: vblank enqueue failed\n", __FUNCTION__));
-		if (!sna_fake_vblank(event)) {
-			free(event);
+		if (!sna_fake_vblank(info)) {
+			free(info);
 			return BadAlloc;
 		}
 	}
@@ -387,11 +393,11 @@ page_flip__async(struct sna *sna,
 		return FALSE;
 	}
 
-	DBG(("%s: pipe=%d tv=%d.%06d msc=%d, event %lld complete\n", __FUNCTION__,
+	DBG(("%s: pipe=%d tv=%d.%06d msc=%lld (target=%lld), event %lld complete\n", __FUNCTION__,
 	     pipe_from_crtc(crtc),
 	     gettime_ust64() / 1000000, gettime_ust64() % 1000000,
-	     sna_crtc_last_swap(crtc->devPrivate)->msc,
-	     (long long)event_id));
+	     (long long)sna_crtc_last_swap(crtc->devPrivate)->msc,
+	     (long long)target_msc, (long long)event_id));
 	present_event_notify(event_id, gettime_ust64(), target_msc);
 	return TRUE;
 }
@@ -411,10 +417,12 @@ present_flip_handler(struct drm_event_vblank *event, void *data)
 	} else
 		swap = *sna_crtc_last_swap(info->crtc);
 
-	DBG(("%s: pipe=%d, tv=%d.%06d msc %lld, event %lld complete\n", __FUNCTION__,
+	DBG(("%s: pipe=%d, tv=%d.%06d msc %lld (target %lld), event %lld complete%s\n", __FUNCTION__,
 	     info->crtc ? sna_crtc_to_pipe(info->crtc) : -1,
 	     swap.tv_sec, swap.tv_usec, (long long)swap.msc,
-	     (long long)info->event_id));
+	     (long long)info->target_msc,
+	     (long long)info->event_id,
+	     info->target_msc && info->target_msc == swap.msc ? "" : ": MISS"));
 	present_event_notify(info->event_id, swap_ust(&swap), swap.msc);
 
 	if (info->sna->present.unflip) {
@@ -430,9 +438,10 @@ static Bool
 page_flip(struct sna *sna,
 	  RRCrtcPtr crtc,
 	  uint64_t event_id,
+	  uint64_t target_msc,
 	  struct kgem_bo *bo)
 {
-	struct sna_present_event *event;
+	struct sna_present_event *info;
 
 	DBG(("%s(pipe=%d, event=%lld, handle=%d)\n",
 	     __FUNCTION__,
@@ -440,18 +449,18 @@ page_flip(struct sna *sna,
 	     (long long)event_id,
 	     bo->handle));
 
-	event = malloc(sizeof(struct sna_present_event));
-	if (event == NULL)
+	info = malloc(sizeof(struct sna_present_event));
+	if (info == NULL)
 		return FALSE;
 
-	event->crtc = crtc ? crtc->devPrivate : NULL;
-	event->sna = sna;
-	event->event_id = event_id;
-	event->target_msc = 0;
+	info->crtc = crtc ? crtc->devPrivate : NULL;
+	info->sna = sna;
+	info->event_id = event_id;
+	info->target_msc = target_msc;
 
-	if (!sna_page_flip(sna, bo, present_flip_handler, event)) {
+	if (!sna_page_flip(sna, bo, present_flip_handler, info)) {
 		DBG(("%s: pageflip failed\n", __FUNCTION__));
-		free(event);
+		free(info);
 		return FALSE;
 	}
 
@@ -525,7 +534,7 @@ sna_present_flip(RRCrtcPtr crtc,
 	}
 
 	if (sync_flip)
-		return page_flip(sna, crtc, event_id, bo);
+		return page_flip(sna, crtc, event_id, target_msc, bo);
 	else
 		return page_flip__async(sna, crtc, event_id, target_msc, bo);
 }
@@ -573,7 +582,7 @@ reset_mode:
 			return;
 	}
 
-	if (!page_flip(sna, NULL, event_id, bo))
+	if (!page_flip(sna, NULL, event_id, 0, bo))
 		goto reset_mode;
 }
 
