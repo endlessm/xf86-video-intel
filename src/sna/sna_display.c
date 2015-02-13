@@ -1369,6 +1369,20 @@ bool sna_pixmap_discard_shadow_damage(struct sna_pixmap *priv,
 	return RegionNil(&sna->mode.shadow_region);
 }
 
+static void sna_mode_damage(DamagePtr damage, RegionPtr region, void *closure)
+{
+	/* Throw away the rectangles if the region grows too big */
+	region = DamageRegion(damage);
+	if (region->data) {
+		RegionRec dup;
+
+		dup = *region;
+		RegionUninit(&dup);
+
+		region->data = NULL;
+	}
+}
+
 static bool sna_mode_enable_shadow(struct sna *sna)
 {
 	ScreenPtr screen = to_screen_from_sna(sna);
@@ -1378,9 +1392,9 @@ static bool sna_mode_enable_shadow(struct sna *sna)
 	assert(sna->mode.shadow_damage == NULL);
 	assert(sna->mode.shadow_active == 0);
 
-	sna->mode.shadow_damage = DamageCreate(NULL, NULL,
-					       DamageReportNone, TRUE,
-					       screen, screen);
+	sna->mode.shadow_damage = DamageCreate(sna_mode_damage, NULL,
+					       DamageReportRawRegion,
+					       TRUE, screen, sna);
 	if (!sna->mode.shadow_damage)
 		return false;
 
