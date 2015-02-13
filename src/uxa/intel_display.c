@@ -116,7 +116,6 @@ struct intel_crtc {
 	struct list link;
 	PixmapPtr scanout_pixmap;
 	uint32_t scanout_fb_id;
-	int32_t vblank_offset;
 	uint32_t msc_prev;
 	uint64_t msc_high;
 };
@@ -1914,7 +1913,6 @@ intel_sequence_to_crtc_msc(xf86CrtcPtr crtc, uint32_t sequence)
 {
 	struct intel_crtc *intel_crtc = crtc->driver_private;
 
-        sequence += intel_crtc->vblank_offset;
         if ((int32_t) (sequence - intel_crtc->msc_prev) < -0x40000000)
                 intel_crtc->msc_high += 0x100000000L;
         intel_crtc->msc_prev = sequence;
@@ -1938,37 +1936,10 @@ intel_get_crtc_msc_ust(ScrnInfoPtr scrn, xf86CrtcPtr crtc, uint64_t *msc, uint64
         return 0;
 }
 
-/*
- * Convert a 64-bit adjusted MSC value into a 32-bit kernel sequence number,
- * removing the high 32 bits and subtracting out the vblank_offset term.
- *
- * This also updates the vblank_offset when it notices that the value should
- * change.
- */
-
-#define MAX_VBLANK_OFFSET       1000
-
 uint32_t
 intel_crtc_msc_to_sequence(ScrnInfoPtr scrn, xf86CrtcPtr crtc, uint64_t expect)
 {
-	struct intel_crtc *intel_crtc = crtc->driver_private;
-        uint64_t msc, ust;
-
-	if (intel_get_crtc_msc_ust(scrn, crtc, &msc, &ust) == 0) {
-		int64_t diff = expect - msc;
-
-		/* We're way off here, assume that the kernel has lost its mind
-		 * and smack the vblank back to something sensible
-		 */
-		if (diff < -MAX_VBLANK_OFFSET || diff > MAX_VBLANK_OFFSET) {
-			intel_crtc->vblank_offset += (int32_t) diff;
-			if (intel_crtc->vblank_offset > -MAX_VBLANK_OFFSET &&
-			    intel_crtc->vblank_offset < MAX_VBLANK_OFFSET)
-				intel_crtc->vblank_offset = 0;
-		}
-	}
-
-        return (uint32_t) (expect - intel_crtc->vblank_offset);
+        return (uint32_t)expect;
 }
 
 /*
