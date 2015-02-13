@@ -284,6 +284,7 @@ struct sna {
 		struct kgem_bo *shadow;
 		unsigned front_active;
 		unsigned shadow_active;
+		unsigned rr_active;
 		unsigned flip_active;
 		unsigned hidden;
 		bool dirty;
@@ -309,6 +310,13 @@ struct sna {
 
 		Bool (*rrGetInfo)(ScreenPtr, Rotation *);
 	} mode;
+
+	struct sna_tearfree {
+		struct notifier {
+			void (*func)(struct sna *, void *);
+			void *data;
+		} hook[2];
+	} tearfree;
 
 	struct {
 		struct sna_cursor *cursors;

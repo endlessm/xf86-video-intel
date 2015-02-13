@@ -1384,24 +1384,39 @@ static bool sna_mode_enable_shadow(struct sna *sna)
 	if (!sna->mode.shadow_damage)
 		return false;
 
-	DamageRegister(&sna->front->drawable, sna->mode.shadow_damage);
+	DamageRegister(&screen->GetScreenPixmap(screen)->drawable,
+		       sna->mode.shadow_damage);
 	return true;
+}
+
+inline static PixmapPtr sna_screen_pixmap(struct sna *sna)
+{
+	return to_screen_from_sna(sna)->GetScreenPixmap(to_screen_from_sna(sna));
 }
 
 static void sna_mode_disable_shadow(struct sna *sna)
 {
 	struct sna_pixmap *priv;
+	struct notifier *nb;
 
 	if (!sna->mode.shadow_damage)
 		return;
 
 	DBG(("%s\n", __FUNCTION__));
 
+	nb = &sna->tearfree.hook[0];
+	if (nb->func) {
+		nb->func(sna, nb->data);
+		nb->func = NULL;
+	}
+	assert(sna->tearfree.hook[1].func == NULL);
+
 	priv = sna_pixmap(sna->front);
 	if (priv->move_to_gpu == wait_for_shadow)
 		priv->move_to_gpu(sna, priv, 0);
 
-	DamageUnregister(&sna->front->drawable, sna->mode.shadow_damage);
+	DamageUnregister(&sna_screen_pixmap(sna)->drawable,
+			 sna->mode.shadow_damage);
 	DamageDestroy(sna->mode.shadow_damage);
 	sna->mode.shadow_damage = NULL;
 
@@ -1544,6 +1559,7 @@ __sna_crtc_disable(struct sna *sna, struct sna_crtc *sna_crtc)
 		if (sna->mode.hidden) {
 			sna->mode.hidden--;
 			assert(sna->mode.hidden);
+			assert(sna->mode.front_active == 0);
 		} else {
 			assert(sna->mode.front_active);
 			sna->mode.front_active--;
@@ -1555,7 +1571,11 @@ __sna_crtc_disable(struct sna *sna, struct sna_crtc *sna_crtc)
 		kgem_bo_destroy(&sna->kgem, sna_crtc->shadow_bo);
 		sna_crtc->shadow_bo = NULL;
 	}
-	sna_crtc->transform = false;
+	if (sna_crtc->transform) {
+		assert(sna->mode.rr_active);
+		sna->mode.rr_active--;
+		sna_crtc->transform = false;
+	}
 
 	assert(!sna_crtc->shadow);
 }
@@ -1947,7 +1967,11 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 	struct sna *sna = to_sna(scrn);
 	struct kgem_bo *bo;
 
-	sna_crtc->transform = false;
+	if (sna_crtc->transform) {
+		assert(sna->mode.rr_active);
+		sna_crtc->transform = false;
+		sna->mode.rr_active--;
+	}
 	sna_crtc->rotation = RR_Rotate_0;
 
 	if (use_shadow(sna, crtc)) {
@@ -2063,6 +2087,7 @@ force_shadow:
 		sna_crtc->shadow_bo = bo;
 out_shadow:
 		sna_crtc->transform = true;
+		sna->mode.rr_active++;
 		return kgem_bo_reference(bo);
 	} else {
 		if (sna_crtc->shadow_bo) {
@@ -2394,6 +2419,12 @@ retry: /* Attach per-crtc pixmap or direct */
 
 error:
 	sna_crtc->offset = saved_offset;
+	if (sna_crtc->transform) {
+		assert(sna->mode.rr_active);
+		sna->mode.rr_active--;
+	}
+	if (saved_transform)
+		sna->mode.rr_active++;
 	sna_crtc->transform = saved_transform;
 	sna_crtc->bo = saved_bo;
 	sna_mode_discover(sna);
@@ -7076,6 +7107,14 @@ sna_crtc_redisplay(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo *bo)
 static void shadow_flip_handler(struct drm_event_vblank *e,
 				void *data)
 {
+	struct sna *sna = data;
+
+	if (sna->tearfree.hook[0].func)
+		sna->tearfree.hook[0].func(sna, sna->tearfree.hook[0].data);
+
+	sna->tearfree.hook[0] = sna->tearfree.hook[1];
+	sna->tearfree.hook[1].func = NULL;
+
 	sna_mode_redisplay(data);
 }
 
@@ -7678,6 +7717,12 @@ fixup_flip:
 			assert(old == sna->mode.shadow);
 			assert(old->refcnt >= 1);
 			set_shadow(sna, region);
+		} else {
+			if (sna->tearfree.hook[0].func) {
+				sna->tearfree.hook[0].func(sna, sna->tearfree.hook[0].data);
+				sna->tearfree.hook[0].func = NULL;
+			}
+			assert(sna->tearfree.hook[1].func == NULL);
 		}
 	} else
 		kgem_submit(&sna->kgem);
