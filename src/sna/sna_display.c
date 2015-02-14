@@ -5973,7 +5973,7 @@ probe_capabilities(struct sna *sna)
 	sna->flags &= ~(SNA_HAS_FLIP | SNA_HAS_ASYNC_FLIP);
 	if (has_flip(sna))
 		sna->flags |= SNA_HAS_FLIP;
-	if (has_flip__async(sna))
+	if (has_flip__async(sna) && (sna->flags & SNA_TEAR_FREE) == 0)
 		sna->flags |= SNA_HAS_ASYNC_FLIP;
 	DBG(("%s: page flips? %s, async? %s\n", __FUNCTION__,
 	     sna->flags & SNA_HAS_FLIP ? "enabled" : "disabled",

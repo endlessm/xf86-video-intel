@@ -562,14 +562,12 @@ xchg(struct sna *sna,
 	assert(sna->flags & SNA_TEAR_FREE);
 	assert(sna->mode.shadow_damage);
 	assert(sna_pixmap(pixmap) && sna_pixmap(pixmap)->gpu_bo);
+	assert(sync_flip);
 
 	/* This effectively disables TearFree giving the client direct
 	 * access into the scanout with their Pixmap.
 	 */
 	queued = set_front(sna, pixmap);
-
-	if (!sync_flip)
-		goto notify; /* XXX We will claim that the scanout is idle */
 
 	info = malloc(sizeof(struct sna_present_event));
 	if (info == NULL)
