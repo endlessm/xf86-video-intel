@@ -1398,39 +1398,24 @@ static bool sna_mode_enable_shadow(struct sna *sna)
 	if (!sna->mode.shadow_damage)
 		return false;
 
-	DamageRegister(&screen->GetScreenPixmap(screen)->drawable,
-		       sna->mode.shadow_damage);
+	DamageRegister(&sna->front->drawable, sna->mode.shadow_damage);
 	return true;
-}
-
-inline static PixmapPtr sna_screen_pixmap(struct sna *sna)
-{
-	return to_screen_from_sna(sna)->GetScreenPixmap(to_screen_from_sna(sna));
 }
 
 static void sna_mode_disable_shadow(struct sna *sna)
 {
 	struct sna_pixmap *priv;
-	struct notifier *nb;
 
 	if (!sna->mode.shadow_damage)
 		return;
 
 	DBG(("%s\n", __FUNCTION__));
 
-	nb = &sna->tearfree.hook[0];
-	if (nb->func) {
-		nb->func(sna, nb->data);
-		nb->func = NULL;
-	}
-	assert(sna->tearfree.hook[1].func == NULL);
-
 	priv = sna_pixmap(sna->front);
 	if (priv->move_to_gpu == wait_for_shadow)
 		priv->move_to_gpu(sna, priv, 0);
 
-	DamageUnregister(&sna_screen_pixmap(sna)->drawable,
-			 sna->mode.shadow_damage);
+	DamageUnregister(&sna->front->drawable, sna->mode.shadow_damage);
 	DamageDestroy(sna->mode.shadow_damage);
 	sna->mode.shadow_damage = NULL;
 
@@ -7121,14 +7106,6 @@ sna_crtc_redisplay(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo *bo)
 static void shadow_flip_handler(struct drm_event_vblank *e,
 				void *data)
 {
-	struct sna *sna = data;
-
-	if (sna->tearfree.hook[0].func)
-		sna->tearfree.hook[0].func(sna, sna->tearfree.hook[0].data);
-
-	sna->tearfree.hook[0] = sna->tearfree.hook[1];
-	sna->tearfree.hook[1].func = NULL;
-
 	sna_mode_redisplay(data);
 }
 
@@ -7731,12 +7708,6 @@ fixup_flip:
 			assert(old == sna->mode.shadow);
 			assert(old->refcnt >= 1);
 			set_shadow(sna, region);
-		} else {
-			if (sna->tearfree.hook[0].func) {
-				sna->tearfree.hook[0].func(sna, sna->tearfree.hook[0].data);
-				sna->tearfree.hook[0].func = NULL;
-			}
-			assert(sna->tearfree.hook[1].func == NULL);
 		}
 	} else
 		kgem_submit(&sna->kgem);

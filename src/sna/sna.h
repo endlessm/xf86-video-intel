@@ -311,13 +311,6 @@ struct sna {
 		Bool (*rrGetInfo)(ScreenPtr, Rotation *);
 	} mode;
 
-	struct sna_tearfree {
-		struct notifier {
-			void (*func)(struct sna *, void *);
-			void *data;
-		} hook[2];
-	} tearfree;
-
 	struct {
 		struct sna_cursor *cursors;
 		xf86CursorInfoPtr info;
@@ -363,6 +356,7 @@ struct sna {
 		bool open;
 #if HAVE_PRESENT
 		uint64_t unflip;
+		void *tearfree;
 #endif
 	} present;
 
