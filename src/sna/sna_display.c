@@ -1110,7 +1110,6 @@ static bool wait_for_shadow(struct sna *sna,
 			    unsigned flags)
 {
 	PixmapPtr pixmap = priv->pixmap;
-	DamagePtr damage;
 	struct kgem_bo *bo, *tmp;
 	int flip_active;
 	bool ret = true;
@@ -1165,9 +1164,7 @@ static bool wait_for_shadow(struct sna *sna,
 	}
 
 	assert(sna->mode.shadow_active);
-
-	damage = sna->mode.shadow_damage;
-	sna->mode.shadow_damage = NULL;
+	sna->mode.shadow_enabled = false;
 
 	flip_active = sna->mode.flip_active;
 	if (flip_active) {
@@ -1219,6 +1216,7 @@ static bool wait_for_shadow(struct sna *sna,
 			bo = sna->mode.shadow;
 		}
 	}
+	sna->mode.shadow_enabled = true;
 
 	if (bo->refcnt > 1) {
 		bo = kgem_create_2d(&sna->kgem,
@@ -1240,8 +1238,6 @@ static bool wait_for_shadow(struct sna *sna,
 		} else
 			bo = sna->mode.shadow;
 	}
-
-	sna->mode.shadow_damage = damage;
 
 	RegionSubtract(&sna->mode.shadow_region,
 		       &sna->mode.shadow_region,
@@ -1391,6 +1387,7 @@ static bool sna_mode_enable_shadow(struct sna *sna)
 	assert(sna->mode.shadow == NULL);
 	assert(sna->mode.shadow_damage == NULL);
 	assert(sna->mode.shadow_active == 0);
+	assert(!sna->mode.shadow_enabled);
 
 	sna->mode.shadow_damage = DamageCreate(sna_mode_damage, NULL,
 					       DamageReportRawRegion,
@@ -7237,8 +7234,10 @@ void sna_mode_redisplay(struct sna *sna)
 		return;
 	}
 
-	if (!sna->mode.shadow_enabled || !sna->mode.shadow_damage)
+	if (!sna->mode.shadow_enabled)
 		return;
+
+	assert(sna->mode.shadow_damage);
 
 	DBG(("%s: posting shadow damage? %d (flips pending? %d, mode reconfiguration pending? %d)\n",
 	     __FUNCTION__,
@@ -7261,19 +7260,14 @@ void sna_mode_redisplay(struct sna *sna)
 	     region->extents.x2, region->extents.y2));
 
 	if (sna->mode.flip_active) {
-		DamagePtr damage;
-
-		damage = sna->mode.shadow_damage;
-		sna->mode.shadow_damage = NULL;
-
+		sna->mode.shadow_enabled = false;
 		while (sna->mode.flip_active && sna_mode_wakeup(sna))
 			;
+		sna->mode.shadow_enabled = true;
 
-		sna->mode.shadow_damage = damage;
+		if (sna->mode.flip_active)
+			return;
 	}
-
-	if (sna->mode.flip_active)
-		return;
 
 	if (wedged(sna) || !move_crtc_to_gpu(sna)) {
 		DBG(("%s: forcing scanout update using the CPU\n", __FUNCTION__));
