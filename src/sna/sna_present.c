@@ -533,11 +533,9 @@ sna_present_flip(RRCrtcPtr crtc,
 		return FALSE;
 	}
 
-	if (sna->flags & SNA_TEAR_FREE) {
-		sna->present.tearfree = sna->mode.shadow_damage;
-		sna->mode.shadow_damage = NULL;
-		sna->flags &= ~SNA_TEAR_FREE;
-	}
+	if (sna->flags & SNA_TEAR_FREE)
+		sna->mode.shadow_enabled = false;
+	assert(!sna->mode.shadow_enabled);
 
 	if (sna->mode.flip_active) {
 		DBG(("%s: flips still pending\n", __FUNCTION__));
@@ -555,7 +553,6 @@ sna_present_unflip(ScreenPtr screen, uint64_t event_id)
 {
 	struct sna *sna = to_sna_from_screen(screen);
 	struct kgem_bo *bo;
-	bool ok;
 
 	DBG(("%s(event=%lld)\n", __FUNCTION__, (long long)event_id));
 	if (sna->mode.front_active == 0 || sna->mode.rr_active) {
@@ -580,6 +577,9 @@ notify:
 		return;
 	}
 
+	if (sna->flags & SNA_TEAR_FREE)
+		sna->mode.shadow_enabled = sna->mode.shadow_damage != NULL;
+
 	bo = get_flip_bo(screen->GetScreenPixmap(screen));
 	if (bo == NULL) {
 reset_mode:
@@ -588,21 +588,13 @@ reset_mode:
 		goto notify;
 	}
 
-	ok = false;
 	if (sna->flags & SNA_HAS_ASYNC_FLIP) {
 		DBG(("%s: trying async flip restore\n", __FUNCTION__));
-		ok = flip__async(sna, NULL, event_id, 0, bo);
-	}
-	if (!ok)
-		ok = flip(sna, NULL, event_id, 0, bo);
-
-	if (sna->present.tearfree) {
-		sna->flags |= SNA_TEAR_FREE;
-		sna->mode.shadow_damage = sna->present.tearfree;
-		sna->present.tearfree = NULL;
+		if (flip__async(sna, NULL, event_id, 0, bo))
+			return;
 	}
 
-	if (!ok)
+	if (!flip(sna, NULL, event_id, 0, bo))
 		goto reset_mode;
 }
 

@@ -287,6 +287,7 @@ struct sna {
 		unsigned rr_active;
 		unsigned flip_active;
 		unsigned hidden;
+		bool shadow_enabled;
 		bool dirty;
 
 		int max_crtc_width, max_crtc_height;
@@ -356,7 +357,6 @@ struct sna {
 		bool open;
 #if HAVE_PRESENT
 		uint64_t unflip;
-		void *tearfree;
 #endif
 	} present;
 

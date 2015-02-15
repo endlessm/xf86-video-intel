@@ -1399,6 +1399,7 @@ static bool sna_mode_enable_shadow(struct sna *sna)
 		return false;
 
 	DamageRegister(&sna->front->drawable, sna->mode.shadow_damage);
+	sna->mode.shadow_enabled = true;
 	return true;
 }
 
@@ -1406,8 +1407,10 @@ static void sna_mode_disable_shadow(struct sna *sna)
 {
 	struct sna_pixmap *priv;
 
-	if (!sna->mode.shadow_damage)
+	if (!sna->mode.shadow_damage) {
+		assert(!sna->mode.shadow_enabled);
 		return;
+	}
 
 	DBG(("%s\n", __FUNCTION__));
 
@@ -1418,6 +1421,7 @@ static void sna_mode_disable_shadow(struct sna *sna)
 	DamageUnregister(&sna->front->drawable, sna->mode.shadow_damage);
 	DamageDestroy(sna->mode.shadow_damage);
 	sna->mode.shadow_damage = NULL;
+	sna->mode.shadow_enabled = false;
 
 	if (sna->mode.shadow) {
 		kgem_bo_destroy(&sna->kgem, sna->mode.shadow);
@@ -4448,6 +4452,7 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 	for (i = 0; i < sna->mode.num_real_crtc; i++)
 		sna_crtc_disable_shadow(sna, to_sna_crtc(config->crtc[i]));
 	assert(sna->mode.shadow_active == 0);
+	assert(!sna->mode.shadow_enabled);
 	assert(sna->mode.shadow_damage == NULL);
 	assert(sna->mode.shadow == NULL);
 
@@ -5422,7 +5427,6 @@ sna_page_flip(struct sna *sna,
 	assert(bo->refcnt);
 
 	assert((sna->flags & SNA_IS_HOSTED) == 0);
-	assert((sna->flags & SNA_TEAR_FREE) == 0);
 	assert(sna->mode.flip_active == 0);
 	assert(sna->mode.front_active);
 	assert(!sna->mode.hidden);
@@ -7233,7 +7237,7 @@ void sna_mode_redisplay(struct sna *sna)
 		return;
 	}
 
-	if (!sna->mode.shadow_damage)
+	if (!sna->mode.shadow_enabled || !sna->mode.shadow_damage)
 		return;
 
 	DBG(("%s: posting shadow damage? %d (flips pending? %d, mode reconfiguration pending? %d)\n",
