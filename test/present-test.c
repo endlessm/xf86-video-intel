@@ -496,7 +496,7 @@ static int test_future(Display *dpy, void *Q)
 			int diff = (int64_t)(ce->msc - (15*60*ce->serial + msc + 60));
 			if (diff < 0) {
 				if (-diff > earliest) {
-					fprintf(stderr, "\tframe %d displayed early by %d frames\n", ce->serial, diff);
+					fprintf(stderr, "\tframe %d displayed early by %d frames\n", ce->serial, -diff);
 					earliest = -diff;
 				}
 				early++;
@@ -714,8 +714,8 @@ static int test_accuracy(Display *dpy, void *Q)
 					fprintf(stderr, "\tframe %d displayed late by %d frames\n", ce->serial, diff);
 					latest = diff;
 				}
-				ret++;
 				late++;
+				ret++;
 			}
 		} else
 			complete = 1;
@@ -824,19 +824,19 @@ static int test_modulus(Display *dpy, void *Q)
 
 			diff = (int64_t)(ce->msc - msc);
 			if (diff < 0) {
-				ret += -diff;
 				if (-diff > earliest) {
 					fprintf(stderr, "\tframe (%d, %d) displayed early by %d frames\n", y, x, -diff);
 					earliest = -diff;
 				}
 				early++;
+				ret++;
 			} else if (diff > 0) {
-				ret += diff;
 				if (diff > latest) {
 					fprintf(stderr, "\tframe (%d, %d) displayed late by %d frames\n", y, x, diff);
 					latest = diff;
 				}
 				late++;
+				ret++;
 			}
 		} else
 			complete = 1;
@@ -850,6 +850,295 @@ static int test_modulus(Display *dpy, void *Q)
 
 	XFreePixmap(dpy, pixmap);
 	xcb_xfixes_destroy_region(c, region);
+
+	XSync(dpy, True);
+	ret += !!_x_error_occurred;
+
+	return ret;
+}
+
+static int test_future_msc(Display *dpy, void *Q)
+{
+	xcb_connection_t *c = XGetXCBConnection(dpy);
+	Window root = DefaultRootWindow(dpy);
+	int ret = 0, n;
+	uint64_t msc, ust;
+	int complete;
+	int early = 0, late = 0;
+	int earliest = 0, latest = 0;
+	uint64_t interval;
+
+	printf("Testing notifies into the future\n");
+	_x_error_occurred = 0;
+
+	interval = msc_interval(dpy, root, Q);
+	msc = check_msc(dpy, root, Q, 0, &ust);
+
+	for (n = 1; n <= 10; n++)
+		xcb_present_notify_msc(c, root, n, msc + 60 + n*15*60, 0, 0);
+	xcb_present_notify_msc(c, root, 0xdeadbeef, msc + 60 + n*15*60, 0, 0);
+	xcb_flush(c);
+
+	complete = 0;
+	do {
+		xcb_present_complete_notify_event_t *ce;
+		xcb_generic_event_t *ev;
+
+		ev = xcb_wait_for_special_event(c, Q);
+		if (ev == NULL)
+			break;
+
+		ce = (xcb_present_complete_notify_event_t *)ev;
+		assert(ce->kind == XCB_PRESENT_COMPLETE_KIND_NOTIFY_MSC);
+
+		if (ce->serial == 0xdeadbeef) {
+			int64_t time;
+
+			time = ce->ust - (ust + (60 + 15*60*n) * interval);
+			if (time < -(int64_t)interval) {
+				fprintf(stderr,
+					"\tnotifies completed too early by %lldms\n",
+					(long long)(-time / 1000));
+			} else if (time > (int64_t)interval) {
+				fprintf(stderr,
+					"\tnotifies completed too late by %lldms\n",
+					(long long)(time / 1000));
+			}
+			complete = 1;
+		} else {
+			int diff = (int64_t)(ce->msc - (15*60*ce->serial + msc + 60));
+			if (diff < 0) {
+				if (-diff > earliest) {
+					fprintf(stderr, "\tnotify %d early by %d msc\n", ce->serial, -diff);
+					earliest = -diff;
+				}
+				early++;
+				ret++;
+			} else if (diff > 0) {
+				if (diff > latest) {
+					fprintf(stderr, "\tnotify %d late by %d msc\n", ce->serial, diff);
+					latest = diff;
+				}
+				late++;
+				ret++;
+			}
+		}
+		free(ev);
+	} while (!complete);
+
+	if (early)
+		printf("\t%d notifies too early (worst %d)!\n", early, earliest);
+	if (late)
+		printf("\t%d notifies too late (worst %d)!\n", late, latest);
+
+	XSync(dpy, True);
+	ret += !!_x_error_occurred;
+
+	return ret;
+}
+
+static int test_exhaustion_msc(Display *dpy, void *Q)
+{
+#define N_VBLANKS 256 /* kernel event queue length: 128 vblanks */
+	xcb_connection_t *c = XGetXCBConnection(dpy);
+	Window root = DefaultRootWindow(dpy);
+	int ret = 0, n, complete;
+	int earliest = 0, early = 0;
+	int latest = 0, late = 0;
+	uint64_t msc;
+
+	printf("Testing notifies with long queues\n");
+	_x_error_occurred = 0;
+
+	msc = check_msc(dpy, root, Q, 0, NULL);
+	for (n = N_VBLANKS; n--; )
+		xcb_present_notify_msc(c, root, N_VBLANKS, msc + N_VBLANKS, 1, 0);
+	xcb_present_notify_msc(c, root, 1, msc, 1, 0);
+	xcb_flush(c);
+
+	complete = N_VBLANKS + 1;
+	do {
+		xcb_present_complete_notify_event_t *ce;
+		xcb_generic_event_t *ev;
+		int diff;
+
+		ev = xcb_wait_for_special_event(c, Q);
+		if (ev == NULL)
+			break;
+
+		ce = (xcb_present_complete_notify_event_t *)ev;
+		assert(ce->kind == XCB_PRESENT_COMPLETE_KIND_NOTIFY_MSC);
+
+		diff = (int64_t)(ce->msc - msc - ce->serial);
+		if (diff < 0) {
+			if (-diff > earliest) {
+				fprintf(stderr, "\tnotify %d early by %d msc\n",(int)ce->serial, -diff);
+				earliest = -diff;
+			}
+			early++;
+			ret++;
+		} else if (diff > 0) {
+			if (diff > latest) {
+				fprintf(stderr, "\tnotify %d late by %d msc\n", (int)ce->serial, diff);
+				latest = diff;
+			}
+			late++;
+			ret++;
+		}
+		free(ev);
+	} while (--complete);
+
+	if (early)
+		printf("\t%d notifies too early (worst %d)!\n", early, earliest);
+	if (late)
+		printf("\t%d notifies too late (worst %d)!\n", late, latest);
+
+	XSync(dpy, True);
+	ret += !!_x_error_occurred;
+
+	return ret;
+#undef N_VBLANKS
+}
+
+static int test_accuracy_msc(Display *dpy, void *Q)
+{
+#define N_VBLANKS (60 * 120) /* ~2 minutes */
+	xcb_connection_t *c = XGetXCBConnection(dpy);
+	Window root = DefaultRootWindow(dpy);
+	int ret = 0, n;
+	uint64_t msc;
+	int early = 0, late = 0;
+	int earliest = 0, latest = 0;
+	int complete;
+
+	printf("Testing notify accuracy\n");
+	_x_error_occurred = 0;
+
+	msc = check_msc(dpy, root, Q, 0, NULL);
+	for (n = 0; n <= N_VBLANKS; n++)
+		xcb_present_notify_msc(c, root, n, msc + 60 + n, 0, 0);
+	xcb_present_notify_msc(c, root, 0xdeadbeef, msc + 60 + n, 0, 0);
+	xcb_flush(c);
+
+	complete = 0;
+	do {
+		xcb_present_complete_notify_event_t *ce;
+		xcb_generic_event_t *ev;
+
+		ev = xcb_wait_for_special_event(c, Q);
+		if (ev == NULL)
+			break;
+
+		ce = (xcb_present_complete_notify_event_t *)ev;
+		assert(ce->kind == XCB_PRESENT_COMPLETE_KIND_NOTIFY_MSC);
+
+		if (ce->serial != 0xdeadbeef) {
+			int diff = (int64_t)(ce->msc - (msc + ce->serial + 60));
+			if (diff < 0) {
+				if (-diff > earliest) {
+					fprintf(stderr, "\tnotify %d early by %d msc\n", ce->serial, -diff);
+					earliest = -diff;
+				}
+				early++;
+				ret++;
+			} else if (diff > 0) {
+				if (diff > latest) {
+					fprintf(stderr, "\tnotify %d late by %d msc\n", ce->serial, diff);
+					latest = diff;
+				}
+				late++;
+				ret++;
+			}
+		} else
+			complete = 1;
+		free(ev);
+	} while (!complete);
+
+	if (early)
+		printf("\t%d notifies too early (worst %d)!\n", early, earliest);
+	if (late)
+		printf("\t%d notifies too late (worst %d)!\n", late, latest);
+
+	XSync(dpy, True);
+	ret += !!_x_error_occurred;
+
+	return ret;
+#undef N_VBLANKS
+}
+
+static int test_modulus_msc(Display *dpy, void *Q)
+{
+	xcb_connection_t *c = XGetXCBConnection(dpy);
+	Window root = DefaultRootWindow(dpy);
+	int x, y, ret = 0;
+	uint64_t target;
+	int early = 0, late = 0;
+	int earliest = 0, latest = 0;
+	int complete;
+
+	printf("Testing notify modulus\n");
+	_x_error_occurred = 0;
+
+	target = check_msc(dpy, root, Q, 0, NULL);
+	for (x = 1; x <= 7; x++) {
+		for (y = 0; y < x; y++) {
+			xcb_present_notify_msc(c, root, y << 16 | x, 0, x, y);
+		}
+	}
+	xcb_present_notify_msc(c, root, 0xdeadbeef, target + 2*x, 0, 0);
+	xcb_flush(c);
+
+	complete = 0;
+	do {
+		xcb_present_complete_notify_event_t *ce;
+		xcb_generic_event_t *ev;
+
+		ev = xcb_wait_for_special_event(c, Q);
+		if (ev == NULL)
+			break;
+
+		ce = (xcb_present_complete_notify_event_t *)ev;
+		assert(ce->kind == XCB_PRESENT_COMPLETE_KIND_NOTIFY_MSC);
+
+		assert(ce->serial);
+		if (ce->serial != 0xdeadbeef) {
+			uint64_t msc;
+			int diff;
+
+			x = ce->serial & 0xffff;
+			y = ce->serial >> 16;
+
+			msc = target;
+			msc -= target % x;
+			msc += y;
+			if (msc <= target)
+				msc += x;
+
+			diff = (int64_t)(ce->msc - msc);
+			if (diff < 0) {
+				if (-diff > earliest) {
+					fprintf(stderr, "\tnotify (%d, %d) early by %d msc\n", y, x, -diff);
+					earliest = -diff;
+				}
+				early++;
+				ret++;
+			} else if (diff > 0) {
+				if (diff > latest) {
+					fprintf(stderr, "\tnotify (%d, %d) late by %d msc\n", y, x, diff);
+					latest = diff;
+				}
+				late++;
+				ret++;
+			}
+		} else
+			complete = 1;
+		free(ev);
+	} while (!complete);
+
+	if (early)
+		printf("\t%d notifies too early (worst %d)!\n", early, earliest);
+	if (late)
+		printf("\t%d notifies too late (worst %d)!\n", late, latest);
 
 	XSync(dpy, True);
 	ret += !!_x_error_occurred;
@@ -1368,6 +1657,18 @@ int main(void)
 
 	queue = setup_msc(dpy, root);
 	last_msc = check_msc(dpy, root, queue, 0, NULL);
+
+	error += test_future_msc(dpy, queue);
+	last_msc = check_msc(dpy, root, queue, last_msc, NULL);
+
+	error += test_accuracy_msc(dpy, queue);
+	last_msc = check_msc(dpy, root, queue, last_msc, NULL);
+
+	error += test_modulus_msc(dpy, queue);
+	last_msc = check_msc(dpy, root, queue, last_msc, NULL);
+
+	error += test_exhaustion_msc(dpy, queue);
+	last_msc = check_msc(dpy, root, queue, last_msc, NULL);
 
 	error += test_whole(dpy);
 	last_msc = check_msc(dpy, root, queue, last_msc, NULL);
