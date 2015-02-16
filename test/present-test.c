@@ -144,7 +144,7 @@ static uint64_t check_msc(Display *dpy, Window win, void *q, uint64_t last_msc, 
 	uint64_t msc = 0;
 	int complete = 0;
 
-	xcb_present_notify_msc(c, win, serial, 0, 0, 0);
+	xcb_present_notify_msc(c, win, serial ^ 0xcc00ffee, 0, 0, 0);
 	xcb_flush(c);
 
 	do {
@@ -157,7 +157,7 @@ static uint64_t check_msc(Display *dpy, Window win, void *q, uint64_t last_msc, 
 
 		ce = (xcb_present_complete_notify_event_t *)ev;
 		if (ce->kind == XCB_PRESENT_COMPLETE_KIND_NOTIFY_MSC &&
-		    ce->serial == serial) {
+		    ce->serial == (serial ^ 0xcc00ffee)) {
 			msc = ce->msc;
 			if (ust)
 				*ust = ce->ust;
@@ -952,11 +952,12 @@ static int test_exhaustion_msc(Display *dpy, void *Q)
 
 	msc = check_msc(dpy, root, Q, 0, NULL);
 	for (n = N_VBLANKS; n--; )
-		xcb_present_notify_msc(c, root, N_VBLANKS, msc + N_VBLANKS, 1, 0);
-	xcb_present_notify_msc(c, root, 1, msc, 1, 0);
+		xcb_present_notify_msc(c, root, N_VBLANKS, msc + N_VBLANKS, 0, 0);
+	for (n = 1; n <= N_VBLANKS ; n++)
+		xcb_present_notify_msc(c, root, n, msc + n, 0, 0);
 	xcb_flush(c);
 
-	complete = N_VBLANKS + 1;
+	complete = 2*N_VBLANKS;
 	do {
 		xcb_present_complete_notify_event_t *ce;
 		xcb_generic_event_t *ev;
@@ -1070,6 +1071,8 @@ static int test_modulus_msc(Display *dpy, void *Q)
 {
 	xcb_connection_t *c = XGetXCBConnection(dpy);
 	Window root = DefaultRootWindow(dpy);
+	xcb_present_complete_notify_event_t *ce;
+	xcb_generic_event_t *ev;
 	int x, y, ret = 0;
 	uint64_t target;
 	int early = 0, late = 0;
@@ -1080,6 +1083,8 @@ static int test_modulus_msc(Display *dpy, void *Q)
 	_x_error_occurred = 0;
 
 	target = check_msc(dpy, root, Q, 0, NULL);
+
+	xcb_present_notify_msc(c, root, 0, 0, 0, 0);
 	for (x = 1; x <= 7; x++) {
 		for (y = 0; y < x; y++) {
 			xcb_present_notify_msc(c, root, y << 16 | x, 0, x, y);
@@ -1088,11 +1093,16 @@ static int test_modulus_msc(Display *dpy, void *Q)
 	xcb_present_notify_msc(c, root, 0xdeadbeef, target + 2*x, 0, 0);
 	xcb_flush(c);
 
+	ev = xcb_wait_for_special_event(c, Q);
+	if (ev) {
+		ce = (xcb_present_complete_notify_event_t *)ev;
+		assert(ce->kind == XCB_PRESENT_COMPLETE_KIND_NOTIFY_MSC);
+		assert(ce->serial == 0);
+		target = ce->msc;
+	}
+
 	complete = 0;
 	do {
-		xcb_present_complete_notify_event_t *ce;
-		xcb_generic_event_t *ev;
-
 		ev = xcb_wait_for_special_event(c, Q);
 		if (ev == NULL)
 			break;
@@ -1117,14 +1127,14 @@ static int test_modulus_msc(Display *dpy, void *Q)
 			diff = (int64_t)(ce->msc - msc);
 			if (diff < 0) {
 				if (-diff > earliest) {
-					fprintf(stderr, "\tnotify (%d, %d) early by %d msc\n", y, x, -diff);
+					fprintf(stderr, "\tnotify (%d, %d) early by %d msc (target %lld, reported %lld)\n", y, x, -diff, (long long)msc, (long long)ce->msc);
 					earliest = -diff;
 				}
 				early++;
 				ret++;
 			} else if (diff > 0) {
 				if (diff > latest) {
-					fprintf(stderr, "\tnotify (%d, %d) late by %d msc\n", y, x, diff);
+					fprintf(stderr, "\tnotify (%d, %d) late by %d msc (target %lld, reported %lld)\n", y, x, diff, (long long)msc, (long long)ce->msc);
 					latest = diff;
 				}
 				late++;
