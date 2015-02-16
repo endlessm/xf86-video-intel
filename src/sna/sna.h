@@ -356,6 +356,7 @@ struct sna {
 		bool available;
 		bool open;
 #if HAVE_PRESENT
+		struct list vblank_queue;
 		uint64_t unflip;
 #endif
 	} present;
