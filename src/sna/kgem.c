@@ -4955,6 +4955,9 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 			}
 		}
 
+		if (flags & CREATE_CACHED)
+			return NULL;
+
 		bo = __kgem_bo_create_as_display(kgem, size, tiling, pitch);
 		if (bo)
 			return bo;

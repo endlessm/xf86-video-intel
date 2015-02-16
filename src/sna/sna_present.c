@@ -539,6 +539,42 @@ get_flip_bo(PixmapPtr pixmap)
 		return NULL;
 	}
 
+	if (priv->gpu_bo->scanout)
+		return priv->gpu_bo;
+
+	if (sna->kgem.has_llc && !wedged(sna)) {
+		struct kgem_bo *bo;
+		uint32_t tiling;
+
+		tiling = I915_TILING_NONE;
+		if ((sna->flags & SNA_LINEAR_FB) == 0)
+			tiling = I915_TILING_X;
+
+		bo = kgem_create_2d(&sna->kgem,
+				    pixmap->drawable.width,
+				    pixmap->drawable.height,
+				    pixmap->drawable.bitsPerPixel,
+				    tiling, CREATE_SCANOUT | CREATE_CACHED);
+		if (bo) {
+			BoxRec box;
+
+			box.x1 = box.y1 = 0;
+			box.x2 = pixmap->drawable.width;
+			box.y2 = pixmap->drawable.height;
+
+			if (sna->render.copy_boxes(sna, GXcopy,
+						   &pixmap->drawable, priv->gpu_bo, 0, 0,
+						   &pixmap->drawable, bo, 0, 0,
+						   &box, 1, 0)) {
+				sna_pixmap_unmap(pixmap, priv);
+				kgem_bo_destroy(&sna->kgem, priv->gpu_bo);
+
+				priv->gpu_bo = bo;
+			} else
+				kgem_bo_destroy(&sna->kgem, bo);
+		}
+	}
+
 	if (sna->flags & SNA_LINEAR_FB &&
 	    priv->gpu_bo->tiling &&
 	    !sna_pixmap_change_tiling(pixmap, I915_TILING_NONE)) {
@@ -552,7 +588,6 @@ get_flip_bo(PixmapPtr pixmap)
 		return NULL;
 	}
 
-	priv->pinned |= PIN_SCANOUT;
 	return priv->gpu_bo;
 }
 
@@ -580,19 +615,19 @@ sna_present_flip(RRCrtcPtr crtc,
 
 	assert(sna->present.unflip == 0);
 
-	bo = get_flip_bo(pixmap);
-	if (bo == NULL) {
-		DBG(("%s: flip invalid bo\n", __FUNCTION__));
-		return FALSE;
-	}
-
 	if (sna->flags & SNA_TEAR_FREE)
 		sna->mode.shadow_enabled = false;
 	assert(!sna->mode.shadow_enabled);
 
 	if (sna->mode.flip_active) {
 		DBG(("%s: flips still pending\n", __FUNCTION__));
-		return false;
+		return FALSE;
+	}
+
+	bo = get_flip_bo(pixmap);
+	if (bo == NULL) {
+		DBG(("%s: flip invalid bo\n", __FUNCTION__));
+		return FALSE;
 	}
 
 	if (sync_flip)
@@ -640,6 +675,8 @@ reset_mode:
 		xf86SetDesiredModes(sna->scrn);
 		goto notify;
 	}
+
+	assert(sna_pixmap(screen->GetScreenPixmap(screen))->pinned & PIN_SCANOUT);
 
 	if (sna->flags & SNA_HAS_ASYNC_FLIP) {
 		DBG(("%s: trying async flip restore\n", __FUNCTION__));
