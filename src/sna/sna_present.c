@@ -274,7 +274,7 @@ sna_present_queue_vblank(RRCrtcPtr crtc, uint64_t event_id, uint64_t msc)
 	}
 
 	list_for_each_entry(tmp, &sna->present.vblank_queue, link) {
-		if (tmp->target_msc == msc) {
+		if (tmp->target_msc == msc && tmp->crtc == crtc->devPrivate) {
 			uint64_t *events = tmp->event_id;
 
 			if (is_power_of_two(tmp->n_event_id)) {
