@@ -5449,6 +5449,9 @@ sna_page_flip(struct sna *sna,
 		assert(crtc->bo->refcnt >= crtc->bo->active_scanout);
 		assert(crtc->flip_bo == NULL);
 
+		if (data == NULL && crtc->bo == bo)
+			goto next_crtc;
+
 		arg.crtc_id = crtc->id;
 		arg.fb_id = get_fb(sna, bo, width, height);
 		if (arg.fb_id == 0) {
