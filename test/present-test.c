@@ -528,7 +528,7 @@ static int test_exhaustion(Display *dpy, void *Q)
 #define N_VBLANKS 256 /* kernel event queue length: 128 vblanks */
 	xcb_connection_t *c = XGetXCBConnection(dpy);
 	Pixmap pixmap;
-	struct dri3_fence fence;
+	struct dri3_fence fence[2];
 	Window root;
 	xcb_xfixes_region_t region;
 	unsigned int width, height;
@@ -539,7 +539,8 @@ static int test_exhaustion(Display *dpy, void *Q)
 	XGetGeometry(dpy, DefaultRootWindow(dpy),
 		     &root, &x, &y, &width, &height, &border, &depth);
 
-	if (dri3_create_fence(dpy, root, &fence))
+	if (dri3_create_fence(dpy, root, &fence[0]) ||
+	    dri3_create_fence(dpy, root, &fence[1]))
 		return 0;
 
 	printf("Testing whole screen flips with long vblank queues: %dx%d\n", width, height);
@@ -548,9 +549,10 @@ static int test_exhaustion(Display *dpy, void *Q)
 	region = xcb_generate_id(c);
 	xcb_xfixes_create_region(c, region, 0, NULL);
 
-	target = check_msc(dpy, root, Q, 0, NULL);
 	pixmap = XCreatePixmap(dpy, root, width, height, depth);
-	xshmfence_reset(fence.addr);
+	xshmfence_reset(fence[0].addr);
+	xshmfence_reset(fence[1].addr);
+	target = check_msc(dpy, root, Q, 0, NULL);
 	for (n = N_VBLANKS; n--; )
 		xcb_present_pixmap(c, root, pixmap, 0,
 				   0, /* valid */
@@ -572,17 +574,42 @@ static int test_exhaustion(Display *dpy, void *Q)
 			   0, /* y_off */
 			   None,
 			   None, /* wait fence */
-			   fence.xid,
+			   fence[0].xid,
 			   XCB_PRESENT_OPTION_NONE,
 			   target, /* target msc */
 			   0, /* divisor */
 			   0, /* remainder */
 			   0, NULL);
+	for (n = 1; n < N_VBLANKS; n++)
+		xcb_present_pixmap(c, root, pixmap, 0,
+				   region, /* valid */
+				   region, /* update */
+				   0, /* x_off */
+				   0, /* y_off */
+				   None,
+				   None, /* wait fence */
+				   None,
+				   XCB_PRESENT_OPTION_NONE,
+				   target + n, /* target msc */
+				   0, /* divisor */
+				   0, /* remainder */
+				   0, NULL);
+	xcb_present_pixmap(c, root, pixmap, 0,
+			   region, /* valid */
+			   region, /* update */
+			   0, /* x_off */
+			   0, /* y_off */
+			   None,
+			   None, /* wait fence */
+			   fence[1].xid,
+			   XCB_PRESENT_OPTION_NONE,
+			   target + N_VBLANKS, /* target msc */
+			   0, /* divisor */
+			   0, /* remainder */
+			   0, NULL);
 	xcb_flush(c);
 
-	XSync(dpy, True);
-	ret += !!xshmfence_await(fence.addr);
-
+	ret += !!xshmfence_await(fence[0].addr);
 	final = check_msc(dpy, root, Q, 0, NULL);
 	if (final < target) {
 		printf("\tFirst flip too early, MSC was %llu, expected %llu\n",
@@ -594,23 +621,7 @@ static int test_exhaustion(Display *dpy, void *Q)
 		ret++;
 	}
 
-	xshmfence_reset(fence.addr);
-	xcb_present_pixmap(c, root, pixmap, 0,
-			   region, /* valid */
-			   region, /* update */
-			   0, /* x_off */
-			   0, /* y_off */
-			   None,
-			   None, /* wait fence */
-			   fence.xid,
-			   XCB_PRESENT_OPTION_NONE,
-			   target + N_VBLANKS, /* target msc */
-			   0, /* divisor */
-			   0, /* remainder */
-			   0, NULL);
-	xcb_flush(c);
-	ret += !!xshmfence_await(fence.addr);
-
+	ret += !!xshmfence_await(fence[1].addr);
 	final = check_msc(dpy, root, Q, 0, NULL);
 	if (final < target + N_VBLANKS) {
 		printf("\tLast flip too early, MSC was %llu, expected %llu\n",
@@ -626,7 +637,8 @@ static int test_exhaustion(Display *dpy, void *Q)
 
 	XFreePixmap(dpy, pixmap);
 	xcb_xfixes_destroy_region(c, region);
-	dri3_fence_free(dpy, &fence);
+	dri3_fence_free(dpy, &fence[1]);
+	dri3_fence_free(dpy, &fence[0]);
 
 	XSync(dpy, True);
 	ret += !!_x_error_occurred;
