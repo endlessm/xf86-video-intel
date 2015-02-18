@@ -146,7 +146,7 @@ static CARD32 sna_fake_vblank_handler(OsTimerPtr timer, CARD32 now, void *data)
 		ust = ust64(vbl.reply.tval_sec, vbl.reply.tval_usec);
 		msc = sna_crtc_record_vblank(info->crtc, &vbl);
 		DBG(("%s: event=%lld, target msc=%lld, now %lld\n",
-		     __FUNCTION__, (long long)info->event_id, (long long)info->target_msc, (long long)msc));
+		     __FUNCTION__, (long long)info->event_id[0], (long long)info->target_msc, (long long)msc));
 		if (msc < info->target_msc) {
 			uint32_t delay = msc_to_delay(info->crtc, info->target_msc);
 			if (delay)
@@ -157,7 +157,7 @@ static CARD32 sna_fake_vblank_handler(OsTimerPtr timer, CARD32 now, void *data)
 		ust = swap_ust(swap);
 		msc = swap->msc;
 		DBG(("%s: event=%lld, CRTC OFF, target msc=%lld, was %lld\n",
-		     __FUNCTION__, (long long)info->event_id, (long long)info->target_msc, (long long)msc));
+		     __FUNCTION__, (long long)info->event_id[0], (long long)info->target_msc, (long long)msc));
 	}
 
 	vblank_complete(info, ust, msc);
@@ -178,7 +178,7 @@ static bool sna_fake_vblank(struct sna_present_event *info)
 		delay = 0;
 
 	DBG(("%s(event=%lld, target_msc=%lld, msc=%lld, delay=%ums)\n",
-	     __FUNCTION__, (long long)info->event_id, (long long)info->target_msc, msc, delay));
+	     __FUNCTION__, (long long)info->event_id[0], (long long)info->target_msc, msc, delay));
 	if (delay == 0) {
 		const struct ust_msc *swap = sna_crtc_last_swap(info->crtc);
 		present_event_notify(info->event_id[0], swap_ust(swap), swap->msc);
