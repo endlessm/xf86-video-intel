@@ -1488,37 +1488,37 @@ namecmp(const char *s1, const char *s2)
 	return c1 - c2;
 }
 
-static bool is_level(const char **str)
+static Bool is_level(const char **str)
 {
 	const char *s = *str;
 	char *end;
 	unsigned val;
 
 	if (s == NULL || *s == '\0')
-		return true;
+		return TRUE;
 
 	if (namecmp(s, "on") == 0)
-		return true;
+		return TRUE;
 	if (namecmp(s, "true") == 0)
-		return true;
+		return TRUE;
 	if (namecmp(s, "yes") == 0)
-		return true;
+		return TRUE;
 
 	if (namecmp(s, "0") == 0)
-		return true;
+		return TRUE;
 	if (namecmp(s, "off") == 0)
-		return true;
+		return TRUE;
 	if (namecmp(s, "false") == 0)
-		return true;
+		return TRUE;
 	if (namecmp(s, "no") == 0)
-		return true;
+		return TRUE;
 
 	val = strtoul(s, &end, 0);
 	if (val && *end == '\0')
-		return true;
+		return TRUE;
 	if (val && *end == ':')
 		*str = end + 1;
-	return false;
+	return FALSE;
 }
 
 static const char *options_get_dri(intel_screen_private *intel)
