@@ -4674,11 +4674,10 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 				return cursor;
 			}
 		}
-
-		cursor = to_sna_crtc(crtc)->cursor;
 	}
 
 	size = sna->cursor.size;
+	cursor = to_sna_crtc(crtc)->cursor;
 	if (cursor && cursor->alloc < 4*size*size)
 		cursor = NULL;
 
