@@ -3090,7 +3090,7 @@ default_modes(void)
 }
 
 static DisplayModePtr
-sna_output_panel_edid(xf86OutputPtr output, DisplayModePtr modes)
+sna_output_add_default_modes(xf86OutputPtr output, DisplayModePtr modes)
 {
 	xf86MonPtr mon = output->MonInfo;
 	DisplayModePtr i, m, preferred = NULL;
@@ -3213,7 +3213,7 @@ sna_output_get_modes(xf86OutputPtr output)
 	}
 
 	if (sna_output->add_default_modes)
-		Modes = sna_output_panel_edid(output, Modes);
+		Modes = sna_output_add_default_modes(output, Modes);
 
 	return Modes;
 }
