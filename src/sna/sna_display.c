@@ -88,6 +88,8 @@ union compat_mode_get_connector{
 #define DEFAULT_DPI 96
 #endif
 
+#define OUTPUT_STATUS_CACHE_MS 15000
+
 #define DRM_MODE_PAGE_FLIP_ASYNC 0x02
 
 #define DRM_CLIENT_CAP_UNIVERSAL_PLANES 2
@@ -186,6 +188,9 @@ struct sna_output {
 	int dpms_mode;
 	struct backlight backlight;
 	int backlight_active_level;
+
+	uint32_t last_detect;
+	uint32_t status;
 
 	int num_modes;
 	struct drm_mode_modeinfo *modes;
@@ -2898,12 +2903,23 @@ sna_output_detect(xf86OutputPtr output)
 	struct sna *sna = to_sna(output->scrn);
 	struct sna_output *sna_output = output->driver_private;
 	union compat_mode_get_connector compat_conn;
+	uint32_t now;
 
 	DBG(("%s(%s:%d)\n", __FUNCTION__, output->name, sna_output->id));
 
 	if (!sna_output->id) {
 		DBG(("%s(%s) hiding due to lost connection\n", __FUNCTION__, output->name));
 		return XF86OutputStatusDisconnected;
+	}
+
+	/* Cache detections for 15s or hotplug event  */
+	now = GetTimeInMillis();
+	if (sna_output->last_detect != 0 &&
+	    (int32_t)(now - sna_output->last_detect) <= OUTPUT_STATUS_CACHE_MS) {
+		DBG(("%s(%s) reporting cached status (since %dms): %d\n",
+		     __FUNCTION__, output->name, now - sna_output->last_detect,
+		     sna_output->status));
+		return sna_output->status;
 	}
 
 	VG_CLEAR(compat_conn);
@@ -2948,15 +2964,17 @@ sna_output_detect(xf86OutputPtr output)
 	DBG(("%s(%s): found %d modes, connection status=%d\n",
 	     __FUNCTION__, output->name, sna_output->num_modes, compat_conn.conn.connection));
 
+	sna_output->last_detect = now;
 	switch (compat_conn.conn.connection) {
 	case DRM_MODE_CONNECTED:
-		return XF86OutputStatusConnected;
+		sna_output->status = XF86OutputStatusConnected;
 	case DRM_MODE_DISCONNECTED:
-		return XF86OutputStatusDisconnected;
+		sna_output->status = XF86OutputStatusDisconnected;
 	default:
 	case DRM_MODE_UNKNOWNCONNECTION:
-		return XF86OutputStatusUnknown;
+		sna_output->status = XF86OutputStatusUnknown;
 	}
+	return sna_output->status;
 }
 
 static Bool
@@ -4259,16 +4277,18 @@ void sna_mode_discover(struct sna *sna)
 
 	for (i = 0; i < sna->mode.num_real_output; i++) {
 		xf86OutputPtr output = config->output[i];
+		struct sna_output *sna_output = to_sna_output(output);
 
-		if (to_sna_output(output)->id == 0)
+		if (sna_output->id == 0)
 			continue;
 
-		if (to_sna_output(output)->serial == serial)
+		sna_output->last_detect = 0;
+		if (sna_output->serial == serial)
 			continue;
 
 		DBG(("%s: removing output %s (id=%d), serial=%u [now %u]\n",
-		     __FUNCTION__, output->name, to_sna_output(output)->id,
-		    to_sna_output(output)->serial, serial));
+		     __FUNCTION__, output->name, sna_output->id,
+		    sna_output->serial, serial));
 
 		xf86DrvMsg(sna->scrn->scrnIndex, X_INFO,
 			   "%s output %s\n",
@@ -4278,7 +4298,7 @@ void sna_mode_discover(struct sna *sna)
 			sna_output_del(output);
 			i--;
 		} else {
-			to_sna_output(output)->id = 0;
+			sna_output->id = 0;
 			output->crtc = NULL;
 		}
 		changed |= 2;
