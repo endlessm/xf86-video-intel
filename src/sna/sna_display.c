@@ -2968,11 +2968,14 @@ sna_output_detect(xf86OutputPtr output)
 	switch (compat_conn.conn.connection) {
 	case DRM_MODE_CONNECTED:
 		sna_output->status = XF86OutputStatusConnected;
+		break;
 	case DRM_MODE_DISCONNECTED:
 		sna_output->status = XF86OutputStatusDisconnected;
+		break;
 	default:
 	case DRM_MODE_UNKNOWNCONNECTION:
 		sna_output->status = XF86OutputStatusUnknown;
+		break;
 	}
 	return sna_output->status;
 }
