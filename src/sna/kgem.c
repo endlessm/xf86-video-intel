@@ -1646,6 +1646,9 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 	     (long long)aperture.aper_size,
 	     (long long)aperture.aper_available_size));
 
+	/* clamp aperture to uint32_t for simplicity */
+	if (aperture.aper_size > 0xc0000000)
+		aperture.aper_size = 0xc0000000;
 	kgem->aperture_total = aperture.aper_size;
 	kgem->aperture_high = aperture.aper_size * 3/4;
 	kgem->aperture_low = aperture.aper_size * 1/3;
@@ -1744,11 +1747,11 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 	if (DBG_NO_CPU)
 		kgem->max_cpu_size = 0;
 
-	DBG(("%s: maximum object size=%d\n",
+	DBG(("%s: maximum object size=%u\n",
 	     __FUNCTION__, kgem->max_object_size));
-	DBG(("%s: large object thresold=%d\n",
+	DBG(("%s: large object thresold=%u\n",
 	     __FUNCTION__, kgem->large_object_size));
-	DBG(("%s: max object sizes (gpu=%d, cpu=%d, tile upload=%d, copy=%d)\n",
+	DBG(("%s: max object sizes (gpu=%u, cpu=%u, tile upload=%u, copy=%u)\n",
 	     __FUNCTION__,
 	     kgem->max_gpu_size, kgem->max_cpu_size,
 	     kgem->max_upload_tile_size, kgem->max_copy_tile_size));
