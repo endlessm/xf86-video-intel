@@ -3689,14 +3689,20 @@ gather_encoders(struct sna *sna, uint32_t id, int count,
 	struct drm_mode_get_encoder enc;
 	uint32_t *ids = NULL;
 
+	DBG(("%s(%d): expected count=%d\n", __FUNCTION__, id, count));
+
 	VG_CLEAR(compat_conn);
 	memset(out, 0, sizeof(*out));
 
 	do {
-		free(ids);
-		ids = malloc(sizeof(*ids) * count);
-		if (ids == 0)
+		uint32_t *nids;
+
+		nids = realloc(ids, sizeof(*ids) * count);
+		if (nids == NULL) {
+			free(ids);
 			return false;
+		}
+		ids = nids;
 
 		compat_conn.conn.connector_id = id;
 		compat_conn.conn.count_props = 0;
@@ -3716,6 +3722,7 @@ gather_encoders(struct sna *sna, uint32_t id, int count,
 		count = compat_conn.conn.count_encoders;
 	} while (1);
 
+	DBG(("%s(%d): gathering %d encoders\n", __FUNCTION__, id, count));
 	for (count = 0; count < compat_conn.conn.count_encoders; count++) {
 		enc.encoder_id = ids[count];
 		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETENCODER, &enc)) {
@@ -3723,6 +3730,8 @@ gather_encoders(struct sna *sna, uint32_t id, int count,
 			count = 0;
 			break;
 		}
+		DBG(("%s(%d): encoder=%d, possible_crtcs=%x, possible_clones=%x\n",
+		     __FUNCTION__, id, enc.encoder_id, enc.possible_crtcs, enc.possible_clones));
 		out->possible_crtcs |= enc.possible_crtcs;
 		out->possible_clones |= enc.possible_clones;
 
@@ -3882,6 +3891,7 @@ sna_output_add(struct sna *sna, unsigned id, unsigned serial)
 		return -1;
 	}
 	assert(compat_conn.conn.connector_id == id);
+	DBG(("%s(%d): has %d associated encoders\n", __FUNCTION__, id, compat_conn.conn.count_encoders));
 
 	if (compat_conn.conn.connector_type < ARRAY_SIZE(output_names))
 		output_name = output_names[compat_conn.conn.connector_type];
@@ -4247,8 +4257,9 @@ void sna_mode_discover(struct sna *sna)
 	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETRESOURCES, &res))
 		return;
 
-	DBG(("%s: now %d (was %d) connectors\n", __FUNCTION__,
-	     res.count_connectors, sna->mode.num_real_output));
+	DBG(("%s: now %d (was %d) connectors, %d encoders, %d crtc\n", __FUNCTION__,
+	     res.count_connectors, sna->mode.num_real_output,
+	     res.count_encoders, res.count_crtcs));
 	if (res.count_connectors > 32)
 		return;
 
@@ -6051,6 +6062,9 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 	}
 	if (res) {
 		xf86CrtcConfigPtr xf86_config;
+
+		DBG(("%s: found %d CRTC, %d encoders, %d connectors\n",
+		     __FUNCTION__, res->count_crtcs, res->count_encoders, res->count_connectors));
 
 		assert(res->count_crtcs);
 		assert(res->count_connectors);
