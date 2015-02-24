@@ -11849,8 +11849,8 @@ sna_poly_fill_rect_blt(DrawablePtr drawable,
 					b[0].x2 = b[0].x1 + rect[0].width;
 					b[0].y2 = b[0].y1 + rect[0].height;
 
-					b[1].x1 = rect[1].x + dx;
-					b[1].y1 = rect[1].y + dy;
+					b[1].x1 = rect[1].x;
+					b[1].y1 = rect[1].y;
 					b[1].x2 = b[1].x1 + rect[1].width;
 					b[1].y2 = b[1].y1 + rect[1].height;
 
