@@ -740,6 +740,8 @@ sna_wakeup_handler(WAKEUPHANDLER_ARGS_DECL)
 }
 
 #if HAVE_UDEV
+#include <sys/stat.h>
+
 static void
 sna_handle_uevents(int fd, void *closure)
 {
