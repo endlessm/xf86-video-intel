@@ -728,6 +728,8 @@ intel_flush_callback(CallbackListPtr *list,
 }
 
 #if HAVE_UDEV
+#include <sys/stat.h>
+
 static void
 I830HandleUEvents(int fd, void *closure)
 {
