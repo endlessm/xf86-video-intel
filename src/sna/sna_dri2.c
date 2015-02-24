@@ -245,6 +245,7 @@ sna_dri2_get_back(struct sna *sna,
 		}
 	}
 
+	assert(bo->active_scanout == 0);
 	assert(bo != get_private(back)->bo);
 	kgem_bo_destroy(&sna->kgem, get_private(back)->bo);
 
@@ -343,7 +344,6 @@ sna_dri2_reuse_buffer(DrawablePtr draw, DRI2BufferPtr buffer)
 	    draw->type != DRAWABLE_PIXMAP) {
 		DBG(("%s: replacing back buffer on window %ld\n", __FUNCTION__, draw->id));
 		sna_dri2_get_back(to_sna_from_drawable(draw), draw, buffer, dri2_chain(draw));
-
 		assert(get_private(buffer)->bo->refcnt);
 		assert(get_private(buffer)->bo->active_scanout == 0);
 		assert(kgem_bo_flink(&to_sna_from_drawable(draw)->kgem, get_private(buffer)->bo) == buffer->name);
@@ -1391,6 +1391,7 @@ sna_dri2_client_gone(CallbackListPtr *list, void *closure, void *data)
 						      event);
 			event->client = NULL;
 			event->draw = NULL;
+			event->flip_continue = 0;
 			list_del(&event->link);
 		} else
 			sna_dri2_event_free(event);
@@ -1479,6 +1480,8 @@ void sna_dri2_decouple_window(WindowPtr win)
 		_sna_dri2_destroy_buffer(sna, priv->front);
 		priv->front = NULL;
 	}
+
+	swap_limit(&win->drawable, 1);
 }
 
 void sna_dri2_destroy_window(WindowPtr win)
@@ -1508,6 +1511,7 @@ void sna_dri2_destroy_window(WindowPtr win)
 			assert(info->draw == &win->drawable);
 			info->draw = NULL;
 			info->client = NULL;
+			info->flip_continue = 0;
 			list_del(&info->link);
 
 			chain = info->chain;
@@ -2597,7 +2601,7 @@ static bool immediate_swap(struct sna *sna,
 			*current_msc = get_current_msc(sna, draw, crtc);
 
 		DBG(("%s: current_msc=%ld, target_msc=%ld -- %s\n",
-		     __FUNCTION__, (long)*current_msc, (long)target_msc,
+		     __FUNCTION__, (long)*current_msc, (long)*target_msc,
 		     (*current_msc >= *target_msc - 1) ? "yes" : "no"));
 		return *current_msc >= *target_msc - 1;
 	}
@@ -2643,11 +2647,12 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 		if (info && info->draw == draw) {
 			assert(info->type != FLIP);
 			assert(info->front == front);
+			assert(info->queued);
 			if (info->back != back) {
 				_sna_dri2_destroy_buffer(sna, info->back);
 				info->back = sna_dri2_reference_buffer(back);
 			}
-			DBG(("%s: executing xchg of pending flip\n", __FUNCTION__));
+			DBG(("%s: executing xchg of pending flip: flip_continue=%d, keepalive=%d\n", __FUNCTION__, info->flip_continue, info->keepalive));
 			sna_dri2_xchg(draw, front, back);
 			info->keepalive++;
 			if (xorg_can_triple_buffer() &&
@@ -2694,6 +2699,7 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 				sna_dri2_event_free(info);
 				return false;
 			}
+			assert(get_private(info->front)->bo->active_scanout);
 		}
 
 		swap_limit(draw, 1 + (info->type == FLIP_THROTTLE));

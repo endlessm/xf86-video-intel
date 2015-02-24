@@ -195,6 +195,7 @@ AC_ARG_ENABLE(udev,
               [UDEV="$enableval"],
               [UDEV=auto])
 
+udev_msg=" disabled"
 if test "x$UDEV" != "xno"; then
 	PKG_CHECK_MODULES(UDEV, [libudev], [udev="yes"], [udev="no"])
 	AC_CHECK_HEADERS([sys/stat.h], [], [udev="no"])
