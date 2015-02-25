@@ -387,11 +387,10 @@ static int dri3_query_version(Display *dpy, int *major, int *minor)
 
 static int dri3_exists(Display *dpy)
 {
-	xcb_extension_t dri3 = { "DRI3", 0 };
 	const xcb_query_extension_reply_t *ext;
 	int major, minor;
 
-	ext = xcb_get_extension_data(XGetXCBConnection(dpy), &dri3);
+	ext = xcb_get_extension_data(XGetXCBConnection(dpy), &xcb_dri3_id);
 	if (ext == NULL || !ext->present)
 		return 0;
 
