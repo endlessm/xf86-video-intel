@@ -920,11 +920,11 @@ total_ram_size(void)
 #ifdef HAVE_STRUCT_SYSINFO_TOTALRAM
 	struct sysinfo info;
 	if (sysinfo(&info) == 0)
-		return info.totalram * info.mem_unit;
+		return (size_t)info.totalram * info.mem_unit;
 #endif
 
 #ifdef _SC_PHYS_PAGES
-	 return sysconf(_SC_PHYS_PAGES) * sysconf(_SC_PAGE_SIZE);
+	 return (size_t)sysconf(_SC_PHYS_PAGES) * sysconf(_SC_PAGE_SIZE);
 #endif
 
 	return 0;
@@ -1657,7 +1657,7 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 		kgem->aperture_high /= 2;
 		kgem->aperture_low /= 2;
 	}
-	DBG(("%s: aperture low=%d [%d], high=%d [%d]\n", __FUNCTION__,
+	DBG(("%s: aperture low=%u [%u], high=%u [%u]\n", __FUNCTION__,
 	     kgem->aperture_low, kgem->aperture_low / (1024*1024),
 	     kgem->aperture_high, kgem->aperture_high / (1024*1024)));
 
@@ -1695,7 +1695,7 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 		     __FUNCTION__));
 		totalram = kgem->aperture_total;
 	}
-	DBG(("%s: total ram=%ld\n", __FUNCTION__, (long)totalram));
+	DBG(("%s: total ram=%lld\n", __FUNCTION__, (long long)totalram));
 	if (kgem->max_object_size > totalram / 2)
 		kgem->max_object_size = totalram / 2;
 	if (kgem->max_gpu_size > totalram / 4)
