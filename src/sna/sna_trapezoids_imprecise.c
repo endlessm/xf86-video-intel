@@ -962,6 +962,16 @@ tor_add_trapezoid(struct tor *tor,
 		  const xTrapezoid *t,
 		  int dx, int dy)
 {
+	if (!xTrapezoidValid(t)) {
+		__DBG(("%s: skipping invalid trapezoid: top=%d, bottom=%d, left=(%d, %d), (%d, %d), right=(%d, %d), (%d, %d)\n",
+		       __FUNCTION__,
+		       t->top, t->bottom,
+		       t->left.p1.x, t->left.p1.y,
+		       t->left.p2.x, t->left.p2.y,
+		       t->right.p1.x, t->right.p1.y,
+		       t->right.p2.x, t->right.p2.y));
+		return;
+	}
 	polygon_add_edge(tor->polygon, t, &t->left, 1, dx, dy);
 	polygon_add_edge(tor->polygon, t, &t->right, -1, dx, dy);
 }
