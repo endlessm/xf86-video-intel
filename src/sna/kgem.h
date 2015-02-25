@@ -627,7 +627,7 @@ static inline bool kgem_bo_is_busy(struct kgem_bo *bo)
 	return bo->rq;
 }
 
-void __kgem_retire_requests_upto(struct kgem *kgem, struct kgem_bo *bo);
+bool __kgem_retire_requests_upto(struct kgem *kgem, struct kgem_bo *bo);
 static inline bool __kgem_bo_is_busy(struct kgem *kgem, struct kgem_bo *bo)
 {
 	DBG(("%s: handle=%d, domain: %d exec? %d, rq? %d\n", __FUNCTION__,
@@ -643,8 +643,7 @@ static inline bool __kgem_bo_is_busy(struct kgem *kgem, struct kgem_bo *bo)
 	if (__kgem_busy(kgem, bo->handle))
 		return true;
 
-	__kgem_retire_requests_upto(kgem, bo);
-	return false;
+	return __kgem_retire_requests_upto(kgem, bo);
 }
 
 static inline bool kgem_bo_is_render(struct kgem_bo *bo)

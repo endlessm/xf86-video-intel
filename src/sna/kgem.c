@@ -2654,6 +2654,34 @@ static bool kgem_retire__flushing(struct kgem *kgem)
 	return retired;
 }
 
+static bool __kgem_bo_flush(struct kgem *kgem, struct kgem_bo *bo)
+{
+	struct drm_i915_gem_busy busy;
+
+	if (!bo->needs_flush)
+		return false;
+
+	bo->needs_flush = false;
+
+	VG_CLEAR(busy);
+	busy.handle = bo->handle;
+	busy.busy = !kgem->wedged;
+	(void)do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_BUSY, &busy);
+	DBG(("%s: handle=%d, busy=%d, wedged=%d\n",
+	     __FUNCTION__, bo->handle, busy.busy, kgem->wedged));
+
+	if (busy.busy == 0)
+		return false;
+
+	DBG(("%s: moving %d to flushing\n",
+	     __FUNCTION__, bo->handle));
+	list_add(&bo->request, &kgem->flushing);
+	bo->rq = MAKE_REQUEST(kgem, !!(busy.busy & ~0x1ffff));
+	bo->needs_flush = true;
+	kgem->need_retire = true;
+	return true;
+}
+
 static bool __kgem_retire_rq(struct kgem *kgem, struct kgem_request *rq)
 {
 	bool retired = false;
@@ -2678,15 +2706,10 @@ static bool __kgem_retire_rq(struct kgem *kgem, struct kgem_request *rq)
 
 		list_del(&bo->request);
 
-		if (bo->needs_flush)
-			bo->needs_flush = __kgem_busy(kgem, bo->handle);
-		if (bo->needs_flush) {
-			DBG(("%s: moving %d to flushing\n",
-			     __FUNCTION__, bo->handle));
+		if (unlikely(__kgem_bo_flush(kgem, bo))) {
 			assert(bo != rq->bo);
-			list_add(&bo->request, &kgem->flushing);
-			bo->rq = MAKE_REQUEST(kgem, RQ_RING(bo->rq));
-			kgem->need_retire = true;
+			DBG(("%s: movied %d to flushing\n",
+			     __FUNCTION__, bo->handle));
 			continue;
 		}
 
@@ -2844,20 +2867,18 @@ bool __kgem_ring_is_idle(struct kgem *kgem, int ring)
 	return true;
 }
 
-void __kgem_retire_requests_upto(struct kgem *kgem, struct kgem_bo *bo)
+bool __kgem_retire_requests_upto(struct kgem *kgem, struct kgem_bo *bo)
 {
 	struct kgem_request *rq = bo->rq, *tmp;
 	struct list *requests = &kgem->requests[RQ_RING(rq) == KGEM_BLT];
 
 	DBG(("%s(handle=%d)\n", __FUNCTION__, bo->handle));
-	assert(!__kgem_busy(kgem, bo->handle));
-	bo->needs_flush = false;
 
 	rq = RQ(rq);
 	assert(rq != &kgem->static_request);
 	if (rq == (struct kgem_request *)kgem) {
 		__kgem_bo_clear_busy(bo);
-		return;
+		return false;
 	}
 
 	do {
@@ -2866,10 +2887,10 @@ void __kgem_retire_requests_upto(struct kgem *kgem, struct kgem_bo *bo)
 		__kgem_retire_rq(kgem, tmp);
 	} while (tmp != rq);
 
-	assert(bo->rq == NULL);
-	assert(list_is_empty(&bo->request));
-	assert(!bo->needs_flush);
-	assert(bo->domain == DOMAIN_NONE);
+	assert(bo->needs_flush || bo->rq == NULL);
+	assert(bo->needs_flush || list_is_empty(&bo->request));
+	assert(bo->needs_flush || bo->domain == DOMAIN_NONE);
+	return bo->rq;
 }
 
 #if 0
