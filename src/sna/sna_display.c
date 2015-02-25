@@ -5501,6 +5501,7 @@ sna_page_flip(struct sna *sna,
 			     crtc_offset, crtc->offset));
 fixup_flip:
 			if (crtc->bo != bo && sna_crtc_flip(sna, crtc, bo, crtc->base->x, crtc->base->y)) {
+update_scanout:
 				DBG(("%s: removing handle=%d [active_scanout=%d] from scanout, installing handle=%d [active_scanout=%d]\n",
 				     __FUNCTION__, crtc->bo->handle, crtc->bo->active_scanout,
 				     bo->handle, bo->active_scanout));
@@ -5596,8 +5597,8 @@ retry_flip:
 
 			DBG(("%s: recording flip on CRTC:%d handle=%d, active_scanout=%d, serial=%d\n",
 			     __FUNCTION__, crtc->id, crtc->flip_bo->handle, crtc->flip_bo->active_scanout, crtc->flip_serial));
-		}
-
+		} else
+			goto update_scanout;
 next_crtc:
 		count++;
 	}
