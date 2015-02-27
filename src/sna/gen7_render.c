@@ -60,8 +60,6 @@
 #define NO_FILL_ONE 0
 #define NO_FILL_CLEAR 0
 
-#define NO_RING_SWITCH 0
-
 #define USE_8_PIXEL_DISPATCH 1
 #define USE_16_PIXEL_DISPATCH 1
 #define USE_32_PIXEL_DISPATCH 0
@@ -2883,14 +2881,16 @@ prefer_blt_copy(struct sna *sna,
 
 	assert((flags & COPY_SYNC) == 0);
 
-	if (src_bo == dst_bo && can_switch_to_blt(sna, dst_bo, flags))
-		return true;
-
 	if (untiled_tlb_miss(src_bo) ||
 	    untiled_tlb_miss(dst_bo))
 		return true;
 
 	if (force_blt_ring(sna))
+		return true;
+
+        if (sna->render_state.gt < 3 &&
+            src_bo == dst_bo &&
+            can_switch_to_blt(sna, dst_bo, flags))
 		return true;
 
 	if (kgem_bo_is_render(dst_bo) ||
@@ -2951,7 +2951,7 @@ fallback_blt:
 		     &extents)) {
 		bool big = too_large(extents.x2-extents.x1, extents.y2-extents.y1);
 
-		if ((big || can_switch_to_blt(sna, dst_bo, flags)) &&
+		if ((big || !prefer_render_ring(sna, dst_bo)) &&
 		    sna_blt_copy_boxes(sna, alu,
 				       src_bo, src_dx, src_dy,
 				       dst_bo, dst_dx, dst_dy,
