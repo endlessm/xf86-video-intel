@@ -1207,10 +1207,14 @@ find_clip_box_for_y(const BoxRec *begin, const BoxRec *end, int16_t y)
 		return end;
 
 	/* Quick test if scanline is within range of clip boxes */
-	if (begin->y2 > y)
+	if (begin->y2 > y) {
+		assert(__find_clip_box_for_y(begin, end, y) == begin);
 		return begin;
-	if (y > end[-1].y2)
+	}
+	if (y >= end[-1].y2) {
+		assert(__find_clip_box_for_y(begin, end, y) == end);
 		return end;
+	}
 
 	/* Otherwise bisect to find the first box crossing y */
 	return __find_clip_box_for_y(begin, end, y);

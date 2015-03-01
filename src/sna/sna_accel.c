@@ -7165,27 +7165,18 @@ sna_copy_area(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 const BoxRec *
 __find_clip_box_for_y(const BoxRec *begin, const BoxRec *end, int16_t y)
 {
-    const BoxRec *mid;
-
-    if (end == begin)
-	return end;
-
-    if (end - begin == 1) {
+	assert(begin != end);
+	while (end > begin + 1) {
+		const BoxRec *mid = begin + (end - begin) / 2;
+		if (mid->y2 > y)
+			end = mid;
+		else
+			begin = mid;
+	}
 	if (begin->y2 > y)
-	    return begin;
+		return begin;
 	else
-	    return end;
-    }
-
-    mid = begin + (end - begin) / 2;
-    if (mid->y2 > y)
-	/* If no box is found in [begin, mid], the function
-	 * will return @mid, which is then known to be the
-	 * correct answer.
-	 */
-	return __find_clip_box_for_y(begin, mid, y);
-    else
-	return __find_clip_box_for_y(mid, end, y);
+		return end;
 }
 
 struct sna_fill_spans {
