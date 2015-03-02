@@ -369,8 +369,10 @@ static bool swap_limit(DrawablePtr draw, int limit)
 
 #if USE_ASYNC_SWAP
 #define KEEPALIVE 4 /* wait ~50ms before discarding swap caches */
+#define APPLY_DAMAGE 0
 #else
 #define KEEPALIVE 1
+#define APPLY_DAMAGE 1
 #endif
 
 #define COLOR_PREFER_TILING_Y 0
@@ -788,7 +790,6 @@ static void set_bo(PixmapPtr pixmap, struct kgem_bo *bo)
 {
 	struct sna *sna = to_sna_from_pixmap(pixmap);
 	struct sna_pixmap *priv = sna_pixmap(pixmap);
-	RegionRec region;
 
 	DBG(("%s: pixmap=%ld, handle=%d\n",
 	     __FUNCTION__, pixmap->drawable.serialNumber, bo->handle));
@@ -800,15 +801,18 @@ static void set_bo(PixmapPtr pixmap, struct kgem_bo *bo)
 	assert((priv->pinned & (PIN_PRIME | PIN_DRI3)) == 0);
 	assert(priv->flush);
 
-	/* Post damage on the new front buffer so that listeners, such
-	 * as DisplayLink know take a copy and shove it over the USB,
-	 * also for software cursors and the like.
-	 */
-	region.extents.x1 = region.extents.y1 = 0;
-	region.extents.x2 = pixmap->drawable.width;
-	region.extents.y2 = pixmap->drawable.height;
-	region.data = NULL;
-	DamageRegionAppend(&pixmap->drawable, &region);
+	if (APPLY_DAMAGE) {
+		RegionRec region;
+		/* Post damage on the new front buffer so that listeners, such
+		 * as DisplayLink know take a copy and shove it over the USB,
+		 * also for software cursors and the like.
+		 */
+		region.extents.x1 = region.extents.y1 = 0;
+		region.extents.x2 = pixmap->drawable.width;
+		region.extents.y2 = pixmap->drawable.height;
+		region.data = NULL;
+		DamageRegionAppend(&pixmap->drawable, &region);
+	}
 
 	damage(pixmap, priv, NULL);
 
@@ -834,7 +838,8 @@ static void set_bo(PixmapPtr pixmap, struct kgem_bo *bo)
 		bo->domain = DOMAIN_NONE;
 	assert(bo->flush);
 
-	DamageRegionProcessPending(&pixmap->drawable);
+	if (APPLY_DAMAGE)
+		DamageRegionProcessPending(&pixmap->drawable);
 }
 
 static void sna_dri2_select_mode(struct sna *sna, struct kgem_bo *dst, struct kgem_bo *src, bool sync)
@@ -919,10 +924,12 @@ static bool is_front(int attachment)
 	return attachment == DRI2BufferFrontLeft;
 }
 
+#define DRI2_SYNC 0x1
+#define DRI2_DAMAGE 0x2
 static struct kgem_bo *
 __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		      DRI2BufferPtr src, DRI2BufferPtr dst,
-		      bool sync)
+		      unsigned flags)
 {
 	PixmapPtr pixmap = get_drawable_pixmap(draw);
 	DrawableRec scratch, *src_draw = &pixmap->drawable, *dst_draw = &pixmap->drawable;
@@ -934,7 +941,7 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 	struct kgem_bo *dst_bo;
 	const BoxRec *boxes;
 	int16_t dx, dy, sx, sy;
-	unsigned flags;
+	unsigned hint;
 	int n;
 
 	/* To hide a stale DRI2Buffer, one may choose to substitute
@@ -1010,7 +1017,7 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 			}
 		}
 	} else
-		sync = false;
+		flags &= ~DRI2_SYNC;
 
 	scratch.x = scratch.y = 0;
 	scratch.width = scratch.height = 0;
@@ -1061,12 +1068,12 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		/* Preserve the CRTC shadow overrides */
 		sna_shadow_steal_crtcs(sna, &shadow);
 
-		flags = MOVE_WRITE | __MOVE_FORCE;
+		hint = MOVE_WRITE | __MOVE_FORCE;
 		if (clip.data)
-			flags |= MOVE_READ;
+			hint |= MOVE_READ;
 
 		assert(region == NULL || region == &clip);
-		priv = sna_pixmap_move_area_to_gpu(pixmap, &clip.extents, flags);
+		priv = sna_pixmap_move_area_to_gpu(pixmap, &clip.extents, hint);
 		if (priv) {
 			damage(pixmap, priv, region);
 			dst_bo = priv->gpu_bo;
@@ -1098,20 +1105,20 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		assert(region == NULL || region == &clip);
 		pixman_region_intersect(&clip, &clip, &target);
 
-		sync = false;
+		flags &= ~DRI2_SYNC;
 	}
 
 	if (!wedged(sna)) {
 		xf86CrtcPtr crtc;
 
 		crtc = NULL;
-		if (sync && sna_pixmap_is_scanout(sna, pixmap))
+		if (flags & DRI2_SYNC && sna_pixmap_is_scanout(sna, pixmap))
 			crtc = sna_covering_crtc(sna, &clip.extents, NULL);
 		sna_dri2_select_mode(sna, dst_bo, src_bo, crtc != NULL);
 
-		sync = (crtc != NULL&&
-			sna_wait_for_scanline(sna, pixmap, crtc,
-					      &clip.extents));
+		if (crtc == NULL ||
+		    !sna_wait_for_scanline(sna, pixmap, crtc, &clip.extents))
+			flags &= ~DRI2_SYNC;
 	}
 
 	if (region) {
@@ -1123,8 +1130,8 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		boxes = &clip.extents;
 		n = 1;
 	}
-	DamageRegionAppend(&pixmap->drawable, region);
-
+	if (APPLY_DAMAGE || flags & DRI2_DAMAGE)
+		DamageRegionAppend(&pixmap->drawable, region);
 
 	DBG(("%s: copying [(%d, %d), (%d, %d)]x%d src=(%d, %d), dst=(%d, %d)\n",
 	     __FUNCTION__,
@@ -1132,20 +1139,20 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 	     boxes[0].x2, boxes[0].y2,
 	     n, sx, sy, dx, dy));
 
-	flags = COPY_LAST;
-	if (sync)
-		flags |= COPY_SYNC;
+	hint = COPY_LAST;
+	if (flags & DRI2_SYNC)
+		hint |= COPY_SYNC;
 	if (!sna->render.copy_boxes(sna, GXcopy,
 				    src_draw, src_bo, sx, sy,
 				    dst_draw, dst_bo, dx, dy,
-				    boxes, n, flags))
+				    boxes, n, hint))
 		memcpy_copy_boxes(sna, GXcopy,
 				  src_draw, src_bo, sx, sy,
 				  dst_draw, dst_bo, dx, dy,
-				  boxes, n, flags);
+				  boxes, n, hint);
 
 	DBG(("%s: flushing? %d\n", __FUNCTION__, sync));
-	if (sync) { /* STAT! */
+	if (flags & DRI2_SYNC) { /* STAT! */
 		struct kgem_request *rq = sna->kgem.next_request;
 		kgem_submit(&sna->kgem);
 		if (rq->bo) {
@@ -1154,7 +1161,8 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		}
 	}
 
-	DamageRegionProcessPending(&pixmap->drawable);
+	if (APPLY_DAMAGE || flags & DRI2_DAMAGE)
+		DamageRegionProcessPending(&pixmap->drawable);
 
 	if (clip.data)
 		pixman_region_fini(&clip);
@@ -1199,7 +1207,7 @@ sna_dri2_copy_region(DrawablePtr draw,
 	     region->extents.x2, region->extents.y2,
 	     region_num_rects(region)));
 
-	__sna_dri2_copy_region(sna, draw, region, src, dst, false);
+	__sna_dri2_copy_region(sna, draw, region, src, dst, DRI2_DAMAGE);
 }
 
 inline static uint32_t pipe_select(int pipe)
@@ -1994,9 +2002,11 @@ static void sna_dri2_xchg_crtc(struct sna *sna, DrawablePtr draw, xf86CrtcPtr cr
 	     get_window_pixmap(win)->drawable.width,
 	     get_window_pixmap(win)->drawable.height));
 
-	DamageRegionAppend(&win->drawable, &win->clipList);
+	if (APPLY_DAMAGE)
+		DamageRegionAppend(&win->drawable, &win->clipList);
 	sna_shadow_set_crtc(sna, crtc, get_private(back)->bo);
-	DamageRegionProcessPending(&win->drawable);
+	if (APPLY_DAMAGE)
+		DamageRegionProcessPending(&win->drawable);
 
 	assert(dri2_window(win)->front == NULL);
 
@@ -2135,7 +2145,7 @@ static void chain_swap(struct sna_dri2_event *chain)
 			assert(chain->queued);
 			chain->bo = __sna_dri2_copy_region(chain->sna, chain->draw, NULL,
 							   chain->back, chain->front,
-							   true);
+							   DRI2_SYNC);
 		}
 	case SWAP:
 		break;
@@ -2244,7 +2254,8 @@ void sna_dri2_vblank_handler(struct drm_event_vblank *event)
 		}  else {
 			assert(info->queued);
 			info->bo = __sna_dri2_copy_region(sna, draw, NULL,
-							  info->back, info->front, true);
+							  info->back, info->front,
+							  DRI2_SYNC);
 			info->type = SWAP_WAIT;
 		}
 
@@ -2431,7 +2442,7 @@ static void chain_flip(struct sna *sna)
 		DBG(("%s: emitting chained vsync'ed blit\n", __FUNCTION__));
 		chain->bo = __sna_dri2_copy_region(sna, chain->draw, NULL,
 						  chain->back, chain->front,
-						  true);
+						  DRI2_SYNC);
 
 		if (xorg_can_triple_buffer()) {
 			union drm_wait_vblank vbl;
@@ -3060,7 +3071,7 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 		assert(info->queued);
 		info->bo = __sna_dri2_copy_region(sna, draw, NULL,
 						  back, front,
-						  true);
+						  DRI2_SYNC);
 		info->type = SWAP_WAIT;
 
 		vbl.request.type =
@@ -3085,7 +3096,7 @@ blit:
 	if (can_xchg(sna, draw, front, back)) {
 		sna_dri2_xchg(draw, front, back);
 	} else {
-		__sna_dri2_copy_region(sna, draw, NULL, back, front, false);
+		__sna_dri2_copy_region(sna, draw, NULL, back, front, 0);
 		type = DRI2_BLIT_COMPLETE;
 	}
 skip:
