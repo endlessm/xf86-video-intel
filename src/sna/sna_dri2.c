@@ -491,9 +491,9 @@ sna_dri2_create_buffer(DrawablePtr draw,
 	struct sna_dri2_private *private;
 	PixmapPtr pixmap;
 	struct kgem_bo *bo;
+	unsigned bpp = format ?: draw->bitsPerPixel;
 	unsigned flags = 0;
 	uint32_t size;
-	int bpp;
 
 	DBG(("%s pixmap=%ld, (attachment=%d, format=%d, drawable=%dx%d), window?=%d\n",
 	     __FUNCTION__,
@@ -542,7 +542,6 @@ sna_dri2_create_buffer(DrawablePtr draw,
 		assert(sna_pixmap(pixmap) != NULL);
 
 		bo = ref(bo);
-		bpp = pixmap->drawable.bitsPerPixel;
 		if (pixmap == sna->front && !(sna->flags & SNA_LINEAR_FB))
 			flags |= CREATE_SCANOUT;
 		DBG(("%s: attaching to front buffer %dx%d [%p:%d], scanout? %d\n",
@@ -550,6 +549,7 @@ sna_dri2_create_buffer(DrawablePtr draw,
 		     pixmap->drawable.width, pixmap->drawable.height,
 		     pixmap, pixmap->refcnt, flags & CREATE_SCANOUT));
 		size = (uint32_t)pixmap->drawable.height << 16 | pixmap->drawable.width;
+		bpp = pixmap->drawable.bitsPerPixel;
 		break;
 
 	case DRI2BufferBackLeft:
@@ -558,6 +558,7 @@ sna_dri2_create_buffer(DrawablePtr draw,
 				flags |= CREATE_SCANOUT;
 			if (draw->width  == sna->front->drawable.width &&
 			    draw->height == sna->front->drawable.height &&
+			    draw->bitsPerPixel == bpp &&
 			    (sna->flags & (SNA_LINEAR_FB | SNA_NO_WAIT | SNA_NO_FLIP)) == 0)
 				flags |= CREATE_SCANOUT;
 		}
@@ -565,7 +566,6 @@ sna_dri2_create_buffer(DrawablePtr draw,
 	case DRI2BufferFrontRight:
 	case DRI2BufferFakeFrontLeft:
 	case DRI2BufferFakeFrontRight:
-		bpp = draw->bitsPerPixel;
 		DBG(("%s: creating back buffer %dx%d, suitable for scanout? %d\n",
 		     __FUNCTION__,
 		     draw->width, draw->height,
@@ -574,7 +574,7 @@ sna_dri2_create_buffer(DrawablePtr draw,
 		bo = kgem_create_2d(&sna->kgem,
 				    draw->width,
 				    draw->height,
-				    draw->bitsPerPixel,
+				    bpp,
 				    color_tiling(sna, draw),
 				    flags);
 		break;
@@ -602,7 +602,6 @@ sna_dri2_create_buffer(DrawablePtr draw,
 		 * not understand W tiling and the GTT is incapable of
 		 * W fencing.
 		 */
-		bpp = format ? format : draw->bitsPerPixel;
 		bpp *= 2;
 		bo = kgem_create_2d(&sna->kgem,
 				    ALIGN(draw->width, 64),
@@ -614,7 +613,6 @@ sna_dri2_create_buffer(DrawablePtr draw,
 	case DRI2BufferDepthStencil:
 	case DRI2BufferHiz:
 	case DRI2BufferAccum:
-		bpp = format ? format : draw->bitsPerPixel,
 		bo = kgem_create_2d(&sna->kgem,
 				    draw->width, draw->height, bpp,
 				    other_tiling(sna, draw),
@@ -1624,9 +1622,9 @@ can_flip(struct sna * sna,
 		return false;
 	}
 
-	if (front->format != back->format) {
+	if (front->cpp != back->cpp) {
 		DBG(("%s: no, format mismatch, front = %d, back = %d\n",
-		     __FUNCTION__, front->format, back->format));
+		     __FUNCTION__, front->cpp, back->cpp));
 		return false;
 	}
 
@@ -1749,9 +1747,9 @@ can_xchg(struct sna *sna,
 	if (draw->type == DRAWABLE_PIXMAP)
 		return false;
 
-	if (front->format != back->format) {
+	if (front->cpp != back->cpp) {
 		DBG(("%s: no, format mismatch, front = %d, back = %d\n",
-		     __FUNCTION__, front->format, back->format));
+		     __FUNCTION__, front->cpp, back->cpp));
 		return false;
 	}
 
@@ -1854,9 +1852,9 @@ can_xchg_crtc(struct sna *sna,
 	if (draw->type == DRAWABLE_PIXMAP)
 		return false;
 
-	if (front->format != back->format) {
+	if (front->cpp != back->cpp) {
 		DBG(("%s: no, format mismatch, front = %d, back = %d\n",
-		     __FUNCTION__, front->format, back->format));
+		     __FUNCTION__, front->cpp, back->cpp));
 		return false;
 	}
 
