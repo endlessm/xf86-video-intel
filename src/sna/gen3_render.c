@@ -2251,7 +2251,7 @@ static int gen3_vertex_finish(struct sna *sna)
 		if (sna->render.vertex_reloc[0]) {
 			sna->kgem.batch[sna->render.vertex_reloc[0]] =
 				kgem_add_reloc(&sna->kgem, sna->render.vertex_reloc[0],
-					       bo, I915_GEM_DOMAIN_VERTEX << 16, 0);
+					       bo, I915_GEM_DOMAIN_VERTEX << 16 | KGEM_RELOC_FENCED, 0);
 
 			sna->render.vertex_reloc[0] = 0;
 		}
@@ -2345,7 +2345,7 @@ static void gen3_vertex_close(struct sna *sna)
 	DBG(("%s: reloc = %d\n", __FUNCTION__, sna->render.vertex_reloc[0]));
 	sna->kgem.batch[sna->render.vertex_reloc[0]] =
 		kgem_add_reloc(&sna->kgem, sna->render.vertex_reloc[0],
-			       bo, I915_GEM_DOMAIN_VERTEX << 16, delta);
+			       bo, I915_GEM_DOMAIN_VERTEX << 16 | KGEM_RELOC_FENCED, delta);
 	sna->render.vertex_reloc[0] = 0;
 
 	if (sna->render.vbo == NULL) {

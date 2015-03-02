@@ -3648,7 +3648,8 @@ void _kgem_submit(struct kgem *kgem)
 		kgem->exec[i].relocs_ptr = (uintptr_t)kgem->reloc;
 		kgem->exec[i].alignment = 0;
 		kgem->exec[i].offset = rq->bo->presumed_offset;
-		kgem->exec[i].flags = 0;
+		/* Make sure the kernel releases any fence, ignored if gen4+ */
+		kgem->exec[i].flags = EXEC_OBJECT_NEEDS_FENCE;
 		kgem->exec[i].rsvd1 = 0;
 		kgem->exec[i].rsvd2 = 0;
 
