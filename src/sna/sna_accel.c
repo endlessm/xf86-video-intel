@@ -7165,14 +7165,14 @@ sna_copy_area(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 const BoxRec *
 __find_clip_box_for_y(const BoxRec *begin, const BoxRec *end, int16_t y)
 {
-	assert(begin != end);
-	while (end > begin + 1) {
+	assert(end - begin > 1);
+	do {
 		const BoxRec *mid = begin + (end - begin) / 2;
 		if (mid->y2 > y)
 			end = mid;
 		else
 			begin = mid;
-	}
+	} while (end > begin + 1);
 	if (begin->y2 > y)
 		return begin;
 	else
