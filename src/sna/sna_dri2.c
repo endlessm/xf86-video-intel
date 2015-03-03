@@ -1502,8 +1502,6 @@ void sna_dri2_decouple_window(WindowPtr win)
 		_sna_dri2_destroy_buffer(sna, priv->front);
 		priv->front = NULL;
 	}
-
-	swap_limit(&win->drawable, 1);
 }
 
 void sna_dri2_destroy_window(WindowPtr win)
