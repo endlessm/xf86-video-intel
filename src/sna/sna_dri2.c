@@ -138,6 +138,19 @@ struct sna_dri2_event {
 	int keepalive;
 };
 
+#if DRI2INFOREC_VERSION < 10
+#undef USE_ASYNC_SWAP
+#define USE_ASYNC_SWAP 0
+#endif
+
+#if USE_ASYNC_SWAP
+#define KEEPALIVE 4 /* wait ~50ms before discarding swap caches */
+#define APPLY_DAMAGE 0
+#else
+#define KEEPALIVE 1
+#define APPLY_DAMAGE 1
+#endif
+
 static void sna_dri2_flip_event(struct sna_dri2_event *flip);
 inline static DRI2BufferPtr dri2_window_get_front(WindowPtr win);
 
@@ -220,6 +233,22 @@ sna_dri2_get_back(struct sna *sna,
 		}
 
 		flags = 0;
+		if (USE_ASYNC_SWAP) {
+			BoxRec box;
+
+			box.x1 = 0;
+			box.y1 = 0;
+			box.x2 = draw->width;
+			box.y2 = draw->height;
+
+			DBG(("%s: filling new buffer with old back\n", __FUNCTION__));
+			assert(back->flags);
+			if (sna->render.copy_boxes(sna, GXcopy,
+						   draw, get_private(back)->bo, 0, 0,
+						   draw, bo, 0, 0,
+						   &box, 1, 0))
+				flags = back->flags;
+		}
 	}
 	assert(bo->active_scanout == 0);
 
@@ -360,19 +389,6 @@ static bool swap_limit(DrawablePtr draw, int limit)
 	DRI2SwapLimit(draw, limit);
 	return true;
 }
-#endif
-
-#if DRI2INFOREC_VERSION < 10
-#undef USE_ASYNC_SWAP
-#define USE_ASYNC_SWAP 0
-#endif
-
-#if USE_ASYNC_SWAP
-#define KEEPALIVE 4 /* wait ~50ms before discarding swap caches */
-#define APPLY_DAMAGE 0
-#else
-#define KEEPALIVE 1
-#define APPLY_DAMAGE 1
 #endif
 
 #define COLOR_PREFER_TILING_Y 0
