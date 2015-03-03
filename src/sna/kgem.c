@@ -1280,6 +1280,7 @@ static bool kgem_init_pinned_batches(struct kgem *kgem)
 {
 	int count[2] = { 16, 4 };
 	int size[2] = { 1, 4 };
+	int ret = 0;
 	int n, i;
 
 	if (kgem->wedged)
@@ -1306,7 +1307,8 @@ static bool kgem_init_pinned_batches(struct kgem *kgem)
 			}
 
 			pin.alignment = 0;
-			if (do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_PIN, &pin)) {
+			ret = do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_PIN, &pin);
+			if (ret) {
 				gem_close(kgem->fd, pin.handle);
 				free(bo);
 				goto err;
@@ -1328,6 +1330,14 @@ err:
 		}
 	}
 
+	/* If we fail to pin some memory for 830gm/845g, we need to disable
+	 * acceleration as otherwise the machine will eventually fail. However,
+	 * the kernel started arbitrarily rejecting PIN, so hope for the best
+	 * if the ioctl no longer works.
+	 */
+	if (ret != -ENODEV && kgem->gen == 020)
+		return false;
+
 	/* For simplicity populate the lists with a single unpinned bo */
 	for (n = 0; n < ARRAY_SIZE(count); n++) {
 		struct kgem_bo *bo;
@@ -1335,18 +1345,18 @@ err:
 
 		handle = gem_create(kgem->fd, size[n]);
 		if (handle == 0)
-			break;
+			return false;
 
 		bo = __kgem_bo_alloc(handle, size[n]);
 		if (bo == NULL) {
 			gem_close(kgem->fd, handle);
-			break;
+			return false;
 		}
 
 		debug_alloc__bo(kgem, bo);
 		list_add(&bo->list, &kgem->pinned_batches[n]);
 	}
-	return false;
+	return true;
 }
 
 static void kgem_init_swizzling(struct kgem *kgem)
@@ -1615,7 +1625,7 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 	if (!kgem->has_relaxed_delta && kgem->batch_size > 4*1024)
 		kgem->batch_size = 4*1024;
 
-	if (!kgem_init_pinned_batches(kgem) && gen == 020) {
+	if (!kgem_init_pinned_batches(kgem)) {
 		xf86DrvMsg(kgem_get_screen_index(kgem), X_WARNING,
 			   "Unable to reserve memory for GPU, disabling acceleration.\n");
 		__kgem_set_wedged(kgem);
