@@ -4103,6 +4103,7 @@ reset:
 				goto cleanup;
 		}
 
+		RROutputChanged(output->randr_output, TRUE);
 		sna_output_create_resources(output);
 		RRPostPendingProperties(output->randr_output);
 
@@ -4314,6 +4315,7 @@ void sna_mode_discover(struct sna *sna)
 		} else {
 			sna_output->id = 0;
 			output->crtc = NULL;
+			RROutputChanged(output->randr_output, TRUE);
 		}
 		changed |= 2;
 	}
@@ -6167,7 +6169,7 @@ sna_mode_set_primary(struct sna *sna)
 
 		DBG(("%s: setting PrimaryOutput %s\n", __FUNCTION__, output->name));
 		rr->primaryOutput = output->randr_output;
-		RROutputChanged(rr->primaryOutput, 0);
+		RROutputChanged(rr->primaryOutput, FALSE);
 		rr->layoutChanged = TRUE;
 		break;
 	}

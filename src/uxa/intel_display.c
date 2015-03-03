@@ -1493,6 +1493,7 @@ intel_output_init(ScrnInfoPtr scrn, struct intel_mode *mode, drmModeResPtr mode_
 			intel_output = output->driver_private;
 			intel_output->output_id = mode_res->connectors[num];
 			intel_output->mode_output = koutput;
+			RROutputChanged(output->randr_output, TRUE);
 			return;
 		}
 	}
@@ -2495,6 +2496,7 @@ restart_destroy:
 		drmModeFreeConnector(intel_output->mode_output);
 		intel_output->mode_output = NULL;
 		intel_output->output_id = -1;
+		RROutputChanged(output->randr_output, TRUE);
 
 		changed = TRUE;
 		if (mode->delete_dp_12_displays) {
@@ -2525,10 +2527,8 @@ restart_destroy:
 		intel_output_init(scrn, intel->modes, mode_res, i, 1);
 	}
 
-	if (changed) {
-		RRSetChanged(xf86ScrnToScreen(scrn));
+	if (changed)
 		RRTellChanged(xf86ScrnToScreen(scrn));
-	}
 
 	drmModeFreeResources(mode_res);
 out:
