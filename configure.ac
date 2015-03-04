@@ -312,6 +312,9 @@ if test "x$tools" != "xno"; then
 		tools="no"
 	fi
 
+	PKG_CHECK_MODULES(TOOL_CURSOR, [xfixes x11 libpng], [cursor="yes"], [ivo="no"])
+	AM_CONDITIONAL(BUILD_TOOL_CURSOR, test "x$cursor" != "xno")
+
 	IVO_CFLAGS="$IVO_CFLAGS $extra_cflags"
 fi
 if test "x$tools" != "xno"; then

@@ -26,13 +26,21 @@ AM_CFLAGS = \
 drivermandir = $(DRIVER_MAN_DIR)
 policydir = $(datarootdir)/polkit-1/actions
 
+noinst_PROGRAMS =
+
 if BUILD_TOOLS
 bin_PROGRAMS = intel-virtual-output
 driverman_DATA = intel-virtual-output.$(DRIVER_MAN_SUFFIX)
 endif
 
+if BUILD_TOOL_CURSOR
+noinst_PROGRAMS += cursor
+cursor_CFLAGS = $(TOOL_CURSOR_CFLAGS)
+cursor_LDADD = $(TOOL_CURSOR_LIBS)
+endif
+
 if X11_DRI3
-noinst_PROGRAMS = dri3info
+noinst_PROGRAMS += dri3info
 dri3info_SOURCES = dri3info.c
 dri3info_CFLAGS = $(X11_DRI3_CFLAGS) $(DRI_CFLAGS)
 dri3info_LDADD = $(X11_DRI3_LIBS) $(DRI_LIBS)
