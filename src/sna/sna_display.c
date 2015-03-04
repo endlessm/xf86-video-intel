@@ -6292,9 +6292,26 @@ sna_mode_enable(struct sna *sna)
 	sna->mode.dirty = false;
 }
 
+static void sna_randr_close(struct sna *sna)
+{
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	int n;
+
+	/* The RR structs are freed early during CloseScreen as they
+	 * are tracked as Resources. However, we may be tempted to
+	 * access them during shutdown so decouple them now.
+	 */
+	  for (n = 0; n < config->num_output; n++)
+		  config->output[n]->randr_output = NULL;
+
+	  for (n = 0; n < config->num_crtc; n++)
+		  config->crtc[n]->randr_crtc = NULL;
+}
+
 void
 sna_mode_close(struct sna *sna)
 {
+	sna_randr_close(sna);
 	sna_mode_wakeup(sna);
 
 	if (sna->flags & SNA_IS_HOSTED)
