@@ -313,7 +313,6 @@ if test "x$tools" != "xno"; then
 	fi
 
 	PKG_CHECK_MODULES(TOOL_CURSOR, [xfixes x11 libpng], [cursor="yes"], [ivo="no"])
-	AM_CONDITIONAL(BUILD_TOOL_CURSOR, test "x$cursor" != "xno")
 
 	IVO_CFLAGS="$IVO_CFLAGS $extra_cflags"
 fi
@@ -323,6 +322,7 @@ fi
 AC_MSG_CHECKING([whether to build additional tools])
 AC_MSG_RESULT([$tools])
 AM_CONDITIONAL(BUILD_TOOLS, test "x$tools" != "xno")
+AM_CONDITIONAL(BUILD_TOOL_CURSOR, test "x$cursor" = "xyes")
 
 # Define a configure option for an alternate module directory
 AC_ARG_WITH(xorg-module-dir,
