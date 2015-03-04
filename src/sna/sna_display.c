@@ -3356,14 +3356,14 @@ sna_output_create_ranged_atom(xf86OutputPtr output, Atom *atom,
 	err = RRConfigureOutputProperty(output->randr_output, *atom, FALSE,
 					TRUE, immutable, 2, atom_range);
 	if (err != 0)
-		xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
+		xf86DrvMsg(output->scrn->scrnIndex, X_WARNING,
 			   "RRConfigureOutputProperty error, %d\n", err);
 
 	err = RRChangeOutputProperty(output->randr_output, *atom, XA_INTEGER,
 				     32, PropModeReplace, 1, &value,
 				     FALSE, FALSE);
 	if (err != 0)
-		xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
+		xf86DrvMsg(output->scrn->scrnIndex, X_WARNING,
 			   "RRChangeOutputProperty error, %d\n", err);
 }
 
@@ -3420,7 +3420,7 @@ sna_output_create_resources(xf86OutputPtr output)
 							p->kprop->flags & DRM_MODE_PROP_IMMUTABLE ? TRUE : FALSE,
 							p->num_atoms - 1, (INT32 *)&p->atoms[1]);
 			if (err != 0) {
-				xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
+				xf86DrvMsg(output->scrn->scrnIndex, X_WARNING,
 					   "RRConfigureOutputProperty error, %d\n", err);
 			}
 
@@ -3432,7 +3432,7 @@ sna_output_create_resources(xf86OutputPtr output)
 						     XA_ATOM, 32, PropModeReplace, 1, &p->atoms[j+1],
 						     FALSE, FALSE);
 			if (err != 0) {
-				xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
+				xf86DrvMsg(output->scrn->scrnIndex, X_WARNING,
 					   "RRChangeOutputProperty error, %d\n", err);
 			}
 		}
@@ -3502,18 +3502,19 @@ sna_output_set_property(xf86OutputPtr output, Atom property,
 			if (value->type != XA_INTEGER || value->format != 32 ||
 			    value->size != 1)
 				return FALSE;
-			val = *(uint32_t *)value->data;
 
+			val = *(uint32_t *)value->data;
 			drmModeConnectorSetProperty(sna->kgem.fd, sna_output->id,
 						    p->kprop->prop_id, (uint64_t)val);
 			return TRUE;
 		} else if (p->kprop->flags & DRM_MODE_PROP_ENUM) {
-			Atom	atom;
-			const char	*name;
-			int		j;
+			Atom atom;
+			const char *name;
+			int j;
 
 			if (value->type != XA_ATOM || value->format != 32 || value->size != 1)
 				return FALSE;
+
 			memcpy(&atom, value->data, 4);
 			name = NameForAtom(atom);
 			if (name == NULL)
@@ -3538,11 +3539,32 @@ sna_output_set_property(xf86OutputPtr output, Atom property,
 	return TRUE;
 }
 
+static void update_properties(struct sna *sna, struct sna_output *output)
+{
+	union compat_mode_get_connector compat_conn;
+	struct drm_mode_modeinfo dummy;
+
+	VG_CLEAR(compat_conn);
+
+	compat_conn.conn.connector_id = output->id;
+	compat_conn.conn.count_props = output->num_props;
+	compat_conn.conn.props_ptr = (uintptr_t)output->prop_ids;
+	compat_conn.conn.prop_values_ptr = (uintptr_t)output->prop_values;
+	compat_conn.conn.count_modes = 1; /* skip detect */
+	compat_conn.conn.modes_ptr = (uintptr_t)&dummy;
+
+	(void)drmIoctl(sna->kgem.fd,
+		       DRM_IOCTL_MODE_GETCONNECTOR,
+		       &compat_conn.conn);
+
+	assert(compat_conn.conn.count_props == output->num_props);
+}
+
 static Bool
 sna_output_get_property(xf86OutputPtr output, Atom property)
 {
 	struct sna_output *sna_output = output->driver_private;
-	int err;
+	int err, i, j;
 
 	if (property == backlight_atom || property == backlight_deprecated_atom) {
 		INT32 val;
@@ -3566,11 +3588,45 @@ sna_output_get_property(xf86OutputPtr output, Atom property)
 					     XA_INTEGER, 32, PropModeReplace, 1, &val,
 					     FALSE, FALSE);
 		if (err != 0) {
-			xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
+			xf86DrvMsg(output->scrn->scrnIndex, X_WARNING,
 				   "RRChangeOutputProperty error, %d\n", err);
 			return FALSE;
 		}
 
+		return TRUE;
+	}
+
+	for (i = 0; i < sna_output->num_props; i++) {
+		struct sna_property *p = &sna_output->props[i];
+
+		if (p->atoms == NULL || p->atoms[0] != property)
+			continue;
+
+		if (0&&output->scrn->vtSema)
+			update_properties(to_sna(output->scrn), sna_output);
+
+		err = 0;
+		if (p->kprop->flags & DRM_MODE_PROP_RANGE) {
+			err = RRChangeOutputProperty(output->randr_output,
+						     property, XA_INTEGER, 32,
+						     PropModeReplace, 1,
+						     &sna_output->prop_values[i],
+						     FALSE, FALSE);
+		} else if (p->kprop->flags & DRM_MODE_PROP_ENUM) {
+			for (j = 0; j < p->kprop->count_enums; j++) {
+				if (p->kprop->enums[j].value == sna_output->prop_values[i])
+					break;
+			}
+			err = RRChangeOutputProperty(output->randr_output,
+						     property, XA_ATOM, 32,
+						     PropModeReplace, 1,
+						     &p->atoms[j+1],
+						     FALSE, FALSE);
+		}
+
+		if (err != 0)
+			xf86DrvMsg(output->scrn->scrnIndex, X_WARNING,
+				   "RRChangeOutputProperty error, %d\n", err);
 		return TRUE;
 	}
 
