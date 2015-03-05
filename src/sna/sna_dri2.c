@@ -121,6 +121,7 @@ struct sna_dri2_event {
 	xf86CrtcPtr crtc;
 	int pipe;
 	bool queued;
+	bool sync;
 
 	/* for swaps & flips only */
 	DRI2SwapEventPtr event_complete;
@@ -140,13 +141,13 @@ struct sna_dri2_event {
 
 #if DRI2INFOREC_VERSION < 10
 #undef USE_ASYNC_SWAP
-#define USE_ASYNC_SWAP 0
 #endif
 
 #if USE_ASYNC_SWAP
 #define KEEPALIVE 4 /* wait ~50ms before discarding swap caches */
 #define APPLY_DAMAGE 0
 #else
+#define USE_ASYNC_SWAP 0
 #define KEEPALIVE 1
 #define APPLY_DAMAGE 1
 #endif
@@ -233,7 +234,7 @@ sna_dri2_get_back(struct sna *sna,
 		}
 
 		flags = 0;
-		if (USE_ASYNC_SWAP) {
+		if (USE_ASYNC_SWAP && back->flags) {
 			BoxRec box;
 
 			box.x1 = 0;
@@ -242,7 +243,6 @@ sna_dri2_get_back(struct sna *sna,
 			box.y2 = draw->height;
 
 			DBG(("%s: filling new buffer with old back\n", __FUNCTION__));
-			assert(back->flags);
 			if (sna->render.copy_boxes(sna, GXcopy,
 						   draw, get_private(back)->bo, 0, 0,
 						   draw, bo, 0, 0,
@@ -1184,6 +1184,15 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		pixman_region_fini(&clip);
 
 	return bo;
+}
+
+inline static void
+__sna_dri2_copy_event(struct sna_dri2_event *info, unsigned flags)
+{
+	info->bo = __sna_dri2_copy_region(info->sna, info->draw, NULL,
+					  info->back, info->front,
+					  flags);
+	info->front->flags = info->back->flags;
 }
 
 static void
@@ -2157,9 +2166,7 @@ static void chain_swap(struct sna_dri2_event *chain)
 			sna_dri2_xchg_crtc(chain->sna, chain->draw, chain->crtc, chain->front, chain->back);
 		} else {
 			assert(chain->queued);
-			chain->bo = __sna_dri2_copy_region(chain->sna, chain->draw, NULL,
-							   chain->back, chain->front,
-							   DRI2_SYNC);
+			__sna_dri2_copy_event(chain, 0);
 		}
 	case SWAP:
 		break;
@@ -2173,15 +2180,13 @@ static void chain_swap(struct sna_dri2_event *chain)
 		DRM_VBLANK_EVENT;
 	vbl.request.sequence = 1;
 	vbl.request.signal = (uintptr_t)chain;
-	if (sna_wait_vblank(chain->sna, &vbl, chain->pipe)) {
+	if ((chain->type == SWAP_THROTTLE &&
+	     !swap_limit(chain->draw, 2 + !chain->sync) &&
+	     !chain->sync) ||
+	    sna_wait_vblank(chain->sna, &vbl, chain->pipe)) {
 		DBG(("%s: vblank wait failed, unblocking client\n", __FUNCTION__));
 		frame_swap_complete(chain, DRI2_BLIT_COMPLETE);
 		sna_dri2_event_free(chain);
-	} else {
-		if (chain->type == SWAP_THROTTLE && !swap_limit(chain->draw, 2)) {
-			DBG(("%s: fake triple buffering, unblocking client\n", __FUNCTION__));
-			frame_swap_complete(chain, DRI2_BLIT_COMPLETE);
-		}
 	}
 }
 
@@ -2267,9 +2272,7 @@ void sna_dri2_vblank_handler(struct drm_event_vblank *event)
 			info->type = SWAP_WAIT;
 		}  else {
 			assert(info->queued);
-			info->bo = __sna_dri2_copy_region(sna, draw, NULL,
-							  info->back, info->front,
-							  DRI2_SYNC);
+			__sna_dri2_copy_event(info, DRI2_SYNC);
 			info->type = SWAP_WAIT;
 		}
 
@@ -2335,57 +2338,65 @@ done:
 	DBG(("%s complete\n", __FUNCTION__));
 }
 
-static bool
+static void
 sna_dri2_immediate_blit(struct sna *sna,
 			struct sna_dri2_event *info,
-			bool sync, bool event)
+			bool sync)
 {
 	DrawablePtr draw = info->draw;
-	bool ret = false;
+	struct sna_dri2_event *chain = dri2_chain(draw);
 
 	if (sna->flags & SNA_NO_WAIT)
 		sync = false;
 
-	DBG(("%s: emitting immediate blit, throttling client, synced? %d, chained? %d, send-event? %d\n",
-	     __FUNCTION__, sync, dri2_chain(draw) != info,
-	     event));
+	DBG(("%s: emitting immediate blit, throttling client, synced? %d, chained? %d\n",
+	     __FUNCTION__, sync, chain != info));
 
 	info->type = SWAP_THROTTLE;
-	if (!sync || dri2_chain(draw) == info) {
-		DBG(("%s: no pending blit, starting chain\n",
-		     __FUNCTION__));
+	info->sync = sync;
+	if (chain == info) {
+		union drm_wait_vblank vbl;
+
+		DBG(("%s: no pending blit, starting chain\n", __FUNCTION__));
 
 		info->queued = true;
-		info->bo = __sna_dri2_copy_region(sna, draw, NULL,
-						  info->back,
-						  info->front,
-						  sync);
-		if (event) {
-			if (sync) {
-				union drm_wait_vblank vbl;
+		__sna_dri2_copy_event(info, sync);
 
-				VG_CLEAR(vbl);
-				vbl.request.type =
-					DRM_VBLANK_RELATIVE |
-					DRM_VBLANK_EVENT;
-				vbl.request.sequence = 1;
-				vbl.request.signal = (uintptr_t)info;
-				ret = !sna_wait_vblank(sna, &vbl, info->pipe);
-				if (ret)
-					event = !swap_limit(draw, 2);
-			}
-			if (event) {
-				DBG(("%s: fake triple buffering, unblocking client\n", __FUNCTION__));
-				frame_swap_complete(info, DRI2_BLIT_COMPLETE);
-			}
+		VG_CLEAR(vbl);
+		vbl.request.type =
+			DRM_VBLANK_RELATIVE |
+			DRM_VBLANK_EVENT;
+		vbl.request.sequence = 1;
+		vbl.request.signal = (uintptr_t)info;
+		if ((!swap_limit(draw, 2 + !sync) && !sync) ||
+		    sna_wait_vblank(sna, &vbl, info->pipe)) {
+			DBG(("%s: fake triple buffering, unblocking client\n", __FUNCTION__));
+			frame_swap_complete(info, DRI2_BLIT_COMPLETE);
+			sna_dri2_event_free(info);
 		}
-	} else {
-		DBG(("%s: pending blit, chained\n", __FUNCTION__));
-		ret = true;
+		return;
 	}
 
-	DBG(("%s: continue? %d\n", __FUNCTION__, ret));
-	return ret;
+	if (chain->chain != info && chain->chain->type == SWAP_THROTTLE) {
+		struct sna_dri2_event *tmp = chain->chain;
+
+		assert(!tmp->queued);
+
+		assert(info->chain == NULL);
+		info->chain = tmp->chain;
+		if (info->chain == info)
+			info->chain = NULL;
+		chain->chain = info;
+		tmp->chain = NULL;
+
+		DBG(("%s: swap elision, unblocking client\n", __FUNCTION__));
+		frame_swap_complete(tmp, DRI2_BLIT_COMPLETE);
+
+		tmp->draw = NULL;
+		sna_dri2_event_free(tmp);
+	}
+
+	DBG(("%s: pending blit, chained\n", __FUNCTION__));
 }
 
 static bool
@@ -2454,9 +2465,7 @@ static void chain_flip(struct sna *sna)
 		DBG(("%s: performing chained flip\n", __FUNCTION__));
 	} else {
 		DBG(("%s: emitting chained vsync'ed blit\n", __FUNCTION__));
-		chain->bo = __sna_dri2_copy_region(sna, chain->draw, NULL,
-						  chain->back, chain->front,
-						  DRI2_SYNC);
+		__sna_dri2_copy_event(chain, DRI2_SYNC);
 
 		if (xorg_can_triple_buffer()) {
 			union drm_wait_vblank vbl;
@@ -2524,8 +2533,12 @@ static void sna_dri2_flip_event(struct sna_dri2_event *flip)
 			}
 		} else if (!sna_dri2_flip_continue(flip)) {
 			DBG(("%s: no longer able to flip\n", __FUNCTION__));
-			if (flip->draw == NULL || !sna_dri2_immediate_blit(sna, flip, false, flip->flip_continue == FLIP_COMPLETE))
-				sna_dri2_event_free(flip);
+			__sna_dri2_copy_event(flip, 0);
+			if (flip->flip_continue == FLIP_COMPLETE) {
+				DBG(("%s: fake triple buffering, unblocking client\n", __FUNCTION__));
+				frame_swap_complete(flip, DRI2_BLIT_COMPLETE);
+			}
+			sna_dri2_event_free(flip);
 		}
 		break;
 
@@ -3066,8 +3079,7 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 
 	if (immediate) {
 		bool sync = current_msc < *target_msc;
-		if (!sna_dri2_immediate_blit(sna, info, sync, true))
-			sna_dri2_event_free(info);
+		sna_dri2_immediate_blit(sna, info, sync);
 		*target_msc = current_msc + sync;
 		return TRUE;
 	}
@@ -3083,9 +3095,7 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 	if (*target_msc <= current_msc + 1) {
 		DBG(("%s: performing blit before queueing\n", __FUNCTION__));
 		assert(info->queued);
-		info->bo = __sna_dri2_copy_region(sna, draw, NULL,
-						  back, front,
-						  DRI2_SYNC);
+		__sna_dri2_copy_event(info, DRI2_SYNC);
 		info->type = SWAP_WAIT;
 
 		vbl.request.type =
@@ -3111,6 +3121,7 @@ blit:
 		sna_dri2_xchg(draw, front, back);
 	} else {
 		__sna_dri2_copy_region(sna, draw, NULL, back, front, 0);
+		front->flags = back->flags;
 		type = DRI2_BLIT_COMPLETE;
 	}
 skip:
