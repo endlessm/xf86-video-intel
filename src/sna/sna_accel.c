@@ -18068,7 +18068,7 @@ void sna_accel_close(struct sna *sna)
 	kgem_cleanup_cache(&sna->kgem);
 }
 
-void sna_accel_block_handler(struct sna *sna, struct timeval **tv)
+void sna_accel_block(struct sna *sna, struct timeval **tv)
 {
 	sigtrap_assert_inactive();
 
@@ -18146,22 +18146,6 @@ set_tv:
 		kgem_submit(&sna->kgem);
 		sna->kgem.wedged = !sna->kgem.wedged;
 	}
-}
-
-void sna_accel_wakeup_handler(struct sna *sna)
-{
-	DBG(("%s: nbatch=%d, need_retire=%d, need_purge=%d\n", __FUNCTION__,
-	     sna->kgem.nbatch, sna->kgem.need_retire, sna->kgem.need_purge));
-
-	if (!sna->kgem.nbatch)
-		return;
-
-	if (kgem_is_idle(&sna->kgem)) {
-		DBG(("%s: GPU idle, flushing\n", __FUNCTION__));
-		_kgem_submit(&sna->kgem);
-	}
-
-	sigtrap_assert_inactive();
 }
 
 void sna_accel_free(struct sna *sna)

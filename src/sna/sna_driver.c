@@ -708,7 +708,7 @@ sna_block_handler(BLOCKHANDLER_ARGS_DECL)
 	sna->BlockHandler(BLOCKHANDLER_ARGS);
 
 	if (*tv == NULL || ((*tv)->tv_usec | (*tv)->tv_sec) || has_shadow(sna))
-		sna_accel_block_handler(sna, tv);
+		sna_accel_block(sna, tv);
 }
 
 static void
@@ -729,8 +729,6 @@ sna_wakeup_handler(WAKEUPHANDLER_ARGS_DECL)
 	sna_acpi_wakeup(sna, read_mask);
 
 	sna->WakeupHandler(WAKEUPHANDLER_ARGS);
-
-	sna_accel_wakeup_handler(sna);
 
 	if (FD_ISSET(sna->kgem.fd, (fd_set*)read_mask)) {
 		sna_mode_wakeup(sna);
