@@ -2533,7 +2533,8 @@ static void sna_dri2_flip_event(struct sna_dri2_event *flip)
 			}
 		} else if (!sna_dri2_flip_continue(flip)) {
 			DBG(("%s: no longer able to flip\n", __FUNCTION__));
-			__sna_dri2_copy_event(flip, 0);
+			if (flip->draw != NULL)
+				__sna_dri2_copy_event(flip, 0);
 			if (flip->flip_continue == FLIP_COMPLETE) {
 				DBG(("%s: fake triple buffering, unblocking client\n", __FUNCTION__));
 				frame_swap_complete(flip, DRI2_BLIT_COMPLETE);
