@@ -29,8 +29,9 @@
 #include <X11/Xlib.h>
 #include <X11/extensions/Xfixes.h>
 
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <png.h>
 
 int main(int argc, char **argv)
