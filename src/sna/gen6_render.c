@@ -2694,6 +2694,10 @@ static inline bool prefer_blt_copy(struct sna *sna,
 	    kgem_bo_is_render(src_bo))
 		return false;
 
+	if (flags & COPY_LAST &&
+            can_switch_to_blt(sna, dst_bo, flags))
+		return true;
+
 	if (prefer_render_ring(sna, dst_bo))
 		return false;
 
