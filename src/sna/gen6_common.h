@@ -49,9 +49,6 @@ inline static bool can_switch_to_blt(struct sna *sna,
 	if (NO_RING_SWITCH(sna))
 		return false;
 
-	if (flags & COPY_LAST)
-		return true;
-
 	if (bo && RQ_IS_BLT(bo->rq))
 		return true;
 
@@ -60,6 +57,9 @@ inline static bool can_switch_to_blt(struct sna *sna,
 
 	if (bo && RQ_IS_RENDER(bo->rq))
 		return false;
+
+	if (flags & COPY_LAST)
+		return true;
 
 	return kgem_ring_is_idle(&sna->kgem, KGEM_BLT);
 }
