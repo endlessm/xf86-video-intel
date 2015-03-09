@@ -3249,7 +3249,9 @@ kgem_batch_write(struct kgem *kgem,
 	char *ptr;
 	int ret;
 
-	ASSERT_IDLE(kgem, bo->handle);
+	assert(bo->exec == NULL);
+	assert(bo->rq == NULL);
+	assert(!__kgem_busy(kgem, bo->handle));
 
 #if DBG_NO_EXEC
 	{
