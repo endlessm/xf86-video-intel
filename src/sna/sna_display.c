@@ -6977,6 +6977,14 @@ sna_crtc_redisplay__fallback(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo 
 	     __FUNCTION__, format->format, depth, draw->bitsPerPixel,
 	     bo->pitch, crtc->mode.HDisplay, crtc->mode.VDisplay));
 
+	if (sx | sy)
+		RegionTranslate(region, sx, sy);
+	error = !sna_drawable_move_region_to_cpu(draw, region, MOVE_READ);
+	if (sx | sy)
+		RegionTranslate(region, -sx, -sy);
+	if (error)
+		return;
+
 	ptr = kgem_bo_map__gtt(&sna->kgem, bo);
 	if (ptr == NULL)
 		return;
@@ -6999,6 +7007,29 @@ sna_crtc_redisplay__fallback(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo 
 	pixman_transform_init_translate(&T, sx << 16, sy << 16);
 	pixman_transform_multiply(&T, &T, &crtc->crtc_to_framebuffer);
 	if (!sna_transform_is_integer_translation(&T, &sx, &sy)) {
+#define f2d(x) (((double)(x))/65536.)
+		DBG(("%s: transform=[[%f %f %f], [%f %f %f], [%f %f %f]] (raw [[%x %x %x], [%x %x %x], [%x %x %x]])\n",
+		     __FUNCTION__,
+		     f2d(T.matrix[0][0]),
+		     f2d(T.matrix[0][1]),
+		     f2d(T.matrix[0][2]),
+		     f2d(T.matrix[1][0]),
+		     f2d(T.matrix[1][1]),
+		     f2d(T.matrix[1][2]),
+		     f2d(T.matrix[2][0]),
+		     f2d(T.matrix[2][1]),
+		     f2d(T.matrix[2][2]),
+		     T.matrix[0][0],
+		     T.matrix[0][1],
+		     T.matrix[0][2],
+		     T.matrix[1][0],
+		     T.matrix[1][1],
+		     T.matrix[1][2],
+		     T.matrix[2][0],
+		     T.matrix[2][1],
+		     T.matrix[2][2]));
+#undef f2d
+
 		error = SetPictureTransform(src, &T);
 		if (error)
 			goto free_src;
