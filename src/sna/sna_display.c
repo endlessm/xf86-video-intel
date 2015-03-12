@@ -5279,6 +5279,9 @@ sna_use_hw_cursor(ScreenPtr screen, CursorPtr cursor)
 		sna->cursor.ref = NULL;
 	}
 
+	if (sna->mode.rr_active)
+		return FALSE;
+
 	sna->cursor.size = __cursor_size(cursor);
 	if (sna->cursor.size > sna->cursor.max_size)
 		return FALSE;
