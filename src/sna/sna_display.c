@@ -116,6 +116,20 @@ struct local_mode_obj_get_properties {
 
 extern XF86ConfigPtr xf86configptr;
 
+struct sna_cursor {
+	struct sna_cursor *next;
+	uint32_t *image;
+	bool transformed;
+	Rotation rotation;
+	int ref;
+	int size;
+	int last_width;
+	int last_height;
+	unsigned handle;
+	unsigned serial;
+	unsigned alloc;
+};
+
 struct sna_crtc {
 	xf86CrtcPtr base;
 	struct drm_mode_modeinfo kmode;
@@ -128,6 +142,7 @@ struct sna_crtc {
 	bool shadow;
 	bool fallback_shadow;
 	bool transform;
+	bool cursor_transform;
 	bool flip_pending;
 	uint8_t id;
 	uint8_t pipe;
@@ -1582,6 +1597,7 @@ __sna_crtc_disable(struct sna *sna, struct sna_crtc *sna_crtc)
 		sna_crtc->transform = false;
 	}
 
+	sna_crtc->cursor_transform = false;
 	assert(!sna_crtc->shadow);
 }
 
@@ -2194,6 +2210,34 @@ out_shadow:
 	}
 }
 
+#define SCALING_EPSILON (1./256)
+static double determinant(const struct pixman_f_transform *t)
+{
+	return t->m[0][0]*t->m[1][1] - t->m[1][0]*t->m[0][1];
+}
+
+static bool
+affine_is_pixel_exact(const struct pixman_f_transform *t)
+{
+	double det;
+
+	if (t->m[2][0] || t->m[2][1])
+		return false;
+
+	det = t->m[2][2] * determinant(t);
+	if (fabs (det * det - 1.0) < SCALING_EPSILON) {
+		if (fabs(t->m[0][1]) < SCALING_EPSILON &&
+		    fabs(t->m[1][0]) < SCALING_EPSILON)
+			return true;
+
+		if (fabs(t->m[0][0]) < SCALING_EPSILON &&
+		    fabs(t->m[1][1]) < SCALING_EPSILON)
+			return true;
+	}
+
+	return false;
+}
+
 static void sna_crtc_randr(xf86CrtcPtr crtc)
 {
 	struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
@@ -2238,6 +2282,10 @@ static void sna_crtc_randr(xf86CrtcPtr crtc)
 		crtc->transform_in_use = needs_transform;
 	} else
 		crtc->transform_in_use = sna_crtc->rotation != RR_Rotate_0;
+
+	sna_crtc->cursor_transform = false;
+	if (crtc->transform_in_use)
+		sna_crtc->cursor_transform = !affine_is_pixel_exact(&f_fb_to_crtc);
 
 	crtc->crtc_to_framebuffer = crtc_to_fb;
 	crtc->f_crtc_to_framebuffer = f_crtc_to_fb;
@@ -2361,6 +2409,7 @@ __sna_crtc_set_mode(xf86CrtcPtr crtc)
 	struct kgem_bo *saved_bo, *bo;
 	uint32_t saved_offset;
 	bool saved_transform;
+	bool saved_cursor_transform;
 
 	DBG(("%s: CRTC=%d, pipe=%d, hidden?=%d\n", __FUNCTION__,
 	     sna_crtc->id, sna_crtc->pipe, sna->mode.hidden));
@@ -2369,6 +2418,7 @@ __sna_crtc_set_mode(xf86CrtcPtr crtc)
 
 	saved_bo = sna_crtc->bo;
 	saved_transform = sna_crtc->transform;
+	saved_cursor_transform = sna_crtc->cursor_transform;
 	saved_offset = sna_crtc->offset;
 
 	sna_crtc->fallback_shadow = false;
@@ -2414,6 +2464,12 @@ retry: /* Attach per-crtc pixmap or direct */
 	sna_crtc_randr(crtc);
 	if (sna_crtc->transform)
 		sna_crtc_damage(crtc);
+	if (sna_crtc->cursor &&  /* Reload cursor if RandR maybe changed */
+	    (saved_cursor_transform ||
+	     sna_crtc->cursor_transform ||
+	     sna_crtc->cursor->rotation != crtc->rotation))
+		sna_crtc_disable_cursor(sna, sna_crtc);
+
 	assert(!sna->mode.hidden);
 	sna->mode.front_active += saved_bo == NULL;
 	sna->mode.dirty = true;
@@ -2431,6 +2487,7 @@ error:
 	if (saved_transform)
 		sna->mode.rr_active++;
 	sna_crtc->transform = saved_transform;
+	sna_crtc->cursor_transform = saved_cursor_transform;
 	sna_crtc->bo = saved_bo;
 	sna_mode_discover(sna);
 	return FALSE;
@@ -4621,19 +4678,6 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 }
 
 /* cursor handling */
-struct sna_cursor {
-	struct sna_cursor *next;
-	uint32_t *image;
-	Rotation rotation;
-	int ref;
-	int size;
-	int last_width;
-	int last_height;
-	unsigned handle;
-	unsigned serial;
-	unsigned alloc;
-};
-
 static void
 rotate_coord(Rotation rotation, int size,
 	     int x_dst, int y_dst,
@@ -4759,6 +4803,17 @@ static uint32_t *get_cursor_argb(CursorPtr c)
 #endif
 }
 
+static int __cursor_size(int width, int height)
+{
+	int i, size;
+
+	i = MAX(width, height);
+	for (size = 64; size < i; size <<= 1)
+		;
+
+	return size;
+}
+
 static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 {
 	struct sna_cursor *cursor;
@@ -4766,6 +4821,9 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 	const uint32_t *argb;
 	uint32_t *image;
 	int width, height, pitch, size, x, y;
+	PictTransform cursor_to_fb;
+	struct pict_f_transform f_cursor_to_fb, f_fb_to_cursor;
+	bool transformed;
 	Rotation rotation;
 
 	assert(sna->cursor.ref);
@@ -4790,11 +4848,15 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 	       sna->cursor.serial,
 	       get_cursor_argb(sna->cursor.ref) != NULL));
 
-	rotation = crtc->transform_in_use ? crtc->rotation : RR_Rotate_0;
+	transformed = to_sna_crtc(crtc)->cursor_transform;
+	rotation = !transformed && crtc->transform_in_use ? crtc->rotation : RR_Rotate_0;
 
-	if (sna->cursor.use_gtt) { /* Don't allow phys cursor sharing */
+	/* Don't allow phys cursor sharing */
+	if (sna->cursor.use_gtt && !transformed) {
 		for (cursor = sna->cursor.cursors; cursor; cursor = cursor->next) {
-			if (cursor->serial == sna->cursor.serial && cursor->rotation == rotation) {
+			if (cursor->serial == sna->cursor.serial &&
+			    cursor->rotation == rotation &&
+			    !cursor->transformed) {
 				__DBG(("%s: reusing handle=%d, serial=%d, rotation=%d, size=%d\n",
 				       __FUNCTION__, cursor->handle, cursor->serial, cursor->rotation, cursor->size));
 				assert(cursor->size == sna->cursor.size);
@@ -4803,7 +4865,26 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 		}
 	}
 
-	size = sna->cursor.size;
+	if (transformed) {
+		struct pixman_box16 box;
+
+		box.x1 = box.y1 = 0;
+		box.x2 = sna->cursor.ref->bits->width;
+		box.y2 = sna->cursor.ref->bits->height;
+
+		pixman_f_transform_bounds(&crtc->f_framebuffer_to_crtc, &box);
+		size = __cursor_size(box.x2 - box.x1, box.y2 - box.y1);
+
+		RRTransformCompute(0, 0,
+				   sna->cursor.ref->bits->width,
+				   sna->cursor.ref->bits->height,
+				   crtc->rotation, &crtc->transform,
+				   &cursor_to_fb,
+				   &f_cursor_to_fb,
+				   &f_fb_to_cursor);
+	} else
+		size = sna->cursor.size;
+
 	cursor = to_sna_crtc(crtc)->cursor;
 	if (cursor && cursor->alloc < 4*size*size)
 		cursor = NULL;
@@ -4816,7 +4897,7 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 		}
 	}
 
-	width = sna->cursor.ref->bits->width;
+	width  = sna->cursor.ref->bits->width;
 	height = sna->cursor.ref->bits->height;
 	source = sna->cursor.ref->bits->source;
 	mask = sna->cursor.ref->bits->mask;
@@ -4824,7 +4905,7 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 	pitch = BitmapBytePad(width);
 
 	image = cursor->image;
-	if (image == NULL) {
+	if (image == NULL || transformed) {
 		image = sna->cursor.scratch;
 		cursor->last_width = cursor->last_height = size;
 	}
@@ -4855,6 +4936,19 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 				mask += pitch;
 				source += pitch;
 			}
+			if (transformed) {
+				affine_blt(image, cursor->image, 32,
+					   0, 0, width, height, size * 4,
+					   0, 0, width, height, size * 4,
+					   &f_cursor_to_fb);
+				image = cursor->image;
+			}
+		} else if (transformed) {
+			affine_blt(argb, cursor->image, 32,
+				   0, 0, width, height, width * 4,
+				   0, 0, width, height, size * 4,
+				   &f_cursor_to_fb);
+			image = cursor->image;
 		} else
 			memcpy_blt(argb, image, 32,
 				   width * 4, size * 4,
@@ -4901,6 +4995,7 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 
 	cursor->size = size;
 	cursor->rotation = rotation;
+	cursor->transformed = transformed;
 	cursor->serial = sna->cursor.serial;
 	cursor->last_width = width;
 	cursor->last_height = height;
@@ -5234,17 +5329,6 @@ sna_load_cursor_image(ScrnInfoPtr scrn, unsigned char *src)
 {
 }
 
-static int __cursor_size(CursorPtr cursor)
-{
-	int i, size;
-
-	i = MAX(cursor->bits->width, cursor->bits->height);
-	for (size = 64; size < i; size <<= 1)
-		;
-
-	return size;
-}
-
 static bool
 sna_cursor_preallocate(struct sna *sna)
 {
@@ -5257,6 +5341,40 @@ sna_cursor_preallocate(struct sna *sna)
 		sna->cursor.stash = cursor;
 
 		sna->cursor.num_stash++;
+	}
+
+	return true;
+}
+
+static bool
+transformable_cursor(struct sna *sna, CursorPtr cursor)
+{
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	int i;
+
+	for (i = 0; i < sna->mode.num_real_crtc; i++) {
+		struct sna_crtc *crtc = to_sna_crtc(config->crtc[i]);
+		const struct pixman_f_transform *t;
+		struct pixman_box16 box;
+		int size;
+
+		if (!crtc->cursor_transform)
+			continue;
+
+		t = &crtc->base->f_framebuffer_to_crtc;
+		if (!sna->cursor.use_gtt || !sna->cursor.scratch)
+			return false;
+
+		box.x1 = box.y1 = 0;
+		box.x2 = cursor->bits->width;
+		box.y2 = cursor->bits->height;
+
+		if (!pixman_f_transform_bounds(t, &box))
+			return false;
+
+		size = __cursor_size(box.x2 - box.x1, box.y2 - box.y1);
+		if (size > sna->cursor.max_size)
+			return false;
 	}
 
 	return true;
@@ -5279,11 +5397,12 @@ sna_use_hw_cursor(ScreenPtr screen, CursorPtr cursor)
 		sna->cursor.ref = NULL;
 	}
 
-	if (sna->mode.rr_active)
+	sna->cursor.size =
+		__cursor_size(cursor->bits->width, cursor->bits->height);
+	if (sna->cursor.size > sna->cursor.max_size)
 		return FALSE;
 
-	sna->cursor.size = __cursor_size(cursor);
-	if (sna->cursor.size > sna->cursor.max_size)
+	if (sna->mode.rr_active && !transformable_cursor(sna, cursor))
 		return FALSE;
 
 	if (!sna_cursor_preallocate(sna))
@@ -5346,11 +5465,9 @@ sna_cursor_pre_init(struct sna *sna)
 	DBG(("%s: cursor updates use_gtt?=%d\n",
 	     __FUNCTION__, sna->cursor.use_gtt));
 
-	if (!sna->cursor.use_gtt) {
-		sna->cursor.scratch = malloc(sna->cursor.max_size * sna->cursor.max_size * 4);
-		if (!sna->cursor.scratch)
-			sna->cursor.max_size = 0;
-	}
+	sna->cursor.scratch = malloc(sna->cursor.max_size * sna->cursor.max_size * 4);
+	if (!sna->cursor.scratch && !sna->cursor.use_gtt)
+		sna->cursor.max_size = 0;
 
 	sna->cursor.num_stash = -sna->mode.num_real_crtc;
 
@@ -6011,8 +6128,8 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 			if (sna_output->num_modes == 0)
 				continue;
 
-			width = sna_output->modes[0].hdisplay;
-			height= sna_output->modes[0].vdisplay;
+			width  = sna_output->modes[0].hdisplay;
+			height = sna_output->modes[0].vdisplay;
 
 			DBG(("%s: panel '%s' is %dx%d\n",
 			     __FUNCTION__, output->name, width, height));

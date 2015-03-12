@@ -1240,3 +1240,241 @@ memcpy_xor(const void *src, void *dst, int bpp,
 		}
 	}
 }
+
+#define BILINEAR_INTERPOLATION_BITS 4
+static force_inline int
+bilinear_weight(pixman_fixed_t x)
+{
+	return (x >> (16 - BILINEAR_INTERPOLATION_BITS)) &
+		((1 << BILINEAR_INTERPOLATION_BITS) - 1);
+}
+
+#if BILINEAR_INTERPOLATION_BITS <= 4
+/* Inspired by Filter_32_opaque from Skia */
+static force_inline uint32_t
+bilinear_interpolation(uint32_t tl, uint32_t tr,
+		       uint32_t bl, uint32_t br,
+		       int distx, int disty)
+{
+	int distxy, distxiy, distixy, distixiy;
+	uint32_t lo, hi;
+
+	distx <<= (4 - BILINEAR_INTERPOLATION_BITS);
+	disty <<= (4 - BILINEAR_INTERPOLATION_BITS);
+
+	distxy = distx * disty;
+	distxiy = (distx << 4) - distxy;	/* distx * (16 - disty) */
+	distixy = (disty << 4) - distxy;	/* disty * (16 - distx) */
+	distixiy =
+		16 * 16 - (disty << 4) -
+		(distx << 4) + distxy; /* (16 - distx) * (16 - disty) */
+
+	lo = (tl & 0xff00ff) * distixiy;
+	hi = ((tl >> 8) & 0xff00ff) * distixiy;
+
+	lo += (tr & 0xff00ff) * distxiy;
+	hi += ((tr >> 8) & 0xff00ff) * distxiy;
+
+	lo += (bl & 0xff00ff) * distixy;
+	hi += ((bl >> 8) & 0xff00ff) * distixy;
+
+	lo += (br & 0xff00ff) * distxy;
+	hi += ((br >> 8) & 0xff00ff) * distxy;
+
+	return ((lo >> 8) & 0xff00ff) | (hi & ~0xff00ff);
+}
+#elif SIZEOF_LONG > 4
+static force_inline uint32_t
+bilinear_interpolation(uint32_t tl, uint32_t tr,
+		       uint32_t bl, uint32_t br,
+		       int distx, int disty)
+{
+	uint64_t distxy, distxiy, distixy, distixiy;
+	uint64_t tl64, tr64, bl64, br64;
+	uint64_t f, r;
+
+	distx <<= (8 - BILINEAR_INTERPOLATION_BITS);
+	disty <<= (8 - BILINEAR_INTERPOLATION_BITS);
+
+	distxy = distx * disty;
+	distxiy = distx * (256 - disty);
+	distixy = (256 - distx) * disty;
+	distixiy = (256 - distx) * (256 - disty);
+
+	/* Alpha and Blue */
+	tl64 = tl & 0xff0000ff;
+	tr64 = tr & 0xff0000ff;
+	bl64 = bl & 0xff0000ff;
+	br64 = br & 0xff0000ff;
+
+	f = tl64 * distixiy + tr64 * distxiy + bl64 * distixy + br64 * distxy;
+	r = f & 0x0000ff0000ff0000ull;
+
+	/* Red and Green */
+	tl64 = tl;
+	tl64 = ((tl64 << 16) & 0x000000ff00000000ull) | (tl64 & 0x0000ff00ull);
+
+	tr64 = tr;
+	tr64 = ((tr64 << 16) & 0x000000ff00000000ull) | (tr64 & 0x0000ff00ull);
+
+	bl64 = bl;
+	bl64 = ((bl64 << 16) & 0x000000ff00000000ull) | (bl64 & 0x0000ff00ull);
+
+	br64 = br;
+	br64 = ((br64 << 16) & 0x000000ff00000000ull) | (br64 & 0x0000ff00ull);
+
+	f = tl64 * distixiy + tr64 * distxiy + bl64 * distixy + br64 * distxy;
+	r |= ((f >> 16) & 0x000000ff00000000ull) | (f & 0xff000000ull);
+
+	return (uint32_t)(r >> 16);
+}
+#else
+static force_inline uint32_t
+bilinear_interpolation(uint32_t tl, uint32_t tr,
+		       uint32_t bl, uint32_t br,
+		       int distx, int disty)
+{
+	int distxy, distxiy, distixy, distixiy;
+	uint32_t f, r;
+
+	distx <<= (8 - BILINEAR_INTERPOLATION_BITS);
+	disty <<= (8 - BILINEAR_INTERPOLATION_BITS);
+
+	distxy = distx * disty;
+	distxiy = (distx << 8) - distxy;	/* distx * (256 - disty) */
+	distixy = (disty << 8) - distxy;	/* disty * (256 - distx) */
+	distixiy =
+		256 * 256 - (disty << 8) -
+		(distx << 8) + distxy;		/* (256 - distx) * (256 - disty) */
+
+	/* Blue */
+	r = ((tl & 0x000000ff) * distixiy + (tr & 0x000000ff) * distxiy +
+	     (bl & 0x000000ff) * distixy  + (br & 0x000000ff) * distxy);
+
+	/* Green */
+	f = ((tl & 0x0000ff00) * distixiy + (tr & 0x0000ff00) * distxiy +
+	     (bl & 0x0000ff00) * distixy  + (br & 0x0000ff00) * distxy);
+	r |= f & 0xff000000;
+
+	tl >>= 16;
+	tr >>= 16;
+	bl >>= 16;
+	br >>= 16;
+	r >>= 16;
+
+	/* Red */
+	f = ((tl & 0x000000ff) * distixiy + (tr & 0x000000ff) * distxiy +
+	     (bl & 0x000000ff) * distixy  + (br & 0x000000ff) * distxy);
+	r |= f & 0x00ff0000;
+
+	/* Alpha */
+	f = ((tl & 0x0000ff00) * distixiy + (tr & 0x0000ff00) * distxiy +
+	     (bl & 0x0000ff00) * distixy  + (br & 0x0000ff00) * distxy);
+	r |= f & 0xff000000;
+
+	return r;
+}
+#endif
+
+static inline uint32_t convert_pixel(const uint8_t *p, int x)
+{
+	return ((uint32_t *)p)[x];
+}
+
+fast void
+affine_blt(const void *src, void *dst, int bpp,
+	   int16_t src_x, int16_t src_y,
+	   int16_t src_width, int16_t src_height,
+	   int32_t src_stride,
+	   int16_t dst_x, int16_t dst_y,
+	   uint16_t dst_width, uint16_t dst_height,
+	   int32_t dst_stride,
+	   const struct pixman_f_transform *t)
+{
+	static const uint8_t zero[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+	const pixman_fixed_t ux = pixman_double_to_fixed(t->m[0][0]);
+	const pixman_fixed_t uy = pixman_double_to_fixed(t->m[1][0]);
+	int i, j;
+
+	assert(bpp == 32);
+
+	for (j = 0; j < dst_height; j++) {
+		pixman_fixed_t x, y;
+		pixman_f_vector_t v;
+		uint32_t *b;
+
+		/* reference point is the center of the pixel */
+		v.v[0] = dst_x + 0.5;
+		v.v[1] = dst_y + j + 0.5;
+		v.v[2] = 1.0;
+
+		pixman_f_transform_point_3d(t, &v);
+
+		x = pixman_double_to_fixed(v.v[0]);
+		x += pixman_int_to_fixed(src_x - dst_x);
+		y = pixman_double_to_fixed(v.v[1]);
+		y +=  pixman_int_to_fixed(src_y - dst_y);
+
+		b = (uint32_t*)((uint8_t *)dst + (dst_y + j) * dst_stride + dst_x * bpp / 8);
+		for (i = 0; i < dst_width; i++) {
+			const uint8_t *row1;
+			const uint8_t *row2;
+			int x1, y1, x2, y2;
+			uint32_t tl, tr, bl, br;
+			int32_t fx, fy;
+
+			x1 = x - pixman_fixed_1/2;
+			y1 = y - pixman_fixed_1/2;
+
+			fx = bilinear_weight(x1);
+			fy = bilinear_weight(y1);
+
+			x1 = pixman_fixed_to_int(x1);
+			x2 = x1 + 1;
+			y1 = pixman_fixed_to_int(y1);
+			y2 = y1 + 1;
+
+			if (x1 >= src_width  || x2 < 0 ||
+			    y1 >= src_height || y2 < 0) {
+				b[i] = 0;
+				goto next;
+			}
+
+			if (y2 == 0) {
+				row1 = zero;
+			} else {
+				row1 = (uint8_t *)src + src_stride * y1;
+				row1 += bpp / 8 * x1;
+			}
+
+			if (y1 == src_height - 1) {
+				row2 = zero;
+			} else {
+				row2 = (uint8_t *)src + src_stride * y2;
+				row2 += bpp / 8 * x1;
+			}
+
+			if (x2 == 0) {
+				tl = 0;
+				bl = 0;
+			} else {
+				tl = convert_pixel(row1, 0);
+				bl = convert_pixel(row2, 0);
+			}
+
+			if (x1 == src_width - 1) {
+				tr = 0;
+				br = 0;
+			} else {
+				tr = convert_pixel(row1, 1);
+				br = convert_pixel(row2, 1);
+			}
+
+			b[i] = bilinear_interpolation(tl, tr, bl, br, fx, fy);
+
+next:
+			x += ux;
+			y += uy;
+		}
+	}
+}

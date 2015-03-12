@@ -1141,6 +1141,16 @@ memcpy_blt(const void *src, void *dst, int bpp,
 	   uint16_t width, uint16_t height);
 
 void
+affine_blt(const void *src, void *dst, int bpp,
+	   int16_t src_x, int16_t src_y,
+	   int16_t src_width, int16_t src_height,
+	   int32_t src_stride,
+	   int16_t dst_x, int16_t dst_y,
+	   uint16_t dst_width, uint16_t dst_height,
+	   int32_t dst_stride,
+	   const struct pixman_f_transform *t);
+
+void
 memmove_box(const void *src, void *dst,
 	    int bpp, int32_t stride,
 	    const BoxRec *box,
