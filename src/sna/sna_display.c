@@ -3100,14 +3100,49 @@ done:
 	}
 }
 
-static DisplayModePtr
-default_modes(void)
+static bool duplicate_mode(DisplayModePtr modes, DisplayModePtr m)
 {
+	if (m == NULL)
+		return false;
+
+	while (modes) {
+		if (xf86ModesEqual(modes, m))
+			return true;
+
+		modes = modes->next;
+	}
+
+	return false;
+}
+
+static DisplayModePtr
+default_modes(DisplayModePtr preferred)
+{
+	DisplayModePtr modes;
+
 #if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,6,99,900,0)
-	return xf86GetDefaultModes();
+	modes = xf86GetDefaultModes();
 #else
-	return xf86GetDefaultModes(0, 0);
+	modes = xf86GetDefaultModes(0, 0);
 #endif
+
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,4,99,901,0)
+	if (preferred) {
+		DisplayModePtr m;
+
+		/* Add a half-resolution mode useful for large panels */
+		m = xf86GTFMode(preferred->HDisplay/2,
+				preferred->VDisplay/2,
+				xf86ModeVRefresh(preferred),
+				FALSE, FALSE);
+		if (!duplicate_mode(modes, m))
+			modes = xf86ModesAdd(modes, m);
+		else
+			free(m);
+	}
+#endif
+
+	return modes;
 }
 
 static DisplayModePtr
@@ -3132,7 +3167,7 @@ sna_output_add_default_modes(xf86OutputPtr output, DisplayModePtr modes)
 	max_vrefresh = max(max_vrefresh, 60.0);
 	max_vrefresh *= (1 + SYNC_TOLERANCE);
 
-	m = default_modes();
+	m = default_modes(preferred);
 	xf86ValidateModesSize(output->scrn, m, max_x, max_y, 0);
 
 	for (i = m; i; i = i->next) {
