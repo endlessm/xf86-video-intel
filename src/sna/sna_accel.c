@@ -17849,6 +17849,9 @@ static bool sna_option_accel_none(struct sna *sna)
 	if (xf86ReturnOptValBool(sna->Options, OPTION_ACCEL_DISABLE, FALSE))
 		return true;
 
+	if (sna->kgem.gen >= 0120)
+		return true;
+
 	if (!intel_option_cast_to_bool(sna->Options,
 				       OPTION_ACCEL_METHOD,
 				       !IS_DEFAULT_ACCEL_METHOD(NOACCEL)))
@@ -17868,6 +17871,9 @@ static bool sna_option_accel_none(struct sna *sna)
 static bool sna_option_accel_blt(struct sna *sna)
 {
 	const char *s;
+
+	if (sna->kgem.gen >= 0110)
+		return true;
 
 	s = xf86GetOptValString(sna->Options, OPTION_ACCEL_METHOD);
 	if (s == NULL)
@@ -17957,21 +17963,21 @@ bool sna_accel_init(ScreenPtr screen, struct sna *sna)
 		backend = "disabled";
 		sna->kgem.wedged = true;
 		sna_render_mark_wedged(sna);
-	} else if (sna_option_accel_blt(sna) || sna->info->gen >= 0110)
+	} else if (sna_option_accel_blt(sna))
 		(void)backend;
-	else if (sna->info->gen >= 0100)
+	else if (sna->kgem.gen >= 0100)
 		backend = gen8_render_init(sna, backend);
-	else if (sna->info->gen >= 070)
+	else if (sna->kgem.gen >= 070)
 		backend = gen7_render_init(sna, backend);
-	else if (sna->info->gen >= 060)
+	else if (sna->kgem.gen >= 060)
 		backend = gen6_render_init(sna, backend);
-	else if (sna->info->gen >= 050)
+	else if (sna->kgem.gen >= 050)
 		backend = gen5_render_init(sna, backend);
-	else if (sna->info->gen >= 040)
+	else if (sna->kgem.gen >= 040)
 		backend = gen4_render_init(sna, backend);
-	else if (sna->info->gen >= 030)
+	else if (sna->kgem.gen >= 030)
 		backend = gen3_render_init(sna, backend);
-	else if (sna->info->gen >= 020)
+	else if (sna->kgem.gen >= 020)
 		backend = gen2_render_init(sna, backend);
 
 	DBG(("%s(backend=%s, prefer_gpu=%x)\n",
