@@ -527,10 +527,10 @@ sna_pixmap_alloc_cpu(struct sna *sna,
 		DBG(("%s: allocating CPU buffer (%dx%d)\n", __FUNCTION__,
 		     pixmap->drawable.width, pixmap->drawable.height));
 
-		hint = 0;
-		if ((flags & MOVE_ASYNC_HINT) == 0 &&
-		    ((flags & MOVE_READ) == 0 || (priv->gpu_damage && !priv->clear && !sna->kgem.has_llc)))
-			hint = CREATE_CPU_MAP | CREATE_INACTIVE | CREATE_NO_THROTTLE;
+		hint = CREATE_CPU_MAP | CREATE_INACTIVE | CREATE_NO_THROTTLE;
+		if ((flags & MOVE_ASYNC_HINT) ||
+		    (priv->gpu_damage && !priv->clear && kgem_bo_is_busy(priv->gpu_bo) && sna->kgem.can_blt_cpu))
+			hint = 0;
 
 		priv->cpu_bo = kgem_create_cpu_2d(&sna->kgem,
 						  pixmap->drawable.width,
@@ -1582,6 +1582,16 @@ static inline bool pixmap_inplace(struct sna *sna,
 		return false;
 
 	if (priv->gpu_bo && kgem_bo_is_busy(priv->gpu_bo)) {
+		if (priv->clear) {
+			DBG(("%s: no, clear GPU bo is busy\n", __FUNCTION__));
+			return false;
+		}
+
+		if (flags & MOVE_ASYNC_HINT) {
+			DBG(("%s: no, async hint and GPU bo is busy\n", __FUNCTION__));
+			return false;
+		}
+
 		if ((flags & (MOVE_WRITE | MOVE_READ)) == (MOVE_WRITE | MOVE_READ)) {
 			DBG(("%s: no, GPU bo is busy\n", __FUNCTION__));
 			return false;
@@ -2274,6 +2284,7 @@ skip_inplace_map:
 	    (flags & MOVE_WRITE ? (void *)priv->gpu_bo : (void *)priv->gpu_damage) && priv->cpu_damage == NULL &&
 	    priv->gpu_bo->tiling == I915_TILING_NONE &&
 	    (flags & MOVE_READ || kgem_bo_can_map__cpu(&sna->kgem, priv->gpu_bo, flags & MOVE_WRITE)) &&
+	    (!priv->clear || !kgem_bo_is_busy(priv->gpu_bo)) &&
 	    ((flags & (MOVE_WRITE | MOVE_ASYNC_HINT)) == 0 ||
 	     (!priv->cow && !priv->move_to_gpu && !__kgem_bo_is_busy(&sna->kgem, priv->gpu_bo)))) {
 		void *ptr;
@@ -2337,6 +2348,7 @@ skip_inplace_map:
 			     pixmap->devKind, pixmap->devKind * pixmap->drawable.height));
 
 			if (priv->cpu_bo) {
+				kgem_bo_undo(&sna->kgem, priv->cpu_bo);
 				if ((flags & MOVE_ASYNC_HINT || priv->cpu_bo->exec) &&
 				    sna->kgem.can_blt_cpu &&
 				    sna->render.fill_one(sna,
