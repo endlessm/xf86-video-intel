@@ -6261,8 +6261,8 @@ static void *__kgem_bo_map__gtt_or_wc(struct kgem *kgem, struct kgem_bo *bo)
 	kgem_trim_vma_cache(kgem, MAP_GTT, bucket(bo));
 
 	if (bo->tiling || !kgem->has_wc_mmap) {
-		assert(num_pages(bo) <= kgem->aperture_mappable / 2);
 		assert(kgem->gen != 021 || bo->tiling != I915_TILING_Y);
+		warn_unless(num_pages(bo) <= kgem->aperture_mappable / 2);
 
 		ptr = bo->map__gtt;
 		if (ptr == NULL)
