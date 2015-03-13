@@ -5353,15 +5353,18 @@ transformable_cursor(struct sna *sna, CursorPtr cursor)
 	int i;
 
 	for (i = 0; i < sna->mode.num_real_crtc; i++) {
-		struct sna_crtc *crtc = to_sna_crtc(config->crtc[i]);
+		xf86CrtcPtr crtc = config->crtc[i];
 		const struct pixman_f_transform *t;
 		struct pixman_box16 box;
 		int size;
 
-		if (!crtc->cursor_transform)
+		if (!crtc->transform_in_use)
 			continue;
 
-		t = &crtc->base->f_framebuffer_to_crtc;
+		if (!to_sna_crtc(crtc)->cursor_transform)
+			return false;
+
+		t = &crtc->f_framebuffer_to_crtc;
 		if (!sna->cursor.use_gtt || !sna->cursor.scratch)
 			return false;
 
