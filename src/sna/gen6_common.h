@@ -125,7 +125,7 @@ prefer_blt_ring(struct sna *sna, struct kgem_bo *bo, unsigned flags)
 		return PREFER_RENDER < 0;
 
 	assert(!force_blt_ring(sna));
-	assert(!kgem_bo_is_render(bo));
+	assert(!kgem_bo_is_render(bo) || NO_RING_SWITCH(sna));
 
 	if (kgem_bo_is_blt(bo))
 		return true;
