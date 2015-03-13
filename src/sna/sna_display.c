@@ -4872,7 +4872,7 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 		box.x2 = sna->cursor.ref->bits->width;
 		box.y2 = sna->cursor.ref->bits->height;
 
-		pixman_f_transform_bounds(&crtc->f_framebuffer_to_crtc, &box);
+		pixman_f_transform_bounds(&crtc->f_crtc_to_framebuffer, &box);
 		size = __cursor_size(box.x2 - box.x1, box.y2 - box.y1);
 
 		RRTransformCompute(0, 0,
@@ -5364,7 +5364,7 @@ transformable_cursor(struct sna *sna, CursorPtr cursor)
 		if (!to_sna_crtc(crtc)->cursor_transform)
 			return false;
 
-		t = &crtc->f_framebuffer_to_crtc;
+		t = &crtc->f_crtc_to_framebuffer;
 		if (!sna->cursor.use_gtt || !sna->cursor.scratch)
 			return false;
 
