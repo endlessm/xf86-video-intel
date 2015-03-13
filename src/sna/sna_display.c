@@ -4460,8 +4460,11 @@ void sna_mode_discover(struct sna *sna)
 			continue;
 
 		sna_output->last_detect = 0;
-		if (sna_output->serial == serial)
+		if (sna_output->serial == serial) {
+			if (sna_output_detect(output) != output->status)
+				RROutputChanged(output->randr_output, TRUE);
 			continue;
+		}
 
 		DBG(("%s: removing output %s (id=%d), serial=%u [now %u]\n",
 		     __FUNCTION__, output->name, sna_output->id,
@@ -4496,6 +4499,8 @@ void sna_mode_discover(struct sna *sna)
 
 		xf86RandR12TellChanged(screen);
 	}
+
+	RRTellChanged(screen);
 }
 
 static void copy_front(struct sna *sna, PixmapPtr old, PixmapPtr new)
