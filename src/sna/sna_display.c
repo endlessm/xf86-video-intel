@@ -143,6 +143,7 @@ struct sna_crtc {
 	bool fallback_shadow;
 	bool transform;
 	bool cursor_transform;
+	bool hwcursor;
 	bool flip_pending;
 	uint8_t id;
 	uint8_t pipe;
@@ -1598,6 +1599,7 @@ __sna_crtc_disable(struct sna *sna, struct sna_crtc *sna_crtc)
 	}
 
 	sna_crtc->cursor_transform = false;
+	sna_crtc->hwcursor = true;
 	assert(!sna_crtc->shadow);
 }
 
@@ -2211,6 +2213,14 @@ out_shadow:
 }
 
 #define SCALING_EPSILON (1./256)
+
+static bool
+is_affine(const struct pixman_f_transform *t)
+{
+	return (fabs(t->m[2][0]) < SCALING_EPSILON &&
+		fabs(t->m[2][1]) < SCALING_EPSILON);
+}
+
 static double determinant(const struct pixman_f_transform *t)
 {
 	return t->m[0][0]*t->m[1][1] - t->m[1][0]*t->m[0][1];
@@ -2219,12 +2229,7 @@ static double determinant(const struct pixman_f_transform *t)
 static bool
 affine_is_pixel_exact(const struct pixman_f_transform *t)
 {
-	double det;
-
-	if (t->m[2][0] || t->m[2][1])
-		return false;
-
-	det = t->m[2][2] * determinant(t);
+	double det = t->m[2][2] * determinant(t);
 	if (fabs (det * det - 1.0) < SCALING_EPSILON) {
 		if (fabs(t->m[0][1]) < SCALING_EPSILON &&
 		    fabs(t->m[1][0]) < SCALING_EPSILON)
@@ -2283,9 +2288,15 @@ static void sna_crtc_randr(xf86CrtcPtr crtc)
 	} else
 		crtc->transform_in_use = sna_crtc->rotation != RR_Rotate_0;
 
-	sna_crtc->cursor_transform = false;
-	if (crtc->transform_in_use)
-		sna_crtc->cursor_transform = !affine_is_pixel_exact(&f_fb_to_crtc);
+	if (needs_transform) {
+		sna_crtc->hwcursor = is_affine(&f_fb_to_crtc);
+		sna_crtc->cursor_transform =
+			sna_crtc->hwcursor &&
+			!affine_is_pixel_exact(&f_fb_to_crtc);
+	} else {
+		sna_crtc->hwcursor = true;
+		sna_crtc->cursor_transform = false;
+	}
 
 	crtc->crtc_to_framebuffer = crtc_to_fb;
 	crtc->f_crtc_to_framebuffer = f_crtc_to_fb;
@@ -2409,6 +2420,7 @@ __sna_crtc_set_mode(xf86CrtcPtr crtc)
 	struct kgem_bo *saved_bo, *bo;
 	uint32_t saved_offset;
 	bool saved_transform;
+	bool saved_hwcursor;
 	bool saved_cursor_transform;
 
 	DBG(("%s: CRTC=%d, pipe=%d, hidden?=%d\n", __FUNCTION__,
@@ -2419,6 +2431,7 @@ __sna_crtc_set_mode(xf86CrtcPtr crtc)
 	saved_bo = sna_crtc->bo;
 	saved_transform = sna_crtc->transform;
 	saved_cursor_transform = sna_crtc->cursor_transform;
+	saved_hwcursor = sna_crtc->hwcursor;
 	saved_offset = sna_crtc->offset;
 
 	sna_crtc->fallback_shadow = false;
@@ -2465,8 +2478,8 @@ retry: /* Attach per-crtc pixmap or direct */
 	if (sna_crtc->transform)
 		sna_crtc_damage(crtc);
 	if (sna_crtc->cursor &&  /* Reload cursor if RandR maybe changed */
-	    (saved_cursor_transform ||
-	     sna_crtc->cursor_transform ||
+	    (!sna_crtc->hwcursor ||
+	     saved_cursor_transform || sna_crtc->cursor_transform ||
 	     sna_crtc->cursor->rotation != crtc->rotation))
 		sna_crtc_disable_cursor(sna, sna_crtc);
 
@@ -2488,6 +2501,7 @@ error:
 		sna->mode.rr_active++;
 	sna_crtc->transform = saved_transform;
 	sna_crtc->cursor_transform = saved_cursor_transform;
+	sna_crtc->hwcursor = saved_hwcursor;
 	sna_crtc->bo = saved_bo;
 	sna_mode_discover(sna);
 	return FALSE;
@@ -5358,10 +5372,7 @@ transformable_cursor(struct sna *sna, CursorPtr cursor)
 		struct pixman_box16 box;
 		int size;
 
-		if (!crtc->transform_in_use)
-			continue;
-
-		if (!to_sna_crtc(crtc)->cursor_transform)
+		if (!to_sna_crtc(crtc)->hwcursor)
 			return false;
 
 		t = &crtc->f_crtc_to_framebuffer;
