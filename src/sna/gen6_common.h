@@ -106,11 +106,14 @@ static int prefer_blt_bo(struct sna *sna,
 
 inline static bool force_blt_ring(struct sna *sna)
 {
-	if (sna->flags & SNA_POWERSAVE)
-		return true;
-
 	if (sna->kgem.mode == KGEM_RENDER)
 		return false;
+
+	if (NO_RING_SWITCH(sna))
+		return sna->kgem.ring == KGEM_BLT;
+
+	if (sna->flags & SNA_POWERSAVE)
+		return true;
 
 	if (sna->render_state.gt < 2)
 		return true;
