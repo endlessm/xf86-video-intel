@@ -4854,8 +4854,8 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 	       cursor ? cursor->serial : 0,
 	       sna->cursor.serial));
 	if (cursor && cursor->serial == sna->cursor.serial) {
-		assert(cursor->size == sna->cursor.size);
-		assert(cursor->rotation == crtc->transform_in_use ? crtc->rotation : RR_Rotate_0);
+		assert(cursor->size == sna->cursor.size || cursor->transformed);
+		assert(cursor->rotation == (!to_sna_crtc(crtc)->cursor_transform && crtc->transform_in_use) ? crtc->rotation : RR_Rotate_0);
 		assert(cursor->ref);
 		return cursor;
 	}
@@ -4868,7 +4868,7 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 	       get_cursor_argb(sna->cursor.ref) != NULL));
 
 	transformed = to_sna_crtc(crtc)->cursor_transform;
-	rotation = !transformed && crtc->transform_in_use ? crtc->rotation : RR_Rotate_0;
+	rotation = (!transformed && crtc->transform_in_use) ? crtc->rotation : RR_Rotate_0;
 
 	/* Don't allow phys cursor sharing */
 	if (sna->cursor.use_gtt && !transformed) {
