@@ -30,6 +30,7 @@
 #endif
 
 #include "sna.h"
+#include <pixman.h>
 
 #if __x86_64__
 #define USE_SSE2 1
@@ -1400,7 +1401,7 @@ affine_blt(const void *src, void *dst, int bpp,
 
 	for (j = 0; j < dst_height; j++) {
 		pixman_fixed_t x, y;
-		pixman_f_vector_t v;
+		struct pixman_f_vector v;
 		uint32_t *b;
 
 		/* reference point is the center of the pixel */

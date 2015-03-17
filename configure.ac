@@ -447,6 +447,7 @@ fi
 PKG_CHECK_MODULES(XORG, [xorg-server >= $required_xorg_server_version xproto fontsproto pixman-1 >= $required_pixman_version $REQUIRED_MODULES])
 ABI_VERSION=`$PKG_CONFIG --variable=abi_videodrv xorg-server`
 XSERVER_VERSION=`$PKG_CONFIG --modversion xorg-server`
+PIXMAN_VERSION=`$PKG_CONFIG --modversion pixman-1`
 
 if test "x$ONLY_UMS" = "xyes"; then
 	UMS="yes"
@@ -914,6 +915,7 @@ fi
 echo ""
 echo "AC_PACKAGE_STRING will be compiled with:"
 echo "  Xorg Video ABI version: $ABI_VERSION (xorg-server-$XSERVER_VERSION)"
+echo "  pixman version: pixman-1-$PIXMAN_VERSION"
 echo "  Acceleration backends:$accel_msg"
 echo "  Additional debugging support?$debug_msg"
 echo "  Support for Kernel Mode Setting? $KMS"
