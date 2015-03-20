@@ -28,6 +28,7 @@ stress_TESTS = \
 if DRI2
 stress_TESTS += \
 	dri2-race \
+	dri2-speed \
 	dri2-swap \
 	dri2-test \
 	$(NULL)
@@ -37,6 +38,7 @@ if X11_DRI3
 stress_TESTS += \
 	dri3-test \
 	present-test \
+	present-speed \
 	$(NULL)
 endif
 check_PROGRAMS = $(stress_TESTS)
