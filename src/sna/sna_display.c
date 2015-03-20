@@ -530,8 +530,6 @@ sna_backlight_uevent(int fd, void *closure)
 		if (sna_output->dpms_mode != DPMSModeOn)
 			continue;
 
-		assert(output->randr_output);
-
 		val = backlight_get(&sna_output->backlight);
 		if (val < 0)
 			continue;
