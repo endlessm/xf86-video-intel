@@ -84,6 +84,7 @@ search_snoop_cache(struct kgem *kgem, unsigned int num_pages, unsigned flags);
 #define DBG_NO_HANDLE_LUT 0
 #define DBG_NO_WT 0
 #define DBG_NO_WC_MMAP 0
+#define DBG_NO_SCANOUT_Y 0
 #define DBG_DUMP 0
 #define DBG_NO_MALLOC_CACHE 0
 
@@ -1231,6 +1232,30 @@ static bool test_has_create2(struct kgem *kgem)
 #endif
 }
 
+static bool test_can_scanout_y(struct kgem *kgem)
+{
+	struct drm_mode_fb_cmd arg;
+	bool ret = false;
+
+	if (DBG_NO_SCANOUT_Y)
+		return false;
+
+	VG_CLEAR(arg);
+	arg.width = 32;
+	arg.height = 32;
+	arg.pitch = 4*32;
+	arg.bpp = 32;
+	arg.depth = 24;
+	arg.handle = gem_create(kgem->fd, 1);
+
+	if (gem_set_tiling(kgem->fd, arg.handle, I915_TILING_Y, arg.pitch))
+		ret = do_ioctl(kgem->fd, DRM_IOCTL_MODE_ADDFB, &arg) == 0;
+	do_ioctl(kgem->fd, DRM_IOCTL_MODE_RMFB, &arg.fb_id);
+	gem_close(kgem->fd, arg.handle);
+
+	return ret;
+}
+
 static bool test_has_secure_batches(struct kgem *kgem)
 {
 	if (DBG_NO_SECURE_BATCHES)
@@ -1603,6 +1628,10 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 	kgem->can_render_y = gen != 021 && (gen >> 3) != 4;
 	DBG(("%s: can render to Y-tiled surfaces? %d\n", __FUNCTION__,
 	     kgem->can_render_y));
+
+	kgem->can_scanout_y = test_can_scanout_y(kgem);
+	DBG(("%s: can render to Y-tiled surfaces? %d\n", __FUNCTION__,
+	     kgem->can_scanout_y));
 
 	kgem->has_secure_batches = test_has_secure_batches(kgem);
 	DBG(("%s: can use privileged batchbuffers? %d\n", __FUNCTION__,

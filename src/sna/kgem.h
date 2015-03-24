@@ -190,6 +190,7 @@ struct kgem {
 
 	uint32_t can_blt_cpu :1;
 	uint32_t can_render_y :1;
+	uint32_t can_scanout_y :1;
 
 	uint16_t fence_max;
 	uint16_t half_cpu_cache_pages;

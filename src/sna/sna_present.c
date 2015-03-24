@@ -583,6 +583,7 @@ get_flip_bo(PixmapPtr pixmap)
 	}
 
 	if (priv->gpu_bo->tiling == I915_TILING_Y &&
+	    !sna->kgem.can_scanout_y &&
 	    !sna_pixmap_change_tiling(pixmap, I915_TILING_X)) {
 		DBG(("%s: invalid Y-tiling, cannot convert\n", __FUNCTION__));
 		return NULL;
