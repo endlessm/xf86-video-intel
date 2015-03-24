@@ -1476,6 +1476,31 @@ static int gem_set_caching(int fd, uint32_t handle, int caching)
 	return drmIoctl(fd, LOCAL_IOCTL_I915_GEM_SET_CACHING, &arg) == 0;
 }
 
+static int gem_set_tiling(int fd, uint32_t handle, int tiling, int stride)
+{
+	struct drm_i915_gem_set_tiling set_tiling;
+	int err;
+
+restart:
+	set_tiling.handle = handle;
+	set_tiling.tiling_mode = tiling;
+	set_tiling.stride = stride;
+
+	if (drmIoctl(fd, DRM_IOCTL_I915_GEM_SET_TILING, &set_tiling) == 0)
+		return 1;
+
+	err = errno;
+	if (err == EINTR)
+		goto restart;
+
+	if (err == EAGAIN) {
+		sched_yield();
+		goto restart;
+	}
+
+	return 0;
+}
+
 static int gem_export(int fd, uint32_t handle)
 {
 	struct drm_prime_handle args;
@@ -1495,6 +1520,102 @@ static void gem_close(int fd, uint32_t handle)
 
 	close.handle = handle;
 	(void)drmIoctl(fd, DRM_IOCTL_GEM_CLOSE, &close);
+}
+
+static int test_dri3_tiling(Display *dpy)
+{
+	Window win = DefaultRootWindow(dpy);
+	const int tiling[] = { I915_TILING_NONE, I915_TILING_X, I915_TILING_Y };
+	Window root;
+	unsigned int width, height;
+	unsigned border, depth, bpp;
+	unsigned stride, size;
+	int x, y;
+	int device;
+	int line = -1;
+	int t;
+
+	device = dri3_open(dpy);
+	if (device < 0)
+		return 0;
+
+	if (!is_intel(device))
+		return 0;
+
+	printf("Opened Intel DRI3 device\n");
+
+	XGetGeometry(dpy, win, &root, &x, &y,
+		     &width, &height, &border, &depth);
+
+	switch (depth) {
+	case 8: bpp = 8; break;
+	case 15: case 16: bpp = 16; break;
+	case 24: case 32: bpp = 32; break;
+	default: return 0;
+	}
+
+	stride = ALIGN(width * bpp/8, 512);
+	size = PAGE_ALIGN(stride * ALIGN(height, 32));
+	printf("Creating DRI3 %dx%d (source stride=%d, size=%d) for GTT\n",
+	       width, height, stride, size);
+
+	_x_error_occurred = 0;
+
+	for (t = 0; t < sizeof(tiling)/sizeof(tiling[0]); t++) {
+		uint32_t src;
+		int src_fd;
+		Pixmap src_pix;
+
+		src = gem_create(device, size);
+		if (!src) {
+			line = __LINE__;
+			goto fail;
+		}
+
+		gem_set_tiling(device, src, tiling[t], stride);
+
+		src_fd = gem_export(device, src);
+		if (src_fd < 0) {
+			line = __LINE__;
+			goto fail;
+		}
+
+		src_pix = dri3_create_pixmap(dpy, root,
+					     width, height, depth,
+					     src_fd, bpp, stride, size);
+
+		xcb_present_pixmap(XGetXCBConnection(dpy),
+				   win, src_pix,
+				   0, /* sbc */
+				   0, /* valid */
+				   0, /* update */
+				   0, /* x_off */
+				   0, /* y_off */
+				   None,
+				   None, /* wait fence */
+				   None,
+				   XCB_PRESENT_OPTION_NONE,
+				   0, /* target msc */
+				   0, /* divisor */
+				   0, /* remainder */
+				   0, NULL);
+		XSync(dpy, True);
+		if (_x_error_occurred) {
+			line = __LINE__;
+			goto fail;
+		}
+		XFreePixmap(dpy, src_pix);
+		_x_error_occurred = 0;
+
+		close(src_fd);
+		gem_close(device, src);
+	}
+
+	return 0;
+
+fail:
+	printf("%s failed with tiling %d, line %d\n", __func__, tiling[t], line);
+	return 1;
 }
 
 static int test_dri3(Display *dpy)
@@ -1717,6 +1838,9 @@ int main(void)
 	last_msc = check_msc(dpy, root, queue, last_msc, NULL);
 
 	error += test_dri3(dpy);
+	last_msc = check_msc(dpy, root, queue, last_msc, NULL);
+
+	error += test_dri3_tiling(dpy);
 	last_msc = check_msc(dpy, root, queue, last_msc, NULL);
 
 	teardown_msc(dpy, queue);
