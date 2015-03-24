@@ -1,3 +1,9 @@
+xserver-xorg-video-intel (3:2.99.904-0ubuntu2endless8) eos; urgency=low
+
+  * Import into git
+
+ -- Jasper St. Pierre <jstpierre@mecheye.net>  Tue, 24 Mar 2015 15:14:25 -0700
+
 xserver-xorg-video-intel (3:2.99.904-0ubuntu2endless7) eos; urgency=low
 
   * Bump epoch on 2.99.904 version to downgrade to previous working
