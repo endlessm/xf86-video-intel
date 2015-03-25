@@ -220,6 +220,7 @@ struct sna_output {
 
 	uint32_t last_detect;
 	uint32_t status;
+	bool update_properties;
 
 	int num_modes;
 	struct drm_mode_modeinfo *modes;
@@ -2988,6 +2989,7 @@ sna_output_detect(xf86OutputPtr output)
 	uint32_t now;
 
 	DBG(("%s(%s:%d)\n", __FUNCTION__, output->name, sna_output->id));
+	sna_output->update_properties = false;
 
 	if (!sna_output->id) {
 		DBG(("%s(%s) hiding due to lost connection\n", __FUNCTION__, output->name));
@@ -3001,6 +3003,7 @@ sna_output_detect(xf86OutputPtr output)
 		DBG(("%s(%s) reporting cached status (since %dms): %d\n",
 		     __FUNCTION__, output->name, now - sna_output->last_detect,
 		     sna_output->status));
+		sna_output->update_properties = true;
 		return sna_output->status;
 	}
 
@@ -3675,6 +3678,7 @@ static void update_properties(struct sna *sna, struct sna_output *output)
 		       &compat_conn.conn);
 
 	assert(compat_conn.conn.count_props == output->num_props);
+	output->update_properties = false;
 }
 
 static Bool
@@ -3719,7 +3723,7 @@ sna_output_get_property(xf86OutputPtr output, Atom property)
 		if (p->atoms == NULL || p->atoms[0] != property)
 			continue;
 
-		if (0&&output->scrn->vtSema)
+		if (sna_output->update_properties && output->scrn->vtSema)
 			update_properties(to_sna(output->scrn), sna_output);
 
 		err = 0;
