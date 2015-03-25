@@ -34,6 +34,12 @@
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 
+#if MAJOR_IN_MKDEV
+#include <sys/mkdev.h>
+#elif MAJOR_IN_SYSMACROS
+#include <sys/sysmacros.h>
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
