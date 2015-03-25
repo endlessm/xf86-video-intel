@@ -40,6 +40,10 @@
 #include <poll.h>
 #include <ctype.h>
 
+#if HAVE_ALLOCA_H
+#include <alloca.h>
+#endif
+
 #include "sna.h"
 #include "sna_reg.h"
 #include "fb/fbpict.h"
