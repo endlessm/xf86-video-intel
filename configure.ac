@@ -416,7 +416,8 @@ AC_ARG_ENABLE(sna,
 	      [SNA="$enableval"],
 	      [SNA=auto])
 
-AC_CHECK_HEADERS([dev/wscons/wsconsio.h alloca.h])
+AC_CHECK_HEADERS([dev/wscons/wsconsio.h])
+AC_FUNC_ALLOCA
 AC_HEADER_MAJOR
 
 if test "x$SNA" != "xno"; then
