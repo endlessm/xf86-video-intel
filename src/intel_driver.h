@@ -1,8 +1,6 @@
 #ifndef INTEL_DRIVER_H
 #define INTEL_DRIVER_H
 
-#include "intel_xmir.h"
-
 struct xf86_platform_device;
 
 #define INTEL_VERSION 4000
@@ -136,6 +134,6 @@ void intel_put_device(ScrnInfoPtr scrn);
 
 void __intel_uxa_release_device(ScrnInfoPtr scrn);
 
-#define hosted() (xorgMir)
+#define hosted() (0)
 
 #endif /* INTEL_DRIVER_H */

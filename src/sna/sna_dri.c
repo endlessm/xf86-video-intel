@@ -596,6 +596,7 @@ static void sna_dri_select_mode(struct sna *sna, struct kgem_bo *dst, struct kge
 	if (busy.busy & (1 << 17))
 		mode = KGEM_BLT;
 	kgem_bo_mark_busy(busy.handle == src->handle ? src : dst, mode);
+	_kgem_set_mode(&sna->kgem, mode);
 }
 
 static void
@@ -1106,182 +1107,6 @@ sna_dri_page_flip(struct sna *sna, struct sna_dri_frame_event *info)
 }
 
 static bool
-can_exchange(struct sna * sna,
-	     DrawablePtr draw,
-	     DRI2BufferPtr front,
-	     DRI2BufferPtr back)
-{
-	WindowPtr win = (WindowPtr)draw;
-	PixmapPtr pixmap;
-
-	assert((sna->flags & SNA_NO_WAIT) == 0);
-
-	if (draw->type == DRAWABLE_PIXMAP)
-		return false;
-
-	if ((sna->flags & SNA_IS_HOSTED) == 0) {
-		DBG(("%s: no, not hosted\n", __FUNCTION__));
-		return false;
-	}
-
-	assert(!sna->mode.shadow_active);
-
-	if (front->format != back->format) {
-		DBG(("%s: no, format mismatch, front = %d, back = %d\n",
-		     __FUNCTION__, front->format, back->format));
-		return false;
-	}
-
-	if (front->attachment != DRI2BufferFrontLeft) {
-		DBG(("%s: no, front attachment [%d] is not FrontLeft [%d]\n",
-		     __FUNCTION__,
-		     front->attachment,
-		     DRI2BufferFrontLeft));
-		return false;
-	}
-
-	pixmap = get_window_pixmap(win);
-	if (pixmap != sna->front) {
-		DBG(("%s: no, window (pixmap=%ld) is not attached to the front buffer (pixmap=%ld)\n",
-		     __FUNCTION__, pixmap->drawable.serialNumber, sna->front->drawable.serialNumber));
-		return false;
-	}
-
-	if (sna_pixmap_get_buffer(pixmap) != front) {
-		DBG(("%s: no, DRI2 drawable is no longer attached (old name=%d, new name=%d) to pixmap=%ld\n",
-		     __FUNCTION__, front->name,
-		     sna_pixmap_get_buffer(pixmap) ? ((DRI2BufferPtr)sna_pixmap_get_buffer(pixmap))->name : 0,
-		     pixmap->drawable.serialNumber));
-		return false;
-	}
-
-	assert(get_private(front)->pixmap == sna->front);
-	assert(sna_pixmap(sna->front)->gpu_bo == get_private(front)->bo);
-
-	if (!get_private(back)->scanout) {
-		DBG(("%s: no, DRI2 drawable was too small at time of creation)\n",
-		     __FUNCTION__));
-		return false;
-	}
-
-	if (get_private(back)->size != get_private(front)->size) {
-		DBG(("%s: no, DRI2 drawable does not fit into scanout\n",
-		     __FUNCTION__));
-		return false;
-	}
-
-	DBG(("%s: window size: %dx%d, clip=(%d, %d), (%d, %d) x %d\n",
-	     __FUNCTION__,
-	     win->drawable.width, win->drawable.height,
-	     win->clipList.extents.x1, win->clipList.extents.y1,
-	     win->clipList.extents.x2, win->clipList.extents.y2,
-	     RegionNumRects(&win->clipList)));
-	if (!RegionEqual(&win->clipList, &draw->pScreen->root->winSize)) {
-		DBG(("%s: no, window is clipped: clip region=(%d, %d), (%d, %d), root size=(%d, %d), (%d, %d)\n",
-		     __FUNCTION__,
-		     win->clipList.extents.x1,
-		     win->clipList.extents.y1,
-		     win->clipList.extents.x2,
-		     win->clipList.extents.y2,
-		     draw->pScreen->root->winSize.extents.x1,
-		     draw->pScreen->root->winSize.extents.y1,
-		     draw->pScreen->root->winSize.extents.x2,
-		     draw->pScreen->root->winSize.extents.y2));
-		return false;
-	}
-
-	if (draw->x != 0 || draw->y != 0 ||
-#ifdef COMPOSITE
-	    draw->x != pixmap->screen_x ||
-	    draw->y != pixmap->screen_y ||
-#endif
-	    draw->width != pixmap->drawable.width ||
-	    draw->height != pixmap->drawable.height) {
-		DBG(("%s: no, window is not full size (%dx%d)!=(%dx%d)\n",
-		     __FUNCTION__,
-		     draw->width, draw->height,
-		     pixmap->drawable.width,
-		     pixmap->drawable.height));
-		return false;
-	}
-
-	/* prevent an implicit tiling mode change */
-	if (get_private(front)->bo->tiling != get_private(back)->bo->tiling) {
-		DBG(("%s -- no, tiling mismatch: front %d, back=%d\n",
-		     __FUNCTION__,
-		     get_private(front)->bo->tiling,
-		     get_private(back)->bo->tiling));
-		return false;
-	}
-
-	return true;
-}
-
-static void
-sna_dri_exchange_buffers(DrawablePtr draw,
-			 DRI2BufferPtr front,
-			 DRI2BufferPtr back)
-{
-	struct kgem_bo *back_bo, *front_bo;
-	PixmapPtr pixmap;
-	int tmp;
-
-	pixmap = get_drawable_pixmap(draw);
-
-	back_bo = get_private(back)->bo;
-	front_bo = get_private(front)->bo;
-
-	DBG(("%s: exchange front=%d/%d and back=%d/%d, pixmap=%ld %dx%d\n",
-	     __FUNCTION__,
-	     front_bo->handle, front->name,
-	     back_bo->handle, back->name,
-	     pixmap->drawable.serialNumber,
-	     pixmap->drawable.width,
-	     pixmap->drawable.height));
-
-	DBG(("%s: back_bo pitch=%d, size=%d, ref=%d\n",
-	     __FUNCTION__, back_bo->pitch, kgem_bo_size(back_bo), back_bo->refcnt));
-	DBG(("%s: front_bo pitch=%d, size=%d, ref=%d\n",
-	     __FUNCTION__, front_bo->pitch, kgem_bo_size(front_bo), front_bo->refcnt));
-	assert(front_bo->refcnt);
-	assert(back_bo->refcnt);
-
-	assert(sna_pixmap_get_buffer(pixmap) == front);
-	assert(pixmap->drawable.height * back_bo->pitch <= kgem_bo_size(back_bo));
-	assert(pixmap->drawable.height * front_bo->pitch <= kgem_bo_size(front_bo));
-
-	set_bo(pixmap, back_bo);
-
-	get_private(front)->bo = back_bo;
-	get_private(back)->bo = front_bo;
-
-	tmp = front->name;
-	front->name = back->name;
-	back->name = tmp;
-}
-
-static bool
-sna_dri_exchange_flip(ClientPtr client, DrawablePtr draw,
-		      DRI2BufferPtr front, DRI2BufferPtr back,
-		      CARD64 *target_msc, CARD64 divisor, CARD64 remainder,
-		      DRI2SwapEventPtr func, void *data)
-{
-	DBG(("%s: target_msc=%u, divisor=%u\n", __FUNCTION__,
-	     (uint32_t)*target_msc, (uint32_t)divisor));
-
-	/* XXX delay */
-
-	sna_dri_exchange_buffers(draw, front, back);
-
-	/* XXX ratelimit */
-
-	DRI2SwapComplete(client, draw, 0, 0, 0, DRI2_EXCHANGE_COMPLETE, func, data);
-	*target_msc = 0;
-
-	return true;
-}
-
-static bool
 can_flip(struct sna * sna,
 	 DrawablePtr draw,
 	 DRI2BufferPtr front,
@@ -1289,6 +1114,8 @@ can_flip(struct sna * sna,
 {
 	WindowPtr win = (WindowPtr)draw;
 	PixmapPtr pixmap;
+
+	assert((sna->flags & SNA_NO_WAIT) == 0);
 
 	if (draw->type == DRAWABLE_PIXMAP)
 		return false;
@@ -1324,8 +1151,8 @@ can_flip(struct sna * sna,
 
 	pixmap = get_window_pixmap(win);
 	if (pixmap != sna->front) {
-		DBG(("%s: no, window is not attached to the front buffer\n",
-		     __FUNCTION__));
+		DBG(("%s: no, window (pixmap=%ld) is not attached to the front buffer (pixmap=%ld)\n",
+		     __FUNCTION__, pixmap->drawable.serialNumber, sna->front->drawable.serialNumber));
 		return false;
 	}
 
@@ -1412,6 +1239,49 @@ inline static uint32_t pipe_select(int pipe)
 		return DRM_VBLANK_SECONDARY;
 	else
 		return 0;
+}
+
+static void
+sna_dri_exchange_buffers(DrawablePtr draw,
+			 DRI2BufferPtr front,
+			 DRI2BufferPtr back)
+{
+	struct kgem_bo *back_bo, *front_bo;
+	PixmapPtr pixmap;
+	int tmp;
+
+	pixmap = get_drawable_pixmap(draw);
+
+	back_bo = get_private(back)->bo;
+	front_bo = get_private(front)->bo;
+
+	DBG(("%s: exchange front=%d/%d and back=%d/%d, pixmap=%ld %dx%d\n",
+	     __FUNCTION__,
+	     front_bo->handle, front->name,
+	     back_bo->handle, back->name,
+	     pixmap->drawable.serialNumber,
+	     pixmap->drawable.width,
+	     pixmap->drawable.height));
+
+	DBG(("%s: back_bo pitch=%d, size=%d, ref=%d\n",
+	     __FUNCTION__, back_bo->pitch, kgem_bo_size(back_bo), back_bo->refcnt));
+	DBG(("%s: front_bo pitch=%d, size=%d, ref=%d\n",
+	     __FUNCTION__, front_bo->pitch, kgem_bo_size(front_bo), front_bo->refcnt));
+	assert(front_bo->refcnt);
+	assert(back_bo->refcnt);
+
+	assert(sna_pixmap_get_buffer(pixmap) == front);
+	assert(pixmap->drawable.height * back_bo->pitch <= kgem_bo_size(back_bo));
+	assert(pixmap->drawable.height * front_bo->pitch <= kgem_bo_size(front_bo));
+
+	set_bo(pixmap, back_bo);
+
+	get_private(front)->bo = back_bo;
+	get_private(back)->bo = front_bo;
+
+	tmp = front->name;
+	front->name = back->name;
+	back->name = tmp;
 }
 
 static void chain_swap(struct sna *sna,
@@ -2163,12 +2033,6 @@ sna_dri_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 
 	assert(sna_pixmap_from_drawable(draw)->flush);
 
-	if (can_exchange(sna, draw, front, back) &&
-	    sna_dri_exchange_flip(client, draw, front, back,
-				  target_msc, divisor, remainder,
-				  func, data))
-		return TRUE;
-
 	/* Drawable not displayed... just complete the swap */
 	pipe = -1;
 	if ((sna->flags & SNA_NO_WAIT) == 0)
@@ -2461,13 +2325,6 @@ out_complete:
 void sna_dri_destroy_window(WindowPtr win) { }
 #endif
 
-#if DRI2INFOREC_VERSION >= 8 && XMIR
-static int sna_dri_auth_magic2(ScreenPtr screen, uint32_t magic)
-{
-	return xmir_auth_drm_magic(to_sna_from_screen(screen)->xmir, magic);
-}
-#endif
-
 static bool has_i830_dri(void)
 {
 	return access(DRI_DRIVER_PATH "/i830_dri.so", R_OK) == 0;
@@ -2615,13 +2472,6 @@ bool sna_dri_open(struct sna *sna, ScreenPtr screen)
 	info.version = 6;
 	info.SwapLimitValidate = NULL;
 	info.ReuseBufferNotify = NULL;
-#endif
-
-#if DRI2INFOREC_VERSION >= 8 && XMIR
-	if (sna->xmir) {
-		info.version = 8;
-		info.AuthMagic2 = sna_dri_auth_magic2;
-	}
 #endif
 
 #if USE_ASYNC_SWAP
