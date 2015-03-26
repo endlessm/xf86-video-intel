@@ -1,3 +1,9 @@
+xserver-xorg-video-intel (3:2.99.90) unstable; urgency=low
+
+  * Bump upstream version
+
+ -- Jasper St. Pierre <jstpierre@mecheye.net>  Wed, 25 Mar 2015 17:07:11 -0700
+
 xserver-xorg-video-intel (3:2.99.904-0ubuntu2endless8) eos; urgency=low
 
   * Import into git
