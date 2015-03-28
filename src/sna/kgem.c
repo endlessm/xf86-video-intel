@@ -3711,7 +3711,8 @@ void _kgem_submit(struct kgem *kgem)
 		memset(&execbuf, 0, sizeof(execbuf));
 		execbuf.buffers_ptr = (uintptr_t)kgem->exec;
 		execbuf.buffer_count = kgem->nexec;
-		execbuf.batch_len = batch_end*sizeof(uint32_t);
+		if (kgem->gen < 030)
+			execbuf.batch_len = batch_end*sizeof(uint32_t);
 		execbuf.flags = kgem->ring | kgem->batch_flags;
 
 		if (DBG_DUMP) {
