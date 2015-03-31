@@ -6544,7 +6544,7 @@ discard_cow:
 			if (!sna->render.copy_boxes(sna, alu,
 						    &src_pixmap->drawable, src_priv->gpu_bo, src_dx, src_dy,
 						    &dst_pixmap->drawable, bo, 0, 0,
-						    box, n, 0)) {
+						    box, n, small_copy(region))) {
 				DBG(("%s: fallback - accelerated copy boxes failed\n",
 				     __FUNCTION__));
 				goto fallback;
@@ -6581,7 +6581,7 @@ discard_cow:
 			if (!sna->render.copy_boxes(sna, alu,
 						    &src_pixmap->drawable, src_priv->gpu_bo, src_dx, src_dy,
 						    &dst_pixmap->drawable, bo, 0, 0,
-						    box, n, 0)) {
+						    box, n, small_copy(region))) {
 				DBG(("%s: fallback - accelerated copy boxes failed\n",
 				     __FUNCTION__));
 				goto fallback;
@@ -6624,7 +6624,7 @@ discard_cow:
 			if (!sna->render.copy_boxes(sna, alu,
 						    &src_pixmap->drawable, src_priv->cpu_bo, src_dx, src_dy,
 						    &dst_pixmap->drawable, bo, 0, 0,
-						    box, n, src_priv->shm ? COPY_LAST : 0)) {
+						    box, n, small_copy(region) | (src_priv->shm ? COPY_LAST : 0))) {
 				DBG(("%s: fallback - accelerated copy boxes failed\n",
 				     __FUNCTION__));
 				goto fallback;
@@ -6676,8 +6676,7 @@ discard_cow:
 				ok = sna->render.copy_boxes(sna, alu,
 							    &src_pixmap->drawable, src_bo, src_dx, src_dy,
 							    &dst_pixmap->drawable, bo, 0, 0,
-							    box, n, COPY_LAST);
-
+							    box, n, small_copy(region) |  COPY_LAST);
 				kgem_bo_sync__cpu(&sna->kgem, src_bo);
 				assert(src_bo->rq == NULL);
 				kgem_bo_destroy(&sna->kgem, src_bo);
