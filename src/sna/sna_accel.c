@@ -5228,6 +5228,16 @@ static inline uint8_t blt_depth(int depth)
 	}
 }
 
+inline static void blt_done(struct sna *sna)
+{
+	sna->blt_state.fill_bo = 0;
+	if (sna->kgem.nbatch && __kgem_ring_empty(&sna->kgem)) {
+		DBG(("%s: flushing BLT operation on empty ring\n",
+		     __FUNCTION__));
+		_kgem_submit(&sna->kgem);
+	}
+}
+
 static bool
 sna_put_xybitmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 		     int x, int y, int w, int  h, char *bits)
@@ -5387,7 +5397,7 @@ sna_put_xybitmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 		box++;
 	} while (--n);
 
-	sna->blt_state.fill_bo = 0;
+	blt_done(sna);
 	return true;
 }
 
@@ -5565,7 +5575,7 @@ sna_put_xypixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 		} while (--n);
 	}
 
-	sna->blt_state.fill_bo = 0;
+	blt_done(sna);
 	return true;
 }
 
@@ -8467,7 +8477,7 @@ sna_copy_bitmap_blt(DrawablePtr _bitmap, DrawablePtr drawable, GCPtr gc,
 		sna_damage_add_to_pixmap(arg->damage, region, pixmap);
 	}
 	assert_pixmap_damage(pixmap);
-	sna->blt_state.fill_bo = 0;
+	blt_done(sna);
 }
 
 static void
@@ -8700,7 +8710,7 @@ sna_copy_plane_blt(DrawablePtr source, DrawablePtr drawable, GCPtr gc,
 		sna_damage_add_to_pixmap(arg->damage, region, dst_pixmap);
 	}
 	assert_pixmap_damage(dst_pixmap);
-	sna->blt_state.fill_bo = 0;
+	blt_done(sna);
 }
 
 static RegionPtr
@@ -12661,7 +12671,7 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 	}
 done:
 	assert_pixmap_damage(pixmap);
-	sna->blt_state.fill_bo = 0;
+	blt_done(sna);
 	return true;
 }
 
@@ -13508,7 +13518,7 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 	}
 
 	assert_pixmap_damage(pixmap);
-	sna->blt_state.fill_bo = 0;
+	blt_done(sna);
 	return true;
 }
 
@@ -14153,7 +14163,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 		}
 	}
 
-	sna->blt_state.fill_bo = 0;
+	blt_done(sna);
 	return true;
 }
 
@@ -14615,7 +14625,7 @@ sna_poly_fill_rect_stippled_n_blt__imm(DrawablePtr drawable,
 	}
 
 	assert_pixmap_damage(pixmap);
-	sna->blt_state.fill_bo = 0;
+	blt_done(sna);
 	return true;
 }
 
@@ -14762,7 +14772,7 @@ sna_poly_fill_rect_stippled_n_blt(DrawablePtr drawable,
 	assert_pixmap_damage(pixmap);
 	if (tile)
 		kgem_bo_destroy(&sna->kgem, tile);
-	sna->blt_state.fill_bo = 0;
+	blt_done(sna);
 	return true;
 }
 
@@ -15568,7 +15578,7 @@ skip:
 	}
 
 	assert_pixmap_damage(pixmap);
-	sna->blt_state.fill_bo = 0;
+	blt_done(sna);
 	return true;
 }
 
@@ -16318,7 +16328,7 @@ skip:
 	}
 
 	assert_pixmap_damage(pixmap);
-	sna->blt_state.fill_bo = 0;
+	blt_done(sna);
 	return true;
 }
 
@@ -16653,7 +16663,7 @@ sna_push_pixels_solid_blt(GCPtr gc,
 		box++;
 	} while (--n);
 
-	sna->blt_state.fill_bo = 0;
+	blt_done(sna);
 	return true;
 }
 
