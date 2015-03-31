@@ -868,6 +868,48 @@ intel_output_attach_edid(xf86OutputPtr output)
 	xf86OutputSetEDID(output, mon);
 }
 
+static void
+intel_output_attach_tile(xf86OutputPtr output)
+{
+#if XF86_OUTPUT_VERSION >= 3
+	struct intel_output *intel_output = output->driver_private;
+	drmModeConnectorPtr koutput = intel_output->mode_output;
+	struct intel_mode *mode = intel_output->mode;
+	drmModePropertyBlobPtr blob = NULL;
+	struct xf86CrtcTileInfo tile_info, *set = NULL;
+	int i;
+
+	for (i = 0; koutput && i < koutput->count_props; i++) {
+		drmModePropertyPtr props;
+
+		props = drmModeGetProperty(mode->fd, koutput->props[i]);
+		if (!props)
+			continue;
+
+		if (!(props->flags & DRM_MODE_PROP_BLOB)) {
+			drmModeFreeProperty(props);
+			continue;
+		}
+
+		if (!strcmp(props->name, "TILE")) {
+			blob = drmModeGetPropertyBlob(mode->fd,
+						      koutput->prop_values[i]);
+		}
+		drmModeFreeProperty(props);
+	}
+
+	if (blob) {
+		if (xf86OutputParseKMSTile(blob->data,
+					   blob->length,
+					   &tile_info))
+			set = &tile_info;
+		drmModeFreePropertyBlob(blob);
+	}
+
+	xf86OutputSetTile(output, set);
+#endif
+}
+
 static DisplayModePtr
 intel_output_panel_edid(xf86OutputPtr output, DisplayModePtr modes)
 {
@@ -923,6 +965,7 @@ intel_output_get_modes(xf86OutputPtr output)
 	int i;
 
 	intel_output_attach_edid(output);
+	intel_output_attach_tile(output);
 
 	if (!koutput)
 		return Modes;

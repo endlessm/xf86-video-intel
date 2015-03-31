@@ -3185,6 +3185,47 @@ done:
 	}
 }
 
+static void
+sna_output_attach_tile(xf86OutputPtr output)
+{
+#if XF86_OUTPUT_VERSION >= 3
+	struct sna *sna = to_sna(output->scrn);
+	struct sna_output *sna_output = output->driver_private;
+	struct drm_mode_get_blob blob;
+	struct xf86CrtcTileInfo tile_info, *set = NULL;
+	char *tile;
+	int id;
+
+	id = find_property(sna, sna_output, "TILE");
+	DBG(("%s: found? TILE=%d\n", __FUNCTION__, id));
+	if (id == -1)
+		goto out;
+
+	VG_CLEAR(blob);
+	blob.blob_id = sna_output->prop_values[id];
+	blob.length = 0;
+	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPBLOB, &blob))
+		goto out;
+
+	do {
+		id = blob.length;
+		tile = alloca(id + 1);
+		blob.data = (uintptr_t)tile;
+		VG(memset(tile, 0, id));
+		DBG(("%s: reading %d bytes for TILE blob\n", __FUNCTION__, id));
+		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPBLOB, &blob))
+			goto out;
+	} while (id != blob.length);
+
+	tile[blob.length] = '\0'; /* paranoia */
+	DBG(("%s: TILE='%s'\n", __FUNCTION__, tile));
+	if (xf86OutputParseKMSTile(tile, blob.length, &tile_info))
+		set = &tile_info;
+out:
+	xf86OutputSetTile(output, set);
+#endif
+}
+
 static bool duplicate_mode(DisplayModePtr modes, DisplayModePtr m)
 {
 	if (m == NULL)
@@ -3281,6 +3322,7 @@ sna_output_get_modes(xf86OutputPtr output)
 	assert(sna_output->id);
 
 	sna_output_attach_edid(output);
+	sna_output_attach_tile(output);
 
 	if (output->crtc) {
 		struct drm_mode_crtc mode;
