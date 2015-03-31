@@ -3284,8 +3284,11 @@ inline static void sna_pixmap_unclean(struct sna *sna, struct sna_pixmap *priv)
 	list_del(&priv->flush_list);
 
 	if ((priv->gpu_bo->needs_flush & priv->flush) == 0 ||
-	    priv->gpu_bo->exec == NULL)
+	    priv->gpu_bo->exec)
 		return;
+
+	DBG(("%s(pixmap=%ld): cleaning foreign bo handle=%u\n",
+	     __FUNCTION__, priv->pixmap->drawable.serialNumber, priv->gpu_bo->handle));
 
 	busy.handle = priv->gpu_bo->handle;
 	busy.busy = 0;
