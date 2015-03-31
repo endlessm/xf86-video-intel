@@ -299,6 +299,7 @@ static void assert_bo_retired(struct kgem_bo *bo)
 	assert(bo->refcnt);
 	assert(bo->rq == NULL);
 	assert(bo->exec == NULL);
+	assert(!bo->needs_flush);
 	assert(list_is_empty(&bo->request));
 }
 #else
@@ -639,16 +640,10 @@ static void kgem_bo_retire(struct kgem *kgem, struct kgem_bo *bo)
 	assert(bo->exec == NULL);
 	assert(list_is_empty(&bo->vma));
 
-	if (bo->rq) {
-		__kgem_bo_clear_busy(bo);
-		kgem_retire(kgem);
-		assert_bo_retired(bo);
-	} else {
-		assert(bo->exec == NULL);
-		assert(list_is_empty(&bo->request));
-		assert(!bo->needs_flush);
-		ASSERT_IDLE(kgem, bo->handle);
-	}
+	if (bo->rq)
+		__kgem_retire_requests_upto(kgem, bo);
+	ASSERT_IDLE(kgem, bo->handle);
+	assert_bo_retired(bo);
 }
 
 static void kgem_bo_maybe_retire(struct kgem *kgem, struct kgem_bo *bo)
@@ -660,10 +655,8 @@ static void kgem_bo_maybe_retire(struct kgem *kgem, struct kgem_bo *bo)
 	assert(list_is_empty(&bo->vma));
 
 	if (bo->rq) {
-		if (!__kgem_busy(kgem, bo->handle)) {
-			__kgem_bo_clear_busy(bo);
-			kgem_retire(kgem);
-		}
+		if (!__kgem_busy(kgem, bo->handle))
+			__kgem_retire_requests_upto(kgem, bo);
 	} else {
 		assert(!bo->needs_flush);
 		ASSERT_IDLE(kgem, bo->handle);
