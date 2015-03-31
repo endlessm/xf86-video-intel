@@ -344,6 +344,11 @@ static inline bool kgem_ring_is_idle(struct kgem *kgem, int ring)
 {
 	ring = ring == KGEM_BLT;
 
+	if (kgem->needs_semaphore &&
+	    !list_is_empty(&kgem->requests[!ring]) &&
+	    !__kgem_ring_is_idle(kgem, !ring))
+		return false;
+
 	if (list_is_empty(&kgem->requests[ring]))
 		return true;
 
