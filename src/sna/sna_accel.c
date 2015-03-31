@@ -1081,6 +1081,14 @@ sna_pixmap_create_scratch(ScreenPtr screen,
 	return pixmap;
 }
 
+static unsigned small_copy(const RegionRec *region)
+{
+	if ((region->extents.x2 - region->extents.x1)*(region->extents.y2 - region->extents.y1) < 1024)
+		return COPY_SMALL;
+
+	return 0;
+}
+
 #ifdef CREATE_PIXMAP_USAGE_SHARED
 static Bool
 sna_share_pixmap_backing(PixmapPtr pixmap, ScreenPtr slave, void **fd_handle)
@@ -5862,7 +5870,7 @@ sna_self_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 		if (!sna->render.copy_boxes(sna, alu,
 					    &pixmap->drawable, priv->gpu_bo, sx, sy,
 					    &pixmap->drawable, priv->gpu_bo, tx, ty,
-					    box, n, 0)) {
+					    box, n, small_copy(region))) {
 			DBG(("%s: fallback - accelerated copy boxes failed\n",
 			     __FUNCTION__));
 			goto fallback;

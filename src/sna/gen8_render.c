@@ -2031,6 +2031,11 @@ try_blt(struct sna *sna,
 	if (sna_picture_is_solid(src, NULL) && can_switch_to_blt(sna, bo, 0))
 		return true;
 
+	if (src->pDrawable == dst->pDrawable &&
+	    (sna->render_state.gt < 3 || width*height < 1024) &&
+	    can_switch_to_blt(sna, bo, 0))
+		return true;
+
 	if (src->pDrawable) {
 		struct kgem_bo *s = __sna_drawable_peek_bo(src->pDrawable);
 		if (s == NULL)
@@ -2711,9 +2716,9 @@ prefer_blt_copy(struct sna *sna,
 	if (force_blt_ring(sna))
 		return true;
 
-        if (sna->render_state.gt < 3 &&
-            src_bo == dst_bo &&
-            can_switch_to_blt(sna, dst_bo, flags))
+	if ((flags & COPY_SMALL ||
+	     (sna->render_state.gt < 3 && src_bo == dst_bo)) &&
+	    can_switch_to_blt(sna, dst_bo, flags))
 		return true;
 
 	if (kgem_bo_is_render(dst_bo) ||

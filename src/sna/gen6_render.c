@@ -1991,6 +1991,10 @@ try_blt(struct sna *sna,
 	if (bo->rq)
 		return RQ_IS_BLT(bo->rq);
 
+	if (src->pDrawable == dst->pDrawable &&
+	    can_switch_to_blt(sna, bo, 0))
+		return true;
+
 	if (sna_picture_is_solid(src, NULL) && can_switch_to_blt(sna, bo, 0))
 		return true;
 
@@ -2680,7 +2684,8 @@ static inline bool prefer_blt_copy(struct sna *sna,
 	if (sna->kgem.ring == KGEM_BLT)
 		return true;
 
-	if (src_bo == dst_bo && can_switch_to_blt(sna, dst_bo, flags))
+	if ((flags & COPY_SMALL || src_bo == dst_bo) &&
+	    can_switch_to_blt(sna, dst_bo, flags))
 		return true;
 
 	if (untiled_tlb_miss(src_bo) ||
