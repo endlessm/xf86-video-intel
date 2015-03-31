@@ -52,6 +52,7 @@
 
 #include <sys/time.h>
 #include <sys/mman.h>
+#include <sys/ioctl.h>
 #include <unistd.h>
 
 #ifdef HAVE_VALGRIND
@@ -3270,6 +3271,35 @@ __sna_pixmap_for_gpu(struct sna *sna, PixmapPtr pixmap, unsigned flags)
 	return priv;
 }
 
+inline static void sna_pixmap_unclean(struct sna *sna, struct sna_pixmap *priv)
+{
+	struct drm_i915_gem_busy busy;
+
+	assert(DAMAGE_IS_ALL(priv->gpu_damage));
+	assert(priv->gpu_bo);
+	assert(priv->gpu_bo->proxy == NULL);
+	assert_pixmap_map(priv->pixmap, priv);
+
+	sna_damage_destroy(&priv->cpu_damage);
+	list_del(&priv->flush_list);
+
+	if ((priv->gpu_bo->needs_flush & priv->flush) == 0 ||
+	    priv->gpu_bo->exec == NULL)
+		return;
+
+	busy.handle = priv->gpu_bo->handle;
+	busy.busy = 0;
+	ioctl(sna->kgem.fd, DRM_IOCTL_I915_GEM_BUSY, &busy);
+
+	if (busy.busy) {
+		unsigned mode = KGEM_RENDER;
+		if (busy.busy & (0xfffe << 16))
+			mode = KGEM_BLT;
+		kgem_bo_mark_busy(&sna->kgem, priv->gpu_bo, mode);
+	} else
+		__kgem_bo_clear_busy(priv->gpu_bo);
+}
+
 struct sna_pixmap *
 sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int flags)
 {
@@ -3347,10 +3377,8 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 	if (sna_damage_is_all(&priv->gpu_damage,
 			      pixmap->drawable.width,
 			      pixmap->drawable.height)) {
-		assert(priv->gpu_bo);
-		assert(priv->gpu_bo->proxy == NULL);
-		sna_damage_destroy(&priv->cpu_damage);
-		list_del(&priv->flush_list);
+		DBG(("%s: already all-damaged\n", __FUNCTION__));
+		sna_pixmap_unclean(sna, priv);
 		goto done;
 	}
 
@@ -4168,12 +4196,7 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 			      pixmap->drawable.width,
 			      pixmap->drawable.height)) {
 		DBG(("%s: already all-damaged\n", __FUNCTION__));
-		assert(DAMAGE_IS_ALL(priv->gpu_damage));
-		assert(priv->gpu_bo);
-		assert(priv->gpu_bo->proxy == NULL);
-		assert_pixmap_map(pixmap, priv);
-		sna_damage_destroy(&priv->cpu_damage);
-		list_del(&priv->flush_list);
+		sna_pixmap_unclean(sna, priv);
 		goto active;
 	}
 
