@@ -440,7 +440,7 @@ static unsigned get_fb(struct sna *sna, struct kgem_bo *bo,
 	DBG(("%s: create fb %dx%d@%d/%d\n",
 	     __FUNCTION__, width, height, scrn->depth, scrn->bitsPerPixel));
 
-	assert(bo->tiling != I915_TILING_Y);
+	assert(bo->tiling != I915_TILING_Y || sna->kgem.can_scanout_y);
 	assert((bo->pitch & 63) == 0);
 
 	VG_CLEAR(arg);
