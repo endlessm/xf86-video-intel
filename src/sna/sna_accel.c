@@ -3283,16 +3283,17 @@ inline static void sna_pixmap_unclean(struct sna *sna, struct sna_pixmap *priv)
 	sna_damage_destroy(&priv->cpu_damage);
 	list_del(&priv->flush_list);
 
-	if ((priv->gpu_bo->needs_flush & priv->flush) == 0 ||
-	    priv->gpu_bo->exec)
+	if (!priv->flush || priv->gpu_bo->exec)
 		return;
-
-	DBG(("%s(pixmap=%ld): cleaning foreign bo handle=%u\n",
-	     __FUNCTION__, priv->pixmap->drawable.serialNumber, priv->gpu_bo->handle));
 
 	busy.handle = priv->gpu_bo->handle;
 	busy.busy = 0;
 	ioctl(sna->kgem.fd, DRM_IOCTL_I915_GEM_BUSY, &busy);
+
+	DBG(("%s(pixmap=%ld): cleaning foreign bo handle=%u, busy=%x [ring=%d]\n",
+	     __FUNCTION__,
+	     priv->pixmap->drawable.serialNumber,
+	     busy.handle, busy.busy, !!(busy.busy & (0xfffe << 16))));
 
 	if (busy.busy) {
 		unsigned mode = KGEM_RENDER;
