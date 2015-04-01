@@ -275,7 +275,7 @@ if test "x$shm" = "xyes"; then
 	AC_DEFINE([HAVE_MIT_SHM], 1, [Define to 1 if MIT-SHM is available])
 fi
 
-PKG_CHECK_MODULES(X11_DRI3, [xcb-dri3 xcb-sync xcb-xfixes xcb-present x11-xcb xshmfence x11 xrender xext libdrm], [x11_dri3="yes"], [x11_dri3="no"])
+PKG_CHECK_MODULES(X11_DRI3, [xcb-dri3 xcb-sync xcb-xfixes xcb-present x11-xcb xshmfence x11 xrender xrandr xxf86vm xext libdrm], [x11_dri3="yes"], [x11_dri3="no"])
 AM_CONDITIONAL(X11_DRI3, test "x$x11_dri3" = "xyes" -a "x$shm" = "xyes")
 AM_CONDITIONAL(X11_SHM, test "x$shm" = "xyes")
 
