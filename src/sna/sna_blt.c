@@ -3185,65 +3185,15 @@ fastcall static void sna_blt_fill_op_points(struct sna *sna,
 		assert(kgem->nbatch < kgem->surface);
 
 		if ((dx|dy) == 0) {
-			while (n_this_time >= 8) {
-				*((uint64_t *)b + 0) = pt_add(cmd, p+0, 0, 0);
-				*((uint64_t *)b + 1) = pt_add(cmd, p+1, 0, 0);
-				*((uint64_t *)b + 2) = pt_add(cmd, p+2, 0, 0);
-				*((uint64_t *)b + 3) = pt_add(cmd, p+3, 0, 0);
-				*((uint64_t *)b + 4) = pt_add(cmd, p+4, 0, 0);
-				*((uint64_t *)b + 5) = pt_add(cmd, p+5, 0, 0);
-				*((uint64_t *)b + 6) = pt_add(cmd, p+6, 0, 0);
-				*((uint64_t *)b + 7) = pt_add(cmd, p+7, 0, 0);
-				b += 16;
-				n_this_time -= 8;
-				p += 8;
-			}
-			if (n_this_time & 4) {
-				*((uint64_t *)b + 0) = pt_add(cmd, p+0, 0, 0);
-				*((uint64_t *)b + 1) = pt_add(cmd, p+1, 0, 0);
-				*((uint64_t *)b + 2) = pt_add(cmd, p+2, 0, 0);
-				*((uint64_t *)b + 3) = pt_add(cmd, p+3, 0, 0);
-				b += 8;
-				p += 4;
-			}
-			if (n_this_time & 2) {
-				*((uint64_t *)b + 0) = pt_add(cmd, p+0, 0, 0);
-				*((uint64_t *)b + 1) = pt_add(cmd, p+1, 0, 0);
-				b += 4;
-				p += 2;
-			}
-			if (n_this_time & 1)
-				*((uint64_t *)b + 0) = pt_add(cmd, p++, 0, 0);
+			do {
+				*(uint64_t *)b = pt_add(cmd, p++, 0, 0);
+				b += 2;
+			} while (--n_this_time);
 		} else {
-			while (n_this_time >= 8) {
-				*((uint64_t *)b + 0) = pt_add(cmd, p+0, dx, dy);
-				*((uint64_t *)b + 1) = pt_add(cmd, p+1, dx, dy);
-				*((uint64_t *)b + 2) = pt_add(cmd, p+2, dx, dy);
-				*((uint64_t *)b + 3) = pt_add(cmd, p+3, dx, dy);
-				*((uint64_t *)b + 4) = pt_add(cmd, p+4, dx, dy);
-				*((uint64_t *)b + 5) = pt_add(cmd, p+5, dx, dy);
-				*((uint64_t *)b + 6) = pt_add(cmd, p+6, dx, dy);
-				*((uint64_t *)b + 7) = pt_add(cmd, p+7, dx, dy);
-				b += 16;
-				n_this_time -= 8;
-				p += 8;
-			}
-			if (n_this_time & 4) {
-				*((uint64_t *)b + 0) = pt_add(cmd, p+0, dx, dy);
-				*((uint64_t *)b + 1) = pt_add(cmd, p+1, dx, dy);
-				*((uint64_t *)b + 2) = pt_add(cmd, p+2, dx, dy);
-				*((uint64_t *)b + 3) = pt_add(cmd, p+3, dx, dy);
-				b += 8;
-				p += 8;
-			}
-			if (n_this_time & 2) {
-				*((uint64_t *)b + 0) = pt_add(cmd, p+0, dx, dy);
-				*((uint64_t *)b + 1) = pt_add(cmd, p+1, dx, dy);
-				b += 4;
-				p += 2;
-			}
-			if (n_this_time & 1)
-				*((uint64_t *)b + 0) = pt_add(cmd, p++, dx, dy);
+			do {
+				*(uint64_t *)b = pt_add(cmd, p++, dx, dy);
+				b += 2;
+			} while (--n_this_time);
 		}
 
 		if (!n)

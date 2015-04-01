@@ -4593,7 +4593,7 @@ static inline bool box32_trim_and_translate(Box32Rec *box, DrawablePtr d, GCPtr 
 	return box32_clip(box, gc);
 }
 
-static inline void box_add_pt(BoxPtr box, int16_t x, int16_t y)
+static inline void box_add_xy(BoxPtr box, int16_t x, int16_t y)
 {
 	if (box->x1 > x)
 		box->x1 = x;
@@ -4604,6 +4604,11 @@ static inline void box_add_pt(BoxPtr box, int16_t x, int16_t y)
 		box->y1 = y;
 	else if (box->y2 < y)
 		box->y2 = y;
+}
+
+static inline void box_add_pt(BoxPtr box, const DDXPointRec *pt)
+{
+	box_add_xy(box, pt->x, pt->y);
 }
 
 static inline bool box32_to_box16(const Box32Rec *b32, BoxRec *b16)
@@ -8968,36 +8973,11 @@ sna_poly_point_extents(DrawablePtr drawable, GCPtr gc,
 			last.x += pt->x;
 			last.y += pt->y;
 			pt++;
-			box_add_pt(&box, last.x, last.y);
+			box_add_xy(&box, last.x, last.y);
 		}
 	} else {
-		--n; ++pt;
-		while (n >= 8) {
-			box_add_pt(&box, pt[0].x, pt[0].y);
-			box_add_pt(&box, pt[1].x, pt[1].y);
-			box_add_pt(&box, pt[2].x, pt[2].y);
-			box_add_pt(&box, pt[3].x, pt[3].y);
-			box_add_pt(&box, pt[4].x, pt[4].y);
-			box_add_pt(&box, pt[5].x, pt[5].y);
-			box_add_pt(&box, pt[6].x, pt[6].y);
-			box_add_pt(&box, pt[7].x, pt[7].y);
-			pt += 8;
-			n -= 8;
-		}
-		if (n & 4) {
-			box_add_pt(&box, pt[0].x, pt[0].y);
-			box_add_pt(&box, pt[1].x, pt[1].y);
-			box_add_pt(&box, pt[2].x, pt[2].y);
-			box_add_pt(&box, pt[3].x, pt[3].y);
-			pt += 4;
-		}
-		if (n & 2) {
-			box_add_pt(&box, pt[0].x, pt[0].y);
-			box_add_pt(&box, pt[1].x, pt[1].y);
-			pt += 2;
-		}
-		if (n & 1)
-			box_add_pt(&box, pt[0].x, pt[0].y);
+		while (--n)
+			box_add_pt(&box, ++pt);
 	}
 	box.x2++;
 	box.y2++;
@@ -9709,7 +9689,7 @@ sna_poly_line_extents(DrawablePtr drawable, GCPtr gc,
 			y += pt->y;
 			if (blt)
 				blt &= pt->x == 0 || pt->y == 0;
-			box_add_pt(&box, x, y);
+			box_add_xy(&box, x, y);
 		}
 	} else {
 		int x = box.x1;
@@ -9721,7 +9701,7 @@ sna_poly_line_extents(DrawablePtr drawable, GCPtr gc,
 				x = pt->x;
 				y = pt->y;
 			}
-			box_add_pt(&box, pt->x, pt->y);
+			box_add_pt(&box, pt);
 		}
 	}
 	box.x2++;
