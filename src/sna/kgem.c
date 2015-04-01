@@ -85,6 +85,7 @@ search_snoop_cache(struct kgem *kgem, unsigned int num_pages, unsigned flags);
 #define DBG_NO_WT 0
 #define DBG_NO_WC_MMAP 0
 #define DBG_NO_SCANOUT_Y 0
+#define DBG_NO_DETILING 0
 #define DBG_DUMP 0
 #define DBG_NO_MALLOC_CACHE 0
 
@@ -1410,7 +1411,8 @@ static void kgem_init_swizzling(struct kgem *kgem)
 	if (kgem->gen < 50 && tiling.phys_swizzle_mode != tiling.swizzle_mode)
 		goto out;
 
-	choose_memcpy_tiled_x(kgem, tiling.swizzle_mode);
+	if (!DBG_NO_DETILING)
+		choose_memcpy_tiled_x(kgem, tiling.swizzle_mode);
 out:
 	gem_close(kgem->fd, tiling.handle);
 }
