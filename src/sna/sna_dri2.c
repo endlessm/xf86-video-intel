@@ -246,7 +246,7 @@ sna_dri2_get_back(struct sna *sna,
 			if (sna->render.copy_boxes(sna, GXcopy,
 						   draw, get_private(back)->bo, 0, 0,
 						   draw, bo, 0, 0,
-						   &box, 1, 0))
+						   &box, 1, COPY_LAST | COPY_DRI))
 				flags = back->flags;
 		}
 	}
@@ -1155,7 +1155,7 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 	     boxes[0].x2, boxes[0].y2,
 	     n, sx, sy, dx, dy));
 
-	hint = COPY_LAST;
+	hint = COPY_LAST | COPY_DRI;
 	if (flags & DRI2_SYNC)
 		hint |= COPY_SYNC;
 	if (!sna->render.copy_boxes(sna, GXcopy,

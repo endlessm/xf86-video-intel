@@ -2684,6 +2684,9 @@ static inline bool prefer_blt_copy(struct sna *sna,
 	if (sna->kgem.ring == KGEM_BLT)
 		return true;
 
+	if (flags & COPY_DRI && !sna->kgem.has_semaphores)
+		return false;
+
 	if ((flags & COPY_SMALL || src_bo == dst_bo) &&
 	    can_switch_to_blt(sna, dst_bo, flags))
 		return true;

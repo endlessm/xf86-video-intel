@@ -2713,6 +2713,9 @@ prefer_blt_copy(struct sna *sna,
 	    untiled_tlb_miss(dst_bo))
 		return true;
 
+	if (flags & COPY_DRI && !sna->kgem.has_semaphores)
+		return false;
+
 	if (force_blt_ring(sna))
 		return true;
 
@@ -2726,6 +2729,7 @@ prefer_blt_copy(struct sna *sna,
 		return false;
 
 	if (flags & COPY_LAST &&
+	    sna->render_state.gt < 3 &&
             can_switch_to_blt(sna, dst_bo, flags))
 		return true;
 
