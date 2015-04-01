@@ -42,6 +42,8 @@
 #include "sna.h"
 #include "sna_reg.h"
 #include "fb/fbpict.h"
+#include "intel_options.h"
+#include "backlight.h"
 
 #include <xf86Crtc.h>
 
@@ -118,9 +120,8 @@ struct sna_output {
 
 	uint32_t dpms_id;
 	int dpms_mode;
-	char *backlight_iface;
+	struct backlight backlight;
 	int backlight_active_level;
-	int backlight_max;
 
 	int num_modes;
 	struct drm_mode_modeinfo *modes;
@@ -165,11 +166,6 @@ static bool sna_mode_wait_for_event(struct sna *sna)
 	pfd.events = POLLIN;
 	return poll(&pfd, 1, -1) == 1;
 }
-
-#define BACKLIGHT_CLASS "/sys/class/backlight"
-
-/* Enough for 10 digits of backlight + '\n' + '\0' */
-#define BACKLIGHT_VALUE_LEN 12
 
 static inline uint32_t fb_id(struct kgem_bo *bo)
 {
@@ -278,176 +274,38 @@ static void gem_close(int fd, uint32_t handle)
 	(void)drmIoctl(fd, DRM_IOCTL_GEM_CLOSE, &close);
 }
 
-#ifdef __OpenBSD__
-
-#include <dev/wscons/wsconsio.h>
-#include <xf86Priv.h>
+#define BACKLIGHT_NAME             "Backlight"
+#define BACKLIGHT_DEPRECATED_NAME  "BACKLIGHT"
+static Atom backlight_atom, backlight_deprecated_atom;
 
 static void
 sna_output_backlight_set(xf86OutputPtr output, int level)
 {
 	struct sna_output *sna_output = output->driver_private;
-	struct wsdisplay_param param;
 
-	DBG(("%s: level=%d, max=%d\n", __FUNCTION__,
-	     level, sna_output->backlight_max));
+	DBG(("%s(%s) level=%d, max=%d\n", __FUNCTION__,
+	     output->name, level, sna_output->backlight.max));
 
-	if (!sna_output->backlight_iface)
-		return;
-
-	if ((unsigned)level > sna_output->backlight_max)
-		level = sna_output->backlight_max;
-
-	VG_CLEAR(param);
-	param.param = WSDISPLAYIO_PARAM_BRIGHTNESS;
-	param.curval = level;
-
-	if (ioctl(xf86Info.consoleFd, WSDISPLAYIO_SETPARAM, &param) == -1) {
+	if (backlight_set(&sna_output->backlight, level)) {
 		xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
-			   "Failed to set backlight level: %s\n",
-			   strerror(errno));
+			   "Failed to set backlight %s for output %s to brightness level %d, disabling\n",
+			   sna_output->backlight.iface, output->name, level);
+		backlight_disable(&sna_output->backlight);
+		if (output->randr_output) {
+			RRDeleteOutputProperty(output->randr_output, backlight_atom);
+			RRDeleteOutputProperty(output->randr_output, backlight_deprecated_atom);
+		}
 	}
 }
 
 static int
 sna_output_backlight_get(xf86OutputPtr output)
 {
-	struct wsdisplay_param param;
-
-	VG_CLEAR(param);
-	param.param = WSDISPLAYIO_PARAM_BRIGHTNESS;
-
-	if (ioctl(xf86Info.consoleFd, WSDISPLAYIO_GETPARAM, &param) == -1) {
-		xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
-			   "Failed to get backlight level: %s\n",
-			   strerror(errno));
-		return -1;
-	}
-
-	DBG(("%s: level=%d (max=%d)\n", __FUNCTION__, param.curval, param.max));
-
-	return param.curval;
-}
-
-static void
-sna_output_backlight_init(xf86OutputPtr output)
-{
 	struct sna_output *sna_output = output->driver_private;
-	struct wsdisplay_param param;
-
-	VG_CLEAR(param);
-	param.param = WSDISPLAYIO_PARAM_BRIGHTNESS;
-
-	if (ioctl(xf86Info.consoleFd, WSDISPLAYIO_GETPARAM, &param) == -1)
-		return;
-
-	DBG(("%s: found 'wscons'\n", __FUNCTION__));
-
-	sna_output->backlight_iface = "wscons";
-	sna_output->backlight_max = param.max;
-	sna_output->backlight_active_level = param.curval;
-}
-
-#else
-
-static void
-sna_output_backlight_set(xf86OutputPtr output, int level)
-{
-	struct sna_output *sna_output = output->driver_private;
-	char path[1024], val[BACKLIGHT_VALUE_LEN];
-	int fd, len, ret;
-
-	DBG(("%s: level=%d, max=%d\n", __FUNCTION__,
-	     level, sna_output->backlight_max));
-
-	if (!sna_output->backlight_iface)
-		return;
-
-	if ((unsigned)level > sna_output->backlight_max)
-		level = sna_output->backlight_max;
-
-	len = snprintf(val, BACKLIGHT_VALUE_LEN, "%d\n", level);
-	sprintf(path, "%s/%s/brightness",
-		BACKLIGHT_CLASS, sna_output->backlight_iface);
-	fd = open(path, O_RDWR);
-	if (fd == -1) {
-		xf86DrvMsg(output->scrn->scrnIndex, X_ERROR, "failed to open %s for backlight "
-			   "control: %s\n", path, strerror(errno));
-		return;
-	}
-
-	ret = write(fd, val, len);
-	if (ret == -1) {
-		xf86DrvMsg(output->scrn->scrnIndex, X_ERROR, "write to %s for backlight "
-			   "control failed: %s\n", path, strerror(errno));
-	}
-
-	close(fd);
-}
-
-static int
-sna_output_backlight_get(xf86OutputPtr output)
-{
-	struct sna_output *sna_output = output->driver_private;
-	char path[1024], val[BACKLIGHT_VALUE_LEN];
-	int fd, level;
-
-	sprintf(path, "%s/%s/actual_brightness",
-		BACKLIGHT_CLASS, sna_output->backlight_iface);
-	fd = open(path, O_RDONLY);
-	if (fd == -1) {
-		xf86DrvMsg(output->scrn->scrnIndex, X_ERROR, "failed to open %s "
-			   "for backlight control: %s\n", path, strerror(errno));
-		return -1;
-	}
-
-	memset(val, 0, sizeof(val));
-	if (read(fd, val, BACKLIGHT_VALUE_LEN) == -1) {
-		close(fd);
-		return -1;
-	}
-
-	close(fd);
-
-	level = atoi(val);
-	DBG(("%s: level=%d (max=%d)\n",
-	     __FUNCTION__, level, sna_output->backlight_max));
-
-	if (level > sna_output->backlight_max)
-		level = sna_output->backlight_max;
-	else if (level < 0)
-		level = -1;
+	int level = backlight_get(&sna_output->backlight);
+	DBG(("%s(%s) level=%d, max=%d\n", __FUNCTION__,
+	     output->name, level, sna_output->backlight.max));
 	return level;
-}
-
-static int
-sna_output_backlight_get_max(xf86OutputPtr output)
-{
-	struct sna_output *sna_output = output->driver_private;
-	char path[1024], val[BACKLIGHT_VALUE_LEN];
-	int fd, max = 0;
-
-	sprintf(path, "%s/%s/max_brightness",
-		BACKLIGHT_CLASS, sna_output->backlight_iface);
-	fd = open(path, O_RDONLY);
-	if (fd == -1) {
-		xf86DrvMsg(output->scrn->scrnIndex, X_ERROR, "failed to open %s "
-			   "for backlight control: %s\n", path, strerror(errno));
-		return -1;
-	}
-
-	memset(val, 0, sizeof(val));
-	if (read(fd, val, BACKLIGHT_VALUE_LEN) == -1) {
-		close(fd);
-		return -1;
-	}
-
-	close(fd);
-
-	max = atoi(val);
-	if (max <= 0)
-		max = -1;
-	return max;
 }
 
 enum {
@@ -460,32 +318,26 @@ enum {
 static char *
 has_user_backlight_override(xf86OutputPtr output)
 {
-	struct sna_output *sna_output = output->driver_private;
 	struct sna *sna = to_sna(output->scrn);
-	char *str;
-	int max;
+	const char *str;
 
 	str = xf86GetOptValString(sna->Options, OPTION_BACKLIGHT);
 	if (str == NULL)
 		return NULL;
 
-	sna_output->backlight_iface = str;
-	max = sna_output_backlight_get_max(output);
-	sna_output->backlight_iface = NULL;
-	if (max <= 0) {
+	if (!backlight_exists(str)) {
 		xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
-			   "unrecognised backlight control interface '%s'\n",
+			   "Unrecognised backlight control interface '%s'\n",
 			   str);
 		return NULL;
 	}
 
-	return str;
+	return strdup(str);
 }
 
 static char *
 has_device_backlight(xf86OutputPtr output, int *best_type)
 {
-	struct sna_output *sna_output = output->driver_private;
 	struct sna *sna = to_sna(output->scrn);
 	struct pci_device *pci;
 	char path[1024];
@@ -541,12 +393,8 @@ has_device_backlight(xf86OutputPtr output, int *best_type)
 
 		if (v < *best_type) {
 			char *copy;
-			int max;
 
-			sna_output->backlight_iface = de->d_name;
-			max = sna_output_backlight_get_max(output);
-			sna_output->backlight_iface = NULL;
-			if (max <= 0)
+			if (!backlight_exists(de->d_name))
 				continue;
 
 			copy = strdup(de->d_name);
@@ -580,7 +428,6 @@ has_backlight(xf86OutputPtr output, int *best_type)
 		"acpi_video0",
 		"intel_backlight",
 	};
-	struct sna_output *sna_output = output->driver_private;
 	char *best_iface = NULL;
 	DIR *dir;
 	struct dirent *de;
@@ -634,14 +481,10 @@ has_backlight(xf86OutputPtr output, int *best_type)
 
 		if (v < *best_type) {
 			char *copy;
-			int max;
 
 			/* XXX detect right backlight for multi-GPU/panels */
 
-			sna_output->backlight_iface = de->d_name;
-			max = sna_output_backlight_get_max(output);
-			sna_output->backlight_iface = NULL;
-			if (max <= 0)
+			if (!backlight_exists(de->d_name))
 				continue;
 
 			copy = strdup(de->d_name);
@@ -678,12 +521,15 @@ sna_output_backlight_init(xf86OutputPtr output)
 	if (best_iface)
 		goto done;
 
-	return;
+	best_type = PLATFORM;
+	best_iface = NULL;
 
 done:
-	sna_output->backlight_iface = best_iface;
-	sna_output->backlight_max = sna_output_backlight_get_max(output);
-	sna_output->backlight_active_level = sna_output_backlight_get(output);
+	sna_output->backlight_active_level =
+		backlight_open(&sna_output->backlight, best_iface);
+	if (sna_output->backlight_active_level < 0)
+		return;
+
 	switch (best_type) {
 	case INT_MAX: best_iface = (char *)"user"; from = X_CONFIG; break;
 	case FIRMWARE: best_iface = (char *)"firmware"; break;
@@ -692,10 +538,9 @@ done:
 	default: best_iface = (char *)"unknown"; break;
 	}
 	xf86DrvMsg(output->scrn->scrnIndex, from,
-		   "found backlight control interface %s (type '%s')\n",
-		   sna_output->backlight_iface, best_iface);
+		   "Found backlight control interface %s (type '%s') for output %s\n",
+		   sna_output->backlight.iface, best_iface, output->name);
 }
-#endif
 
 static DisplayModePtr
 mode_from_kmode(ScrnInfoPtr scrn,
@@ -2165,7 +2010,7 @@ sna_output_destroy(xf86OutputPtr output)
 	free(sna_output->prop_ids);
 	free(sna_output->prop_values);
 
-	free(sna_output->backlight_iface);
+	backlight_close(&sna_output->backlight);
 
 	free(sna_output);
 	output->driver_private = NULL;
@@ -2176,7 +2021,7 @@ sna_output_dpms_backlight(xf86OutputPtr output, int oldmode, int mode)
 {
 	struct sna_output *sna_output = output->driver_private;
 
-	if (!sna_output->backlight_iface)
+	if (!sna_output->backlight.iface)
 		return;
 
 	DBG(("%s(%s) -- %d -> %d\n", __FUNCTION__, output->name, oldmode, mode));
@@ -2276,11 +2121,6 @@ sna_output_create_ranged_atom(xf86OutputPtr output, Atom *atom,
 			   "RRChangeOutputProperty error, %d\n", err);
 }
 
-#define BACKLIGHT_NAME             "Backlight"
-#define BACKLIGHT_DEPRECATED_NAME  "BACKLIGHT"
-static Atom backlight_atom, backlight_deprecated_atom;
-static Atom underscan_hborder_atom, underscan_vborder_atom, underscan_atom;
-
 static void
 sna_output_create_resources(xf86OutputPtr output)
 {
@@ -2352,45 +2192,20 @@ sna_output_create_resources(xf86OutputPtr output)
 		}
 	}
 
-	/* fake props for underscan */
-	uatoms = calloc(2, sizeof(Atom));
-	underscan_atom = MakeAtom("underscan", 9, TRUE);
-	uatoms[0] = MakeAtom("off", 3, TRUE);
-	uatoms[1] = MakeAtom("crop", 4, TRUE);
-	err = RRConfigureOutputProperty(output->randr_output, underscan_atom,
-					FALSE, FALSE, FALSE,
-					2, (INT32 *)uatoms);
-	if (err != 0) {
-		xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
-			   "RRConfigureOutputProperty error, %d\n", err);
-	}
-	err = RRChangeOutputProperty(output->randr_output, underscan_atom,
-				     XA_ATOM, 32, PropModeReplace, 1, &uatoms[0],
-				     FALSE, FALSE);
-	if (err != 0) {
-		xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
-			   "RRChangeOutputProperty error, %d\n", err);
-	}
-
-	sna_output_create_ranged_atom(output, &underscan_hborder_atom,
-				      "underscan hborder", 0, 128, 0, FALSE);
-	sna_output_create_ranged_atom(output, &underscan_vborder_atom,
-				      "underscan vborder", 0, 128, 0, FALSE);
-
-	if (sna_output->backlight_iface) {
+	if (sna_output->backlight.iface) {
 		/* Set up the backlight property, which takes effect
 		 * immediately and accepts values only within the
 		 * backlight_range.
 		 */
 		sna_output_create_ranged_atom(output, &backlight_atom,
 					      BACKLIGHT_NAME, 0,
-					      sna_output->backlight_max,
+					      sna_output->backlight.max,
 					      sna_output->backlight_active_level,
 					      FALSE);
 		sna_output_create_ranged_atom(output,
 					      &backlight_deprecated_atom,
 					      BACKLIGHT_DEPRECATED_NAME, 0,
-					      sna_output->backlight_max,
+					      sna_output->backlight.max,
 					      sna_output->backlight_active_level,
 					      FALSE);
 	}
@@ -2404,42 +2219,6 @@ sna_output_set_property(xf86OutputPtr output, Atom property,
 	struct sna_output *sna_output = output->driver_private;
 	int i;
 
-	if (property == underscan_atom) {
-		Atom atom;
-		const char *name;
-
-		if (value->type != XA_ATOM || value->format != 32 || value->size != 1)
-			return FALSE;
-
-		memcpy(&atom, value->data, 4);
-		name = NameForAtom(atom);
-		if (name == NULL)
-			return FALSE;
-
-		if (!strcmp(name, "crop"))
-			sna_output->underscan = 1;
-		else
-			sna_output->underscan = 0;
-
-		return TRUE;
-	}
-
-	if (property == underscan_vborder_atom) {
-		if (value->type != XA_INTEGER || value->format != 32 || value->size != 1)
-			return FALSE;
-
-		sna_output->underscan_vborder = *(uint32_t *)value->data;
-		return TRUE;
-	}
-
-	if (property == underscan_hborder_atom) {
-		if (value->type != XA_INTEGER || value->format != 32 || value->size != 1)
-			return FALSE;
-
-		sna_output->underscan_hborder = *(uint32_t *)value->data;
-		return TRUE;
-	}
-
 	if (property == backlight_atom || property == backlight_deprecated_atom) {
 		INT32 val;
 
@@ -2450,7 +2229,9 @@ sna_output_set_property(xf86OutputPtr output, Atom property,
 		}
 
 		val = *(INT32 *)value->data;
-		if (val < 0 || val > sna_output->backlight_max)
+		DBG(("%s: setting backlight to %d (max=%d)\n",
+		     __FUNCTION__, (int)val, sna_output->backlight.max));
+		if (val < 0 || val > sna_output->backlight.max)
 			return FALSE;
 
 		if (sna_output->dpms_mode == DPMSModeOn)
@@ -2516,7 +2297,7 @@ sna_output_get_property(xf86OutputPtr output, Atom property)
 	if (property == backlight_atom || property == backlight_deprecated_atom) {
 		INT32 val;
 
-		if (! sna_output->backlight_iface)
+		if (!sna_output->backlight.iface)
 			return FALSE;
 
 		val = sna_output_backlight_get(output);
@@ -2525,7 +2306,7 @@ sna_output_get_property(xf86OutputPtr output, Atom property)
 
 		err = RRChangeOutputProperty(output->randr_output, property,
 					     XA_INTEGER, 32, PropModeReplace, 1, &val,
-					     FALSE, TRUE);
+					     FALSE, FALSE);
 		if (err != 0) {
 			xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
 				   "RRChangeOutputProperty error, %d\n", err);
