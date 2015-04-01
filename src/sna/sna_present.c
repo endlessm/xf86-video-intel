@@ -339,14 +339,6 @@ sna_present_abort_vblank(RRCrtcPtr crtc, uint64_t event_id, uint64_t msc)
 static void
 sna_present_flush(WindowPtr window)
 {
-	PixmapPtr pixmap = get_window_pixmap(window);
-	struct sna_pixmap *priv;
-
-	DBG(("%s(pixmap=%ld)\n", __FUNCTION__, pixmap->drawable.serialNumber));
-
-	priv = sna_pixmap_move_to_gpu(pixmap, MOVE_READ | MOVE_ASYNC_HINT | __MOVE_FORCE);
-	if (priv && priv->gpu_bo)
-		kgem_scanout_flush(&to_sna_from_pixmap(pixmap)->kgem, priv->gpu_bo);
 }
 
 static bool
