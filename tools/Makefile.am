@@ -26,10 +26,12 @@ AM_CFLAGS = \
 drivermandir = $(DRIVER_MAN_DIR)
 policydir = $(datarootdir)/polkit-1/actions
 
+bin_PROGRAMS =
 noinst_PROGRAMS =
+libexec_PROGRAMS =
 
 if BUILD_TOOLS
-bin_PROGRAMS = intel-virtual-output
+bin_PROGRAMS += intel-virtual-output
 driverman_DATA = intel-virtual-output.$(DRIVER_MAN_SUFFIX)
 endif
 
@@ -47,7 +49,7 @@ dri3info_LDADD = $(X11_DRI3_LIBS) $(DRI_LIBS)
 endif
 
 if BUILD_BACKLIGHT_HELPER
-libexec_PROGRAMS = xf86-video-intel-backlight-helper
+libexec_PROGRAMS += xf86-video-intel-backlight-helper
 nodist_policy_DATA = org.x.xf86-video-intel.backlight-helper.policy
 
 backlight_helper = $(libexecdir)/xf86-video-intel-backlight-helper
