@@ -154,6 +154,7 @@ static void run(Display *dpy, int width, int height,
 	XMapWindow(dpy, win);
 
 	DRI2CreateDrawable(dpy, win);
+	DRI2SwapInterval(dpy, win, 1);
 	start_msc = check_msc(dpy, win, 0);
 
 	buffers = DRI2GetBuffers(dpy, win, &width, &height,
