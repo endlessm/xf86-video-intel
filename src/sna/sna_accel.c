@@ -3271,7 +3271,9 @@ __sna_pixmap_for_gpu(struct sna *sna, PixmapPtr pixmap, unsigned flags)
 	return priv;
 }
 
-inline static void sna_pixmap_unclean(struct sna *sna, struct sna_pixmap *priv)
+inline static void sna_pixmap_unclean(struct sna *sna,
+				      struct sna_pixmap *priv,
+				      unsigned flags)
 {
 	struct drm_i915_gem_busy busy;
 
@@ -3282,6 +3284,9 @@ inline static void sna_pixmap_unclean(struct sna *sna, struct sna_pixmap *priv)
 
 	sna_damage_destroy(&priv->cpu_damage);
 	list_del(&priv->flush_list);
+
+	if (flags & (__MOVE_DRI | __MOVE_SCANOUT))
+		return;
 
 	if (!priv->flush || priv->gpu_bo->exec)
 		return;
@@ -3382,7 +3387,7 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 			      pixmap->drawable.width,
 			      pixmap->drawable.height)) {
 		DBG(("%s: already all-damaged\n", __FUNCTION__));
-		sna_pixmap_unclean(sna, priv);
+		sna_pixmap_unclean(sna, priv, flags);
 		goto done;
 	}
 
@@ -4200,7 +4205,7 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 			      pixmap->drawable.width,
 			      pixmap->drawable.height)) {
 		DBG(("%s: already all-damaged\n", __FUNCTION__));
-		sna_pixmap_unclean(sna, priv);
+		sna_pixmap_unclean(sna, priv, flags);
 		goto active;
 	}
 
