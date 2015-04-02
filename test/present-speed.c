@@ -37,6 +37,7 @@
 #include <X11/extensions/Xrandr.h>
 #include <xcb/xcb.h>
 #include <xcb/present.h>
+#include <xcb/dri3.h>
 #include <xf86drm.h>
 #include <i915_drm.h>
 
@@ -48,6 +49,8 @@
 #include <errno.h>
 #include <setjmp.h>
 #include <signal.h>
+
+#include "dri3.h"
 
 static int _x_error_occurred;
 static uint32_t stamp;
@@ -86,12 +89,13 @@ static double elapsed(const struct timespec *start,
 	return 1e6*(end->tv_sec - start->tv_sec) + (end->tv_nsec - start->tv_nsec)/1000;
 }
 
-static void run(Display *dpy, Window win, const char *name)
+static void run(Display *dpy, Window win, const char *name, int use_dri3)
 {
 	xcb_connection_t *c = XGetXCBConnection(dpy);
 	struct timespec start, end;
 	Pixmap pixmap[4];
 	int busy[4];
+	struct dri3_fence fence[4];
 	Window root;
 	unsigned int width, height;
 	unsigned border, depth;
@@ -106,6 +110,12 @@ static void run(Display *dpy, Window win, const char *name)
 
 	for (n = 0; n < 4; n++) {
 		pixmap[n] = XCreatePixmap(dpy, win, width, height, depth);
+		if (use_dri3) {
+			if (dri3_create_fence(dpy, win, &fence[n]))
+				return;
+			/* start idle */
+			xshmfence_trigger(fence[n].addr);
+		}
 		busy[n] = 0;
 	}
 
@@ -143,35 +153,43 @@ static void run(Display *dpy, Window win, const char *name)
 
 			back = j;
 			busy[back] = 1;
-
-			xcb_present_pixmap(c, win, p, back++,
+			if (use_dri3) {
+				xshmfence_await(fence[back].addr);
+				xshmfence_reset(fence[back].addr);
+			}
+			xcb_present_pixmap(c, win, p, back,
 					   0, /* valid */
 					   0, /* update */
 					   0, /* x_off */
 					   0, /* y_off */
 					   None,
 					   None, /* wait fence */
-					   None,
+					   use_dri3 ? fence[back].xid : None,
 					   XCB_PRESENT_OPTION_ASYNC,
 					   0, /* target msc */
 					   0, /* divisor */
 					   0, /* remainder */
 					   0, NULL);
 			xcb_flush(c);
+			back++;
 		}
 		clock_gettime(CLOCK_MONOTONIC, &end);
 	} while (end.tv_sec < start.tv_sec + 10);
 
-	for (n = 0; n < 4; n++)
+	for (n = 0; n < 4; n++) {
+		if (use_dri3)
+			dri3_fence_free(dpy, &fence[n]);
 		XFreePixmap(dpy, pixmap[n]);
+	}
 
 	XSync(dpy, True);
 	teardown_msc(dpy, Q);
 	if (_x_error_occurred)
 		abort();
 
-	printf("%s: Completed %d presents in %.1fs, %.3fus each (%.1f FPS)\n",
-	       name, completed, elapsed(&start, &end) / 1000000,
+	printf("%s%s: Completed %d presents in %.1fs, %.3fus each (%.1f FPS)\n",
+	       name, use_dri3 ? " (dri3)" : "",
+	       completed, elapsed(&start, &end) / 1000000,
 	       elapsed(&start, &end) / completed,
 	       completed / (elapsed(&start, &end) / 1000000));
 }
@@ -196,6 +214,45 @@ static int has_present(Display *dpy)
 	}
 
 	return 1;
+}
+
+static int dri3_query_version(Display *dpy, int *major, int *minor)
+{
+	xcb_connection_t *c = XGetXCBConnection(dpy);
+	xcb_dri3_query_version_reply_t *reply;
+	xcb_generic_error_t *error;
+
+	*major = *minor = -1;
+
+	reply = xcb_dri3_query_version_reply(c,
+					     xcb_dri3_query_version(c,
+								    XCB_DRI3_MAJOR_VERSION,
+								    XCB_DRI3_MINOR_VERSION),
+					     &error);
+	free(error);
+	if (reply == NULL)
+		return -1;
+
+	*major = reply->major_version;
+	*minor = reply->minor_version;
+	free(reply);
+
+	return 0;
+}
+
+static int has_dri3(Display *dpy)
+{
+	const xcb_query_extension_reply_t *ext;
+	int major, minor;
+
+	ext = xcb_get_extension_data(XGetXCBConnection(dpy), &xcb_dri3_id);
+	if (ext == NULL || !ext->present)
+		return 0;
+
+	if (dri3_query_version(dpy, &major, &minor) < 0)
+		return 0;
+
+	return major >= 0;
 }
 
 static inline XRRScreenResources *_XRRGetScreenResourcesCurrent(Display *dpy, Window window)
@@ -230,48 +287,16 @@ static void fullscreen(Display *dpy, Window win)
 			(unsigned char *)&atom, 1);
 }
 
-int main(void)
+static void loop(Display *dpy, XRRScreenResources *res, int use_dri3)
 {
-	Display *dpy;
-	Window root, win;
-	XRRScreenResources *res;
-	XRRCrtcInfo **original_crtc;
+	Window root = DefaultRootWindow(dpy);
+	Window win;
 	XSetWindowAttributes attr;
 	int i, j;
 
 	attr.override_redirect = 1;
 
-	dpy = XOpenDisplay(NULL);
-	if (dpy == NULL)
-		return 77;
-
-	if (!has_present(dpy))
-		return 77;
-
-	if (DPMSQueryExtension(dpy, &i, &i))
-		DPMSDisable(dpy);
-
-	root = DefaultRootWindow(dpy);
-
-	signal(SIGALRM, SIG_IGN);
-	XSetErrorHandler(_check_error_handler);
-
-	res = NULL;
-	if (XRRQueryVersion(dpy, &i, &i))
-		res = _XRRGetScreenResourcesCurrent(dpy, root);
-	if (res == NULL)
-		return 77;
-
-	original_crtc = malloc(sizeof(XRRCrtcInfo *)*res->ncrtc);
-	for (i = 0; i < res->ncrtc; i++)
-		original_crtc[i] = XRRGetCrtcInfo(dpy, res, res->crtcs[i]);
-
-	printf("noutput=%d, ncrtc=%d\n", res->noutput, res->ncrtc);
-	for (i = 0; i < res->ncrtc; i++)
-		XRRSetCrtcConfig(dpy, res, res->crtcs[i], CurrentTime,
-				 0, 0, None, RR_Rotate_0, NULL, 0);
-
-	run(dpy, root, "off");
+	run(dpy, root, "off", use_dri3);
 
 	for (i = 0; i < res->noutput; i++) {
 		XRROutputInfo *output;
@@ -296,7 +321,7 @@ int main(void)
 			XRRSetCrtcConfig(dpy, res, output->crtcs[c], CurrentTime,
 					 0, 0, output->modes[0], RR_Rotate_0, &res->outputs[i], 1);
 
-			run(dpy, root, "root");
+			run(dpy, root, "root", use_dri3);
 
 			win = XCreateWindow(dpy, root,
 					    0, 0, mode->width, mode->height, 0,
@@ -306,7 +331,7 @@ int main(void)
 					    CWOverrideRedirect, &attr);
 			fullscreen(dpy, win);
 			XMapWindow(dpy, win);
-			run(dpy, win, "fullscreen");
+			run(dpy, win, "fullscreen", use_dri3);
 			XDestroyWindow(dpy, win);
 
 			win = XCreateWindow(dpy, root,
@@ -316,7 +341,7 @@ int main(void)
 					    DefaultVisual(dpy, DefaultScreen(dpy)),
 					    CWOverrideRedirect, &attr);
 			XMapWindow(dpy, win);
-			run(dpy, win, "windowed");
+			run(dpy, win, "windowed", use_dri3);
 			XDestroyWindow(dpy, win);
 
 			win = XCreateWindow(dpy, root,
@@ -326,7 +351,7 @@ int main(void)
 					    DefaultVisual(dpy, DefaultScreen(dpy)),
 					    CWOverrideRedirect, &attr);
 			XMapWindow(dpy, win);
-			run(dpy, win, "half");
+			run(dpy, win, "half", use_dri3);
 			XDestroyWindow(dpy, win);
 
 			XRRSetCrtcConfig(dpy, res, output->crtcs[c], CurrentTime,
@@ -335,6 +360,46 @@ int main(void)
 
 		XRRFreeOutputInfo(output);
 	}
+}
+
+int main(void)
+{
+	Display *dpy;
+	XRRScreenResources *res;
+	XRRCrtcInfo **original_crtc;
+	int i;
+
+	dpy = XOpenDisplay(NULL);
+	if (dpy == NULL)
+		return 77;
+
+	if (!has_present(dpy))
+		return 77;
+
+	if (DPMSQueryExtension(dpy, &i, &i))
+		DPMSDisable(dpy);
+
+	signal(SIGALRM, SIG_IGN);
+	XSetErrorHandler(_check_error_handler);
+
+	res = NULL;
+	if (XRRQueryVersion(dpy, &i, &i))
+		res = _XRRGetScreenResourcesCurrent(dpy, DefaultRootWindow(dpy));
+	if (res == NULL)
+		return 77;
+
+	original_crtc = malloc(sizeof(XRRCrtcInfo *)*res->ncrtc);
+	for (i = 0; i < res->ncrtc; i++)
+		original_crtc[i] = XRRGetCrtcInfo(dpy, res, res->crtcs[i]);
+
+	printf("noutput=%d, ncrtc=%d\n", res->noutput, res->ncrtc);
+	for (i = 0; i < res->ncrtc; i++)
+		XRRSetCrtcConfig(dpy, res, res->crtcs[i], CurrentTime,
+				 0, 0, None, RR_Rotate_0, NULL, 0);
+
+	loop(dpy, res, 0);
+	if (has_dri3(dpy))
+		loop(dpy, res, 1);
 
 	for (i = 0; i < res->ncrtc; i++)
 		XRRSetCrtcConfig(dpy, res, res->crtcs[i], CurrentTime,
