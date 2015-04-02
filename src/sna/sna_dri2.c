@@ -1450,7 +1450,10 @@ static bool add_event_to_client(struct sna_dri2_event *info, struct sna *sna, Cl
 }
 
 static struct sna_dri2_event *
-sna_dri2_add_event(struct sna *sna, DrawablePtr draw, ClientPtr client)
+sna_dri2_add_event(struct sna *sna,
+		   DrawablePtr draw,
+		   ClientPtr client,
+		   xf86CrtcPtr crtc)
 {
 	struct dri2_window *priv;
 	struct sna_dri2_event *info, *chain;
@@ -1470,8 +1473,8 @@ sna_dri2_add_event(struct sna *sna, DrawablePtr draw, ClientPtr client)
 	list_init(&info->cache);
 	info->sna = sna;
 	info->draw = draw;
-	info->crtc = priv->crtc;
-	info->pipe = sna_crtc_to_pipe(priv->crtc);
+	info->crtc = crtc;
+	info->pipe = sna_crtc_to_pipe(crtc);
 
 	if (!add_event_to_client(info, sna, client)) {
 		free(info);
@@ -2349,8 +2352,8 @@ sna_dri2_immediate_blit(struct sna *sna,
 	if (sna->flags & SNA_NO_WAIT)
 		sync = false;
 
-	DBG(("%s: emitting immediate blit, throttling client, synced? %d, chained? %d\n",
-	     __FUNCTION__, sync, chain != info));
+	DBG(("%s: emitting immediate blit, throttling client, synced? %d, chained? %d, pipe %d\n",
+	     __FUNCTION__, sync, chain != info, info->pipe));
 
 	info->type = SWAP_THROTTLE;
 	info->sync = sync;
@@ -2557,13 +2560,15 @@ static uint64_t
 get_current_msc(struct sna *sna, DrawablePtr draw, xf86CrtcPtr crtc)
 {
 	union drm_wait_vblank vbl;
-	uint64_t ret = -1;
+	uint64_t ret;
 
 	VG_CLEAR(vbl);
 	vbl.request.type = _DRM_VBLANK_RELATIVE;
 	vbl.request.sequence = 0;
 	if (sna_wait_vblank(sna, &vbl, sna_crtc_to_pipe(crtc)) == 0)
 		ret = sna_crtc_record_vblank(crtc, &vbl);
+	else
+		ret = sna_crtc_last_swap(crtc)->msc;
 
 	return draw_current_msc(draw, crtc, ret);
 }
@@ -2703,7 +2708,7 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 				goto new_back;
 		}
 
-		info = sna_dri2_add_event(sna, draw, client);
+		info = sna_dri2_add_event(sna, draw, client, crtc);
 		if (info == NULL)
 			return false;
 
@@ -2761,7 +2766,7 @@ queue:
 		info->keepalive = 1;
 	}
 
-	info = sna_dri2_add_event(sna, draw, client);
+	info = sna_dri2_add_event(sna, draw, client, crtc);
 	if (info == NULL)
 		return false;
 
@@ -2823,7 +2828,7 @@ sna_dri2_schedule_xchg(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 	if (sync) {
 		struct sna_dri2_event *info;
 
-		info = sna_dri2_add_event(sna, draw, client);
+		info = sna_dri2_add_event(sna, draw, client, crtc);
 		if (!info)
 			goto complete;
 
@@ -2885,7 +2890,7 @@ sna_dri2_schedule_xchg_crtc(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc
 	if (sync) {
 		struct sna_dri2_event *info;
 
-		info = sna_dri2_add_event(sna, draw, client);
+		info = sna_dri2_add_event(sna, draw, client, crtc);
 		if (!info)
 			goto complete;
 
@@ -3067,7 +3072,7 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 
 	VG_CLEAR(vbl);
 
-	info = sna_dri2_add_event(sna, draw, client);
+	info = sna_dri2_add_event(sna, draw, client, crtc);
 	if (!info)
 		goto blit;
 
@@ -3218,7 +3223,7 @@ sna_dri2_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc
 	if (divisor == 0 && current_msc >= target_msc)
 		goto out_complete;
 
-	info = sna_dri2_add_event(sna, draw, client);
+	info = sna_dri2_add_event(sna, draw, client, crtc);
 	if (!info)
 		goto out_complete;
 

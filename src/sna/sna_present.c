@@ -178,7 +178,7 @@ static bool sna_fake_vblank(struct sna_present_event *info)
 		delay = 0;
 
 	DBG(("%s(event=%lld, target_msc=%lld, msc=%lld, delay=%ums)\n",
-	     __FUNCTION__, (long long)info->event_id[0], (long long)info->target_msc, msc, delay));
+	     __FUNCTION__, (long long)info->event_id[0], (long long)info->target_msc, (long long)msc, delay));
 	if (delay == 0) {
 		const struct ust_msc *swap = sna_crtc_last_swap(info->crtc);
 		present_event_notify(info->event_id[0], swap_ust(swap), swap->msc);
@@ -197,7 +197,10 @@ sna_present_get_crtc(WindowPtr window)
 	BoxRec box;
 	xf86CrtcPtr crtc;
 
-	DBG(("%s\n", __FUNCTION__));
+	DBG(("%s: window=%ld (pixmap=%ld), box=(%d, %d)x(%d, %d)\n",
+	     __FUNCTION__, window->drawable.id, get_window_pixmap(window)->drawable.serialNumber,
+	     window->drawable.x, window->drawable.y,
+	     window->drawable.width, window->drawable.height));
 
 	box.x1 = window->drawable.x;
 	box.y1 = window->drawable.y;
@@ -440,9 +443,9 @@ flip__async(struct sna *sna,
 		return FALSE;
 	}
 
-	DBG(("%s: pipe=%d tv=%d.%06d msc=%lld (target=%lld), event=%lld complete\n", __FUNCTION__,
+	DBG(("%s: pipe=%d tv=%ld.%06d msc=%lld (target=%lld), event=%lld complete\n", __FUNCTION__,
 	     pipe_from_crtc(crtc),
-	     gettime_ust64() / 1000000, gettime_ust64() % 1000000,
+	     (long)(gettime_ust64() / 1000000), (int)(gettime_ust64() % 1000000),
 	     crtc ? (long long)sna_crtc_last_swap(crtc->devPrivate)->msc : 0LL,
 	     (long long)target_msc, (long long)event_id));
 	present_event_notify(event_id, gettime_ust64(), target_msc);
@@ -474,7 +477,7 @@ present_flip_handler(struct drm_event_vblank *event, void *data)
 	present_event_notify(info->event_id[0], swap_ust(&swap), swap.msc);
 
 	if (info->sna->present.unflip) {
-		DBG(("%s: executing queued unflip (event=%lld)\n", __FUNCTION__, info->sna->present.unflip));
+		DBG(("%s: executing queued unflip (event=%lld)\n", __FUNCTION__, (long long)info->sna->present.unflip));
 		sna_present_unflip(xf86ScrnToScreen(info->sna->scrn),
 				   info->sna->present.unflip);
 		info->sna->present.unflip = 0;
