@@ -334,553 +334,145 @@ memcpy_from_tiled_x__swizzle_0(const void *src, void *dst, int bpp,
 	}
 }
 
-fast_memcpy static void
-memcpy_to_tiled_x__swizzle_9(const void *src, void *dst, int bpp,
-			     int32_t src_stride, int32_t dst_stride,
-			     int16_t src_x, int16_t src_y,
-			     int16_t dst_x, int16_t dst_y,
-			     uint16_t width, uint16_t height)
-{
-	const unsigned tile_width = 512;
-	const unsigned tile_height = 8;
-	const unsigned tile_size = 4096;
-
-	const unsigned cpp = bpp / 8;
-	const unsigned stride_tiles = dst_stride / tile_width;
-	const unsigned swizzle_pixels = 64 / cpp;
-	const unsigned tile_pixels = ffs(tile_width / cpp) - 1;
-	const unsigned tile_mask = (1 << tile_pixels) - 1;
-
-	unsigned x, y;
-
-	DBG(("%s(bpp=%d): src=(%d, %d), dst=(%d, %d), size=%dx%d, pitch=%d/%d\n",
-	     __FUNCTION__, bpp, src_x, src_y, dst_x, dst_y, width, height, src_stride, dst_stride));
-
-	src = (const uint8_t *)src + src_y * src_stride + src_x * cpp;
-
-	for (y = 0; y < height; ++y) {
-		const uint32_t dy = y + dst_y;
-		const uint32_t tile_row =
-			(dy / tile_height * stride_tiles * tile_size +
-			 (dy & (tile_height-1)) * tile_width);
-		const uint8_t *src_row = (const uint8_t *)src + src_stride * y;
-		uint32_t dx = dst_x, offset;
-
-		x = width * cpp;
-		if (dx & (swizzle_pixels - 1)) {
-			const uint32_t swizzle_bound_pixels = ALIGN(dx + 1, swizzle_pixels);
-			const uint32_t length = min(dst_x + width, swizzle_bound_pixels) - dx;
-			offset = tile_row +
-				(dx >> tile_pixels) * tile_size +
-				(dx & tile_mask) * cpp;
-			offset ^= (offset >> 3) & 64;
-
-			memcpy((char *)dst + offset, src_row, length * cpp);
-
-			src_row += length * cpp;
-			x -= length * cpp;
-			dx += length;
-		}
-		while (x >= 64) {
-			offset = tile_row +
-				(dx >> tile_pixels) * tile_size +
-				(dx & tile_mask) * cpp;
-			offset ^= (offset >> 3) & 64;
-
-			memcpy((char *)dst + offset, src_row, 64);
-
-			src_row += 64;
-			x -= 64;
-			dx += swizzle_pixels;
-		}
-		if (x) {
-			offset = tile_row +
-				(dx >> tile_pixels) * tile_size +
-				(dx & tile_mask) * cpp;
-			offset ^= (offset >> 3) & 64;
-			memcpy((char *)dst + offset, src_row, x);
-		}
-	}
+#define memcpy_to_tiled_x(swizzle) \
+fast_memcpy static void \
+memcpy_to_tiled_x__##swizzle (const void *src, void *dst, int bpp, \
+			      int32_t src_stride, int32_t dst_stride, \
+			      int16_t src_x, int16_t src_y, \
+			      int16_t dst_x, int16_t dst_y, \
+			      uint16_t width, uint16_t height) \
+{ \
+	const unsigned tile_width = 512; \
+	const unsigned tile_height = 8; \
+	const unsigned tile_size = 4096; \
+	const unsigned cpp = bpp / 8; \
+	const unsigned stride_tiles = dst_stride / tile_width; \
+	const unsigned swizzle_pixels = 64 / cpp; \
+	const unsigned tile_pixels = ffs(tile_width / cpp) - 1; \
+	const unsigned tile_mask = (1 << tile_pixels) - 1; \
+	unsigned x, y; \
+	DBG(("%s(bpp=%d): src=(%d, %d), dst=(%d, %d), size=%dx%d, pitch=%d/%d\n", \
+	     __FUNCTION__, bpp, src_x, src_y, dst_x, dst_y, width, height, src_stride, dst_stride)); \
+	src = (const uint8_t *)src + src_y * src_stride + src_x * cpp; \
+	for (y = 0; y < height; ++y) { \
+		const uint32_t dy = y + dst_y; \
+		const uint32_t tile_row = \
+			(dy / tile_height * stride_tiles * tile_size + \
+			 (dy & (tile_height-1)) * tile_width); \
+		const uint8_t *src_row = (const uint8_t *)src + src_stride * y; \
+		uint32_t dx = dst_x; \
+		x = width * cpp; \
+		if (dx & (swizzle_pixels - 1)) { \
+			const uint32_t swizzle_bound_pixels = ALIGN(dx + 1, swizzle_pixels); \
+			const uint32_t length = min(dst_x + width, swizzle_bound_pixels) - dx; \
+			uint32_t offset = \
+				tile_row + \
+				(dx >> tile_pixels) * tile_size + \
+				(dx & tile_mask) * cpp; \
+			memcpy((char *)dst + swizzle(offset), src_row, length * cpp); \
+			src_row += length * cpp; \
+			x -= length * cpp; \
+			dx += length; \
+		} \
+		while (x >= 64) { \
+			uint32_t offset = \
+				tile_row + \
+				(dx >> tile_pixels) * tile_size + \
+				(dx & tile_mask) * cpp; \
+			memcpy((char *)dst + swizzle(offset), src_row, 64); \
+			src_row += 64; \
+			x -= 64; \
+			dx += swizzle_pixels; \
+		} \
+		if (x) { \
+			uint32_t offset = \
+				tile_row + \
+				(dx >> tile_pixels) * tile_size + \
+				(dx & tile_mask) * cpp; \
+			memcpy((char *)dst + swizzle(offset), src_row, x); \
+		} \
+	} \
 }
 
-fast_memcpy static void
-memcpy_from_tiled_x__swizzle_9(const void *src, void *dst, int bpp,
-			       int32_t src_stride, int32_t dst_stride,
-			       int16_t src_x, int16_t src_y,
-			       int16_t dst_x, int16_t dst_y,
-			       uint16_t width, uint16_t height)
-{
-	const unsigned tile_width = 512;
-	const unsigned tile_height = 8;
-	const unsigned tile_size = 4096;
-
-	const unsigned cpp = bpp / 8;
-	const unsigned stride_tiles = src_stride / tile_width;
-	const unsigned swizzle_pixels = 64 / cpp;
-	const unsigned tile_pixels = ffs(tile_width / cpp) - 1;
-	const unsigned tile_mask = (1 << tile_pixels) - 1;
-
-	unsigned x, y;
-
-	DBG(("%s(bpp=%d): src=(%d, %d), dst=(%d, %d), size=%dx%d, pitch=%d/%d\n",
-	     __FUNCTION__, bpp, src_x, src_y, dst_x, dst_y, width, height, src_stride, dst_stride));
-
-	dst = (uint8_t *)dst + dst_y * dst_stride + dst_x * cpp;
-
-	for (y = 0; y < height; ++y) {
-		const uint32_t sy = y + src_y;
-		const uint32_t tile_row =
-			(sy / tile_height * stride_tiles * tile_size +
-			 (sy & (tile_height-1)) * tile_width);
-		uint8_t *dst_row = (uint8_t *)dst + dst_stride * y;
-		uint32_t sx = src_x, offset;
-
-		x = width * cpp;
-		if (sx & (swizzle_pixels - 1)) {
-			const uint32_t swizzle_bound_pixels = ALIGN(sx + 1, swizzle_pixels);
-			const uint32_t length = min(src_x + width, swizzle_bound_pixels) - sx;
-			offset = tile_row +
-				(sx >> tile_pixels) * tile_size +
-				(sx & tile_mask) * cpp;
-			offset ^= (offset >> 3) & 64;
-
-			memcpy(dst_row, (const char *)src + offset, length * cpp);
-
-			dst_row += length * cpp;
-			x -= length * cpp;
-			sx += length;
-		}
-		while (x >= 64) {
-			offset = tile_row +
-				(sx >> tile_pixels) * tile_size +
-				(sx & tile_mask) * cpp;
-			offset ^= (offset >> 3) & 64;
-
-			memcpy(dst_row, (const char *)src + offset, 64);
-
-			dst_row += 64;
-			x -= 64;
-			sx += swizzle_pixels;
-		}
-		if (x) {
-			offset = tile_row +
-				(sx >> tile_pixels) * tile_size +
-				(sx & tile_mask) * cpp;
-			offset ^= (offset >> 3) & 64;
-			memcpy(dst_row, (const char *)src + offset, x);
-		}
-	}
+#define memcpy_from_tiled_x(swizzle) \
+fast_memcpy static void \
+memcpy_from_tiled_x__##swizzle (const void *src, void *dst, int bpp, \
+				int32_t src_stride, int32_t dst_stride, \
+				int16_t src_x, int16_t src_y, \
+				int16_t dst_x, int16_t dst_y, \
+				uint16_t width, uint16_t height) \
+{ \
+	const unsigned tile_width = 512; \
+	const unsigned tile_height = 8; \
+	const unsigned tile_size = 4096; \
+	const unsigned cpp = bpp / 8; \
+	const unsigned stride_tiles = src_stride / tile_width; \
+	const unsigned swizzle_pixels = 64 / cpp; \
+	const unsigned tile_pixels = ffs(tile_width / cpp) - 1; \
+	const unsigned tile_mask = (1 << tile_pixels) - 1; \
+	unsigned x, y; \
+	DBG(("%s(bpp=%d): src=(%d, %d), dst=(%d, %d), size=%dx%d, pitch=%d/%d\n", \
+	     __FUNCTION__, bpp, src_x, src_y, dst_x, dst_y, width, height, src_stride, dst_stride)); \
+	dst = (uint8_t *)dst + dst_y * dst_stride + dst_x * cpp; \
+	for (y = 0; y < height; ++y) { \
+		const uint32_t sy = y + src_y; \
+		const uint32_t tile_row = \
+			(sy / tile_height * stride_tiles * tile_size + \
+			 (sy & (tile_height-1)) * tile_width); \
+		uint8_t *dst_row = (uint8_t *)dst + dst_stride * y; \
+		uint32_t sx = src_x; \
+		x = width * cpp; \
+		if (sx & (swizzle_pixels - 1)) { \
+			const uint32_t swizzle_bound_pixels = ALIGN(sx + 1, swizzle_pixels); \
+			const uint32_t length = min(src_x + width, swizzle_bound_pixels) - sx; \
+			uint32_t offset = \
+				tile_row + \
+				(sx >> tile_pixels) * tile_size + \
+				(sx & tile_mask) * cpp; \
+			memcpy(dst_row, (const char *)src + swizzle(offset), length * cpp); \
+			dst_row += length * cpp; \
+			x -= length * cpp; \
+			sx += length; \
+		} \
+		while (x >= 64) { \
+			uint32_t offset = \
+				tile_row + \
+				(sx >> tile_pixels) * tile_size + \
+				(sx & tile_mask) * cpp; \
+			memcpy(dst_row, (const char *)src + swizzle(offset), 64); \
+			dst_row += 64; \
+			x -= 64; \
+			sx += swizzle_pixels; \
+		} \
+		if (x) { \
+			uint32_t offset = \
+				tile_row + \
+				(sx >> tile_pixels) * tile_size + \
+				(sx & tile_mask) * cpp; \
+			memcpy(dst_row, (const char *)src + swizzle(offset), x); \
+		} \
+	} \
 }
 
-fast_memcpy static void
-memcpy_to_tiled_x__swizzle_9_10(const void *src, void *dst, int bpp,
-				int32_t src_stride, int32_t dst_stride,
-				int16_t src_x, int16_t src_y,
-				int16_t dst_x, int16_t dst_y,
-				uint16_t width, uint16_t height)
-{
-	const unsigned tile_width = 512;
-	const unsigned tile_height = 8;
-	const unsigned tile_size = 4096;
+#define swizzle_9(X) ((X) ^ (((X) >> 3) & 64))
+memcpy_to_tiled_x(swizzle_9)
+memcpy_from_tiled_x(swizzle_9)
+#undef swizzle_9
 
-	const unsigned cpp = bpp / 8;
-	const unsigned stride_tiles = dst_stride / tile_width;
-	const unsigned swizzle_pixels = 64 / cpp;
-	const unsigned tile_pixels = ffs(tile_width / cpp) - 1;
-	const unsigned tile_mask = (1 << tile_pixels) - 1;
+#define swizzle_9_10(X) ((X) ^ ((((X) ^ ((X) >> 1)) >> 3) & 64))
+memcpy_to_tiled_x(swizzle_9_10)
+memcpy_from_tiled_x(swizzle_9_10)
+#undef swizzle_9_10
 
-	unsigned x, y;
-
-	DBG(("%s(bpp=%d): src=(%d, %d), dst=(%d, %d), size=%dx%d, pitch=%d/%d\n",
-	     __FUNCTION__, bpp, src_x, src_y, dst_x, dst_y, width, height, src_stride, dst_stride));
-
-	src = (const uint8_t *)src + src_y * src_stride + src_x * cpp;
-
-	for (y = 0; y < height; ++y) {
-		const uint32_t dy = y + dst_y;
-		const uint32_t tile_row =
-			(dy / tile_height * stride_tiles * tile_size +
-			 (dy & (tile_height-1)) * tile_width);
-		const uint8_t *src_row = (const uint8_t *)src + src_stride * y;
-		uint32_t dx = dst_x, offset;
-
-		x = width * cpp;
-		if (dx & (swizzle_pixels - 1)) {
-			const uint32_t swizzle_bound_pixels = ALIGN(dx + 1, swizzle_pixels);
-			const uint32_t length = min(dst_x + width, swizzle_bound_pixels) - dx;
-			offset = tile_row +
-				(dx >> tile_pixels) * tile_size +
-				(dx & tile_mask) * cpp;
-			offset ^= ((offset ^ (offset >> 1)) >> 3) & 64;
-
-			memcpy((char *)dst + offset, src_row, length * cpp);
-
-			src_row += length * cpp;
-			x -= length * cpp;
-			dx += length;
-		}
-		while (x >= 64) {
-			offset = tile_row +
-				(dx >> tile_pixels) * tile_size +
-				(dx & tile_mask) * cpp;
-			offset ^= ((offset ^ (offset >> 1)) >> 3) & 64;
-
-			memcpy((char *)dst + offset, src_row, 64);
-
-			src_row += 64;
-			x -= 64;
-			dx += swizzle_pixels;
-		}
-		if (x) {
-			offset = tile_row +
-				(dx >> tile_pixels) * tile_size +
-				(dx & tile_mask) * cpp;
-			offset ^= ((offset ^ (offset >> 1)) >> 3) & 64;
-			memcpy((char *)dst + offset, src_row, x);
-		}
-	}
-}
-
-fast_memcpy static void
-memcpy_from_tiled_x__swizzle_9_10(const void *src, void *dst, int bpp,
-				  int32_t src_stride, int32_t dst_stride,
-				  int16_t src_x, int16_t src_y,
-				  int16_t dst_x, int16_t dst_y,
-				  uint16_t width, uint16_t height)
-{
-	const unsigned tile_width = 512;
-	const unsigned tile_height = 8;
-	const unsigned tile_size = 4096;
-
-	const unsigned cpp = bpp / 8;
-	const unsigned stride_tiles = src_stride / tile_width;
-	const unsigned swizzle_pixels = 64 / cpp;
-	const unsigned tile_pixels = ffs(tile_width / cpp) - 1;
-	const unsigned tile_mask = (1 << tile_pixels) - 1;
-
-	unsigned x, y;
-
-	DBG(("%s(bpp=%d): src=(%d, %d), dst=(%d, %d), size=%dx%d, pitch=%d/%d\n",
-	     __FUNCTION__, bpp, src_x, src_y, dst_x, dst_y, width, height, src_stride, dst_stride));
-
-	dst = (uint8_t *)dst + dst_y * dst_stride + dst_x * cpp;
-
-	for (y = 0; y < height; ++y) {
-		const uint32_t sy = y + src_y;
-		const uint32_t tile_row =
-			(sy / tile_height * stride_tiles * tile_size +
-			 (sy & (tile_height-1)) * tile_width);
-		uint8_t *dst_row = (uint8_t *)dst + dst_stride * y;
-		uint32_t sx = src_x, offset;
-
-		x = width * cpp;
-		if (sx & (swizzle_pixels - 1)) {
-			const uint32_t swizzle_bound_pixels = ALIGN(sx + 1, swizzle_pixels);
-			const uint32_t length = min(src_x + width, swizzle_bound_pixels) - sx;
-			offset = tile_row +
-				(sx >> tile_pixels) * tile_size +
-				(sx & tile_mask) * cpp;
-			offset ^= ((offset ^ (offset >> 1)) >> 3) & 64;
-
-			memcpy(dst_row, (const char *)src + offset, length * cpp);
-
-			dst_row += length * cpp;
-			x -= length * cpp;
-			sx += length;
-		}
-		while (x >= 64) {
-			offset = tile_row +
-				(sx >> tile_pixels) * tile_size +
-				(sx & tile_mask) * cpp;
-			offset ^= ((offset ^ (offset >> 1)) >> 3) & 64;
-
-			memcpy(dst_row, (const char *)src + offset, 64);
-
-			dst_row += 64;
-			x -= 64;
-			sx += swizzle_pixels;
-		}
-		if (x) {
-			offset = tile_row +
-				(sx >> tile_pixels) * tile_size +
-				(sx & tile_mask) * cpp;
-			offset ^= ((offset ^ (offset >> 1)) >> 3) & 64;
-			memcpy(dst_row, (const char *)src + offset, x);
-		}
-	}
-}
-
-fast_memcpy static void
-memcpy_to_tiled_x__swizzle_9_11(const void *src, void *dst, int bpp,
-				int32_t src_stride, int32_t dst_stride,
-				int16_t src_x, int16_t src_y,
-				int16_t dst_x, int16_t dst_y,
-				uint16_t width, uint16_t height)
-{
-	const unsigned tile_width = 512;
-	const unsigned tile_height = 8;
-	const unsigned tile_size = 4096;
-
-	const unsigned cpp = bpp / 8;
-	const unsigned stride_tiles = dst_stride / tile_width;
-	const unsigned swizzle_pixels = 64 / cpp;
-	const unsigned tile_pixels = ffs(tile_width / cpp) - 1;
-	const unsigned tile_mask = (1 << tile_pixels) - 1;
-
-	unsigned x, y;
-
-	DBG(("%s(bpp=%d): src=(%d, %d), dst=(%d, %d), size=%dx%d, pitch=%d/%d\n",
-	     __FUNCTION__, bpp, src_x, src_y, dst_x, dst_y, width, height, src_stride, dst_stride));
-
-	src = (const uint8_t *)src + src_y * src_stride + src_x * cpp;
-
-	for (y = 0; y < height; ++y) {
-		const uint32_t dy = y + dst_y;
-		const uint32_t tile_row =
-			(dy / tile_height * stride_tiles * tile_size +
-			 (dy & (tile_height-1)) * tile_width);
-		const uint8_t *src_row = (const uint8_t *)src + src_stride * y;
-		uint32_t dx = dst_x, offset;
-
-		x = width * cpp;
-		if (dx & (swizzle_pixels - 1)) {
-			const uint32_t swizzle_bound_pixels = ALIGN(dx + 1, swizzle_pixels);
-			const uint32_t length = min(dst_x + width, swizzle_bound_pixels) - dx;
-			offset = tile_row +
-				(dx >> tile_pixels) * tile_size +
-				(dx & tile_mask) * cpp;
-			offset ^= ((offset ^ (offset >> 2)) >> 3) & 64;
-			memcpy((char *)dst + offset, src_row, length * cpp);
-
-			src_row += length * cpp;
-			x -= length * cpp;
-			dx += length;
-		}
-		while (x >= 64) {
-			offset = tile_row +
-				(dx >> tile_pixels) * tile_size +
-				(dx & tile_mask) * cpp;
-			offset ^= ((offset ^ (offset >> 2)) >> 3) & 64;
-
-			memcpy((char *)dst + offset, src_row, 64);
-
-			src_row += 64;
-			x -= 64;
-			dx += swizzle_pixels;
-		}
-		if (x) {
-			offset = tile_row +
-				(dx >> tile_pixels) * tile_size +
-				(dx & tile_mask) * cpp;
-			offset ^= ((offset ^ (offset >> 2)) >> 3) & 64;
-			memcpy((char *)dst + offset, src_row, x);
-		}
-	}
-}
-
-fast_memcpy static void
-memcpy_from_tiled_x__swizzle_9_11(const void *src, void *dst, int bpp,
-				  int32_t src_stride, int32_t dst_stride,
-				  int16_t src_x, int16_t src_y,
-				  int16_t dst_x, int16_t dst_y,
-				  uint16_t width, uint16_t height)
-{
-	const unsigned tile_width = 512;
-	const unsigned tile_height = 8;
-	const unsigned tile_size = 4096;
-
-	const unsigned cpp = bpp / 8;
-	const unsigned stride_tiles = src_stride / tile_width;
-	const unsigned swizzle_pixels = 64 / cpp;
-	const unsigned tile_pixels = ffs(tile_width / cpp) - 1;
-	const unsigned tile_mask = (1 << tile_pixels) - 1;
-
-	unsigned x, y;
-
-	DBG(("%s(bpp=%d): src=(%d, %d), dst=(%d, %d), size=%dx%d, pitch=%d/%d\n",
-	     __FUNCTION__, bpp, src_x, src_y, dst_x, dst_y, width, height, src_stride, dst_stride));
-
-	dst = (uint8_t *)dst + dst_y * dst_stride + dst_x * cpp;
-
-	for (y = 0; y < height; ++y) {
-		const uint32_t sy = y + src_y;
-		const uint32_t tile_row =
-			(sy / tile_height * stride_tiles * tile_size +
-			 (sy & (tile_height-1)) * tile_width);
-		uint8_t *dst_row = (uint8_t *)dst + dst_stride * y;
-		uint32_t sx = src_x, offset;
-
-		x = width * cpp;
-		if (sx & (swizzle_pixels - 1)) {
-			const uint32_t swizzle_bound_pixels = ALIGN(sx + 1, swizzle_pixels);
-			const uint32_t length = min(src_x + width, swizzle_bound_pixels) - sx;
-			offset = tile_row +
-				(sx >> tile_pixels) * tile_size +
-				(sx & tile_mask) * cpp;
-			offset ^= ((offset ^ (offset >> 2)) >> 3) & 64;
-			memcpy(dst_row, (const char *)src + offset, length * cpp);
-
-			dst_row += length * cpp;
-			x -= length * cpp;
-			sx += length;
-		}
-		while (x >= 64) {
-			offset = tile_row +
-				(sx >> tile_pixels) * tile_size +
-				(sx & tile_mask) * cpp;
-			offset ^= ((offset ^ (offset >> 2)) >> 3) & 64;
-
-			memcpy(dst_row, (const char *)src + offset, 64);
-
-			dst_row += 64;
-			x -= 64;
-			sx += swizzle_pixels;
-		}
-		if (x) {
-			offset = tile_row +
-				(sx >> tile_pixels) * tile_size +
-				(sx & tile_mask) * cpp;
-			offset ^= ((offset ^ (offset >> 2)) >> 3) & 64;
-			memcpy(dst_row, (const char *)src + offset, x);
-		}
-	}
-}
+#define swizzle_9_11(X) ((X) ^ ((((X) ^ ((X) >> 2)) >> 3) & 64))
+memcpy_to_tiled_x(swizzle_9_11)
+memcpy_from_tiled_x(swizzle_9_11)
+#undef swizzle_9_11
 
 #define swizzle_9_10_11(X) ((X) ^ ((((X) ^ ((X) >> 1) ^ ((X) >> 2)) >> 3) & 64))
-
-fast_memcpy static void
-memcpy_to_tiled_x__swizzle_9_10_11(const void *src, void *dst, int bpp,
-				   int32_t src_stride, int32_t dst_stride,
-				   int16_t src_x, int16_t src_y,
-				   int16_t dst_x, int16_t dst_y,
-				   uint16_t width, uint16_t height)
-{
-	const unsigned tile_width = 512;
-	const unsigned tile_height = 8;
-	const unsigned tile_size = 4096;
-
-	const unsigned cpp = bpp / 8;
-	const unsigned stride_tiles = dst_stride / tile_width;
-	const unsigned swizzle_pixels = 64 / cpp;
-	const unsigned tile_pixels = ffs(tile_width / cpp) - 1;
-	const unsigned tile_mask = (1 << tile_pixels) - 1;
-
-	unsigned x, y;
-
-	DBG(("%s(bpp=%d): src=(%d, %d), dst=(%d, %d), size=%dx%d, pitch=%d/%d\n",
-	     __FUNCTION__, bpp, src_x, src_y, dst_x, dst_y, width, height, src_stride, dst_stride));
-
-	src = (const uint8_t *)src + src_y * src_stride + src_x * cpp;
-
-	for (y = 0; y < height; ++y) {
-		const uint32_t dy = y + dst_y;
-		const uint32_t tile_row =
-			(dy / tile_height * stride_tiles * tile_size +
-			 (dy & (tile_height-1)) * tile_width);
-		const uint8_t *src_row = (const uint8_t *)src + src_stride * y;
-		uint32_t dx = dst_x;
-
-		x = width * cpp;
-		if (dx & (swizzle_pixels - 1)) {
-			const uint32_t swizzle_bound_pixels = ALIGN(dx + 1, swizzle_pixels);
-			const uint32_t length = min(dst_x + width, swizzle_bound_pixels) - dx;
-			uint32_t offset =
-				tile_row +
-				(dx >> tile_pixels) * tile_size +
-				(dx & tile_mask) * cpp;
-			memcpy((char *)dst + swizzle_9_10_11(offset), src_row, length * cpp);
-
-			src_row += length * cpp;
-			x -= length * cpp;
-			dx += length;
-		}
-		while (x >= 64) {
-			uint32_t offset =
-				tile_row +
-				(dx >> tile_pixels) * tile_size +
-				(dx & tile_mask) * cpp;
-			memcpy((char *)dst + swizzle_9_10_11(offset), src_row, 64);
-
-			src_row += 64;
-			x -= 64;
-			dx += swizzle_pixels;
-		}
-		if (x) {
-			uint32_t offset =
-				tile_row +
-				(dx >> tile_pixels) * tile_size +
-				(dx & tile_mask) * cpp;
-			memcpy((char *)dst + swizzle_9_10_11(offset), src_row, x);
-		}
-	}
-}
-
-fast_memcpy static void
-memcpy_from_tiled_x__swizzle_9_10_11(const void *src, void *dst, int bpp,
-				     int32_t src_stride, int32_t dst_stride,
-				     int16_t src_x, int16_t src_y,
-				     int16_t dst_x, int16_t dst_y,
-				     uint16_t width, uint16_t height)
-{
-	const unsigned tile_width = 512;
-	const unsigned tile_height = 8;
-	const unsigned tile_size = 4096;
-
-	const unsigned cpp = bpp / 8;
-	const unsigned stride_tiles = src_stride / tile_width;
-	const unsigned swizzle_pixels = 64 / cpp;
-	const unsigned tile_pixels = ffs(tile_width / cpp) - 1;
-	const unsigned tile_mask = (1 << tile_pixels) - 1;
-
-	unsigned x, y;
-
-	DBG(("%s(bpp=%d): src=(%d, %d), dst=(%d, %d), size=%dx%d, pitch=%d/%d\n",
-	     __FUNCTION__, bpp, src_x, src_y, dst_x, dst_y, width, height, src_stride, dst_stride));
-
-	dst = (uint8_t *)dst + dst_y * dst_stride + dst_x * cpp;
-
-	for (y = 0; y < height; ++y) {
-		const uint32_t sy = y + src_y;
-		const uint32_t tile_row =
-			(sy / tile_height * stride_tiles * tile_size +
-			 (sy & (tile_height-1)) * tile_width);
-		uint8_t *dst_row = (uint8_t *)dst + dst_stride * y;
-		uint32_t sx = src_x;
-
-		x = width * cpp;
-		if (sx & (swizzle_pixels - 1)) {
-			const uint32_t swizzle_bound_pixels = ALIGN(sx + 1, swizzle_pixels);
-			const uint32_t length = min(src_x + width, swizzle_bound_pixels) - sx;
-			uint32_t offset =
-				tile_row +
-				(sx >> tile_pixels) * tile_size +
-				(sx & tile_mask) * cpp;
-			memcpy(dst_row, (const char *)src + swizzle_9_10_11(offset), length * cpp);
-
-			dst_row += length * cpp;
-			x -= length * cpp;
-			sx += length;
-		}
-		while (x >= 64) {
-			uint32_t offset =
-				tile_row +
-				(sx >> tile_pixels) * tile_size +
-				(sx & tile_mask) * cpp;
-			memcpy(dst_row, (const char *)src + swizzle_9_10_11(offset), 64);
-
-			dst_row += 64;
-			x -= 64;
-			sx += swizzle_pixels;
-		}
-		if (x) {
-			uint32_t offset =
-				tile_row +
-				(sx >> tile_pixels) * tile_size +
-				(sx & tile_mask) * cpp;
-			memcpy(dst_row, (const char *)src + swizzle_9_10_11(offset), x);
-		}
-	}
-}
+memcpy_to_tiled_x(swizzle_9_10_11)
+memcpy_from_tiled_x(swizzle_9_10_11)
+#undef swizzle_9_10_11
 
 static fast_memcpy void
 memcpy_to_tiled_x__gen2(const void *src, void *dst, int bpp,
