@@ -7207,6 +7207,9 @@ sna_copy_area(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	if (gc->planemask == 0)
 		return NULL;
 
+	if (sna->ignore_copy_area)
+		return NULL;
+
 	DBG(("%s: src=(%d, %d)x(%d, %d)+(%d, %d) -> dst=(%d, %d)+(%d, %d); alu=%d, pm=%lx, depth=%d\n",
 	     __FUNCTION__,
 	     src_x, src_y, width, height, src->x, src->y,

@@ -265,6 +265,8 @@ struct sna {
 #define AVX 0x80
 #define AVX2 0x100
 
+	bool ignore_copy_area : 1;
+
 	unsigned watch_flush;
 
 	struct timeval timer_tv;

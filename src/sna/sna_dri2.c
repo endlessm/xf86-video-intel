@@ -807,8 +807,8 @@ static void set_bo(PixmapPtr pixmap, struct kgem_bo *bo)
 	struct sna *sna = to_sna_from_pixmap(pixmap);
 	struct sna_pixmap *priv = sna_pixmap(pixmap);
 
-	DBG(("%s: pixmap=%ld, handle=%d\n",
-	     __FUNCTION__, pixmap->drawable.serialNumber, bo->handle));
+	DBG(("%s: pixmap=%ld, handle=%d (old handle=%d)\n",
+	     __FUNCTION__, pixmap->drawable.serialNumber, bo->handle, priv->gpu_bo->handle));
 
 	assert(pixmap->drawable.width * pixmap->drawable.bitsPerPixel <= 8*bo->pitch);
 	assert(pixmap->drawable.height * bo->pitch <= kgem_bo_size(bo));
@@ -818,8 +818,6 @@ static void set_bo(PixmapPtr pixmap, struct kgem_bo *bo)
 	assert(priv->flush);
 
 	if (APPLY_DAMAGE) {
-		ScreenPtr screen = pixmap->drawable.pScreen;
-		SourceValidateProcPtr SourceValidate;
 		RegionRec region;
 
 		/* Post damage on the new front buffer so that listeners, such
@@ -832,17 +830,12 @@ static void set_bo(PixmapPtr pixmap, struct kgem_bo *bo)
 		region.data = NULL;
 
 		/*
-		 * SourceValidate is used by the software cursor code
-		 * to copy the original contents back before the drawing
-		 * operation causing us to instantiate the shadow buffer
-		 * just as we are in the process of swapping it away.
+		 * Eeek, beware the sw cursor copying to the old bo
+		 * causing recursion and mayhem.
 		 */
-		SourceValidate = screen->SourceValidate;
-		screen->SourceValidate = NULL;
-
+		DBG(("%s: marking whole pixmap as damaged\n", __FUNCTION__));
+		sna->ignore_copy_area = true;
 		DamageRegionAppend(&pixmap->drawable, &region);
-
-		screen->SourceValidate = SourceValidate;
 	}
 
 	damage(pixmap, priv, NULL);
@@ -871,8 +864,10 @@ static void set_bo(PixmapPtr pixmap, struct kgem_bo *bo)
 		bo->domain = DOMAIN_NONE;
 	assert(bo->flush);
 
-	if (APPLY_DAMAGE)
+	if (APPLY_DAMAGE) {
 		DamageRegionProcessPending(&pixmap->drawable);
+		sna->ignore_copy_area = false;
+	}
 }
 
 static void sna_dri2_select_mode(struct sna *sna, struct kgem_bo *dst, struct kgem_bo *src, bool sync)
@@ -1163,8 +1158,11 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		boxes = &clip.extents;
 		n = 1;
 	}
-	if (APPLY_DAMAGE || flags & DRI2_DAMAGE)
+	if (APPLY_DAMAGE || flags & DRI2_DAMAGE) {
+		DBG(("%s: marking region as damaged\n", __FUNCTION__));
+		sna->ignore_copy_area = true;
 		DamageRegionAppend(&pixmap->drawable, region);
+	}
 
 	DBG(("%s: copying [(%d, %d), (%d, %d)]x%d src=(%d, %d), dst=(%d, %d)\n",
 	     __FUNCTION__,
@@ -1194,8 +1192,10 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		}
 	}
 
-	if (APPLY_DAMAGE || flags & DRI2_DAMAGE)
+	if (APPLY_DAMAGE || flags & DRI2_DAMAGE) {
 		DamageRegionProcessPending(&pixmap->drawable);
+		sna->ignore_copy_area = false;
+	}
 
 	if (clip.data)
 		pixman_region_fini(&clip);
@@ -2045,11 +2045,16 @@ static void sna_dri2_xchg_crtc(struct sna *sna, DrawablePtr draw, xf86CrtcPtr cr
 	     get_window_pixmap(win)->drawable.width,
 	     get_window_pixmap(win)->drawable.height));
 
-	if (APPLY_DAMAGE)
+	if (APPLY_DAMAGE) {
+		DBG(("%s: marking drawable as damaged\n", __FUNCTION__));
+		sna->ignore_copy_area = true;
 		DamageRegionAppend(&win->drawable, &win->clipList);
+	}
 	sna_shadow_set_crtc(sna, crtc, get_private(back)->bo);
-	if (APPLY_DAMAGE)
+	if (APPLY_DAMAGE) {
 		DamageRegionProcessPending(&win->drawable);
+		sna->ignore_copy_area = false;
+	}
 
 	assert(dri2_window(win)->front == NULL);
 
