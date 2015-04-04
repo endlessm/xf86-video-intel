@@ -833,8 +833,10 @@ static void set_bo(PixmapPtr pixmap, struct kgem_bo *bo)
 	damage(pixmap, priv, NULL);
 
 	assert(bo->refcnt);
-	if (priv->move_to_gpu)
+	if (priv->move_to_gpu) {
+		DBG(("%s: applying final/discard move-to-gpu\n", __FUNCTION__));
 		priv->move_to_gpu(sna, priv, 0);
+	}
 	if (priv->gpu_bo != bo) {
 		DBG(("%s: dropping flush hint from handle=%d\n", __FUNCTION__, priv->gpu_bo->handle));
 		priv->gpu_bo->flush = false;

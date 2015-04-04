@@ -2309,6 +2309,8 @@ static void sna_crtc_randr(xf86CrtcPtr crtc)
 		sna_crtc->hwcursor = true;
 		sna_crtc->cursor_transform = false;
 	}
+	DBG(("%s: hwcursor?=%d, cursor_transform?=%d\n",
+	     __FUNCTION__, sna_crtc->hwcursor, sna_crtc->cursor_transform));
 
 	crtc->crtc_to_framebuffer = crtc_to_fb;
 	crtc->f_crtc_to_framebuffer = f_crtc_to_fb;
@@ -5430,27 +5432,37 @@ transformable_cursor(struct sna *sna, CursorPtr cursor)
 
 	for (i = 0; i < sna->mode.num_real_crtc; i++) {
 		xf86CrtcPtr crtc = config->crtc[i];
-		const struct pixman_f_transform *t;
 		struct pixman_box16 box;
 		int size;
 
-		if (!to_sna_crtc(crtc)->hwcursor)
+		if (!to_sna_crtc(crtc)->hwcursor) {
+			DBG(("%s: hwcursor disabled on CRTC:%d [pipe=%d]\n",
+			     __FUNCTION__, to_sna_crtc(crtc)->id, to_sna_crtc(crtc)->pipe));
 			return false;
+		}
 
-		t = &crtc->f_crtc_to_framebuffer;
-		if (!sna->cursor.use_gtt || !sna->cursor.scratch)
+		if (!sna->cursor.use_gtt || !sna->cursor.scratch) {
+			DBG(("%s: unable to use GTT curosor access [%d] or no scratch [%d]\n",
+			     __FUNCTION__, sna->cursor.use_gtt, sna->cursor.scratch));
 			return false;
+		}
 
 		box.x1 = box.y1 = 0;
 		box.x2 = cursor->bits->width;
 		box.y2 = cursor->bits->height;
 
-		if (!pixman_f_transform_bounds(t, &box))
+		if (!pixman_f_transform_bounds(&crtc->f_crtc_to_framebuffer,
+					       &box)) {
+			DBG(("%s: unable to transform bounds\n", __FUNCTION__));
 			return false;
+		}
 
 		size = __cursor_size(box.x2 - box.x1, box.y2 - box.y1);
-		if (size > sna->cursor.max_size)
+		if (size > sna->cursor.max_size) {
+			DBG(("%s: transformed cursor size=%d too large, max=%d\n",
+			     __FUNCTION__, size, sna->cursor.max_size));
 			return false;
+		}
 	}
 
 	return true;
@@ -5475,14 +5487,22 @@ sna_use_hw_cursor(ScreenPtr screen, CursorPtr cursor)
 
 	sna->cursor.size =
 		__cursor_size(cursor->bits->width, cursor->bits->height);
-	if (sna->cursor.size > sna->cursor.max_size)
+	if (sna->cursor.size > sna->cursor.max_size) {
+		DBG(("%s: cursor size=%d too large, max %d: using sw cursor\n",
+		     __FUNCTION__, sna->cursor.size, sna->cursor.max_size));
 		return FALSE;
+	}
 
-	if (sna->mode.rr_active && !transformable_cursor(sna, cursor))
+	if (sna->mode.rr_active && !transformable_cursor(sna, cursor)) {
+		DBG(("%s: RandR active [%d] and non-transformable cursor: using sw cursor\n",
+		     __FUNCTION__, sna->mode.rr_active));
 		return FALSE;
+	}
 
-	if (!sna_cursor_preallocate(sna))
+	if (!sna_cursor_preallocate(sna)) {
+		DBG(("%s: cursor preallocation failed: using sw cursor\n", __FUNCTION__));
 		return FALSE;
+	}
 
 	sna->cursor.ref = cursor;
 	cursor->refcnt++;
