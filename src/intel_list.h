@@ -306,8 +306,7 @@ list_is_empty(const struct list *head)
     list_entry((ptr)->prev, type, member)
 
 #define __container_of(ptr, sample, member)				\
-    (void *)((char *)(ptr)						\
-	     - ((char *)&(sample)->member - (char *)(sample)))
+    (void *)((char *)(ptr) - ((char *)&(sample)->member - (char *)(sample)))
 /**
  * Loop through the list given by head and set pos to struct in the list.
  *
