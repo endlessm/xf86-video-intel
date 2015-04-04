@@ -818,7 +818,10 @@ static void set_bo(PixmapPtr pixmap, struct kgem_bo *bo)
 	assert(priv->flush);
 
 	if (APPLY_DAMAGE) {
+		ScreenPtr screen = pixmap->drawable.pScreen;
+		SourceValidateProcPtr SourceValidate;
 		RegionRec region;
+
 		/* Post damage on the new front buffer so that listeners, such
 		 * as DisplayLink know take a copy and shove it over the USB,
 		 * also for software cursors and the like.
@@ -827,7 +830,19 @@ static void set_bo(PixmapPtr pixmap, struct kgem_bo *bo)
 		region.extents.x2 = pixmap->drawable.width;
 		region.extents.y2 = pixmap->drawable.height;
 		region.data = NULL;
+
+		/*
+		 * SourceValidate is used by the software cursor code
+		 * to copy the original contents back before the drawing
+		 * operation causing us to instantiate the shadow buffer
+		 * just as we are in the process of swapping it away.
+		 */
+		SourceValidate = screen->SourceValidate;
+		screen->SourceValidate = NULL;
+
 		DamageRegionAppend(&pixmap->drawable, &region);
+
+		screen->SourceValidate = SourceValidate;
 	}
 
 	damage(pixmap, priv, NULL);
