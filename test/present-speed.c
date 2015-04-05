@@ -32,6 +32,8 @@
 #include <X11/xshmfence.h>
 #include <X11/Xutil.h>
 #include <X11/Xlibint.h>
+#include <X11/extensions/Xcomposite.h>
+#include <X11/extensions/Xdamage.h>
 #include <X11/extensions/dpms.h>
 #include <X11/extensions/randr.h>
 #include <X11/extensions/Xrandr.h>
@@ -350,6 +352,22 @@ static int has_present(Display *dpy)
 	return 1;
 }
 
+static int has_composite(Display *dpy)
+{
+	int event, error;
+	int major, minor;
+
+	if (!XDamageQueryExtension (dpy, &event, &error))
+		return 0;
+
+	if (!XCompositeQueryExtension(dpy, &event, &error))
+		return 0;
+
+	XCompositeQueryVersion(dpy, &major, &minor);
+
+	return major > 0 || minor >= 4;
+}
+
 static int dri3_query_version(Display *dpy, int *major, int *minor)
 {
 	xcb_connection_t *c = XGetXCBConnection(dpy);
@@ -451,6 +469,7 @@ static void loop(Display *dpy, XRRScreenResources *res, unsigned options)
 	attr.override_redirect = 1;
 
 	run(dpy, root, "off", options);
+	XSync(dpy, True);
 
 	for (i = 0; i < res->noutput; i++) {
 		XRROutputInfo *output;
@@ -476,6 +495,7 @@ static void loop(Display *dpy, XRRScreenResources *res, unsigned options)
 					 0, 0, output->modes[0], RR_Rotate_0, &res->outputs[i], 1);
 
 			run(dpy, root, "root", options);
+			XSync(dpy, True);
 
 			win = XCreateWindow(dpy, root,
 					    0, 0, mode->width, mode->height, 0,
@@ -487,6 +507,7 @@ static void loop(Display *dpy, XRRScreenResources *res, unsigned options)
 			XMapWindow(dpy, win);
 			run(dpy, win, "fullscreen", options);
 			XDestroyWindow(dpy, win);
+			XSync(dpy, True);
 
 			win = XCreateWindow(dpy, root,
 					    0, 0, mode->width, mode->height, 0,
@@ -497,6 +518,28 @@ static void loop(Display *dpy, XRRScreenResources *res, unsigned options)
 			XMapWindow(dpy, win);
 			run(dpy, win, "windowed", options);
 			XDestroyWindow(dpy, win);
+			XSync(dpy, True);
+
+			if (has_composite(dpy)) {
+				Damage damage;
+
+				_x_error_occurred = 0;
+				win = XCreateWindow(dpy, root,
+						    0, 0, mode->width, mode->height, 0,
+						    DefaultDepth(dpy, DefaultScreen(dpy)),
+						    InputOutput,
+						    DefaultVisual(dpy, DefaultScreen(dpy)),
+						    CWOverrideRedirect, &attr);
+				XCompositeRedirectWindow(dpy, win, CompositeRedirectManual);
+				damage = XDamageCreate(dpy, win, XDamageReportRawRectangles);
+				XMapWindow(dpy, win);
+				XSync(dpy, True);
+				if (!_x_error_occurred)
+					run(dpy, win, "composited", options);
+				XDamageDestroy(dpy, damage);
+				XDestroyWindow(dpy, win);
+				XSync(dpy, True);
+			}
 
 			win = XCreateWindow(dpy, root,
 					    0, 0, mode->width/2, mode->height/2, 0,
@@ -507,6 +550,7 @@ static void loop(Display *dpy, XRRScreenResources *res, unsigned options)
 			XMapWindow(dpy, win);
 			run(dpy, win, "half", options);
 			XDestroyWindow(dpy, win);
+			XSync(dpy, True);
 
 			XRRSetCrtcConfig(dpy, res, output->crtcs[c], CurrentTime,
 					 0, 0, None, RR_Rotate_0, NULL, 0);

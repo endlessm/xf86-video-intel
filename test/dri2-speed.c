@@ -33,6 +33,8 @@
 #include <X11/Xlibint.h>
 #include <X11/extensions/dpms.h>
 #include <X11/extensions/randr.h>
+#include <X11/extensions/Xcomposite.h>
+#include <X11/extensions/Xdamage.h>
 #include <X11/extensions/Xrandr.h>
 #include <xcb/xcb.h>
 #include <xcb/dri2.h>
@@ -166,6 +168,22 @@ static void fullscreen(Display *dpy, Window win)
 			(unsigned char *)&atom, 1);
 }
 
+static int has_composite(Display *dpy)
+{
+	int event, error;
+	int major, minor;
+
+	if (!XDamageQueryExtension (dpy, &event, &error))
+		return 0;
+
+	if (!XCompositeQueryExtension(dpy, &event, &error))
+		return 0;
+
+	XCompositeQueryVersion(dpy, &major, &minor);
+
+	return major > 0 || minor >= 4;
+}
+
 int main(void)
 {
 	Display *dpy;
@@ -211,6 +229,7 @@ int main(void)
 	DRI2CreateDrawable(dpy, root);
 	DRI2SwapInterval(dpy, root, 0);
 	run(dpy, root, "off");
+	XSync(dpy, True);
 
 	for (i = 0; i < res->noutput; i++) {
 		XRROutputInfo *output;
@@ -236,6 +255,7 @@ int main(void)
 					 0, 0, output->modes[0], RR_Rotate_0, &res->outputs[i], 1);
 
 			run(dpy, root, "root");
+			XSync(dpy, True);
 
 			win = XCreateWindow(dpy, root,
 					    0, 0, mode->width, mode->height, 0,
@@ -249,6 +269,7 @@ int main(void)
 			XMapWindow(dpy, win);
 			run(dpy, win, "fullscreen");
 			XDestroyWindow(dpy, win);
+			XSync(dpy, True);
 
 			win = XCreateWindow(dpy, root,
 					    0, 0, mode->width, mode->height, 0,
@@ -261,6 +282,30 @@ int main(void)
 			XMapWindow(dpy, win);
 			run(dpy, win, "windowed");
 			XDestroyWindow(dpy, win);
+			XSync(dpy, True);
+
+			if (has_composite(dpy)) {
+				Damage damage;
+
+				_x_error_occurred = 0;
+				win = XCreateWindow(dpy, root,
+						    0, 0, mode->width, mode->height, 0,
+						    DefaultDepth(dpy, DefaultScreen(dpy)),
+						    InputOutput,
+						    DefaultVisual(dpy, DefaultScreen(dpy)),
+						    CWOverrideRedirect, &attr);
+				XCompositeRedirectWindow(dpy, win, CompositeRedirectManual);
+				damage = XDamageCreate(dpy, win, XDamageReportRawRectangles);
+				DRI2CreateDrawable(dpy, win);
+				DRI2SwapInterval(dpy, win, 0);
+				XMapWindow(dpy, win);
+				XSync(dpy, True);
+				if (!_x_error_occurred)
+					run(dpy, win, "composited");
+				XDamageDestroy(dpy, damage);
+				XDestroyWindow(dpy, win);
+				XSync(dpy, True);
+			}
 
 			win = XCreateWindow(dpy, root,
 					    0, 0, mode->width/2, mode->height/2, 0,
@@ -273,6 +318,7 @@ int main(void)
 			XMapWindow(dpy, win);
 			run(dpy, win, "half");
 			XDestroyWindow(dpy, win);
+			XSync(dpy, True);
 
 			XRRSetCrtcConfig(dpy, res, output->crtcs[c], CurrentTime,
 					 0, 0, None, RR_Rotate_0, NULL, 0);

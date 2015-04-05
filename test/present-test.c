@@ -33,6 +33,7 @@
 #include <X11/Xlibint.h>
 #include <X11/extensions/dpms.h>
 #include <X11/extensions/randr.h>
+#include <X11/extensions/Xcomposite.h>
 #include <X11/extensions/Xrandr.h>
 #include <X11/extensions/Xrender.h>
 #include <X11/extensions/XShm.h>
@@ -1774,6 +1775,19 @@ static int has_present(Display *dpy)
 	return 1;
 }
 
+static int has_composite(Display *dpy)
+{
+	int event, error;
+	int major, minor;
+
+	if (!XCompositeQueryExtension(dpy, &event, &error))
+		return 0;
+
+	XCompositeQueryVersion(dpy, &major, &minor);
+
+	return major > 0 || minor >= 4;
+}
+
 int main(void)
 {
 	Display *dpy;
@@ -1813,7 +1827,7 @@ int main(void)
 	error += test_exhaustion_msc(dpy, queue);
 	last_msc = check_msc(dpy, root, queue, last_msc, NULL);
 
-	for (dummy = 0; dummy < 3; dummy++) {
+	for (dummy = 0; dummy <= 3; dummy++) {
 		Window win;
 		uint64_t msc = 0;
 		XSetWindowAttributes attr;
@@ -1829,6 +1843,7 @@ int main(void)
 		XGetGeometry(dpy, root, &win, &x, &y,
 			     &width, &height, &border, &depth);
 
+		_x_error_occurred = 0;
 		switch (dummy) {
 		case 0:
 			win = root;
@@ -1848,6 +1863,20 @@ int main(void)
 					    CWOverrideRedirect, &attr);
 			phase = "window";
 			break;
+		case 3:
+			if (!has_composite(dpy))
+				continue;
+
+			win = XCreateWindow(dpy, root,
+					    0, 0, width, height, 0,
+					    DefaultDepth(dpy, DefaultScreen(dpy)),
+					    InputOutput,
+					    DefaultVisual(dpy, DefaultScreen(dpy)),
+					    CWOverrideRedirect, &attr);
+			XCompositeRedirectWindow(dpy, win, CompositeRedirectManual);
+			phase = "composite";
+			break;
+
 		default:
 			phase = "broken";
 			win = root;
@@ -1856,6 +1885,9 @@ int main(void)
 		}
 
 		XMapWindow(dpy, win);
+		XSync(dpy, True);
+		if (_x_error_occurred)
+			continue;
 
 		Q = setup_msc(dpy, win);
 		msc = check_msc(dpy, win, Q, msc, NULL);
