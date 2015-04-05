@@ -222,7 +222,7 @@ static void teardown_msc(Display *dpy, void *q)
 	xcb_unregister_for_special_event(XGetXCBConnection(dpy), q);
 }
 
-static int test_whole(Display *dpy)
+static int test_whole(Display *dpy, Window win, const char *phase)
 {
 	xcb_connection_t *c = XGetXCBConnection(dpy);
 	Pixmap pixmap;
@@ -232,19 +232,19 @@ static int test_whole(Display *dpy)
 	unsigned border, depth;
 	int x, y, ret = 1;
 
-	XGetGeometry(dpy, DefaultRootWindow(dpy),
+	XGetGeometry(dpy, win,
 		     &root, &x, &y, &width, &height, &border, &depth);
 
-	if (dri3_create_fence(dpy, root, &fence))
+	if (dri3_create_fence(dpy, win, &fence))
 		return 0;
 
-	printf("Testing whole screen flip: %dx%d\n", width, height);
+	printf("%s: Testing simple flip: %dx%d\n", phase, width, height);
 	_x_error_occurred = 0;
 
 	xshmfence_reset(fence.addr);
 
-	pixmap = XCreatePixmap(dpy, root, width, height, depth);
-	xcb_present_pixmap(c, root, pixmap, 0,
+	pixmap = XCreatePixmap(dpy, win, width, height, depth);
+	xcb_present_pixmap(c, win, pixmap, 0,
 			   0, /* valid */
 			   0, /* update */
 			   0, /* x_off */
@@ -259,8 +259,8 @@ static int test_whole(Display *dpy)
 			   0, NULL);
 	XFreePixmap(dpy, pixmap);
 
-	pixmap = XCreatePixmap(dpy, root, width, height, depth);
-	xcb_present_pixmap(c, root, pixmap, 0,
+	pixmap = XCreatePixmap(dpy, win, width, height, depth);
+	xcb_present_pixmap(c, win, pixmap, 0,
 			   0, /* valid */
 			   0, /* update */
 			   0, /* x_off */
@@ -326,7 +326,7 @@ static uint64_t flush_flips(Display *dpy, Window win, Pixmap pixmap, void *Q, ui
 	return check_msc(dpy, win, Q, msc, ust);
 }
 
-static int test_double(Display *dpy, void *Q)
+static int test_double(Display *dpy, Window win, const char *phase, void *Q)
 {
 #define COUNT (15*60)
 	xcb_connection_t *c = XGetXCBConnection(dpy);
@@ -340,18 +340,18 @@ static int test_double(Display *dpy, void *Q)
 	} frame[COUNT+1];
 	int offset = 0;
 
-	XGetGeometry(dpy, DefaultRootWindow(dpy),
+	XGetGeometry(dpy, win,
 		     &root, &x, &y, &width, &height, &border, &depth);
 
-	printf("Testing whole screen flip double buffering: %dx%d\n", width, height);
+	printf("%s: Testing flip double buffering: %dx%d\n", phase, width, height);
 	_x_error_occurred = 0;
 
-	pixmap = XCreatePixmap(dpy, root, width, height, depth);
-	flush_flips(dpy, root, pixmap, Q, NULL);
+	pixmap = XCreatePixmap(dpy, win, width, height, depth);
+	flush_flips(dpy, win, pixmap, Q, NULL);
 	for (n = 0; n <= COUNT; n++) {
 		int complete;
 
-		xcb_present_pixmap(c, root, pixmap, n,
+		xcb_present_pixmap(c, win, pixmap, n,
 				   0, /* valid */
 				   0, /* update */
 				   0, /* x_off */
@@ -407,7 +407,7 @@ static int test_double(Display *dpy, void *Q)
 	return ret;
 }
 
-static int test_future(Display *dpy, void *Q)
+static int test_future(Display *dpy, Window win, const char *phase, void *Q)
 {
 	xcb_connection_t *c = XGetXCBConnection(dpy);
 	Pixmap pixmap;
@@ -422,21 +422,21 @@ static int test_future(Display *dpy, void *Q)
 	int earliest = 0, latest = 0;
 	uint64_t interval;
 
-	XGetGeometry(dpy, DefaultRootWindow(dpy),
+	XGetGeometry(dpy, win,
 		     &root, &x, &y, &width, &height, &border, &depth);
 
-	if (dri3_create_fence(dpy, root, &fence))
+	if (dri3_create_fence(dpy, win, &fence))
 		return 0;
 
-	printf("Testing whole screen flips into the future: %dx%d\n", width, height);
+	printf("%s: Testing flips into the future: %dx%d\n", phase, width, height);
 	_x_error_occurred = 0;
 
-	interval = msc_interval(dpy, root, Q);
+	interval = msc_interval(dpy, win, Q);
 
-	pixmap = XCreatePixmap(dpy, root, width, height, depth);
-	msc = flush_flips(dpy, root, pixmap, Q, &ust);
+	pixmap = XCreatePixmap(dpy, win, width, height, depth);
+	msc = flush_flips(dpy, win, pixmap, Q, &ust);
 	for (n = 1; n <= 10; n++)
-		xcb_present_pixmap(c, root, pixmap,
+		xcb_present_pixmap(c, win, pixmap,
 				   n, /* serial */
 				   0, /* valid */
 				   0, /* update */
@@ -450,7 +450,7 @@ static int test_future(Display *dpy, void *Q)
 				   0, /* divisor */
 				   0, /* remainder */
 				   0, NULL);
-	xcb_present_pixmap(c, root, pixmap,
+	xcb_present_pixmap(c, win, pixmap,
 			   0xdeadbeef, /* serial */
 			   0, /* valid */
 			   0, /* update */
@@ -523,7 +523,7 @@ static int test_future(Display *dpy, void *Q)
 	return ret;
 }
 
-static int test_exhaustion(Display *dpy, void *Q)
+static int test_exhaustion(Display *dpy, Window win, const char *phase, void *Q)
 {
 #define N_VBLANKS 256 /* kernel event queue length: 128 vblanks */
 	xcb_connection_t *c = XGetXCBConnection(dpy);
@@ -536,25 +536,25 @@ static int test_exhaustion(Display *dpy, void *Q)
 	int x, y, ret = 0, n;
 	uint64_t target, final;
 
-	XGetGeometry(dpy, DefaultRootWindow(dpy),
+	XGetGeometry(dpy, win,
 		     &root, &x, &y, &width, &height, &border, &depth);
 
-	if (dri3_create_fence(dpy, root, &fence[0]) ||
-	    dri3_create_fence(dpy, root, &fence[1]))
+	if (dri3_create_fence(dpy, win, &fence[0]) ||
+	    dri3_create_fence(dpy, win, &fence[1]))
 		return 0;
 
-	printf("Testing whole screen flips with long vblank queues: %dx%d\n", width, height);
+	printf("%s: Testing flips with long vblank queues: %dx%d\n", phase, width, height);
 	_x_error_occurred = 0;
 
 	region = xcb_generate_id(c);
 	xcb_xfixes_create_region(c, region, 0, NULL);
 
-	pixmap = XCreatePixmap(dpy, root, width, height, depth);
+	pixmap = XCreatePixmap(dpy, win, width, height, depth);
 	xshmfence_reset(fence[0].addr);
 	xshmfence_reset(fence[1].addr);
-	target = check_msc(dpy, root, Q, 0, NULL);
+	target = check_msc(dpy, win, Q, 0, NULL);
 	for (n = N_VBLANKS; n--; )
-		xcb_present_pixmap(c, root, pixmap, 0,
+		xcb_present_pixmap(c, win, pixmap, 0,
 				   0, /* valid */
 				   region, /* update */
 				   0, /* x_off */
@@ -567,7 +567,7 @@ static int test_exhaustion(Display *dpy, void *Q)
 				   1, /* divisor */
 				   0, /* remainder */
 				   0, NULL);
-	xcb_present_pixmap(c, root, pixmap, 0,
+	xcb_present_pixmap(c, win, pixmap, 0,
 			   region, /* valid */
 			   region, /* update */
 			   0, /* x_off */
@@ -581,7 +581,7 @@ static int test_exhaustion(Display *dpy, void *Q)
 			   0, /* remainder */
 			   0, NULL);
 	for (n = 1; n < N_VBLANKS; n++)
-		xcb_present_pixmap(c, root, pixmap, 0,
+		xcb_present_pixmap(c, win, pixmap, 0,
 				   region, /* valid */
 				   region, /* update */
 				   0, /* x_off */
@@ -594,7 +594,7 @@ static int test_exhaustion(Display *dpy, void *Q)
 				   0, /* divisor */
 				   0, /* remainder */
 				   0, NULL);
-	xcb_present_pixmap(c, root, pixmap, 0,
+	xcb_present_pixmap(c, win, pixmap, 0,
 			   region, /* valid */
 			   region, /* update */
 			   0, /* x_off */
@@ -610,7 +610,7 @@ static int test_exhaustion(Display *dpy, void *Q)
 	xcb_flush(c);
 
 	ret += !!xshmfence_await(fence[0].addr);
-	final = check_msc(dpy, root, Q, 0, NULL);
+	final = check_msc(dpy, win, Q, 0, NULL);
 	if (final < target) {
 		printf("\tFirst flip too early, MSC was %llu, expected %llu\n",
 		       (long long)final, (long long)target);
@@ -622,7 +622,7 @@ static int test_exhaustion(Display *dpy, void *Q)
 	}
 
 	ret += !!xshmfence_await(fence[1].addr);
-	final = check_msc(dpy, root, Q, 0, NULL);
+	final = check_msc(dpy, win, Q, 0, NULL);
 	if (final < target + N_VBLANKS) {
 		printf("\tLast flip too early, MSC was %llu, expected %llu\n",
 		       (long long)final, (long long)(target + N_VBLANKS));
@@ -633,7 +633,7 @@ static int test_exhaustion(Display *dpy, void *Q)
 		ret++;
 	}
 
-	flush_flips(dpy, root, pixmap, Q, NULL);
+	flush_flips(dpy, win, pixmap, Q, NULL);
 
 	XFreePixmap(dpy, pixmap);
 	xcb_xfixes_destroy_region(c, region);
@@ -647,7 +647,7 @@ static int test_exhaustion(Display *dpy, void *Q)
 #undef N_VBLANKS
 }
 
-static int test_accuracy(Display *dpy, void *Q)
+static int test_accuracy(Display *dpy, Window win, const char *phase, void *Q)
 {
 #define N_VBLANKS (60 * 120) /* ~2 minutes */
 	xcb_connection_t *c = XGetXCBConnection(dpy);
@@ -661,16 +661,16 @@ static int test_accuracy(Display *dpy, void *Q)
 	int earliest = 0, latest = 0;
 	int complete;
 
-	XGetGeometry(dpy, DefaultRootWindow(dpy),
+	XGetGeometry(dpy, win,
 		     &root, &x, &y, &width, &height, &border, &depth);
 
-	printf("Testing whole screen flip accuracy: %dx%d\n", width, height);
+	printf("%s: Testing flip accuracy: %dx%d\n", phase, width, height);
 	_x_error_occurred = 0;
 
-	pixmap = XCreatePixmap(dpy, root, width, height, depth);
-	target = flush_flips(dpy, root, pixmap, Q, NULL);
+	pixmap = XCreatePixmap(dpy, win, width, height, depth);
+	target = flush_flips(dpy, win, pixmap, Q, NULL);
 	for (n = 0; n <= N_VBLANKS; n++)
-		xcb_present_pixmap(c, root, pixmap,
+		xcb_present_pixmap(c, win, pixmap,
 				   n, /* serial */
 				   0, /* valid */
 				   0, /* update */
@@ -684,7 +684,7 @@ static int test_accuracy(Display *dpy, void *Q)
 				   0, /* divisor */
 				   0, /* remainder */
 				   0, NULL);
-	xcb_present_pixmap(c, root, pixmap,
+	xcb_present_pixmap(c, win, pixmap,
 			   0xdeadbeef, /* serial */
 			   0, /* valid */
 			   0, /* update */
@@ -748,7 +748,7 @@ static int test_accuracy(Display *dpy, void *Q)
 #undef N_VBLANKS
 }
 
-static int test_modulus(Display *dpy, void *Q)
+static int test_modulus(Display *dpy, Window win, const char *phase, void *Q)
 {
 	xcb_connection_t *c = XGetXCBConnection(dpy);
 	Pixmap pixmap;
@@ -762,20 +762,20 @@ static int test_modulus(Display *dpy, void *Q)
 	int earliest = 0, latest = 0;
 	int complete;
 
-	XGetGeometry(dpy, DefaultRootWindow(dpy),
+	XGetGeometry(dpy, win,
 		     &root, &x, &y, &width, &height, &border, &depth);
 
-	printf("Testing whole screen flip modulus: %dx%d\n", width, height);
+	printf("%s: Testing flip modulus: %dx%d\n", phase, width, height);
 	_x_error_occurred = 0;
 
 	region = xcb_generate_id(c);
 	xcb_xfixes_create_region(c, region, 0, NULL);
 
-	pixmap = XCreatePixmap(dpy, root, width, height, depth);
-	target = flush_flips(dpy, root, pixmap, Q, NULL);
+	pixmap = XCreatePixmap(dpy, win, width, height, depth);
+	target = flush_flips(dpy, win, pixmap, Q, NULL);
 	for (x = 1; x <= 7; x++) {
 		for (y = 0; y < x; y++) {
-			xcb_present_pixmap(c, root, pixmap,
+			xcb_present_pixmap(c, win, pixmap,
 					   y << 16 | x, /* serial */
 					   region, /* valid */
 					   region, /* update */
@@ -791,7 +791,7 @@ static int test_modulus(Display *dpy, void *Q)
 					   0, NULL);
 		}
 	}
-	xcb_present_pixmap(c, root, pixmap,
+	xcb_present_pixmap(c, win, pixmap,
 			   0xdeadbeef, /* serial */
 			   0, /* valid */
 			   0, /* update */
@@ -1813,23 +1813,75 @@ int main(void)
 	error += test_exhaustion_msc(dpy, queue);
 	last_msc = check_msc(dpy, root, queue, last_msc, NULL);
 
-	error += test_whole(dpy);
-	last_msc = check_msc(dpy, root, queue, last_msc, NULL);
+	for (dummy = 0; dummy < 3; dummy++) {
+		Window win;
+		uint64_t msc = 0;
+		XSetWindowAttributes attr;
+		Visual *visual = DefaultVisual(dpy, DefaultScreen(dpy));
+		unsigned int width, height;
+		unsigned border, depth;
+		const char *phase;
+		int x, y;
+		void *Q;
 
-	error += test_double(dpy, queue);
-	last_msc = check_msc(dpy, root, queue, last_msc, NULL);
+		attr.override_redirect = 1;
 
-	error += test_future(dpy, queue);
-	last_msc = check_msc(dpy, root, queue, last_msc, NULL);
+		XGetGeometry(dpy, root, &win, &x, &y,
+			     &width, &height, &border, &depth);
 
-	error += test_accuracy(dpy, queue);
-	last_msc = check_msc(dpy, root, queue, last_msc, NULL);
+		switch (dummy) {
+		case 0:
+			win = root;
+			phase = "root";
+			break;
+		case 1:
+			win = XCreateWindow(dpy, root,
+					    0, 0, width, height, 0, depth,
+					    InputOutput, visual,
+					    CWOverrideRedirect, &attr);
+			phase = "fullscreen";
+			break;
+		case 2:
+			win = XCreateWindow(dpy, root,
+					    0, 0, width/2, height/2, 0, depth,
+					    InputOutput, visual,
+					    CWOverrideRedirect, &attr);
+			phase = "window";
+			break;
+		default:
+			phase = "broken";
+			win = root;
+			abort();
+			break;
+		}
 
-	error += test_modulus(dpy, queue);
-	last_msc = check_msc(dpy, root, queue, last_msc, NULL);
+		XMapWindow(dpy, win);
 
-	error += test_exhaustion(dpy, queue);
-	last_msc = check_msc(dpy, root, queue, last_msc, NULL);
+		Q = setup_msc(dpy, win);
+		msc = check_msc(dpy, win, Q, msc, NULL);
+
+		error += test_whole(dpy, win, phase);
+		msc = check_msc(dpy, win, Q, msc, NULL);
+
+		error += test_double(dpy, win, phase, Q);
+		msc = check_msc(dpy, win, Q, msc, NULL);
+
+		error += test_future(dpy, win, phase, Q);
+		msc = check_msc(dpy, win, Q, msc, NULL);
+
+		error += test_accuracy(dpy, win, phase, Q);
+		msc = check_msc(dpy, win, Q, msc, NULL);
+
+		error += test_modulus(dpy, win, phase, Q);
+		msc = check_msc(dpy, win, Q, msc, NULL);
+
+		error += test_exhaustion(dpy, win, phase, Q);
+		msc = check_msc(dpy, win, Q, msc, NULL);
+
+		teardown_msc(dpy, Q);
+		if (win != root)
+			XDestroyWindow(dpy, win);
+	}
 
 	error += test_crtc(dpy, queue, last_msc);
 	last_msc = check_msc(dpy, root, queue, last_msc, NULL);
