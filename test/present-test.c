@@ -1098,7 +1098,7 @@ static int test_modulus_msc(Display *dpy, void *Q)
 	target = check_msc(dpy, root, Q, 0, NULL);
 
 	xcb_present_notify_msc(c, root, 0, 0, 0, 0);
-	for (x = 1; x <= 7; x++) {
+	for (x = 1; x <= 19; x++) {
 		for (y = 0; y < x; y++) {
 			xcb_present_notify_msc(c, root, y << 16 | x, 0, x, y);
 		}
