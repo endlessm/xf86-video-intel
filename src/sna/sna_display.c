@@ -5202,24 +5202,28 @@ static void
 sna_crtc_disable_cursor(struct sna *sna, struct sna_crtc *crtc)
 {
 	struct drm_mode_cursor arg;
+	int sigio;
 
 	if (!crtc->cursor)
 		return;
 
-	DBG(("%s: CRTC:%d, handle=%d\n", __FUNCTION__, crtc->id, crtc->cursor->handle));
-	assert(crtc->cursor->ref);
+	sigio = sigio_block();
+	if (crtc->cursor) {
+		DBG(("%s: CRTC:%d, handle=%d\n", __FUNCTION__, crtc->id, crtc->cursor->handle));
+		assert(crtc->cursor->ref > 0);
+		crtc->cursor->ref--;
+		crtc->cursor = NULL;
+		crtc->last_cursor_size = 0;
 
-	VG_CLEAR(arg);
-	arg.flags = DRM_MODE_CURSOR_BO;
-	arg.crtc_id = crtc->id;
-	arg.width = arg.height = 0;
-	arg.handle = 0;
+		VG_CLEAR(arg);
+		arg.flags = DRM_MODE_CURSOR_BO;
+		arg.crtc_id = crtc->id;
+		arg.width = arg.height = 0;
+		arg.handle = 0;
 
-	(void)drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg);
-	assert(crtc->cursor->ref > 0);
-	crtc->cursor->ref--;
-	crtc->cursor = NULL;
-	crtc->last_cursor_size = 0;
+		(void)drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg);
+	}
+	sigio_unblock(sigio);
 }
 
 static void
