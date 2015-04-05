@@ -137,10 +137,11 @@ struct buffer {
 	struct list link;
 	Pixmap pixmap;
 	struct dri3_fence fence;
+	int fd;
 	int busy;
 };
 
-#define FENCE 1
+#define DRI3 1
 #define NOCOPY 2
 static void run(Display *dpy, Window win, const char *name, unsigned options)
 {
@@ -172,9 +173,24 @@ static void run(Display *dpy, Window win, const char *name, unsigned options)
 		buffer[n].pixmap =
 			XCreatePixmap(dpy, win, width, height, depth);
 		buffer[n].fence.xid = 0;
-		if (options & FENCE) {
+		buffer[n].fd = -1;
+		if (options & DRI3) {
+			xcb_dri3_buffer_from_pixmap_reply_t *reply;
+			int *fds;
+
 			if (dri3_create_fence(dpy, win, &buffer[n].fence))
 				return;
+
+			reply = xcb_dri3_buffer_from_pixmap_reply (c,
+					xcb_dri3_buffer_from_pixmap(c, buffer[n].pixmap),
+					NULL);
+			if (reply == NULL)
+				return;
+
+			fds = xcb_dri3_buffer_from_pixmap_reply_fds (c, reply);
+			buffer[n].fd = fds[0];
+			free(reply);
+
 			/* start idle */
 			xshmfence_trigger(buffer[n].fence.addr);
 		}
@@ -286,6 +302,8 @@ static void run(Display *dpy, Window win, const char *name, unsigned options)
 	for (n = 0; n < N_BACK; n++) {
 		if (buffer[n].fence.xid)
 			dri3_fence_free(dpy, &buffer[n].fence);
+		if (buffer[n].fd != -1)
+			close(buffer[n].fd);
 		XFreePixmap(dpy, buffer[n].pixmap);
 	}
 
@@ -301,7 +319,7 @@ static void run(Display *dpy, Window win, const char *name, unsigned options)
 	if (options) {
 		snprintf(test_name, sizeof(test_name), "(%s%s )",
 			 options & NOCOPY ? " no-copy" : "",
-			 options & FENCE ? " fence" : "");
+			 options & DRI3 ? " dri3" : "");
 	}
 	printf("%s%s: Completed %d presents in %.1fs, %.3fus each (%.1f FPS)\n",
 	       name, test_name,
@@ -533,11 +551,13 @@ int main(void)
 		XRRSetCrtcConfig(dpy, res, res->crtcs[i], CurrentTime,
 				 0, 0, None, RR_Rotate_0, NULL, 0);
 
+#if 0
 	loop(dpy, res, 0);
 	if (has_xfixes(dpy))
 		loop(dpy, res, NOCOPY);
+#endif
 	if (has_dri3(dpy))
-		loop(dpy, res, FENCE);
+		loop(dpy, res, DRI3);
 
 	for (i = 0; i < res->ncrtc; i++)
 		XRRSetCrtcConfig(dpy, res, res->crtcs[i], CurrentTime,
