@@ -38,6 +38,7 @@
 #include <xcb/xcb.h>
 #include <xcb/present.h>
 #include <xcb/dri3.h>
+#include <xcb/xfixes.h>
 #include <xf86drm.h>
 #include <i915_drm.h>
 
@@ -139,16 +140,21 @@ struct buffer {
 	int busy;
 };
 
-static void run(Display *dpy, Window win, const char *name, int use_dri3)
+#define FENCE 1
+#define NOCOPY 2
+static void run(Display *dpy, Window win, const char *name, unsigned options)
 {
 	xcb_connection_t *c = XGetXCBConnection(dpy);
 	struct timespec start, end;
 #define N_BACK 8
+	char test_name[128];
 	struct buffer buffer[N_BACK];
 	struct list mru;
 	Window root;
 	unsigned int width, height;
 	unsigned border, depth;
+	unsigned present_flags = XCB_PRESENT_OPTION_ASYNC;
+	xcb_xfixes_region_t update = 0;
 	int completed = 0;
 	int queued = 0;
 	uint32_t eid;
@@ -166,7 +172,7 @@ static void run(Display *dpy, Window win, const char *name, int use_dri3)
 		buffer[n].pixmap =
 			XCreatePixmap(dpy, win, width, height, depth);
 		buffer[n].fence.xid = 0;
-		if (use_dri3) {
+		if (options & FENCE) {
 			if (dri3_create_fence(dpy, win, &buffer[n].fence))
 				return;
 			/* start idle */
@@ -174,6 +180,11 @@ static void run(Display *dpy, Window win, const char *name, int use_dri3)
 		}
 		buffer[n].busy = 0;
 		list_add(&buffer[n].link, &mru);
+	}
+	if (options & NOCOPY) {
+		update = xcb_generate_id(c);
+		xcb_xfixes_create_region(c, update, 0, NULL);
+		present_flags |= XCB_PRESENT_OPTION_COPY;
 	}
 
 	eid = xcb_generate_id(c);
@@ -229,13 +240,13 @@ static void run(Display *dpy, Window win, const char *name, int use_dri3)
 			}
 			xcb_present_pixmap(c, win, b->pixmap, b - buffer,
 					   0, /* valid */
-					   0, /* update */
+					   update, /* update */
 					   0, /* x_off */
 					   0, /* y_off */
 					   None,
 					   None, /* wait fence */
 					   b->fence.xid,
-					   XCB_PRESENT_OPTION_ASYNC,
+					   present_flags,
 					   0, /* target msc */
 					   0, /* divisor */
 					   0, /* remainder */
@@ -270,6 +281,8 @@ static void run(Display *dpy, Window win, const char *name, int use_dri3)
 	}
 	clock_gettime(CLOCK_MONOTONIC, &end);
 
+	if (update)
+		xcb_xfixes_destroy_region(c, update);
 	for (n = 0; n < N_BACK; n++) {
 		if (buffer[n].fence.xid)
 			dri3_fence_free(dpy, &buffer[n].fence);
@@ -284,8 +297,14 @@ static void run(Display *dpy, Window win, const char *name, int use_dri3)
 	XSync(dpy, True);
 	xcb_unregister_for_special_event(c, Q);
 
+	test_name[0] = '\0';
+	if (options) {
+		snprintf(test_name, sizeof(test_name), "(%s%s )",
+			 options & NOCOPY ? " no-copy" : "",
+			 options & FENCE ? " fence" : "");
+	}
 	printf("%s%s: Completed %d presents in %.1fs, %.3fus each (%.1f FPS)\n",
-	       name, use_dri3 ? " (dri3)" : "",
+	       name, test_name,
 	       completed, elapsed(&start, &end) / 1000000,
 	       elapsed(&start, &end) / completed,
 	       completed / (elapsed(&start, &end) / 1000000));
@@ -352,6 +371,26 @@ static int has_dri3(Display *dpy)
 	return major >= 0;
 }
 
+static int has_xfixes(Display *dpy)
+{
+	xcb_connection_t *c = XGetXCBConnection(dpy);
+	const xcb_query_extension_reply_t *ext;
+	void *reply;
+
+	ext = xcb_get_extension_data(c, &xcb_xfixes_id);
+	if (ext == NULL || !ext->present)
+		return 0;
+
+	reply = xcb_xfixes_query_version_reply(c,
+					       xcb_xfixes_query_version(c,
+									XCB_XFIXES_MAJOR_VERSION,
+									XCB_XFIXES_MINOR_VERSION),
+					       NULL);
+	free(reply);
+
+	return reply != NULL;
+}
+
 static inline XRRScreenResources *_XRRGetScreenResourcesCurrent(Display *dpy, Window window)
 {
 	XRRScreenResources *res;
@@ -384,7 +423,7 @@ static void fullscreen(Display *dpy, Window win)
 			(unsigned char *)&atom, 1);
 }
 
-static void loop(Display *dpy, XRRScreenResources *res, int use_dri3)
+static void loop(Display *dpy, XRRScreenResources *res, unsigned options)
 {
 	Window root = DefaultRootWindow(dpy);
 	Window win;
@@ -393,7 +432,7 @@ static void loop(Display *dpy, XRRScreenResources *res, int use_dri3)
 
 	attr.override_redirect = 1;
 
-	run(dpy, root, "off", use_dri3);
+	run(dpy, root, "off", options);
 
 	for (i = 0; i < res->noutput; i++) {
 		XRROutputInfo *output;
@@ -418,7 +457,7 @@ static void loop(Display *dpy, XRRScreenResources *res, int use_dri3)
 			XRRSetCrtcConfig(dpy, res, output->crtcs[c], CurrentTime,
 					 0, 0, output->modes[0], RR_Rotate_0, &res->outputs[i], 1);
 
-			run(dpy, root, "root", use_dri3);
+			run(dpy, root, "root", options);
 
 			win = XCreateWindow(dpy, root,
 					    0, 0, mode->width, mode->height, 0,
@@ -428,7 +467,7 @@ static void loop(Display *dpy, XRRScreenResources *res, int use_dri3)
 					    CWOverrideRedirect, &attr);
 			fullscreen(dpy, win);
 			XMapWindow(dpy, win);
-			run(dpy, win, "fullscreen", use_dri3);
+			run(dpy, win, "fullscreen", options);
 			XDestroyWindow(dpy, win);
 
 			win = XCreateWindow(dpy, root,
@@ -438,7 +477,7 @@ static void loop(Display *dpy, XRRScreenResources *res, int use_dri3)
 					    DefaultVisual(dpy, DefaultScreen(dpy)),
 					    CWOverrideRedirect, &attr);
 			XMapWindow(dpy, win);
-			run(dpy, win, "windowed", use_dri3);
+			run(dpy, win, "windowed", options);
 			XDestroyWindow(dpy, win);
 
 			win = XCreateWindow(dpy, root,
@@ -448,7 +487,7 @@ static void loop(Display *dpy, XRRScreenResources *res, int use_dri3)
 					    DefaultVisual(dpy, DefaultScreen(dpy)),
 					    CWOverrideRedirect, &attr);
 			XMapWindow(dpy, win);
-			run(dpy, win, "half", use_dri3);
+			run(dpy, win, "half", options);
 			XDestroyWindow(dpy, win);
 
 			XRRSetCrtcConfig(dpy, res, output->crtcs[c], CurrentTime,
@@ -495,8 +534,10 @@ int main(void)
 				 0, 0, None, RR_Rotate_0, NULL, 0);
 
 	loop(dpy, res, 0);
+	if (has_xfixes(dpy))
+		loop(dpy, res, NOCOPY);
 	if (has_dri3(dpy))
-		loop(dpy, res, 1);
+		loop(dpy, res, FENCE);
 
 	for (i = 0; i < res->ncrtc; i++)
 		XRRSetCrtcConfig(dpy, res, res->crtcs[i], CurrentTime,
