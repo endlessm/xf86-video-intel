@@ -551,11 +551,9 @@ int main(void)
 		XRRSetCrtcConfig(dpy, res, res->crtcs[i], CurrentTime,
 				 0, 0, None, RR_Rotate_0, NULL, 0);
 
-#if 0
 	loop(dpy, res, 0);
 	if (has_xfixes(dpy))
 		loop(dpy, res, NOCOPY);
-#endif
 	if (has_dri3(dpy))
 		loop(dpy, res, DRI3);
 
