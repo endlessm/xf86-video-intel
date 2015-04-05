@@ -2888,6 +2888,7 @@ sna_crtc_init__cursor(struct sna *sna, struct sna_crtc *crtc)
 	arg.handle = 0;
 
 	(void)drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg);
+	crtc->hwcursor = true;
 }
 
 static bool
