@@ -148,9 +148,31 @@ static CARD32 sna_fake_vblank_handler(OsTimerPtr timer, CARD32 now, void *data)
 		DBG(("%s: event=%lld, target msc=%lld, now %lld\n",
 		     __FUNCTION__, (long long)info->event_id[0], (long long)info->target_msc, (long long)msc));
 		if (msc < info->target_msc) {
-			uint32_t delay = msc_to_delay(info->crtc, info->target_msc);
-			if (delay)
+			uint32_t delay;
+
+			DBG(("%s: too early, requeuing\n", __FUNCTION__));
+
+			vbl.request.type = DRM_VBLANK_ABSOLUTE | DRM_VBLANK_EVENT;
+			vbl.request.sequence = info->target_msc;
+			vbl.request.signal = (uintptr_t)MARK_PRESENT(info);
+			if (sna_wait_vblank(info->sna, &vbl, sna_crtc_to_pipe(info->crtc)) == 0) {
+				DBG(("%s: scheduled new vblank event for %lld\n", __FUNCTION__, (long long)info->target_msc));
+				return 0;
+			}
+
+			delay = msc_to_delay(info->crtc, info->target_msc);
+			if (delay) {
+				DBG(("%s: requeueing timer for %dms delay\n", __FUNCTION__, delay));
 				return delay;
+			}
+
+			/* As a last resort use a blocking wait.
+			 * Less than a millisecond for a rare case.
+			 */
+			DBG(("%s: blocking wait!\n", __FUNCTION__));
+			vbl.request.type = DRM_VBLANK_ABSOLUTE;
+			vbl.request.sequence = info->target_msc;
+			(void)sna_wait_vblank(info->sna, &vbl, sna_crtc_to_pipe(info->crtc));
 		}
 	} else {
 		const struct ust_msc *swap = sna_crtc_last_swap(info->crtc);
