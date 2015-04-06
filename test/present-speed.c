@@ -207,8 +207,8 @@ static void run(Display *dpy, Window win, const char *name, unsigned options)
 
 	eid = xcb_generate_id(c);
 	xcb_present_select_input(c, eid, win,
-				 XCB_PRESENT_EVENT_MASK_IDLE_NOTIFY |
-				 XCB_PRESENT_EVENT_MASK_COMPLETE_NOTIFY);
+                                 (options & NOCOPY ? 0 : XCB_PRESENT_EVENT_MASK_IDLE_NOTIFY) |
+                                 XCB_PRESENT_EVENT_MASK_COMPLETE_NOTIFY);
 	Q = xcb_register_for_special_xge(c, &xcb_present_id, eid, &stamp);
 
 	clock_gettime(CLOCK_MONOTONIC, &start);
@@ -251,7 +251,7 @@ static void run(Display *dpy, Window win, const char *name, unsigned options)
 			}
 			assert(p);
 
-			b->busy = 1;
+			b->busy = (options & NOCOPY) == 0;
 			if (b->fence.xid) {
 				xshmfence_await(b->fence.addr);
 				xshmfence_reset(b->fence.addr);
