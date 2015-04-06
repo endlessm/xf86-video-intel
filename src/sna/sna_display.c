@@ -1995,6 +1995,22 @@ get_scanout_bo(struct sna *sna, PixmapPtr pixmap)
 	return priv->gpu_bo;
 }
 
+static void clear(struct sna *sna,
+		  PixmapPtr front, struct kgem_bo *bo,
+		  xf86CrtcPtr crtc)
+{
+	bool ok = false;
+	if (!wedged(sna))
+		ok = sna->render.fill_one(sna, front, bo, 0,
+					  0, 0, crtc->mode.HDisplay, crtc->mode.VDisplay,
+					  GXclear);
+	if (!ok) {
+		void *ptr = kgem_bo_map__gtt(&sna->kgem, bo);
+		if (ptr)
+			memset(ptr, 0, bo->pitch * crtc->mode.HDisplay);
+	}
+}
+
 static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 {
 	struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
@@ -2083,18 +2099,9 @@ force_shadow:
 			if (b.y2 > scrn->virtualY)
 				b.y2 = scrn->virtualY;
 			if (b.x2 - b.x1 < crtc->mode.HDisplay ||
-			    b.y2 - b.y1 < crtc->mode.VDisplay) {
-				bool ok = false;
-				if (!wedged(sna))
-					ok = sna->render.fill_one(sna, front, bo, 0,
-								  0, 0, crtc->mode.HDisplay, crtc->mode.VDisplay,
-								  GXclear);
-				if (!ok) {
-					void *ptr = kgem_bo_map__gtt(&sna->kgem, bo);
-					if (ptr)
-						memset(ptr, 0, bo->pitch * crtc->mode.VDisplay);
-				}
-			}
+			    b.y2 - b.y1 < crtc->mode.VDisplay)
+				clear(sna, front, bo, crtc);
+
 			if (b.y2 > b.y1 && b.x2 > b.x1) {
 				DrawableRec tmp;
 
@@ -2110,12 +2117,14 @@ force_shadow:
 				tmp.depth = front->drawable.depth;
 				tmp.bitsPerPixel = front->drawable.bitsPerPixel;
 
-				(void)sna->render.copy_boxes(sna, GXcopy,
+				if (!sna->render.copy_boxes(sna, GXcopy,
 							     &front->drawable, __sna_pixmap_get_bo(front), 0, 0,
 							     &tmp, bo, -crtc->x, -crtc->y,
-							     &b, 1, 0);
+							     &b, 1, 0))
+					clear(sna, front, bo, crtc);
 			}
-		}
+		} else
+			clear(sna, front, bo, crtc);
 
 		sna_crtc->shadow_bo_width = crtc->mode.HDisplay;
 		sna_crtc->shadow_bo_height = crtc->mode.VDisplay;
