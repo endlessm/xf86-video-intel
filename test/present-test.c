@@ -178,6 +178,39 @@ static uint64_t check_msc(Display *dpy, Window win, void *q, uint64_t last_msc, 
 	return msc;
 }
 
+static uint64_t wait_vblank(Display *dpy, Window win, void *q)
+{
+	xcb_connection_t *c = XGetXCBConnection(dpy);
+	static uint32_t serial = 1;
+	uint64_t msc = 0;
+	int complete = 0;
+
+	xcb_present_notify_msc(c, win, serial ^ 0xdeadbeef, 0, 1, 0);
+	xcb_flush(c);
+
+	do {
+		xcb_present_complete_notify_event_t *ce;
+		xcb_generic_event_t *ev;
+
+		ev = xcb_wait_for_special_event(c, q);
+		if (ev == NULL)
+			break;
+
+		ce = (xcb_present_complete_notify_event_t *)ev;
+		if (ce->kind == XCB_PRESENT_COMPLETE_KIND_NOTIFY_MSC &&
+		    ce->serial == (serial ^ 0xdeadbeef)) {
+			msc = ce->msc;
+			complete = 1;
+		}
+		free(ev);
+	} while (!complete);
+
+	if (++serial == 0)
+		serial = 1;
+
+	return msc;
+}
+
 static uint64_t msc_interval(Display *dpy, Window win, void *q)
 {
 	xcb_connection_t *c = XGetXCBConnection(dpy);
@@ -1095,13 +1128,12 @@ static int test_modulus_msc(Display *dpy, void *Q)
 	printf("Testing notify modulus\n");
 	_x_error_occurred = 0;
 
-	target = check_msc(dpy, root, Q, 0, NULL);
+	target = wait_vblank(dpy, root, Q);
 
 	xcb_present_notify_msc(c, root, 0, 0, 0, 0);
 	for (x = 1; x <= 19; x++) {
-		for (y = 0; y < x; y++) {
+		for (y = 0; y < x; y++)
 			xcb_present_notify_msc(c, root, y << 16 | x, 0, x, y);
-		}
 	}
 	xcb_present_notify_msc(c, root, 0xdeadbeef, target + 2*x, 0, 0);
 	xcb_flush(c);
@@ -1111,6 +1143,7 @@ static int test_modulus_msc(Display *dpy, void *Q)
 		ce = (xcb_present_complete_notify_event_t *)ev;
 		assert(ce->kind == XCB_PRESENT_COMPLETE_KIND_NOTIFY_MSC);
 		assert(ce->serial == 0);
+		assert(target == ce->msc);
 		target = ce->msc;
 	}
 
