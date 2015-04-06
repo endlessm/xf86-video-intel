@@ -157,6 +157,7 @@ static CARD32 sna_fake_vblank_handler(OsTimerPtr timer, CARD32 now, void *data)
 			vbl.request.signal = (uintptr_t)MARK_PRESENT(info);
 			if (sna_wait_vblank(info->sna, &vbl, sna_crtc_to_pipe(info->crtc)) == 0) {
 				DBG(("%s: scheduled new vblank event for %lld\n", __FUNCTION__, (long long)info->target_msc));
+				free(timer);
 				return 0;
 			}
 
