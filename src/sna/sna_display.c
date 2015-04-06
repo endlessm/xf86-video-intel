@@ -2121,6 +2121,8 @@ sna_output_create_ranged_atom(xf86OutputPtr output, Atom *atom,
 			   "RRChangeOutputProperty error, %d\n", err);
 }
 
+static Atom underscan_hborder_atom, underscan_vborder_atom, underscan_atom;
+
 static void
 sna_output_create_resources(xf86OutputPtr output)
 {
@@ -2192,6 +2194,31 @@ sna_output_create_resources(xf86OutputPtr output)
 		}
 	}
 
+	/* fake props for underscan */
+	uatoms = calloc(2, sizeof(Atom));
+	underscan_atom = MakeAtom("underscan", 9, TRUE);
+	uatoms[0] = MakeAtom("off", 3, TRUE);
+	uatoms[1] = MakeAtom("crop", 4, TRUE);
+	err = RRConfigureOutputProperty(output->randr_output, underscan_atom,
+					FALSE, FALSE, FALSE,
+					2, (INT32 *)uatoms);
+	if (err != 0) {
+		xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
+			   "RRConfigureOutputProperty error, %d\n", err);
+	}
+	err = RRChangeOutputProperty(output->randr_output, underscan_atom,
+				     XA_ATOM, 32, PropModeReplace, 1, &uatoms[0],
+				     FALSE, FALSE);
+	if (err != 0) {
+		xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
+			   "RRChangeOutputProperty error, %d\n", err);
+	}
+
+	sna_output_create_ranged_atom(output, &underscan_hborder_atom,
+				      "underscan hborder", 0, 128, 0, FALSE);
+	sna_output_create_ranged_atom(output, &underscan_vborder_atom,
+				      "underscan vborder", 0, 128, 0, FALSE);
+
 	if (sna_output->backlight.iface) {
 		/* Set up the backlight property, which takes effect
 		 * immediately and accepts values only within the
@@ -2218,6 +2245,42 @@ sna_output_set_property(xf86OutputPtr output, Atom property,
 	struct sna *sna = to_sna(output->scrn);
 	struct sna_output *sna_output = output->driver_private;
 	int i;
+
+	if (property == underscan_atom) {
+		Atom atom;
+		const char *name;
+
+		if (value->type != XA_ATOM || value->format != 32 || value->size != 1)
+			return FALSE;
+
+		memcpy(&atom, value->data, 4);
+		name = NameForAtom(atom);
+		if (name == NULL)
+			return FALSE;
+
+		if (!strcmp(name, "crop"))
+			sna_output->underscan = 1;
+		else
+			sna_output->underscan = 0;
+
+		return TRUE;
+	}
+
+	if (property == underscan_vborder_atom) {
+		if (value->type != XA_INTEGER || value->format != 32 || value->size != 1)
+			return FALSE;
+
+		sna_output->underscan_vborder = *(uint32_t *)value->data;
+		return TRUE;
+	}
+
+	if (property == underscan_hborder_atom) {
+		if (value->type != XA_INTEGER || value->format != 32 || value->size != 1)
+			return FALSE;
+
+		sna_output->underscan_hborder = *(uint32_t *)value->data;
+		return TRUE;
+	}
 
 	if (property == backlight_atom || property == backlight_deprecated_atom) {
 		INT32 val;
