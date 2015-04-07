@@ -1,4 +1,4 @@
-Source: xserver-xorg-video-intel
+Source: xf86-video-intel
 Section: x11
 Priority: optional
 Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>

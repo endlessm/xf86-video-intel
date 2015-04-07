@@ -1,4 +1,4 @@
-xserver-xorg-video-intel (3:2.99.90) unstable; urgency=low
+xf86-video-intel (3:2.99.905) unstable; urgency=low
 
   * Bump upstream version
 
