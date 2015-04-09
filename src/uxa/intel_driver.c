@@ -766,6 +766,15 @@ I830HandleUEvents(int fd, void *closure)
 	udev_device_unref(dev);
 }
 
+static bool has_randr(void)
+{
+#if HAS_DIXREGISTERPRIVATEKEY
+	return dixPrivateKeyRegistered(rrPrivKey);
+#else
+	return *rrPrivKey;
+#endif
+}
+
 static void
 I830UeventInit(ScrnInfoPtr scrn)
 {
@@ -774,6 +783,10 @@ I830UeventInit(ScrnInfoPtr scrn)
 	struct udev_monitor *mon;
 	Bool hotplug;
 	MessageType from = X_CONFIG;
+
+	/* Without RR, nothing we can do here */
+	if (!has_randr())
+		return;
 
 	if (!xf86GetOptValBool(intel->Options, OPTION_HOTPLUG, &hotplug)) {
 		from = X_DEFAULT;
