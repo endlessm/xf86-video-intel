@@ -1853,7 +1853,7 @@ static void put_dst(struct clone *c, const XRectangle *clip)
 				 clip->width, clip->height);
 		c->dst.display->send |= c->dst.use_shm;
 	} else if (c->dst.pixmap) {
-		DBG(DRAW, ("%s-%s using SHM pixmap\n",
+		DBG(DRAW, ("%s-%s using SHM or DRI3 pixmap\n",
 		     DisplayString(c->dst.dpy), c->dst.name));
 		c->dst.serial = NextRequest(c->dst.dpy);
 		XCopyArea(c->dst.dpy, c->dst.pixmap, c->dst.window, c->dst.gc,
