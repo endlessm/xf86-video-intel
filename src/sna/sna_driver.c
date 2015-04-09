@@ -777,6 +777,15 @@ sna_handle_uevents(int fd, void *closure)
 	udev_device_unref(dev);
 }
 
+static bool has_randr(void)
+{
+#if HAS_DIXREGISTERPRIVATEKEY
+	return dixPrivateKeyRegistered(rrPrivKey);
+#else
+	return *rrPrivKey;
+#endif
+}
+
 static void
 sna_uevent_init(struct sna *sna)
 {
@@ -792,7 +801,7 @@ sna_uevent_init(struct sna *sna)
 	/* RandR will be disabled if Xinerama is active, and so generating
 	 * RR hotplug events is then verboten.
 	 */
-	if (!dixPrivateKeyRegistered(rrPrivKey))
+	if (!has_randr())
 		goto out;
 
 	u = NULL;
