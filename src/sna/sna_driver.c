@@ -1213,6 +1213,8 @@ static Bool sna_enter_vt(VT_FUNC_ARGS_DECL)
 	if (intel_get_master(sna->dev))
 		return FALSE;
 
+	sna_accel_enter(sna);
+
 	if (sna->flags & SNA_REPROBE) {
 		DBG(("%s: reporting deferred hotplug event\n", __FUNCTION__));
 		sna_mode_discover(sna);
@@ -1221,11 +1223,11 @@ static Bool sna_enter_vt(VT_FUNC_ARGS_DECL)
 	sna_mode_check(sna);
 
 	if (!sna_set_desired_mode(sna)) {
+		sna_accel_leave(sna);
 		intel_put_master(sna->dev);
 		return FALSE;
 	}
 
-	sna_accel_enter(sna);
 	return TRUE;
 }
 
