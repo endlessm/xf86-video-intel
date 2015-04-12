@@ -7790,6 +7790,7 @@ void sna_mode_redisplay(struct sna *sna)
 						sna_crtc->flip_bo = bo;
 						sna_crtc->flip_bo->active_scanout++;
 						sna_crtc->flip_serial = sna_crtc->mode_serial;
+						sna_crtc->flip_pending = true;
 
 						sna_crtc->cache_bo = kgem_bo_reference(sna_crtc->bo);
 
