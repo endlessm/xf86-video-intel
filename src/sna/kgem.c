@@ -1468,6 +1468,8 @@ static void kgem_fixup_relocs(struct kgem *kgem, struct kgem_bo *bo, int shrink)
 					     kgem->reloc[n].delta - shrink));
 					kgem->reloc[n].delta -= shrink;
 				}
+
+				addr = (int)kgem->reloc[n].delta + bo->presumed_offset;
 				kgem->batch[kgem->reloc[n].offset/sizeof(uint32_t)] = addr;
 				if (kgem->gen >= 0100)
 					kgem->batch[kgem->reloc[n].offset/sizeof(uint32_t) + 1] = addr >> 32;
