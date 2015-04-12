@@ -3535,7 +3535,6 @@ out_16384:
 		}
 	}
 
-	bo = NULL;
 	if (!kgem->has_llc) {
 		bo = kgem_create_linear(kgem, size, CREATE_NO_THROTTLE);
 		if (bo) {
@@ -3545,14 +3544,11 @@ write:
 				kgem_bo_destroy(kgem, bo);
 				return NULL;
 			}
+			return bo;
 		}
 	}
-	if (bo == NULL)
-		bo = kgem_new_batch(kgem);
-	return bo;
-#else
-	return kgem_new_batch(kgem);
 #endif
+	return kgem_new_batch(kgem);
 }
 
 #if !NDEBUG
