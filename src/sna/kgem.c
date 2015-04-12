@@ -1433,6 +1433,7 @@ static void kgem_fixup_relocs(struct kgem *kgem, struct kgem_bo *bo, int shrink)
 	     bo->handle, (long long)bo->presumed_offset));
 	for (n = 0; n < kgem->nreloc__self; n++) {
 		int i = kgem->reloc__self[n];
+		uint64_t addr;
 
 		assert(kgem->reloc[i].target_handle == ~0U);
 		kgem->reloc[i].target_handle = bo->target_handle;
@@ -1446,13 +1447,17 @@ static void kgem_fixup_relocs(struct kgem *kgem, struct kgem_bo *bo, int shrink)
 
 			kgem->reloc[i].delta -= shrink;
 		}
-		kgem->batch[kgem->reloc[i].offset/sizeof(uint32_t)] =
-			kgem->reloc[i].delta + bo->presumed_offset;
+		addr = (int)kgem->reloc[i].delta + bo->presumed_offset;
+		kgem->batch[kgem->reloc[i].offset/sizeof(uint32_t)] = addr;
+		if (kgem->gen >= 0100)
+			kgem->batch[kgem->reloc[i].offset/sizeof(uint32_t) + 1] = addr >> 32;
 	}
 
 	if (n == 256) {
 		for (n = kgem->reloc__self[255]; n < kgem->nreloc; n++) {
 			if (kgem->reloc[n].target_handle == ~0U) {
+				uint64_t addr;
+
 				kgem->reloc[n].target_handle = bo->target_handle;
 				kgem->reloc[n].presumed_offset = bo->presumed_offset;
 
@@ -1463,8 +1468,9 @@ static void kgem_fixup_relocs(struct kgem *kgem, struct kgem_bo *bo, int shrink)
 					     kgem->reloc[n].delta - shrink));
 					kgem->reloc[n].delta -= shrink;
 				}
-				kgem->batch[kgem->reloc[n].offset/sizeof(uint32_t)] =
-					kgem->reloc[n].delta + bo->presumed_offset;
+				kgem->batch[kgem->reloc[n].offset/sizeof(uint32_t)] = addr;
+				if (kgem->gen >= 0100)
+					kgem->batch[kgem->reloc[n].offset/sizeof(uint32_t) + 1] = addr >> 32;
 			}
 		}
 	}
@@ -3151,10 +3157,13 @@ static void kgem_finish_buffers(struct kgem *kgem)
 						kgem->has_handle_lut ? bo->base.target_handle : shrink->handle;
 					for (n = 0; n < kgem->nreloc; n++) {
 						if (kgem->reloc[n].target_handle == bo->base.target_handle) {
+							uint64_t addr = (int)kgem->reloc[n].delta + shrink->presumed_offset;
+							kgem->batch[kgem->reloc[n].offset/sizeof(kgem->batch[0])] = addr;
+							if (kgem->gen >= 0100)
+								kgem->batch[kgem->reloc[n].offset/sizeof(kgem->batch[0]) + 1] = addr >> 32;
+
 							kgem->reloc[n].target_handle = shrink->target_handle;
 							kgem->reloc[n].presumed_offset = shrink->presumed_offset;
-							kgem->batch[kgem->reloc[n].offset/sizeof(kgem->batch[0])] =
-								kgem->reloc[n].delta + shrink->presumed_offset;
 						}
 					}
 
@@ -3196,10 +3205,13 @@ static void kgem_finish_buffers(struct kgem *kgem)
 						kgem->has_handle_lut ? bo->base.target_handle : shrink->handle;
 					for (n = 0; n < kgem->nreloc; n++) {
 						if (kgem->reloc[n].target_handle == bo->base.target_handle) {
+							uint64_t addr = (int)kgem->reloc[n].delta + shrink->presumed_offset;
+							kgem->batch[kgem->reloc[n].offset/sizeof(kgem->batch[0])] = addr;
+							if (kgem->gen >= 0100)
+								kgem->batch[kgem->reloc[n].offset/sizeof(kgem->batch[0]) + 1] = addr >> 32;
+
 							kgem->reloc[n].target_handle = shrink->target_handle;
 							kgem->reloc[n].presumed_offset = shrink->presumed_offset;
-							kgem->batch[kgem->reloc[n].offset/sizeof(kgem->batch[0])] =
-								kgem->reloc[n].delta + shrink->presumed_offset;
 						}
 					}
 
