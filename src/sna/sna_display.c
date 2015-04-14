@@ -3323,8 +3323,8 @@ default_modes(DisplayModePtr preferred)
 			     preferred->VDisplay * 16,
 			     preferred->HDisplay*9 + preferred->HDisplay/32));
 			for (n = 0; n < ARRAY_SIZE(common_16_9); n++) {
-				if (preferred->HDisplay >= common_16_9[n].width ||
-				    preferred->VDisplay >= common_16_9[n].height)
+				if (preferred->HDisplay <= common_16_9[n].width ||
+				    preferred->VDisplay <= common_16_9[n].height)
 					break;
 
 				m = xf86GTFMode(common_16_9[n].width,
@@ -3345,8 +3345,8 @@ default_modes(DisplayModePtr preferred)
 			     preferred->VDisplay * 16,
 			     preferred->HDisplay*10 + preferred->HDisplay/32));
 			for (n = 0; n < ARRAY_SIZE(common_16_10); n++) {
-				if (preferred->HDisplay >= common_16_10[n].width ||
-				    preferred->VDisplay >= common_16_10[n].height)
+				if (preferred->HDisplay <= common_16_10[n].width ||
+				    preferred->VDisplay <= common_16_10[n].height)
 					break;
 
 				m = xf86GTFMode(common_16_10[n].width,
