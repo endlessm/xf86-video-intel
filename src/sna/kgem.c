@@ -230,25 +230,31 @@ static inline int bytes(struct kgem_bo *bo)
 #define bucket(B) (B)->size.pages.bucket
 #define num_pages(B) (B)->size.pages.count
 
-static int do_ioctl(int fd, unsigned long req, void *arg)
+static int __do_ioctl(int fd, unsigned long req, void *arg)
 {
-	int err;
+	do {
+		int err;
 
-restart:
-	if (ioctl(fd, req, arg) == 0)
+		switch ((err = errno)) {
+		case EAGAIN:
+			sched_yield();
+		case EINTR:
+			break;
+		default:
+			return -err;
+		}
+
+		if (likely(ioctl(fd, req, arg) == 0))
+			return 0;
+	} while (1);
+}
+
+inline static int do_ioctl(int fd, unsigned long req, void *arg)
+{
+	if (likely(ioctl(fd, req, arg) == 0))
 		return 0;
 
-	err = errno;
-
-	if (err == EINTR)
-		goto restart;
-
-	if (err == EAGAIN) {
-		sched_yield();
-		goto restart;
-	}
-
-	return -err;
+	return __do_ioctl(fd, req, arg);
 }
 
 #ifdef DEBUG_MEMORY
