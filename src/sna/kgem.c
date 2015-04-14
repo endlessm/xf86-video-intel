@@ -1192,7 +1192,7 @@ static bool test_has_caching(struct kgem *kgem)
 
 static bool test_has_userptr(struct kgem *kgem)
 {
-	uint32_t handle;
+	struct local_i915_gem_userptr arg;
 	void *ptr;
 
 	if (DBG_NO_USERPTR)
@@ -1205,11 +1205,23 @@ static bool test_has_userptr(struct kgem *kgem)
 	if (posix_memalign(&ptr, PAGE_SIZE, PAGE_SIZE))
 		return false;
 
-	handle = gem_userptr(kgem->fd, ptr, PAGE_SIZE, false);
-	gem_close(kgem->fd, handle);
-	free(ptr);
+	VG_CLEAR(arg);
+	arg.user_ptr = (uintptr_t)ptr;
+	arg.user_size = PAGE_SIZE;
+	arg.flags = I915_USERPTR_UNSYNCHRONIZED;
 
-	return handle != 0;
+	if (DBG_NO_UNSYNCHRONIZED_USERPTR ||
+	    do_ioctl(kgem->fd, LOCAL_IOCTL_I915_GEM_USERPTR, &arg)) {
+		arg.flags &= ~I915_USERPTR_UNSYNCHRONIZED;
+		if (do_ioctl(kgem->fd, LOCAL_IOCTL_I915_GEM_USERPTR, &arg))
+			arg.handle = 0;
+		/* Leak the userptr bo to keep the mmu_notifier alive */
+	} else {
+		gem_close(kgem->fd, arg.handle);
+		free(ptr);
+	}
+
+	return arg.handle != 0;
 }
 
 static bool test_has_create2(struct kgem *kgem)
