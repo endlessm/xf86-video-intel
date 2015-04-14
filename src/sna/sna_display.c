@@ -3259,16 +3259,48 @@ static bool duplicate_mode(DisplayModePtr modes, DisplayModePtr m)
 	return false;
 }
 
+static struct pixel_count {
+	int16_t width, height;
+} common_16_9[] = {
+	{ 640, 360 },
+	{ 720, 405 },
+	{ 864, 486 },
+	{ 960, 540 },
+	{ 1024, 576 },
+	{ 1280, 720 },
+	{ 1366, 768 },
+	{ 1600, 900 },
+	{ 1920, 1080 },
+	{ 2048, 1152 },
+	{ 2560, 1440 },
+	{ 2880, 1620 },
+	{ 3200, 1800 },
+	{ 3840, 2160 },
+	{ 4096, 2304 },
+	{ 5120, 2880 },
+	{ 7680, 4320 },
+	{ 15360, 8640 },
+}, common_16_10[] = {
+	{ 1280, 800 },
+	{ 1400, 900 },
+	{ 1680, 1050 },
+	{ 1920, 1200 },
+	{ 2560, 1600 },
+};
+
 static DisplayModePtr
 default_modes(DisplayModePtr preferred)
 {
 	DisplayModePtr modes;
+	int n;
 
 #if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,6,99,900,0)
 	modes = xf86GetDefaultModes();
 #else
 	modes = xf86GetDefaultModes(0, 0);
 #endif
+
+	/* XXX O(n^2) mode list generation :( */
 
 #if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,4,99,901,0)
 	if (preferred) {
@@ -3283,6 +3315,50 @@ default_modes(DisplayModePtr preferred)
 			modes = xf86ModesAdd(modes, m);
 		else
 			free(m);
+
+		if (preferred->VDisplay * 16 > preferred->HDisplay*9 - preferred->HDisplay/32 &&
+		    preferred->VDisplay * 16 < preferred->HDisplay*9 + preferred->HDisplay/32) {
+			DBG(("Adding 16:9 modes -- %d < %d > %d\n",
+			     preferred->HDisplay*9 - preferred->HDisplay/32,
+			     preferred->VDisplay * 16,
+			     preferred->HDisplay*9 + preferred->HDisplay/32));
+			for (n = 0; n < ARRAY_SIZE(common_16_9); n++) {
+				if (preferred->HDisplay >= common_16_9[n].width ||
+				    preferred->VDisplay >= common_16_9[n].height)
+					break;
+
+				m = xf86GTFMode(common_16_9[n].width,
+						common_16_9[n].height,
+						xf86ModeVRefresh(preferred),
+						FALSE, FALSE);
+				if (!duplicate_mode(modes, m))
+					modes = xf86ModesAdd(modes, m);
+				else
+					free(m);
+			}
+		}
+
+		if (preferred->VDisplay * 16 > preferred->HDisplay*10 - preferred->HDisplay/32 &&
+		    preferred->VDisplay * 16 < preferred->HDisplay*10 + preferred->HDisplay/32) {
+			DBG(("Adding 16:10 modes -- %d < %d > %d\n",
+			     preferred->HDisplay*10 - preferred->HDisplay/32,
+			     preferred->VDisplay * 16,
+			     preferred->HDisplay*10 + preferred->HDisplay/32));
+			for (n = 0; n < ARRAY_SIZE(common_16_10); n++) {
+				if (preferred->HDisplay >= common_16_10[n].width ||
+				    preferred->VDisplay >= common_16_10[n].height)
+					break;
+
+				m = xf86GTFMode(common_16_10[n].width,
+						common_16_10[n].height,
+						xf86ModeVRefresh(preferred),
+						FALSE, FALSE);
+				if (!duplicate_mode(modes, m))
+					modes = xf86ModesAdd(modes, m);
+				else
+					free(m);
+			}
+		}
 	}
 #endif
 
