@@ -442,6 +442,7 @@ static unsigned get_fb(struct sna *sna, struct kgem_bo *bo,
 
 	assert(bo->tiling != I915_TILING_Y || sna->kgem.can_scanout_y);
 	assert((bo->pitch & 63) == 0);
+	assert(scrn->vtSema); /* must be master */
 
 	VG_CLEAR(arg);
 	arg.width = width;
@@ -451,21 +452,83 @@ static unsigned get_fb(struct sna *sna, struct kgem_bo *bo,
 	arg.depth = scrn->depth;
 	arg.handle = bo->handle;
 
-	assert(sna->scrn->vtSema); /* must be master */
 	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_ADDFB, &arg)) {
-		xf86DrvMsg(scrn->scrnIndex, X_ERROR,
-			   "%s: failed to add fb: %dx%d depth=%d, bpp=%d, pitch=%d: %d\n",
-			   __FUNCTION__, width, height,
-			   scrn->depth, scrn->bitsPerPixel, bo->pitch, errno);
-		return 0;
+		/* Try again with the fancy version */
+		struct local_mode_fb_cmd2 {
+			uint32_t fb_id;
+			uint32_t width, height;
+			uint32_t pixel_format;
+			uint32_t flags;
+
+			uint32_t handles[4];
+			uint32_t pitches[4]; /* pitch for each plane */
+			uint32_t offsets[4]; /* offset of each plane */
+			uint64_t modifiers[4];
+		} f;
+#define LOCAL_IOCTL_MODE_ADDFB2 DRM_IOWR(0xb8, struct local_mode_fb_cmd2)
+		memset(&f, 0, sizeof(f));
+		f.width = width;
+		f.height = height;
+		/* XXX interlaced */
+		f.flags = 1 << 1; /* +modifiers */
+		f.handles[0] = bo->handle;
+		f.pitches[0] = bo->pitch;
+
+		switch (bo->tiling) {
+		case I915_TILING_NONE:
+			break;
+		case I915_TILING_X:
+			/* I915_FORMAT_MOD_X_TILED */
+			f.modifiers[0] = (uint64_t)1 << 56 | 1;
+			break;
+		case I915_TILING_Y:
+			/* I915_FORMAT_MOD_X_TILED */
+			f.modifiers[0] = (uint64_t)1 << 56 | 2;
+			break;
+		}
+
+#define fourcc(a,b,c,d) ((a) | (b) << 8 | (c) << 16 | (d) << 24)
+		switch (scrn->depth) {
+		default:
+			ERR(("%s: unhandled screen format, depth=%d\n",
+			     __FUNCTION__, scrn->depth));
+			goto fail;
+		case 8:
+			f.pixel_format = fourcc('C', '8', ' ', ' ');
+			break;
+		case 15:
+			f.pixel_format = fourcc('X', 'R', '1', '5');
+			break;
+		case 16:
+			f.pixel_format = fourcc('R', 'G', '1', '6');
+			break;
+		case 24:
+			f.pixel_format = fourcc('X', 'R', '2', '4');
+			break;
+		case 30:
+			f.pixel_format = fourcc('X', 'R', '3', '0');
+			break;
+		}
+#undef fourcc
+
+		if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_MODE_ADDFB2, &f)) {
+fail:
+			xf86DrvMsg(scrn->scrnIndex, X_ERROR,
+				   "%s: failed to add fb: %dx%d depth=%d, bpp=%d, pitch=%d: %d\n",
+				   __FUNCTION__, width, height,
+				   scrn->depth, scrn->bitsPerPixel, bo->pitch, errno);
+			return 0;
+		}
+
+		arg.fb_id = f.fb_id;
 	}
 	assert(arg.fb_id != 0);
-
+	bo->delta = arg.fb_id;
 	DBG(("%s: attached fb=%d to handle=%d\n",
-	     __FUNCTION__, arg.fb_id, arg.handle));
+	     __FUNCTION__, bo->delta, arg.handle));
 
 	bo->scanout = true;
-	return bo->delta = arg.fb_id;
+	return bo->delta;
 }
 
 static uint32_t gem_create(int fd, int size)
