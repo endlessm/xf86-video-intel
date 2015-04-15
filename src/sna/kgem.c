@@ -1262,6 +1262,32 @@ static bool test_can_scanout_y(struct kgem *kgem)
 
 	if (gem_set_tiling(kgem->fd, arg.handle, I915_TILING_Y, arg.pitch))
 		ret = do_ioctl(kgem->fd, DRM_IOCTL_MODE_ADDFB, &arg) == 0;
+	if (!ret) {
+		struct local_mode_fb_cmd2 {
+			uint32_t fb_id;
+			uint32_t width, height;
+			uint32_t pixel_format;
+			uint32_t flags;
+
+			uint32_t handles[4];
+			uint32_t pitches[4];
+			uint32_t offsets[4];
+			uint64_t modifiers[4];
+		} f;
+#define LOCAL_IOCTL_MODE_ADDFB2 DRM_IOWR(0xb8, struct local_mode_fb_cmd2)
+		memset(&f, 0, sizeof(f));
+		f.width = arg.width;
+		f.height = arg.height;
+		f.handles[0] = arg.handle;
+		f.pitches[0] = arg.pitch;
+		f.modifiers[0] = (uint64_t)1 << 56 | 2; /* MOD_Y_TILED */
+		f.pixel_format = 'X' | 'R' << 8 | '2' << 16 | '4' << 24; /* XRGB8888 */
+		f.flags = 1 << 1; /* + modifier */
+		if (drmIoctl(kgem->fd, LOCAL_IOCTL_MODE_ADDFB2, &f) == 0) {
+			ret = true;
+			arg.fb_id = f.fb_id;
+		}
+	}
 	do_ioctl(kgem->fd, DRM_IOCTL_MODE_RMFB, &arg.fb_id);
 	gem_close(kgem->fd, arg.handle);
 
