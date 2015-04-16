@@ -259,6 +259,12 @@ static const SymTabRec intel_chipsets[] = {
 	{0x163D, "HD graphics"},
 	{0x163E, "HD graphics"},
 
+	/* Cherryview (Cherrytrail/Braswell) */
+	{0x22b0, "HD Graphics"},
+	{0x22b1, "HD Graphics"},
+	{0x22b2, "HD Graphics"},
+	{0x22b3, "HD Graphics"},
+
 	/* When adding new identifiers, also update:
 	 * 1. intel_identify()
 	 * 2. man/intel.man
