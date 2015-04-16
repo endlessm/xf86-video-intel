@@ -281,6 +281,9 @@ fallback:
 		if (box[n].y2 > extents.y2)
 			extents.y2 = box[n].y2;
 	}
+	if (!can_blt && sna->render.max_3d_size == 0)
+		goto fallback;
+
 	if (kgem_bo_can_map(kgem, src_bo)) {
 		/* Is it worth detiling? */
 		if ((extents.y2 - extents.y1 - 1) * src_bo->pitch < 4096)
@@ -849,6 +852,8 @@ bool sna_write_boxes(struct sna *sna, PixmapPtr dst,
 		if (box[n].y2 > extents.y2)
 			extents.y2 = box[n].y2;
 	}
+	if (!can_blt && sna->render.max_3d_size == 0)
+		goto fallback;
 
 	/* Try to avoid switching rings... */
 	if (!can_blt || kgem->ring == KGEM_RENDER ||
