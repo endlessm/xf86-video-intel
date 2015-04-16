@@ -270,6 +270,8 @@ static PixmapPtr sna_dri3_pixmap_from_fd(ScreenPtr screen,
 		priv->ptr = MAKE_STATIC_PTR(pixmap->devPrivate.ptr);
 	} else {
 		assert(priv->gpu_bo == bo);
+		priv->create = kgem_can_create_2d(&sna->kgem,
+						  width, height, depth);
 		priv->pinned |= PIN_DRI3;
 	}
 	list_add(&priv->cow_list, &sna->dri3.pixmaps);
