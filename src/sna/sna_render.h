@@ -540,7 +540,7 @@ enum {
 
 struct gen8_render_state {
 	unsigned gt;
-
+	const struct gt_info *info;
 	struct kgem_bo *general_bo;
 
 	uint32_t vs_state;
