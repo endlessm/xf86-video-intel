@@ -76,7 +76,7 @@ add (16)    Cbn<1>F		Cb<8,8,1>F	-0.501961F  { compr align1 };
     /* 
      * R = Y + Cr * 1.596
      */
-mov (8)    acc0<1>F		Yn<8,8,1>F		    { compr align1 };
+mov (8)    acc0<1>F		Yn_01<8,8,1>F		    { compr align1 };
 mac.sat(8) src_sample_r_01<1>F	Crn_01<8,8,1>F	1.596F	    { compr align1 };
      
 mov (8)    acc0<1>F		Yn_23<8,8,1>F		    { compr align1 };
@@ -84,7 +84,7 @@ mac.sat(8) src_sample_r_23<1>F	Crn_23<8,8,1>F	1.596F	    { compr align1 };
     /*
      * G = Crn * -0.813 + Cbn * -0.392 + Y
      */
-mov (8)    acc0<1>F		Yn_23<8,8,1>F		    { compr align1 };
+mov (8)    acc0<1>F		Yn_01<8,8,1>F		    { compr align1 };
 mac (8)    acc0<1>F		Crn_01<8,8,1>F    	-0.813F	    { compr align1 };
 mac.sat(8) src_sample_g_01<1>F	Cbn_01<8,8,1>F    	-0.392F	    { compr align1 };
 
