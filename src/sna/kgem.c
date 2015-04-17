@@ -84,6 +84,7 @@ search_snoop_cache(struct kgem *kgem, unsigned int num_pages, unsigned flags);
 #define DBG_NO_HANDLE_LUT 0
 #define DBG_NO_WT 0
 #define DBG_NO_WC_MMAP 0
+#define DBG_NO_BLT_Y 0
 #define DBG_NO_SCANOUT_Y 0
 #define DBG_NO_DETILING 0
 #define DBG_DUMP 0
@@ -1244,6 +1245,54 @@ static bool test_has_create2(struct kgem *kgem)
 #endif
 }
 
+static bool test_can_blt_y(struct kgem *kgem)
+{
+	struct drm_i915_gem_exec_object2 object;
+	uint32_t batch[] = {
+#define MI_LOAD_REGISTER_IMM (0x22<<23 | (3-2))
+#define BCS_SWCTRL 0x22200
+#define BCS_SRC_Y (1 << 0)
+#define BCS_DST_Y (1 << 1)
+		MI_LOAD_REGISTER_IMM,
+		BCS_SWCTRL,
+		(BCS_SRC_Y | BCS_DST_Y) << 16 | (BCS_SRC_Y | BCS_DST_Y),
+
+		MI_LOAD_REGISTER_IMM,
+		BCS_SWCTRL,
+		(BCS_SRC_Y | BCS_DST_Y) << 16,
+
+		MI_BATCH_BUFFER_END,
+		0,
+	};
+	int ret;
+
+	if (DBG_NO_BLT_Y)
+		return false;
+
+	if (kgem->gen < 060)
+		return false;
+
+	memset(&object, 0, sizeof(object));
+	object.handle = gem_create(kgem->fd, 1);
+
+	ret = gem_write(kgem->fd, object.handle, 0, sizeof(batch), batch);
+	if (ret == 0) {
+		struct drm_i915_gem_execbuffer2 execbuf;
+
+		memset(&execbuf, 0, sizeof(execbuf));
+		execbuf.buffers_ptr = (uintptr_t)&object;
+		execbuf.buffer_count = 1;
+		execbuf.flags = I915_EXEC_BLT;
+
+		ret = do_ioctl(kgem->fd,
+			       DRM_IOCTL_I915_GEM_EXECBUFFER2,
+			       &execbuf);
+	}
+	gem_close(kgem->fd, object.handle);
+
+	return ret == 0;
+}
+
 static bool test_can_scanout_y(struct kgem *kgem)
 {
 	struct drm_mode_fb_cmd arg;
@@ -1672,12 +1721,16 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 	DBG(("%s: can blt to cpu? %d\n", __FUNCTION__,
 	     kgem->can_blt_cpu));
 
+	kgem->can_blt_y = test_can_blt_y(kgem);
+	DBG(("%s: can blit to Y-tiled surfaces? %d\n", __FUNCTION__,
+	     kgem->can_blt_y));
+
 	kgem->can_render_y = gen != 021 && (gen >> 3) != 4;
 	DBG(("%s: can render to Y-tiled surfaces? %d\n", __FUNCTION__,
 	     kgem->can_render_y));
 
 	kgem->can_scanout_y = test_can_scanout_y(kgem);
-	DBG(("%s: can render to Y-tiled surfaces? %d\n", __FUNCTION__,
+	DBG(("%s: can scanout Y-tiled surfaces? %d\n", __FUNCTION__,
 	     kgem->can_scanout_y));
 
 	kgem->has_secure_batches = test_has_secure_batches(kgem);
@@ -2136,8 +2189,32 @@ static void kgem_add_bo(struct kgem *kgem, struct kgem_bo *bo)
 	kgem->flush |= bo->flush;
 }
 
+static void kgem_clear_swctrl(struct kgem *kgem)
+{
+	uint32_t *b;
+
+	if (kgem->bcs_state == 0)
+		return;
+
+	DBG(("%s: clearin SWCTRL LRI from %x\n",
+	     __FUNCTION__, kgem->bcs_state));
+
+	b = kgem->batch + kgem->nbatch;
+	kgem->nbatch += 7;
+
+	*b++ = MI_FLUSH_DW;
+	*b++ = 0;
+	*b++ = 0;
+	*b++ = 0;
+
+	*b++ = MI_LOAD_REGISTER_IMM;
+	*b++ = BCS_SWCTRL;
+	*b++ = kgem->bcs_state << 16;
+}
+
 static uint32_t kgem_end_batch(struct kgem *kgem)
 {
+	kgem_clear_swctrl(kgem);
 	kgem->batch[kgem->nbatch++] = MI_BATCH_BUFFER_END;
 	if (kgem->nbatch & 1)
 		kgem->batch[kgem->nbatch++] = MI_NOOP;
@@ -3480,6 +3557,7 @@ void kgem_reset(struct kgem *kgem)
 	kgem->needs_reservation = false;
 	kgem->flush = 0;
 	kgem->batch_flags = kgem->batch_flags_base;
+	kgem->bcs_state = 0;
 	assert(kgem->batch);
 
 	kgem->next_request = __kgem_request_alloc(kgem);
@@ -6114,6 +6192,66 @@ bool kgem_check_many_bo_fenced(struct kgem *kgem, ...)
 	return kgem_flush(kgem, flush);
 }
 
+void __kgem_bcs_set_tiling(struct kgem *kgem,
+			   struct kgem_bo *src,
+			   struct kgem_bo *dst)
+{
+	uint32_t state, mask, *b;
+
+	DBG(("%s: src handle=%d:tiling=%d, dst handle=%d:tiling=%d\n",
+	     __FUNCTION__,
+	     src ? src->handle : 0, src ? src->tiling : 0,
+	     dst ? dst->handle : 0, dst ? dst->tiling : 0));
+	assert(kgem->mode == KGEM_BLT);
+
+	mask = state = 0;
+	if (dst && dst->tiling) {
+		assert(kgem_bo_can_blt(kgem, dst));
+		mask |= BCS_DST_Y;
+		if (dst->tiling == I915_TILING_Y)
+			state |= BCS_DST_Y;
+	}
+
+	if (src && src->tiling) {
+		assert(kgem_bo_can_blt(kgem, src));
+		mask |= BCS_SRC_Y;
+		if (src->tiling == I915_TILING_Y)
+			state |= BCS_SRC_Y;
+	}
+
+	if ((kgem->bcs_state & mask) == state)
+		return;
+
+	DBG(("%s: updating SWCTRL %x -> %x\n", __FUNCTION__,
+	     kgem->bcs_state, (kgem->bcs_state & ~mask) | state));
+
+	/* Over-estimate space in case we need to re-emit the cmd packet */
+	if (!kgem_check_batch(kgem, 24)) {
+		_kgem_submit(kgem);
+		_kgem_set_mode(kgem, KGEM_BLT);
+	}
+
+	b = kgem->batch + kgem->nbatch;
+	if (kgem->nbatch) {
+		DBG(("%s: emitting flush before SWCTRL LRI\n",
+		     __FUNCTION__));
+		*b++ = MI_FLUSH_DW;
+		*b++ = 0;
+		*b++ = 0;
+		*b++ = 0;
+	}
+
+	DBG(("%s: emitting SWCTRL LRI to %x\n",
+	     __FUNCTION__, mask << 16 | state));
+	*b++ = MI_LOAD_REGISTER_IMM;
+	*b++ = BCS_SWCTRL;
+	*b++ = mask << 16 | state;
+	kgem->nbatch = b - kgem->batch;
+
+	kgem->bcs_state &= ~mask;
+	kgem->bcs_state |= state;
+}
+
 uint32_t kgem_add_reloc(struct kgem *kgem,
 			uint32_t pos,
 			struct kgem_bo *bo,
@@ -7619,6 +7757,7 @@ kgem_replace_bo(struct kgem *kgem,
 		}
 		_kgem_set_mode(kgem, KGEM_BLT);
 	}
+	kgem_bcs_set_tiling(kgem, src, dst);
 
 	br00 = XY_SRC_COPY_BLT_CMD;
 	br13 = pitch;

@@ -158,6 +158,8 @@ struct kgem {
 		int16_t count;
 	} vma[NUM_MAP_TYPES];
 
+	uint32_t bcs_state;
+
 	uint32_t batch_flags;
 	uint32_t batch_flags_base;
 #define I915_EXEC_SECURE (1<<9)
@@ -189,6 +191,7 @@ struct kgem {
 	uint32_t has_wc_mmap :1;
 
 	uint32_t can_blt_cpu :1;
+	uint32_t can_blt_y :1;
 	uint32_t can_render_y :1;
 	uint32_t can_scanout_y :1;
 
@@ -232,7 +235,7 @@ struct kgem {
 
 #define KGEM_MAX_DEFERRED_VBO 16
 
-#define KGEM_BATCH_RESERVED 1
+#define KGEM_BATCH_RESERVED 8 /* LRI(SWCTRL) + END */
 #define KGEM_RELOC_RESERVED (KGEM_MAX_DEFERRED_VBO)
 #define KGEM_EXEC_RESERVED (1+KGEM_MAX_DEFERRED_VBO)
 
@@ -573,7 +576,7 @@ static inline bool kgem_bo_can_blt(struct kgem *kgem,
 {
 	assert(bo->refcnt);
 
-	if (bo->tiling == I915_TILING_Y) {
+	if (bo->tiling == I915_TILING_Y && !kgem->can_blt_y) {
 		DBG(("%s: can not blt to handle=%d, tiling=Y\n",
 		     __FUNCTION__, bo->handle));
 		return false;
@@ -586,6 +589,22 @@ static inline bool kgem_bo_can_blt(struct kgem *kgem,
 	}
 
 	return kgem_bo_blt_pitch_is_ok(kgem, bo);
+}
+
+void __kgem_bcs_set_tiling(struct kgem *kgem,
+			   struct kgem_bo *src,
+			   struct kgem_bo *dst);
+
+inline static void kgem_bcs_set_tiling(struct kgem *kgem,
+				       struct kgem_bo *src,
+				       struct kgem_bo *dst)
+{
+	assert(kgem->mode == KGEM_BLT);
+
+	if (!kgem->can_blt_y)
+		return;
+
+	__kgem_bcs_set_tiling(kgem, src, dst);
 }
 
 static inline bool kgem_bo_is_snoop(struct kgem_bo *bo)

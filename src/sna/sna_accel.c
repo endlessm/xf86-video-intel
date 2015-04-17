@@ -5297,6 +5297,7 @@ sna_put_xybitmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 
 	kgem_set_mode(&sna->kgem, KGEM_BLT, bo);
 	assert(kgem_bo_can_blt(&sna->kgem, bo));
+	kgem_bcs_set_tiling(&sna->kgem, NULL, bo);
 
 	/* Region is pre-clipped and translated into pixmap space */
 	box = region_rects(region);
@@ -5318,6 +5319,7 @@ sna_put_xybitmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 				return false;
 			_kgem_set_mode(&sna->kgem, KGEM_BLT);
 		}
+		kgem_bcs_set_tiling(&sna->kgem, NULL, bo);
 
 		upload = kgem_create_buffer(&sna->kgem,
 					    bstride*bh,
@@ -5461,6 +5463,7 @@ sna_put_xypixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 
 	kgem_set_mode(&sna->kgem, KGEM_BLT, bo);
 	assert(kgem_bo_can_blt(&sna->kgem, bo));
+	kgem_bcs_set_tiling(&sna->kgem, NULL, bo);
 
 	skip = h * BitmapBytePad(w + left);
 	for (i = 1 << (gc->depth-1); i; i >>= 1, bits += skip) {
@@ -5488,6 +5491,7 @@ sna_put_xypixmap_blt(DrawablePtr drawable, GCPtr gc, RegionPtr region,
 					return false;
 				_kgem_set_mode(&sna->kgem, KGEM_BLT);
 			}
+			kgem_bcs_set_tiling(&sna->kgem, NULL, bo);
 
 			upload = kgem_create_buffer(&sna->kgem,
 						    bstride*bh,
@@ -8341,6 +8345,7 @@ sna_copy_bitmap_blt(DrawablePtr _bitmap, DrawablePtr drawable, GCPtr gc,
 					return; /* XXX fallback? */
 				_kgem_set_mode(&sna->kgem, KGEM_BLT);
 			}
+			kgem_bcs_set_tiling(&sna->kgem, NULL, arg->bo);
 
 			assert(sna->kgem.mode == KGEM_BLT);
 			if (sna->kgem.gen >= 0100) {
@@ -8408,6 +8413,7 @@ sna_copy_bitmap_blt(DrawablePtr _bitmap, DrawablePtr drawable, GCPtr gc,
 					return; /* XXX fallback? */
 				_kgem_set_mode(&sna->kgem, KGEM_BLT);
 			}
+			kgem_bcs_set_tiling(&sna->kgem, NULL, arg->bo);
 
 			upload = kgem_create_buffer(&sna->kgem,
 						    bstride*bh,
@@ -8558,6 +8564,7 @@ sna_copy_plane_blt(DrawablePtr source, DrawablePtr drawable, GCPtr gc,
 				return; /* XXX fallback? */
 			_kgem_set_mode(&sna->kgem, KGEM_BLT);
 		}
+		kgem_bcs_set_tiling(&sna->kgem, NULL, arg->bo);
 
 		upload = kgem_create_buffer(&sna->kgem,
 					    bstride*bh,
@@ -8673,6 +8680,8 @@ sna_copy_plane_blt(DrawablePtr source, DrawablePtr drawable, GCPtr gc,
 					break;
 				}
 			}
+
+			kgem_bcs_set_tiling(&sna->kgem, upload, arg->bo);
 
 			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
@@ -12283,6 +12292,7 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 			return false;
 		_kgem_set_mode(&sna->kgem, KGEM_BLT);
 	}
+	kgem_bcs_set_tiling(&sna->kgem, tile_bo, bo);
 
 	get_drawable_deltas(drawable, pixmap, &dx, &dy);
 	assert(extents->x1 + dx >= 0);
@@ -12426,6 +12436,7 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 
 			_kgem_submit(&sna->kgem);
 			_kgem_set_mode(&sna->kgem, KGEM_BLT);
+			kgem_bcs_set_tiling(&sna->kgem, tile_bo, bo);
 		} while (1);
 	} else {
 		RegionRec clip;
@@ -12494,6 +12505,7 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 					if (!kgem_check_batch(&sna->kgem, 3)) {
 						_kgem_submit(&sna->kgem);
 						_kgem_set_mode(&sna->kgem, KGEM_BLT);
+						kgem_bcs_set_tiling(&sna->kgem, tile_bo, bo);
 
 						unwind_batch = sna->kgem.nbatch;
 						unwind_reloc = sna->kgem.nreloc;
@@ -12590,6 +12602,7 @@ sna_poly_fill_rect_tiled_8x8_blt(DrawablePtr drawable,
 							DBG(("%s: emitting split batch\n", __FUNCTION__));
 							_kgem_submit(&sna->kgem);
 							_kgem_set_mode(&sna->kgem, KGEM_BLT);
+							kgem_bcs_set_tiling(&sna->kgem, tile_bo, bo);
 
 							unwind_batch = sna->kgem.nbatch;
 							unwind_reloc = sna->kgem.nreloc;
@@ -13219,6 +13232,7 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 			return false;
 		_kgem_set_mode(&sna->kgem, KGEM_BLT);
 	}
+	kgem_bcs_set_tiling(&sna->kgem, NULL, bo);
 
 	if (!clipped) {
 		dx += drawable->x;
@@ -13331,6 +13345,7 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 
 			_kgem_submit(&sna->kgem);
 			_kgem_set_mode(&sna->kgem, KGEM_BLT);
+			kgem_bcs_set_tiling(&sna->kgem, NULL, bo);
 		} while (1);
 	} else {
 		RegionRec clip;
@@ -13388,6 +13403,7 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 					if (!kgem_check_batch(&sna->kgem, 3)) {
 						_kgem_submit(&sna->kgem);
 						_kgem_set_mode(&sna->kgem, KGEM_BLT);
+						kgem_bcs_set_tiling(&sna->kgem, NULL, bo);
 
 						assert(sna->kgem.mode == KGEM_BLT);
 						b = sna->kgem.batch + sna->kgem.nbatch;
@@ -13460,6 +13476,7 @@ sna_poly_fill_rect_stippled_8x8_blt(DrawablePtr drawable,
 						if (!kgem_check_batch(&sna->kgem, 3)) {
 							_kgem_submit(&sna->kgem);
 							_kgem_set_mode(&sna->kgem, KGEM_BLT);
+							kgem_bcs_set_tiling(&sna->kgem, NULL, bo);
 
 							assert(sna->kgem.mode == KGEM_BLT);
 							b = sna->kgem.batch + sna->kgem.nbatch;
@@ -13590,6 +13607,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 	get_drawable_deltas(drawable, pixmap, &dx, &dy);
 	kgem_set_mode(&sna->kgem, KGEM_BLT, bo);
 	assert(kgem_bo_can_blt(&sna->kgem, bo));
+	kgem_bcs_set_tiling(&sna->kgem, NULL, bo);
 
 	br00 = 3 << 20;
 	br13 = bo->pitch;
@@ -13634,6 +13652,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 						return false;
 					_kgem_set_mode(&sna->kgem, KGEM_BLT);
 				}
+				kgem_bcs_set_tiling(&sna->kgem, NULL, bo);
 
 				assert(sna->kgem.mode == KGEM_BLT);
 				b = sna->kgem.batch + sna->kgem.nbatch;
@@ -13697,6 +13716,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 						return false;
 					_kgem_set_mode(&sna->kgem, KGEM_BLT);
 				}
+				kgem_bcs_set_tiling(&sna->kgem, NULL, bo);
 
 				upload = kgem_create_buffer(&sna->kgem,
 							    bstride*bh,
@@ -13827,6 +13847,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 							return false;
 						_kgem_set_mode(&sna->kgem, KGEM_BLT);
 					}
+					kgem_bcs_set_tiling(&sna->kgem, NULL, bo);
 
 					assert(sna->kgem.mode == KGEM_BLT);
 					b = sna->kgem.batch + sna->kgem.nbatch;
@@ -13888,6 +13909,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 							return false;
 						_kgem_set_mode(&sna->kgem, KGEM_BLT);
 					}
+					kgem_bcs_set_tiling(&sna->kgem, NULL, bo);
 
 					upload = kgem_create_buffer(&sna->kgem,
 								    bstride*bh,
@@ -14018,6 +14040,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 								return false;
 							_kgem_set_mode(&sna->kgem, KGEM_BLT);
 						}
+						kgem_bcs_set_tiling(&sna->kgem, NULL, bo);
 
 						assert(sna->kgem.mode == KGEM_BLT);
 						b = sna->kgem.batch + sna->kgem.nbatch;
@@ -14078,6 +14101,7 @@ sna_poly_fill_rect_stippled_1_blt(DrawablePtr drawable,
 								return false;
 							_kgem_set_mode(&sna->kgem, KGEM_BLT);
 						}
+						kgem_bcs_set_tiling(&sna->kgem, NULL, bo);
 
 						upload = kgem_create_buffer(&sna->kgem,
 									    bstride*bh,
@@ -14217,6 +14241,7 @@ sna_poly_fill_rect_stippled_n_box__imm(struct sna *sna,
 					return; /* XXX fallback? */
 				_kgem_set_mode(&sna->kgem, KGEM_BLT);
 			}
+			kgem_bcs_set_tiling(&sna->kgem, NULL, bo);
 
 			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
@@ -14342,6 +14367,7 @@ sna_poly_fill_rect_stippled_n_box(struct sna *sna,
 					return; /* XXX fallback? */
 				_kgem_set_mode(&sna->kgem, KGEM_BLT);
 			}
+			kgem_bcs_set_tiling(&sna->kgem, NULL, bo);
 
 			assert(sna->kgem.mode == KGEM_BLT);
 			b = sna->kgem.batch + sna->kgem.nbatch;
@@ -14505,6 +14531,7 @@ sna_poly_fill_rect_stippled_n_blt__imm(DrawablePtr drawable,
 	get_drawable_deltas(drawable, pixmap, &dx, &dy);
 	kgem_set_mode(&sna->kgem, KGEM_BLT, bo);
 	assert(kgem_bo_can_blt(&sna->kgem, bo));
+	kgem_bcs_set_tiling(&sna->kgem, NULL, bo);
 
 	br00 = XY_MONO_SRC_COPY_IMM | 3 << 20;
 	br13 = bo->pitch;
@@ -14650,6 +14677,7 @@ sna_poly_fill_rect_stippled_n_blt(DrawablePtr drawable,
 	get_drawable_deltas(drawable, pixmap, &dx, &dy);
 	kgem_set_mode(&sna->kgem, KGEM_BLT, bo);
 	assert(kgem_bo_can_blt(&sna->kgem, bo));
+	kgem_bcs_set_tiling(&sna->kgem, NULL, bo);
 
 	br00 = XY_MONO_SRC_COPY | 3 << 20;
 	br13 = bo->pitch;
@@ -15372,6 +15400,7 @@ sna_glyph_blt(DrawablePtr drawable, GCPtr gc,
 		}
 		_kgem_set_mode(&sna->kgem, KGEM_BLT);
 	}
+	kgem_bcs_set_tiling(&sna->kgem, NULL, bo);
 
 	DBG(("%s: glyph clip box (%d, %d), (%d, %d)\n",
 	     __FUNCTION__,
@@ -15459,6 +15488,7 @@ sna_glyph_blt(DrawablePtr drawable, GCPtr gc,
 			if (!kgem_check_batch(&sna->kgem, 3+len)) {
 				_kgem_submit(&sna->kgem);
 				_kgem_set_mode(&sna->kgem, KGEM_BLT);
+				kgem_bcs_set_tiling(&sna->kgem, NULL, bo);
 
 				DBG(("%s: new batch, glyph clip box (%d, %d), (%d, %d)\n",
 				     __FUNCTION__,
@@ -16093,6 +16123,7 @@ sna_reversed_glyph_blt(DrawablePtr drawable, GCPtr gc,
 		}
 		_kgem_set_mode(&sna->kgem, KGEM_BLT);
 	}
+	kgem_bcs_set_tiling(&sna->kgem, NULL, bo);
 
 	unwind_batch = sna->kgem.nbatch;
 	unwind_reloc = sna->kgem.nreloc;
@@ -16202,6 +16233,7 @@ sna_reversed_glyph_blt(DrawablePtr drawable, GCPtr gc,
 			if (!kgem_check_batch(&sna->kgem, 3+len)) {
 				_kgem_submit(&sna->kgem);
 				_kgem_set_mode(&sna->kgem, KGEM_BLT);
+				kgem_bcs_set_tiling(&sna->kgem, NULL, bo);
 
 				unwind_batch = sna->kgem.nbatch;
 				unwind_reloc = sna->kgem.nreloc;
@@ -16541,6 +16573,7 @@ sna_push_pixels_solid_blt(GCPtr gc,
 
 	kgem_set_mode(&sna->kgem, KGEM_BLT, bo);
 	assert(kgem_bo_can_blt(&sna->kgem, bo));
+	kgem_bcs_set_tiling(&sna->kgem, NULL, bo);
 
 	/* Region is pre-clipped and translated into pixmap space */
 	box = region_rects(region);
@@ -16562,6 +16595,7 @@ sna_push_pixels_solid_blt(GCPtr gc,
 				return false;
 			_kgem_set_mode(&sna->kgem, KGEM_BLT);
 		}
+		kgem_bcs_set_tiling(&sna->kgem, NULL, bo);
 
 		upload = kgem_create_buffer(&sna->kgem,
 					    bstride*bh,

@@ -105,8 +105,10 @@ read_boxes_inplace__cpu(struct kgem *kgem,
 	if (!download_inplace__cpu(kgem, dst, bo, box, n))
 		return false;
 
+	if (bo->tiling == I915_TILING_Y)
+		return false;
+
 	assert(kgem_bo_can_map__cpu(kgem, bo, false));
-	assert(bo->tiling != I915_TILING_Y);
 
 	src = kgem_bo_map__cpu(kgem, bo);
 	if (src == NULL)
@@ -480,6 +482,7 @@ fallback:
 			goto fallback;
 		_kgem_set_mode(kgem, KGEM_BLT);
 	}
+	kgem_bcs_set_tiling(&sna->kgem, src_bo, NULL);
 
 	tmp_nbox = nbox;
 	tmp_box = box;
@@ -542,6 +545,7 @@ fallback:
 				break;
 
 			_kgem_set_mode(kgem, KGEM_BLT);
+			kgem_bcs_set_tiling(&sna->kgem, src_bo, NULL);
 			tmp_box += nbox_this_time;
 		} while (1);
 	} else {
@@ -600,6 +604,7 @@ fallback:
 				break;
 
 			_kgem_set_mode(kgem, KGEM_BLT);
+			kgem_bcs_set_tiling(&sna->kgem, src_bo, NULL);
 			tmp_box += nbox_this_time;
 		} while (1);
 	}
@@ -669,8 +674,10 @@ write_boxes_inplace__tiled(struct kgem *kgem,
 {
 	uint8_t *dst;
 
+	if (bo->tiling == I915_TILING_Y)
+		return false;
+
 	assert(kgem->has_wc_mmap || kgem_bo_can_map__cpu(kgem, bo, true));
-	assert(bo->tiling != I915_TILING_Y);
 
 	if (kgem_bo_can_map__cpu(kgem, bo, true)) {
 		dst = kgem_bo_map__cpu(kgem, bo);
@@ -1043,6 +1050,7 @@ tile:
 			goto fallback;
 		_kgem_set_mode(kgem, KGEM_BLT);
 	}
+	kgem_bcs_set_tiling(&sna->kgem, NULL, dst_bo);
 
 	if (kgem->gen >= 0100) {
 		cmd |= 8;
@@ -1134,6 +1142,7 @@ tile:
 			if (nbox) {
 				_kgem_submit(kgem);
 				_kgem_set_mode(kgem, KGEM_BLT);
+				kgem_bcs_set_tiling(&sna->kgem, NULL, dst_bo);
 			}
 
 			kgem_bo_destroy(kgem, src_bo);
@@ -1229,6 +1238,7 @@ tile:
 			if (nbox) {
 				_kgem_submit(kgem);
 				_kgem_set_mode(kgem, KGEM_BLT);
+				kgem_bcs_set_tiling(&sna->kgem, NULL, dst_bo);
 			}
 
 			kgem_bo_destroy(kgem, src_bo);
@@ -1546,6 +1556,7 @@ tile:
 			goto fallback;
 		_kgem_set_mode(kgem, KGEM_BLT);
 	}
+	kgem_bcs_set_tiling(&sna->kgem, NULL, dst_bo);
 
 	if (sna->kgem.gen >= 0100) {
 		cmd |= 8;
@@ -1641,6 +1652,7 @@ tile:
 			if (nbox) {
 				_kgem_submit(kgem);
 				_kgem_set_mode(kgem, KGEM_BLT);
+				kgem_bcs_set_tiling(&sna->kgem, NULL, dst_bo);
 			}
 
 			kgem_bo_destroy(kgem, src_bo);
@@ -1737,6 +1749,7 @@ tile:
 			if (nbox) {
 				_kgem_submit(kgem);
 				_kgem_set_mode(kgem, KGEM_BLT);
+				kgem_bcs_set_tiling(&sna->kgem, NULL, dst_bo);
 			}
 
 			kgem_bo_destroy(kgem, src_bo);

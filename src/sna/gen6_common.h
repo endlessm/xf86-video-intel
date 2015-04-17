@@ -93,6 +93,9 @@ static int prefer_blt_bo(struct sna *sna,
 
 		if (src->rq)
 			return RQ_IS_BLT(src->rq);
+
+		if (src->tiling == I915_TILING_Y)
+			return false;
         } else {
                 if (sna->render_state.gt > 2)
                         return false;

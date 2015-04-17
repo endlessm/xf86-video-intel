@@ -129,7 +129,6 @@ static bool sna_blt_fill_init(struct sna *sna,
 	struct kgem *kgem = &sna->kgem;
 
 	assert(kgem_bo_can_blt (kgem, bo));
-	assert(bo->tiling != I915_TILING_Y);
 	blt->bo[0] = bo;
 
 	blt->br13 = bo->pitch;
@@ -183,6 +182,7 @@ static bool sna_blt_fill_init(struct sna *sna,
 				return false;
 			_kgem_set_mode(kgem, KGEM_BLT);
 		}
+		kgem_bcs_set_tiling(kgem, NULL, bo);
 
 		assert(sna->kgem.mode == KGEM_BLT);
 		b = kgem->batch + kgem->nbatch;
@@ -242,6 +242,8 @@ noinline static void __sna_blt_fill_begin(struct sna *sna,
 {
 	struct kgem *kgem = &sna->kgem;
 	uint32_t *b;
+
+	kgem_bcs_set_tiling(&sna->kgem, NULL, blt->bo[0]);
 
 	assert(kgem->mode == KGEM_BLT);
 	b = kgem->batch + kgem->nbatch;
@@ -338,8 +340,8 @@ static bool sna_blt_copy_init(struct sna *sna,
 {
 	struct kgem *kgem = &sna->kgem;
 
-	assert(kgem_bo_can_blt (kgem, src));
-	assert(kgem_bo_can_blt (kgem, dst));
+	assert(kgem_bo_can_blt(kgem, src));
+	assert(kgem_bo_can_blt(kgem, dst));
 
 	blt->bo[0] = src;
 	blt->bo[1] = dst;
@@ -378,6 +380,7 @@ static bool sna_blt_copy_init(struct sna *sna,
 			return false;
 		_kgem_set_mode(kgem, KGEM_BLT);
 	}
+	kgem_bcs_set_tiling(&sna->kgem, src, dst);
 
 	sna->blt_state.fill_bo = 0;
 	return true;
@@ -432,6 +435,7 @@ static bool sna_blt_alpha_fixup_init(struct sna *sna,
 			return false;
 		_kgem_set_mode(kgem, KGEM_BLT);
 	}
+	kgem_bcs_set_tiling(&sna->kgem, src, dst);
 
 	sna->blt_state.fill_bo = 0;
 	return true;
@@ -463,6 +467,7 @@ static void sna_blt_alpha_fixup_one(struct sna *sna,
 		_kgem_submit(kgem);
 		_kgem_set_mode(kgem, KGEM_BLT);
 	}
+	kgem_bcs_set_tiling(&sna->kgem, blt->bo[1], blt->bo[0]);
 
 	assert(sna->kgem.mode == KGEM_BLT);
 	b = kgem->batch + kgem->nbatch;
@@ -591,6 +596,7 @@ static void sna_blt_copy_one(struct sna *sna,
 		_kgem_submit(kgem);
 		_kgem_set_mode(kgem, KGEM_BLT);
 	}
+	kgem_bcs_set_tiling(&sna->kgem, blt->bo[1], blt->bo[0]);
 
 	assert(sna->kgem.mode == KGEM_BLT);
 	b = kgem->batch + kgem->nbatch;
@@ -1432,6 +1438,7 @@ begin_blt(struct sna *sna,
 
 		_kgem_set_mode(&sna->kgem, KGEM_BLT);
 	}
+	kgem_bcs_set_tiling(&sna->kgem, NULL, op->dst.bo);
 
 	return true;
 }
@@ -1695,6 +1702,7 @@ static void blt_composite_copy_boxes__thread(struct sna *sna,
 
 			_kgem_submit(kgem);
 			_kgem_set_mode(kgem, KGEM_BLT);
+			kgem_bcs_set_tiling(&sna->kgem, src_bo, dst_bo);
 		} while (1);
 	} else {
 		do {
@@ -1751,6 +1759,7 @@ static void blt_composite_copy_boxes__thread(struct sna *sna,
 
 			_kgem_submit(kgem);
 			_kgem_set_mode(kgem, KGEM_BLT);
+			kgem_bcs_set_tiling(&sna->kgem, src_bo, dst_bo);
 		} while (1);
 	}
 	sna_vertex_unlock(&sna->render);
@@ -1833,6 +1842,7 @@ static void blt_composite_copy_boxes__thread64(struct sna *sna,
 
 			_kgem_submit(kgem);
 			_kgem_set_mode(kgem, KGEM_BLT);
+			kgem_bcs_set_tiling(&sna->kgem, src_bo, dst_bo);
 		} while (1);
 	} else {
 		do {
@@ -1891,6 +1901,7 @@ static void blt_composite_copy_boxes__thread64(struct sna *sna,
 
 			_kgem_submit(kgem);
 			_kgem_set_mode(kgem, KGEM_BLT);
+			kgem_bcs_set_tiling(&sna->kgem, src_bo, dst_bo);
 		} while (1);
 	}
 	sna_vertex_unlock(&sna->render);
@@ -2000,6 +2011,7 @@ prepare_blt_copy(struct sna *sna,
 		}
 		_kgem_set_mode(&sna->kgem, KGEM_BLT);
 	}
+	kgem_bcs_set_tiling(&sna->kgem, bo, op->dst.bo);
 
 	DBG(("%s\n", __FUNCTION__));
 
@@ -3046,6 +3058,7 @@ sna_blt_composite__convert(struct sna *sna,
 		}
 		_kgem_set_mode(&sna->kgem, KGEM_BLT);
 	}
+	kgem_bcs_set_tiling(&sna->kgem, tmp->src.bo, tmp->dst.bo);
 
 	if (alpha_fixup) {
 		tmp->blt   = blt_composite_copy_with_alpha;
@@ -3387,6 +3400,7 @@ static bool sna_blt_fill_box(struct sna *sna, uint8_t alu,
 
 		_kgem_set_mode(kgem, KGEM_BLT);
 	}
+	kgem_bcs_set_tiling(&sna->kgem, NULL, bo);
 
 	assert(kgem_check_batch(kgem, 6));
 	assert(kgem_check_reloc(kgem, 1));
@@ -3493,6 +3507,8 @@ bool sna_blt_fill_boxes(struct sna *sna, uint8_t alu,
 			_kgem_set_mode(kgem, KGEM_BLT);
 		}
 
+		kgem_bcs_set_tiling(&sna->kgem, NULL, bo);
+
 		assert(sna->kgem.mode == KGEM_BLT);
 		b = kgem->batch + kgem->nbatch;
 		if (kgem->gen >= 0100) {
@@ -3581,6 +3597,7 @@ bool sna_blt_fill_boxes(struct sna *sna, uint8_t alu,
 
 			_kgem_submit(kgem);
 			_kgem_set_mode(kgem, KGEM_BLT);
+			kgem_bcs_set_tiling(&sna->kgem, NULL, bo);
 
 			assert(sna->kgem.mode == KGEM_BLT);
 			b = kgem->batch + kgem->nbatch;
@@ -3727,6 +3744,7 @@ bool sna_blt_copy_boxes(struct sna *sna, uint8_t alu,
 		}
 		_kgem_set_mode(kgem, KGEM_BLT);
 	}
+	kgem_bcs_set_tiling(&sna->kgem, src_bo, dst_bo);
 
 	if ((dst_dx | dst_dy) == 0) {
 		if (kgem->gen >= 0100) {
@@ -3787,6 +3805,7 @@ bool sna_blt_copy_boxes(struct sna *sna, uint8_t alu,
 
 				_kgem_submit(kgem);
 				_kgem_set_mode(kgem, KGEM_BLT);
+				kgem_bcs_set_tiling(&sna->kgem, src_bo, dst_bo);
 			} while (1);
 		} else {
 			uint64_t hdr = (uint64_t)br13 << 32 | cmd | 6;
@@ -3844,6 +3863,7 @@ bool sna_blt_copy_boxes(struct sna *sna, uint8_t alu,
 
 				_kgem_submit(kgem);
 				_kgem_set_mode(kgem, KGEM_BLT);
+				kgem_bcs_set_tiling(&sna->kgem, src_bo, dst_bo);
 			} while (1);
 		}
 	} else {
@@ -3905,6 +3925,7 @@ bool sna_blt_copy_boxes(struct sna *sna, uint8_t alu,
 
 				_kgem_submit(kgem);
 				_kgem_set_mode(kgem, KGEM_BLT);
+				kgem_bcs_set_tiling(&sna->kgem, src_bo, dst_bo);
 			} while (1);
 		} else {
 			cmd |= 6;
@@ -3962,6 +3983,7 @@ bool sna_blt_copy_boxes(struct sna *sna, uint8_t alu,
 
 				_kgem_submit(kgem);
 				_kgem_set_mode(kgem, KGEM_BLT);
+				kgem_bcs_set_tiling(&sna->kgem, src_bo, dst_bo);
 			} while (1);
 		}
 	}
@@ -4069,6 +4091,7 @@ bool sna_blt_copy_boxes__with_alpha(struct sna *sna, uint8_t alu,
 			_kgem_submit(kgem);
 			_kgem_set_mode(kgem, KGEM_BLT);
 		}
+		kgem_bcs_set_tiling(&sna->kgem, src_bo, dst_bo);
 
 		assert(sna->kgem.mode == KGEM_BLT);
 		b = kgem->batch + kgem->nbatch;
