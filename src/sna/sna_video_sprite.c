@@ -81,14 +81,11 @@ static int sna_video_sprite_stop(ddStopVideo_ARGS)
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(video->sna->scrn);
 	int i;
 
-	for (i = 0; i < config->num_crtc; i++) {
+	for (i = 0; i < video->sna->mode.num_real_crtc; i++) {
 		xf86CrtcPtr crtc = config->crtc[i];
 		int pipe;
 
-		if (sna_crtc_id(crtc) == 0)
-			break;
-
-		pipe = sna_crtc_to_pipe(crtc);
+		pipe = sna_crtc_pipe(crtc);
 		if (video->bo[pipe] == NULL)
 			continue;
 
@@ -221,7 +218,7 @@ sna_video_sprite_show(struct sna *sna,
 		      BoxPtr dstBox)
 {
 	struct local_mode_set_plane s;
-	int pipe = sna_crtc_to_pipe(crtc);
+	int pipe = sna_crtc_pipe(crtc);
 
 	/* XXX handle video spanning multiple CRTC */
 
@@ -402,7 +399,7 @@ static int sna_video_sprite_put_image(ddPutImage_ARGS)
 		goto err;
 	}
 
-	for (i = 0; i < config->num_crtc; i++) {
+	for (i = 0; i < video->sna->mode.num_real_crtc; i++) {
 		xf86CrtcPtr crtc = config->crtc[i];
 		struct sna_video_frame frame;
 		int pipe;
@@ -411,10 +408,7 @@ static int sna_video_sprite_put_image(ddPutImage_ARGS)
 		RegionRec reg;
 		Rotation rotation;
 
-		if (sna_crtc_id(crtc) == 0)
-			break;
-
-		pipe = sna_crtc_to_pipe(crtc);
+		pipe = sna_crtc_pipe(crtc);
 
 		sna_video_frame_init(video, format->id, width, height, &frame);
 
@@ -611,7 +605,7 @@ static bool sna_video_has_sprites(struct sna *sna)
 
 	for (i = 0; i < sna->mode.num_real_crtc; i++) {
 		if (!sna_crtc_to_sprite(config->crtc[i])) {
-			DBG(("%s: no sprite found on pipe %d\n", __FUNCTION__, sna_crtc_to_pipe(config->crtc[i])));
+			DBG(("%s: no sprite found on pipe %d\n", __FUNCTION__, sna_crtc_pipe(config->crtc[i])));
 			return false;
 		}
 	}

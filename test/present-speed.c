@@ -249,7 +249,6 @@ static void run(Display *dpy, Window win, const char *name, unsigned options)
 					free(ev);
 				} while ((ev = (xcb_present_generic_event_t *)xcb_poll_for_special_event(c, Q)));
 			}
-			assert(p);
 
 			b->busy = (options & NOCOPY) == 0;
 			if (b->fence.xid) {
