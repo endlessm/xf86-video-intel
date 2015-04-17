@@ -444,6 +444,24 @@ sna_present_check_flip(RRCrtcPtr crtc,
 		return FALSE;
 	}
 
+	if (flip->pinned) {
+		assert(flip->gpu_bo);
+		if (sna->flags & SNA_LINEAR_FB) {
+			if (flip->gpu_bo->tiling != I915_TILING_NONE) {
+				DBG(("%s: pined bo, tilng=%d needs NONE\n",
+				     __FUNCTION__, flip->gpu_bo->tiling));
+				return FALSE;
+			}
+		} else {
+			if (!sna->kgem.can_scanout_y &&
+			    flip->gpu_bo->tiling == I915_TILING_Y) {
+				DBG(("%s: pined bo, tilng=%d and can't scanout Y\n",
+				     __FUNCTION__, flip->gpu_bo->tiling));
+				return FALSE;
+			}
+		}
+	}
+
 	return TRUE;
 }
 
@@ -560,7 +578,7 @@ get_flip_bo(PixmapPtr pixmap)
 	if (priv->gpu_bo->scanout)
 		return priv->gpu_bo;
 
-	if (sna->kgem.has_llc && !wedged(sna)) {
+	if (sna->kgem.has_llc && !wedged(sna) && !priv->pinned) {
 		struct kgem_bo *bo;
 		uint32_t tiling;
 
