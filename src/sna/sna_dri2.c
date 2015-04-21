@@ -454,7 +454,7 @@ static struct kgem_bo *sna_pixmap_set_dri(struct sna *sna,
 	tiling = color_tiling(sna, &pixmap->drawable);
 	if (tiling < 0)
 		tiling = -tiling;
-	if (priv->gpu_bo->tiling != tiling && !priv->gpu_bo->scanout)
+	if (priv->gpu_bo->tiling < tiling && !priv->gpu_bo->scanout)
 		sna_pixmap_change_tiling(pixmap, tiling);
 
 	return priv->gpu_bo;
