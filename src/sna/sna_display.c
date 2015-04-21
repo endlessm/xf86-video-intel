@@ -5928,6 +5928,7 @@ sna_page_flip(struct sna *sna,
 		struct sna_crtc *crtc = config->crtc[i]->driver_private;
 		struct drm_mode_crtc_page_flip arg;
 		uint32_t crtc_offset;
+		int fixup;
 
 		DBG(("%s: crtc %d id=%d, pipe=%d active? %d\n",
 		     __FUNCTION__, i, __sna_crtc_id(crtc), __sna_crtc_pipe(crtc), crtc->bo != NULL));
@@ -5949,6 +5950,7 @@ sna_page_flip(struct sna *sna,
 			return 0;
 		}
 
+		fixup = 0;
 		crtc_offset = crtc->base->y << 16 | crtc->base->x;
 
 		if (bo->pitch != crtc->bo->pitch || crtc_offset != crtc->offset) {
@@ -5957,6 +5959,7 @@ sna_page_flip(struct sna *sna,
 			     bo->pitch, crtc->bo->pitch,
 			     crtc_offset, crtc->offset));
 fixup_flip:
+			fixup = 1;
 			if (crtc->bo != bo && sna_crtc_flip(sna, crtc, bo, crtc->base->x, crtc->base->y)) {
 update_scanout:
 				DBG(("%s: removing handle=%d [active_scanout=%d] from scanout, installing handle=%d [active_scanout=%d]\n",
@@ -5979,11 +5982,8 @@ update_scanout:
 					goto next_crtc;
 
 				/* queue a flip in order to send the event */
-			} else {
-				if (count)
-					sna_mode_restore(sna);
-				return 0;
-			}
+			} else
+				goto error;
 		}
 
 		/* Only the reference crtc will finally deliver its page flip
@@ -6029,16 +6029,18 @@ retry_flip:
 				goto retry_flip;
 			}
 
-			if (sna->flags & (data ? SNA_HAS_FLIP : SNA_HAS_ASYNC_FLIP)) {
-				xf86DrvMsg(sna->scrn->scrnIndex, X_ERROR,
-					   "page flipping failed, on CRTC:%d (pipe=%d), disabling %s page flips\n",
-					   __sna_crtc_id(crtc), __sna_crtc_pipe(crtc), data ? "synchronous": "asynchronous");
-				sna->flags &= ~(data ? SNA_HAS_FLIP : SNA_HAS_ASYNC_FLIP);
+			if (!fixup)
 				goto fixup_flip;
-			}
+
+error:
+			xf86DrvMsg(sna->scrn->scrnIndex, X_ERROR,
+					"page flipping failed, on CRTC:%d (pipe=%d), disabling %s page flips\n",
+					__sna_crtc_id(crtc), __sna_crtc_pipe(crtc), data ? "synchronous": "asynchronous");
 
 			if (count)
 				sna_mode_restore(sna);
+
+			sna->flags &= ~(data ? SNA_HAS_FLIP : SNA_HAS_ASYNC_FLIP);
 			return 0;
 		}
 
