@@ -67,7 +67,8 @@
 #define FORCE_FLUSH 0
 #define FORCE_FULL_SYNC 0 /* https://bugs.freedesktop.org/show_bug.cgi?id=61628 */
 
-#define DEFAULT_TILING I915_TILING_X
+#define DEFAULT_PIXMAP_TILING I915_TILING_X
+#define DEFAULT_SCANOUT_TILING I915_TILING_X
 
 #define USE_INPLACE 1
 #define USE_SPANS 0 /* -1 force CPU, 1 force GPU */
@@ -613,9 +614,9 @@ static bool sna_pixmap_free_cpu(struct sna *sna, struct sna_pixmap *priv, bool a
 
 static inline uint32_t default_tiling(struct sna *sna, PixmapPtr pixmap)
 {
-#if DEFAULT_TILING == I915_TILING_NONE
+#if DEFAULT_PIXMAP_TILING == I915_TILING_NONE
 	return I915_TILING_NONE;
-#elif DEFAULT_TILING == I915_TILING_X
+#elif DEFAULT_PIXMAP_TILING == I915_TILING_X
 	return I915_TILING_X;
 #else
 	/* Try to avoid hitting the Y-tiling GTT mapping bug on 855GM */
@@ -1648,7 +1649,7 @@ static bool sna_pixmap_alloc_gpu(struct sna *sna,
 	if (pixmap->usage_hint == SNA_CREATE_FB && (sna->flags & SNA_LINEAR_FB) == 0) {
 		flags |= CREATE_SCANOUT;
 		tiling = kgem_choose_tiling(&sna->kgem,
-					    -I915_TILING_X,
+					    -DEFAULT_SCANOUT_TILING,
 					    pixmap->drawable.width,
 					    pixmap->drawable.height,
 					    pixmap->drawable.bitsPerPixel);
