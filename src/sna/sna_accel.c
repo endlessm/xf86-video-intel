@@ -632,15 +632,6 @@ static inline uint32_t default_tiling(struct sna *sna, PixmapPtr pixmap)
 	     pixmap->drawable.height > sna->render.max_3d_size))
 		return I915_TILING_X;
 
-	if (sna_damage_is_all(&sna_pixmap(pixmap)->cpu_damage,
-			      pixmap->drawable.width,
-			      pixmap->drawable.height)) {
-		DBG(("%s: entire source is damaged, using Y-tiling\n",
-		     __FUNCTION__));
-		sna_damage_destroy(&sna_pixmap(priv)->gpu_damage);
-		return I915_TILING_Y;
-	}
-
 	return I915_TILING_Y;
 #endif
 }
