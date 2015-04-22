@@ -4190,6 +4190,7 @@ bool sna_blt_copy_boxes_fallback(struct sna *sna, uint8_t alu,
 		DBG(("%s: dst == src\n", __FUNCTION__));
 
 		if (src_bo->tiling == I915_TILING_Y &&
+		    !sna->kgem.can_blt_y &&
 		    kgem_bo_blt_pitch_is_ok(&sna->kgem, src_bo)) {
 			struct kgem_bo *bo;
 
@@ -4237,6 +4238,7 @@ bool sna_blt_copy_boxes_fallback(struct sna *sna, uint8_t alu,
 		}
 	} else {
 		if (src_bo->tiling == I915_TILING_Y &&
+		    !sna->kgem.can_blt_y &&
 		    kgem_bo_blt_pitch_is_ok(&sna->kgem, src_bo)) {
 			DBG(("%s: src is y-tiled\n", __FUNCTION__));
 			if (src->type != DRAWABLE_PIXMAP)
@@ -4251,6 +4253,7 @@ bool sna_blt_copy_boxes_fallback(struct sna *sna, uint8_t alu,
 		}
 
 		if (dst_bo->tiling == I915_TILING_Y &&
+		    !sna->kgem.can_blt_y &&
 		    kgem_bo_blt_pitch_is_ok(&sna->kgem, dst_bo)) {
 			DBG(("%s: dst is y-tiled\n", __FUNCTION__));
 			if (dst->type != DRAWABLE_PIXMAP)
