@@ -2916,7 +2916,7 @@ prefer_blt_copy(struct sna *sna,
 	if (flags & COPY_DRI && !sna->kgem.has_semaphores)
 		return false;
 
-	if (force_blt_ring(sna))
+	if (force_blt_ring(sna, dst_bo))
 		return true;
 
 	if ((flags & COPY_SMALL ||

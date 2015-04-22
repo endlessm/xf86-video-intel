@@ -2718,7 +2718,7 @@ static inline bool prefer_blt_copy(struct sna *sna,
 	    untiled_tlb_miss(dst_bo))
 		return true;
 
-	if (force_blt_ring(sna))
+	if (force_blt_ring(sna, dst_bo))
 		return true;
 
 	if (kgem_bo_is_render(dst_bo) ||
