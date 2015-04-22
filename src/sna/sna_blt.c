@@ -2606,6 +2606,8 @@ clear:
 			}
 			if (hint & REPLACES)
 				kgem_bo_undo(&sna->kgem, tmp->dst.bo);
+			if (flags & COMPOSITE_UPLOAD)
+				return false;
 		} else {
 			RegionRec region;
 
@@ -2692,6 +2694,8 @@ fill:
 			}
 			if (hint & REPLACES)
 				kgem_bo_undo(&sna->kgem, tmp->dst.bo);
+			if (flags & COMPOSITE_UPLOAD)
+				return false;
 		} else {
 			RegionRec region;
 
@@ -2830,7 +2834,7 @@ fill:
 		if (src_pixmap->drawable.width  <= sna->render.max_3d_size &&
 		    src_pixmap->drawable.height <= sna->render.max_3d_size &&
 		    bo->pitch <= sna->render.max_3d_pitch &&
-		    (flags & COMPOSITE_FALLBACK) == 0)
+		    (flags & (COMPOSITE_UPLOAD | COMPOSITE_FALLBACK)) == 0)
 		{
 			return false;
 		}
@@ -2881,7 +2885,7 @@ fallback:
 			DBG(("%s: fallback -- unaccelerated upload\n",
 			     __FUNCTION__));
 			goto fallback;
-		} else {
+		} else if ((flags & COMPOSITE_UPLOAD) == 0) {
 			ret = prepare_blt_copy(sna, tmp, bo, alpha_fixup);
 			if (!ret)
 				goto fallback;

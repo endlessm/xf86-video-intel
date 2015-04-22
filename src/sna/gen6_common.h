@@ -52,6 +52,9 @@ inline static bool can_switch_to_blt(struct sna *sna,
 	if (bo && RQ_IS_BLT(bo->rq))
 		return true;
 
+	if (bo && bo->tiling == I915_TILING_Y)
+		return false;
+
 	if (sna->render_state.gt < 2)
 		return true;
 
