@@ -2209,7 +2209,9 @@ static void kgem_clear_swctrl(struct kgem *kgem)
 
 	*b++ = MI_LOAD_REGISTER_IMM;
 	*b++ = BCS_SWCTRL;
-	*b++ = kgem->bcs_state << 16;
+	*b++ = (BCS_SRC_Y | BCS_DST_Y) << 16;
+
+	kgem->bcs_state = 0;
 }
 
 static uint32_t kgem_end_batch(struct kgem *kgem)
@@ -3557,7 +3559,6 @@ void kgem_reset(struct kgem *kgem)
 	kgem->needs_reservation = false;
 	kgem->flush = 0;
 	kgem->batch_flags = kgem->batch_flags_base;
-	kgem->bcs_state = 0;
 	assert(kgem->batch);
 
 	kgem->next_request = __kgem_request_alloc(kgem);
@@ -6196,60 +6197,49 @@ void __kgem_bcs_set_tiling(struct kgem *kgem,
 			   struct kgem_bo *src,
 			   struct kgem_bo *dst)
 {
-	uint32_t state, mask, *b;
+	uint32_t state, *b;
 
 	DBG(("%s: src handle=%d:tiling=%d, dst handle=%d:tiling=%d\n",
 	     __FUNCTION__,
 	     src ? src->handle : 0, src ? src->tiling : 0,
 	     dst ? dst->handle : 0, dst ? dst->tiling : 0));
 	assert(kgem->mode == KGEM_BLT);
+	assert(dst == NULL || kgem_bo_can_blt(kgem, dst));
+	assert(src == NULL || kgem_bo_can_blt(kgem, src));
 
-	mask = state = 0;
-	if (dst && dst->tiling) {
-		assert(kgem_bo_can_blt(kgem, dst));
-		mask |= BCS_DST_Y;
-		if (dst->tiling == I915_TILING_Y)
-			state |= BCS_DST_Y;
-	}
+	state = 0;
+	if (dst && dst->tiling == I915_TILING_Y)
+		state |= BCS_DST_Y;
+	if (src && src->tiling == I915_TILING_Y)
+		state |= BCS_SRC_Y;
 
-	if (src && src->tiling) {
-		assert(kgem_bo_can_blt(kgem, src));
-		mask |= BCS_SRC_Y;
-		if (src->tiling == I915_TILING_Y)
-			state |= BCS_SRC_Y;
-	}
-
-	if ((kgem->bcs_state & mask) == state)
+	if (kgem->bcs_state == state)
 		return;
 
 	DBG(("%s: updating SWCTRL %x -> %x\n", __FUNCTION__,
-	     kgem->bcs_state, (kgem->bcs_state & ~mask) | state));
+	     kgem->bcs_state, state));
 
 	/* Over-estimate space in case we need to re-emit the cmd packet */
 	if (!kgem_check_batch(kgem, 24)) {
 		_kgem_submit(kgem);
 		_kgem_set_mode(kgem, KGEM_BLT);
+		if (state == 0)
+			return;
 	}
 
 	b = kgem->batch + kgem->nbatch;
 	if (kgem->nbatch) {
-		DBG(("%s: emitting flush before SWCTRL LRI\n",
-		     __FUNCTION__));
 		*b++ = MI_FLUSH_DW;
 		*b++ = 0;
 		*b++ = 0;
 		*b++ = 0;
 	}
-
-	DBG(("%s: emitting SWCTRL LRI to %x\n",
-	     __FUNCTION__, mask << 16 | state));
 	*b++ = MI_LOAD_REGISTER_IMM;
 	*b++ = BCS_SWCTRL;
-	*b++ = mask << 16 | state;
+	*b++ = (BCS_SRC_Y | BCS_DST_Y) << 16 | state;
 	kgem->nbatch = b - kgem->batch;
 
-	kgem->bcs_state &= ~mask;
-	kgem->bcs_state |= state;
+	kgem->bcs_state = state;
 }
 
 uint32_t kgem_add_reloc(struct kgem *kgem,
