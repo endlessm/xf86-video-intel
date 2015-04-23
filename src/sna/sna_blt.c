@@ -297,6 +297,7 @@ inline static void sna_blt_fill_begin(struct sna *sna,
 	if (kgem->nreloc) {
 		_kgem_submit(kgem);
 		_kgem_set_mode(kgem, KGEM_BLT);
+		kgem_bcs_set_tiling(kgem, NULL, blt->bo[0]);
 		assert(kgem->nbatch == 0);
 	}
 
@@ -466,8 +467,8 @@ static void sna_blt_alpha_fixup_one(struct sna *sna,
 	    !kgem_check_reloc(kgem, 2)) {
 		_kgem_submit(kgem);
 		_kgem_set_mode(kgem, KGEM_BLT);
+		kgem_bcs_set_tiling(&sna->kgem, blt->bo[0], blt->bo[1]);
 	}
-	kgem_bcs_set_tiling(&sna->kgem, blt->bo[1], blt->bo[0]);
 
 	assert(sna->kgem.mode == KGEM_BLT);
 	b = kgem->batch + kgem->nbatch;
@@ -595,8 +596,8 @@ static void sna_blt_copy_one(struct sna *sna,
 	    !kgem_check_reloc(kgem, 2)) {
 		_kgem_submit(kgem);
 		_kgem_set_mode(kgem, KGEM_BLT);
+		kgem_bcs_set_tiling(&sna->kgem, blt->bo[0], blt->bo[1]);
 	}
-	kgem_bcs_set_tiling(&sna->kgem, blt->bo[1], blt->bo[0]);
 
 	assert(sna->kgem.mode == KGEM_BLT);
 	b = kgem->batch + kgem->nbatch;
@@ -1437,8 +1438,8 @@ begin_blt(struct sna *sna,
 			return false;
 
 		_kgem_set_mode(&sna->kgem, KGEM_BLT);
+		kgem_bcs_set_tiling(&sna->kgem, NULL, op->dst.bo);
 	}
-	kgem_bcs_set_tiling(&sna->kgem, NULL, op->dst.bo);
 
 	return true;
 }
@@ -4094,8 +4095,8 @@ bool sna_blt_copy_boxes__with_alpha(struct sna *sna, uint8_t alu,
 		    !kgem_check_reloc(kgem, 2)) {
 			_kgem_submit(kgem);
 			_kgem_set_mode(kgem, KGEM_BLT);
+			kgem_bcs_set_tiling(&sna->kgem, src_bo, dst_bo);
 		}
-		kgem_bcs_set_tiling(&sna->kgem, src_bo, dst_bo);
 
 		assert(sna->kgem.mode == KGEM_BLT);
 		b = kgem->batch + kgem->nbatch;
