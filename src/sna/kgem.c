@@ -2523,8 +2523,7 @@ static bool kgem_bo_move_to_cache(struct kgem *kgem, struct kgem_bo *bo)
 		kgem_bo_move_to_snoop(kgem, bo);
 	} else if (bo->scanout) {
 		kgem_bo_move_to_scanout(kgem, bo);
-	} else if ((bo = kgem_bo_replace_io(bo))->reusable &&
-		   kgem_bo_set_purgeable(kgem, bo)) {
+	} else if ((bo = kgem_bo_replace_io(bo))->reusable) {
 		kgem_bo_move_to_inactive(kgem, bo);
 		retired = true;
 	} else
@@ -2728,9 +2727,6 @@ static void __kgem_bo_destroy(struct kgem *kgem, struct kgem_bo *bo)
 	assert(list_is_empty(&bo->request));
 
 	if (bo->map__cpu == NULL || bucket(bo) >= NUM_CACHE_BUCKETS) {
-		if (!kgem_bo_set_purgeable(kgem, bo))
-			goto destroy;
-
 		if (!kgem->has_llc && bo->domain == DOMAIN_CPU)
 			goto destroy;
 
@@ -2902,14 +2898,8 @@ static bool __kgem_retire_rq(struct kgem *kgem, struct kgem_request *rq)
 	assert(rq->bo->refcnt > 0);
 
 	if (--rq->bo->refcnt == 0) {
-		if (kgem_bo_set_purgeable(kgem, rq->bo)) {
-			kgem_bo_move_to_inactive(kgem, rq->bo);
-			retired = true;
-		} else {
-			DBG(("%s: closing %d\n",
-			     __FUNCTION__, rq->bo->handle));
-			kgem_bo_free(kgem, rq->bo);
-		}
+		kgem_bo_move_to_inactive(kgem, rq->bo);
+		retired = true;
 	}
 
 	__kgem_request_free(rq);
@@ -4093,6 +4083,7 @@ bool kgem_expire_cache(struct kgem *kgem)
 			break;
 		}
 
+		kgem_bo_set_purgeable(kgem, bo);
 		bo->delta = now;
 	}
 	if (expire) {
@@ -4138,6 +4129,7 @@ bool kgem_expire_cache(struct kgem *kgem)
 				break;
 			}
 
+			kgem_bo_set_purgeable(kgem, bo);
 			bo->delta = now;
 		}
 	}
