@@ -63,14 +63,14 @@
 #define sse4_2 __attribute__((target("sse4.2,sse2,fpmath=sse")))
 #endif
 
-#if HAS_GCC(4, 7)
-#define avx2 __attribute__((target("avx2,sse4.2,sse2,fpmath=sse")))
-#endif
-
 #if HAS_GCC(4, 6) && defined(__OPTIMIZE__)
 #define fast __attribute__((optimize("Ofast")))
 #else
 #define fast
+#endif
+
+#if HAS_GCC(4, 7)
+#define avx2 fast __attribute__((target("avx2,avx,sse4.2,sse2,fpmath=sse")))
 #endif
 
 #if HAS_GCC(4, 6) && defined(__OPTIMIZE__)
