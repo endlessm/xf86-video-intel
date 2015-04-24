@@ -976,7 +976,7 @@ memcpy_xor(const void *src, void *dst, int bpp,
 }
 
 #define BILINEAR_INTERPOLATION_BITS 4
-static force_inline int
+static inline int
 bilinear_weight(pixman_fixed_t x)
 {
 	return (x >> (16 - BILINEAR_INTERPOLATION_BITS)) &
@@ -985,7 +985,7 @@ bilinear_weight(pixman_fixed_t x)
 
 #if BILINEAR_INTERPOLATION_BITS <= 4
 /* Inspired by Filter_32_opaque from Skia */
-static force_inline uint32_t
+static inline uint32_t
 bilinear_interpolation(uint32_t tl, uint32_t tr,
 		       uint32_t bl, uint32_t br,
 		       int distx, int disty)
@@ -1018,7 +1018,7 @@ bilinear_interpolation(uint32_t tl, uint32_t tr,
 	return ((lo >> 8) & 0xff00ff) | (hi & ~0xff00ff);
 }
 #elif SIZEOF_LONG > 4
-static force_inline uint32_t
+static inline uint32_t
 bilinear_interpolation(uint32_t tl, uint32_t tr,
 		       uint32_t bl, uint32_t br,
 		       int distx, int disty)
@@ -1063,7 +1063,7 @@ bilinear_interpolation(uint32_t tl, uint32_t tr,
 	return (uint32_t)(r >> 16);
 }
 #else
-static force_inline uint32_t
+static inline uint32_t
 bilinear_interpolation(uint32_t tl, uint32_t tr,
 		       uint32_t bl, uint32_t br,
 		       int distx, int disty)
