@@ -750,7 +750,7 @@ kgem_bo_set_purgeable(struct kgem *kgem, struct kgem_bo *bo)
 	madv.madv = I915_MADV_DONTNEED;
 	if (do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_MADVISE, &madv) == 0) {
 		bo->purged = 1;
-		kgem->need_purge |= !madv.retained && bo->domain == DOMAIN_GPU;
+		kgem->need_purge |= !madv.retained && bo->domain != DOMAIN_CPU;
 		return madv.retained;
 	}
 
@@ -794,7 +794,7 @@ kgem_bo_clear_purgeable(struct kgem *kgem, struct kgem_bo *bo)
 	madv.madv = I915_MADV_WILLNEED;
 	if (do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_MADVISE, &madv) == 0) {
 		bo->purged = !madv.retained;
-		kgem->need_purge |= !madv.retained && bo->domain == DOMAIN_GPU;
+		kgem->need_purge |= !madv.retained && bo->domain != DOMAIN_CPU;
 		return madv.retained;
 	}
 
@@ -2322,6 +2322,7 @@ inline static void kgem_bo_move_to_inactive(struct kgem *kgem,
 	assert(!bo->snoop);
 	assert(!bo->flush);
 	assert(!bo->needs_flush);
+	assert(!bo->delta);
 	assert(list_is_empty(&bo->vma));
 	assert_tiling(kgem, bo);
 	assert_cacheing(kgem, bo);
@@ -2363,6 +2364,10 @@ static struct kgem_bo *kgem_bo_replace_io(struct kgem_bo *bo)
 		return bo;
 
 	assert(!bo->snoop);
+	assert(!bo->purged);
+	assert(!bo->scanout);
+	assert(!bo->delta);
+
 	if (__kgem_freed_bo) {
 		base = __kgem_freed_bo;
 		__kgem_freed_bo = *(struct kgem_bo **)base;
@@ -2393,6 +2398,7 @@ inline static void kgem_bo_remove_from_inactive(struct kgem *kgem,
 	list_del(&bo->list);
 	assert(bo->rq == NULL);
 	assert(bo->exec == NULL);
+	assert(!bo->purged);
 	if (!list_is_empty(&bo->vma)) {
 		assert(bo->map__gtt || bo->map__wc || bo->map__cpu);
 		list_del(&bo->vma);
@@ -2488,6 +2494,8 @@ static void kgem_bo_move_to_snoop(struct kgem *kgem, struct kgem_bo *bo)
 	assert(!bo->needs_flush);
 	assert(bo->refcnt == 0);
 	assert(bo->exec == NULL);
+	assert(!bo->purged);
+	assert(!bo->delta);
 
 	if (DBG_NO_SNOOP_CACHE) {
 		kgem_bo_free(kgem, bo);
@@ -4058,7 +4066,8 @@ bool kgem_expire_cache(struct kgem *kgem)
 	bool idle;
 	unsigned int i;
 
-	time(&now);
+	if (!time(&now))
+		return false;
 
 	while (__kgem_freed_bo) {
 		bo = __kgem_freed_bo;
@@ -4083,7 +4092,7 @@ bool kgem_expire_cache(struct kgem *kgem)
 			break;
 		}
 
-		kgem_bo_set_purgeable(kgem, bo);
+		assert(now);
 		bo->delta = now;
 	}
 	if (expire) {
@@ -4129,6 +4138,7 @@ bool kgem_expire_cache(struct kgem *kgem)
 				break;
 			}
 
+			assert(now);
 			kgem_bo_set_purgeable(kgem, bo);
 			bo->delta = now;
 		}
@@ -4164,12 +4174,7 @@ bool kgem_expire_cache(struct kgem *kgem)
 				     __FUNCTION__, bo->handle));
 			}
 		}
-		if (!list_is_empty(&preserve)) {
-			preserve.prev->next = kgem->inactive[i].next;
-			kgem->inactive[i].next->prev = preserve.prev;
-			kgem->inactive[i].next = preserve.next;
-			preserve.next->prev = &kgem->inactive[i];
-		}
+		list_splice_tail(&preserve, &kgem->inactive[i]);
 	}
 
 #ifdef DEBUG_MEMORY
@@ -4679,6 +4684,8 @@ struct kgem_bo *kgem_create_linear(struct kgem *kgem, int size, unsigned flags)
 	if ((flags & CREATE_UNCACHED) == 0) {
 		bo = search_linear_cache(kgem, size, CREATE_INACTIVE | flags);
 		if (bo) {
+			assert(!bo->purged);
+			assert(!bo->delta);
 			assert(bo->domain != DOMAIN_GPU);
 			ASSERT_IDLE(kgem, bo->handle);
 			bo->refcnt = 1;
@@ -6447,12 +6454,6 @@ static void kgem_trim_vma_cache(struct kgem *kgem, int type, int bucket)
 
 		list_del(&bo->vma);
 		kgem->vma[type].count--;
-
-		if (!bo->purged && !kgem_bo_set_purgeable(kgem, bo)) {
-			DBG(("%s: freeing unpurgeable old mapping\n",
-			     __FUNCTION__));
-			kgem_bo_free(kgem, bo);
-		}
 	}
 }
 
