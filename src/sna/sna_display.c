@@ -2752,7 +2752,7 @@ force_shadow:
 
 				if (!sna->render.copy_boxes(sna, GXcopy,
 							     &front->drawable, __sna_pixmap_get_bo(front), 0, 0,
-							     &tmp, bo, -crtc->x, -crtc->y,
+							     &tmp, bo, -crtc->x + xu, -crtc->y + yu,
 							     &b, 1, COPY_LAST))
 					shadow_clear(sna, front, bo, crtc);
 			}
