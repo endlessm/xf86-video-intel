@@ -2054,7 +2054,7 @@ force_shadow:
 
 			(void)sna->render.copy_boxes(sna, GXcopy,
 						     &sna->front->drawable, __sna_pixmap_get_bo(sna->front), 0, 0,
-						     &tmp, bo, -b.x1, -b.y1,
+						     &tmp, bo, -b.x1 + xu, -b.y1 + yu,
 						     &b, 1, 0);
 		}
 
