@@ -1,3 +1,11 @@
+xf86-video-intel (3:2.99.917) eos; urgency=medium
+
+  * Import into Endless git
+  * Bump epoch
+  * Rename source package to match upstream project name
+
+ -- Daniel Drake <drake@endlessm.com>  Tue, 28 Apr 2015 08:16:44 -0600
+
 xserver-xorg-video-intel (2:2.99.917-1~exp1) experimental; urgency=medium
 
   * New upstream prerelease 2.99.917.
