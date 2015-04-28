@@ -1,0 +1,1 @@
+rm_conffile /etc/modprobe.d/i915-kms.conf 2:2.21.9-1~

@@ -8,9 +8,9 @@ export CPPFLAGS := $(shell dpkg-buildflags --get CPPFLAGS)
 export CFLAGS := $(shell dpkg-buildflags --get CFLAGS)
 export LDFLAGS := $(shell dpkg-buildflags --get LDFLAGS)
 
-DEB_HOST_ARCH_OS ?= $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
+DEB_HOST_ARCH ?= $(shell dpkg-architecture -qDEB_HOST_ARCH)
 
-ifeq ($(DEB_HOST_ARCH_OS), linux)
+ifeq ($(DEB_HOST_ARCH), linux)
 valgrind = --enable-valgrind
 else
 valgrind = --disable-valgrind
@@ -21,7 +21,6 @@ override_dh_auto_configure:
 	dh_auto_configure -- \
 	    --enable-sna \
 	    --enable-uxa \
-	    --with-default-accel=sna \
 	    --with-builderstring="$(SOURCE_NAME) $(SOURCE_VERSION) ($(BUILDER))" \
 	    --disable-silent-rules \
 	    $(valgrind)

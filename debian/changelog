@@ -1,100 +1,86 @@
-xf86-video-intel (3:2.99.905) unstable; urgency=low
+xserver-xorg-video-intel (2:2.99.917-1~exp1) experimental; urgency=medium
 
-  * Bump upstream version
+  * New upstream prerelease 2.99.917.
+  * Update upstream changelog.
+  * Update to Standards version 3.9.6.
 
- -- Jasper St. Pierre <jstpierre@mecheye.net>  Wed, 25 Mar 2015 17:07:11 -0700
+ -- Vincent Cheng <vcheng@debian.org>  Sun, 21 Dec 2014 21:37:27 -0800
 
-xserver-xorg-video-intel (3:2.99.904-0ubuntu2endless8) eos; urgency=low
+xserver-xorg-video-intel (2:2.99.916+git20141119-1~exp1) experimental; urgency=medium
 
-  * Import into git
+  * New upstream snapshot.
 
- -- Jasper St. Pierre <jstpierre@mecheye.net>  Tue, 24 Mar 2015 15:14:25 -0700
+ -- maximilian attems <maks@debian.org>  Sun, 23 Nov 2014 00:04:02 +0100
 
-xserver-xorg-video-intel (3:2.99.904-0ubuntu2endless7) eos; urgency=low
+xserver-xorg-video-intel (2:2.99.916-1~exp1) experimental; urgency=medium
 
-  * Bump epoch on 2.99.904 version to downgrade to previous working
-    version without glyph corruption.
-  [endlessm/eos-shell#4167]
+  [ Vincent Cheng ]
+  * New upstream prerelease 2.99.916.
+    - sna: Add the current CRTC mode last (Closes: #750605)
+  * Update debian/copyright. (Closes: #730643)
+  * Revert to source format 1.0.
 
- -- Dan Nicholson <nicholson@endlessm.com>  Thu, 20 Nov 2014 09:33:34 -0800
+  [ Laurent Bigonville ]
+  * debian/xserver-xorg-video-intel.maintscript: Explicitly remove
+    i915-kms.conf on upgrade. (Closes: #713340)
 
-xserver-xorg-video-intel (2:2.99.904-0ubuntu2endless7) eos; urgency=low
+ -- Vincent Cheng <vcheng@debian.org>  Sun, 14 Sep 2014 01:29:56 -0700
 
-  * debian/patches/sna-trapezoids.patch:
-    Fix trapezoids.
+xserver-xorg-video-intel (2:2.99.914-1~exp1) experimental; urgency=medium
 
- -- Jasper <jstpierre@jstpierre-mappy>  Wed, 03 Sep 2014 14:42:08 -0700
+  * New upstream prerelease 2.99.914.
+  * Update upstream changelog.
+  * Fix FTBFS on kfreebsd by not installing non-existent files.
 
-xserver-xorg-video-intel (2:2.99.904-0ubuntu2endless6) eos; urgency=low
+ -- Vincent Cheng <vcheng@debian.org>  Wed, 23 Jul 2014 22:49:08 -0700
 
-  * debian/patches/endless-overscan-dual-displays.patch:
-    Try to fix a crash.
+xserver-xorg-video-intel (2:2.99.912+git20140719-1~exp1) experimental; urgency=medium
 
- -- endless <endless@endless>  Wed, 20 Aug 2014 14:29:50 -0700
+  * New upstream snapshot.
 
-xserver-xorg-video-intel (2:2.99.904-0ubuntu2endless5) eos; urgency=low
+ -- maximilian attems <maks@debian.org>  Sat, 19 Jul 2014 14:18:15 +0200
 
-  * debian/patches/endless-overscan-dual-displays.patch:
-    Import a patch to fix overscan compensation with dual monitors.
+xserver-xorg-video-intel (2:2.99.912+git20140705-1~exp1) experimental; urgency=medium
 
- -- Cosimo Cecchi <cosimo@endlessm.com>  Thu, 14 Aug 2014 11:27:27 -0700
+  * New upstream snapshot.
 
-xserver-xorg-video-intel (2:2.99.904-0ubuntu2endless4) eos; urgency=medium
+  [ Julien Cristau ]
+  * Remove Cyril from Uploaders.
 
-  + endless-overscan-clear.patch
-    Fix excess pixmap blanking for overscan compensation, eos-shell #2811
+ -- maximilian attems <maks@debian.org>  Sat, 05 Jul 2014 20:47:01 +0200
 
- -- Daniel Drake <drake@endlessm.com>  Wed, 25 Jun 2014 13:54:23 +0100
+xserver-xorg-video-intel (2:2.99.912-1~exp1) experimental; urgency=medium
 
-xserver-xorg-video-intel (2:2.99.904-0ubuntu2endless3) eos; urgency=low
+  * New upstream prerelease 2.99.912.
+  * Update upstream changelog.
 
-  * debian/patches/endless-overscan-compensation.patch:
-    Actually apply the overscan compensation patch.
+ -- maximilian attems <maks@debian.org>  Tue, 10 Jun 2014 21:59:57 +0200
 
- -- Cosimo Cecchi <cosimo@endlessm.com>  Tue, 17 Jun 2014 17:52:17 -0700
-
-xserver-xorg-video-intel (2:2.99.904-0ubuntu2endless2) eos; urgency=low
-
-  * Add overscan compensation patch from Derek Foreman. eos-shell #2036
-
- -- Daniel Drake <drake@endlessm.com>  Fri, 11 Apr 2014 10:40:16 -0600
-
-xserver-xorg-video-intel (2:2.99.904-0ubuntu2endless1) eos; urgency=low
-
-  * Relax dependency on xserver-xorg-dev, we don't work with Mir.
-
- -- Daniel Drake <drake@endlessm.com>  Tue, 25 Feb 2014 14:11:30 -0600
-
-xserver-xorg-video-intel (2:2.99.904-0ubuntu2) saucy-proposed; urgency=low
-
-  * sna-sanitize-output-crtc.diff: Fix a crash when failing to probe the
-    KMS configuration.
-
- -- Timo Aaltonen <tjaalton@ubuntu.com>  Fri, 11 Oct 2013 07:54:27 +0300
-
-xserver-xorg-video-intel (2:2.99.904-0ubuntu1) saucy; urgency=low
-
-  * Merge from unreleased debian git
-    - new release candidate (LP: #1218839, #1157458, #1216252, #1232546)
-  * xmir.patch: refreshed.
-
- -- Timo Aaltonen <tjaalton@ubuntu.com>  Wed, 09 Oct 2013 19:40:51 +0300
-
-xserver-xorg-video-intel (2:2.99.904-1) UNRELEASED; urgency=low
+xserver-xorg-video-intel (2:2.99.911+git20140607-1~exp1) experimental; urgency=medium
 
   * New upstream prerelease.
 
- -- Timo Aaltonen <tjaalton@ubuntu.com>  Tue, 01 Oct 2013 14:07:22 +0300
+ -- maximilian attems <maks@debian.org>  Sat, 07 Jun 2014 10:33:52 +0200
 
-xserver-xorg-video-intel (2:2.99.903-0ubuntu1) saucy; urgency=low
+xserver-xorg-video-intel (2:2.99.911+git20140529-1~exp2) experimental; urgency=medium
 
-  * Merge from unreleased debian git (LP: #1222203, #1224106, #1228677,
-    #1233990, #1234027)
-  * Drop patches that were from upstream.
-  * source: Revert to source format 1.0.
-  * xmir.patch: Refresh.
+  * Add myself to Uploaders.
+  * Install intel-virtual-output. (Closes: #749925)
+    - New build-deps added: libxinerama-dev, libxrandr-dev, libxdamage-dev,
+      libxcursor-dev, libxtst-dev, libxrender-dev, libpixman-1-dev
+  * Stop overriding default upstream acceleration method (i.e. default to SNA
+    instead of UXA).
 
- -- Timo Aaltonen <tjaalton@ubuntu.com>  Tue, 01 Oct 2013 16:18:05 +0300
+ -- Vincent Cheng <vcheng@debian.org>  Mon, 02 Jun 2014 23:47:23 -0700
+
+xserver-xorg-video-intel (2:2.99.911+git20140529-1~exp1) experimental; urgency=low
+
+  * New upstream prerelease. (closes: #748753)
+  * Install new backlight helper.
+  * Add myself to Uploaders.
+  * Bump Standards-Version to 3.9.5 (no changes necessary)
+
+ -- maximilian attems <maks@debian.org>  Fri, 30 May 2014 11:15:58 +0200
 
 xserver-xorg-video-intel (2:2.21.15-1) unstable; urgency=low
 
@@ -108,42 +94,6 @@ xserver-xorg-video-intel (2:2.21.15-1) unstable; urgency=low
   * Move homepage from description to homepage: field
 
  -- Michael Stapelberg <stapelberg@debian.org>  Wed, 28 Aug 2013 19:39:47 +0200
-
-xserver-xorg-video-intel (2:2.21.14-4ubuntu4) saucy; urgency=low
-
-  * XMir: Make a conservative guess as to whether the Mir buffer will be used
-    for scanout, and take caching decisions appropriately. Fixes "cache dirt"
-    transient horizontal-line misrendering with Mir bypass (LP: #1218735)
-  * xmir.patch: Split monolithic concatenated patch out into a quilt patch
-    series.
-
- -- Christopher James Halse Rogers <raof@ubuntu.com>  Thu, 05 Sep 2013 15:56:49 +1000
-
-xserver-xorg-video-intel (2:2.21.14-4ubuntu3) saucy; urgency=low
-
-  * Fix valgrind-enabling check
-  * Update for new XMir API
-  * Bump build-depend on xserver-xorg-dev to ensure new XMir API
-
- -- Christopher James Halse Rogers <raof@ubuntu.com>  Thu, 29 Aug 2013 20:08:05 +1000
-
-xserver-xorg-video-intel (2:2.21.14-4ubuntu2) saucy; urgency=low
-
-  * Re-add changes to xmir.
-
- -- Maarten Lankhorst <maarten.lankhorst@ubuntu.com>  Thu, 15 Aug 2013 10:36:22 +0200
-
-xserver-xorg-video-intel (2:2.21.14-4ubuntu1) saucy; urgency=low
-
-  * New upstream release. (LP: #1204261, #1203273, #1172450)
-  * Cherry-pick upstream patch to fix a crash when changing resolution. (LP: #1212344)
-  * Merge against released debian-unstable.
-  * Drop upstreamed patches.
-  * Remaining changes:
-    - Use SNA by default.
-    - Add support for XMIR.
-
- -- Maarten Lankhorst <maarten.lankhorst@ubuntu.com>  Thu, 15 Aug 2013 10:07:19 +0200
 
 xserver-xorg-video-intel (2:2.21.14-4) unstable; urgency=low
 
@@ -183,152 +133,6 @@ xserver-xorg-video-intel (2:2.21.14-1) unstable; urgency=low
   * Add kfreebsd to the package's architecture list (closes: #671870).
 
  -- Julien Cristau <jcristau@debian.org>  Mon, 12 Aug 2013 08:12:23 +0200
-
-xserver-xorg-video-intel (2:2.21.12-1ubuntu3) saucy; urgency=low
-
-  * fix-preinit-cleanup-paths.patch: Upstream cherrypick to fix leaks in
-    sna_pre_init failure paths. Prerequisite for new XMir patch.
-  * xmir.patch: Update to follow upstream developments
-
- -- Christopher James Halse Rogers <raof@ubuntu.com>  Thu, 15 Aug 2013 11:46:10 +1000
-
-xserver-xorg-video-intel (2:2.21.12-1ubuntu2) saucy; urgency=low
-
-  * Fix crash in sna_adjust_frame under XMir (LP: #1212065)
-
- -- Christopher James Halse Rogers <raof@ubuntu.com>  Wed, 14 Aug 2013 14:06:13 +1000
-
-xserver-xorg-video-intel (2:2.21.12-1ubuntu1) saucy; urgency=low
-
-  [ Maarten Lankhorst ]
-  * Merge from unreleased debian git (LP: #1198409, #1173557, #1199746, #1200766)
-    Remaining changes:
-    - Use SNA by default.
-
-  [ Robert Hooker ]
-  * Cherry-pick 3 commits from upstream git to fix SNA regressions in 2.21.12
-    (34c9b759f, 7f76a2bf3, a764a6e69b)
-
-  [ Christopher James Halse Rogers ]
-  * Add initial XMir support patch
-
- -- Christopher James Halse Rogers <raof@ubuntu.com>  Thu, 01 Aug 2013 16:06:42 +1000
-
-xserver-xorg-video-intel (2:2.21.9-0ubuntu2) saucy; urgency=low
-
-  * sna-make-sure-the-source-is-coherent.diff: Fix corruptions on firefox
-    (LP: #1189850)
-
- -- Timo Aaltonen <tjaalton@ubuntu.com>  Tue, 11 Jun 2013 20:10:33 +0300
-
-xserver-xorg-video-intel (2:2.21.9-0ubuntu1) saucy; urgency=low
-
-  * Merge from unreleased debian git, remaining changes:
-    - Use SNA by default.
-  * Add support for haswell graphics. (LP: #1175533)
-  * Fix crash in xserver when using the unity dash. (LP: #118123)
-
- -- Maarten Lankhorst <maarten.lankhorst@ubuntu.com>  Thu, 06 Jun 2013 15:05:00 +0200
-
-xserver-xorg-video-intel (2:2.21.7-0ubuntu1) saucy; urgency=low
-
-  * Merge from unreleased debian git, remaining changes:
-    - Use SNA by default.
-  * rules: Add --enable-valgrind again.
-  * Drop sna-flush-scanout-cache-after-resizing.patch, upstreamed.
-
- -- Maarten Lankhorst <maarten.lankhorst@ubuntu.com>  Thu, 23 May 2013 09:44:44 +0200
-
-xserver-xorg-video-intel (2:2.21.6-0ubuntu4) raring-proposed; urgency=low
-
-  [Chris Arges]
-  * Add sna-flush-scanout-cache-after-resizing.patch: Flush the scanout
-    cache after resizing the display.  Fixes a problem that occurs
-    e.g. when unplugging an external display, suspend/resume, etc. by
-    ensuring the scanout cache is properly sized.
-    (LP: #1157678)
-
- -- Bryce Harrington <bryce@ubuntu.com>  Fri, 19 Apr 2013 11:12:14 -0700
-
-xserver-xorg-video-intel (2:2.21.6-0ubuntu3) raring-proposed; urgency=low
-
-  * rules: Drop --enable-valgrind for now (causes FTBS).
-
- -- Bryce Harrington <bryce@ubuntu.com>  Mon, 15 Apr 2013 10:33:24 -0700
-
-xserver-xorg-video-intel (2:2.21.6-0ubuntu2) raring; urgency=low
-
-  * debian/xserver-xorg-video-intel.udev: Drop udev rule for gpu lockup
-    apport hook.  This hook is now provided by the xdiagnose package.
-    (LP: #997470)
-  * Re-merge from debian to enable valgrind.
-
- -- Bryce Harrington <bryce@ubuntu.com>  Thu, 11 Apr 2013 12:11:29 -0700
-
-xserver-xorg-video-intel (2:2.21.6-0ubuntu1) raring; urgency=low
-
-  * Merge from unreleased debian git
-    - new upstream minor release (LP: #1162046)
-
- -- Timo Aaltonen <tjaalton@ubuntu.com>  Tue, 09 Apr 2013 17:31:20 +0300
-
-xserver-xorg-video-intel (2:2.21.5-0ubuntu1) raring; urgency=low
-
-  * Merge from unreleased debian git
-    - new upstream release (LP: #1156387, #1156679)
-
- -- Timo Aaltonen <tjaalton@ubuntu.com>  Thu, 21 Mar 2013 15:51:49 +0200
-
-xserver-xorg-video-intel (2:2.21.4-0ubuntu1) raring; urgency=low
-
-  * Merge from unreleased debian git
-    - new upstream release (LP: #1124576, #1135403)
-
- -- Timo Aaltonen <tjaalton@ubuntu.com>  Mon, 11 Mar 2013 16:17:16 +0200
-
-xserver-xorg-video-intel (2:2.21.3-0ubuntu1) raring; urgency=low
-
-  * Merge from unreleased debian git
-    - new upstream release
-
- -- Timo Aaltonen <tjaalton@ubuntu.com>  Mon, 25 Feb 2013 10:32:15 +0200
-
-xserver-xorg-video-intel (2:2.21.2-0ubuntu1) raring; urgency=low
-
-  * Merge from unreleased debian git.
-    - new upstream release (LP: #1120108)
-
- -- Timo Aaltonen <tjaalton@ubuntu.com>  Mon, 11 Feb 2013 16:09:46 +0200
-
-xserver-xorg-video-intel (2:2.21.0-0ubuntu1) raring; urgency=low
-
-  * Merge from unreleased debian git.
-    - new upstream release (LP: #1104180)
-  * sna-compensate-clipextents.diff, upstream-snapshot-778dba90c.diff:
-    Deleted, were from upstream.
-
- -- Timo Aaltonen <tjaalton@ubuntu.com>  Tue, 05 Feb 2013 12:22:15 +0200
-
-xserver-xorg-video-intel (2:2.20.19-0ubuntu3) raring; urgency=low
-
-  * sna-compensate-clipextents.diff: Compensate clipExtents for drawable
-    offset (LP: #1104041). Thanks Matthieu Baerts!
-
- -- Timo Aaltonen <tjaalton@ubuntu.com>  Fri, 25 Jan 2013 09:44:38 +0200
-
-xserver-xorg-video-intel (2:2.20.19-0ubuntu2) raring; urgency=low
-
-  * upstream-snapshot-778dba90c.diff: Patch to update to current git
-    master (LP: #1102390).
-
- -- Timo Aaltonen <tjaalton@ubuntu.com>  Thu, 24 Jan 2013 10:22:41 +0200
-
-xserver-xorg-video-intel (2:2.20.19-0ubuntu1) raring; urgency=low
-
-  * Merge from unreleased debian git
-  * rules: Use SNA as the default acceleration method.
-
- -- Timo Aaltonen <tjaalton@ubuntu.com>  Mon, 21 Jan 2013 10:18:31 +0200
 
 xserver-xorg-video-intel (2:2.20.14-1) experimental; urgency=low
 
