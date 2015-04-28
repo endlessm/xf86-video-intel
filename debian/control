@@ -1,4 +1,4 @@
-Source: xserver-xorg-video-intel
+Source: xf86-video-intel
 Section: x11
 Priority: optional
 Maintainer: Debian X Strike Force <debian-x@lists.debian.org>
