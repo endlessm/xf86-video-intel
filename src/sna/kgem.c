@@ -1459,6 +1459,8 @@ err:
 	if (ret != -ENODEV && kgem->gen == 020)
 		return false;
 
+	kgem->has_pinned_batches = false;
+
 	/* For simplicity populate the lists with a single unpinned bo */
 	for (n = 0; n < ARRAY_SIZE(count); n++) {
 		struct kgem_bo *bo;
