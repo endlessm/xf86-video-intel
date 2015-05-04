@@ -28,7 +28,6 @@ enum intel_options {
 	OPTION_PREFER_OVERLAY,
 	OPTION_HOTPLUG,
 	OPTION_REPROBE,
-	OPTION_DELETE_DP12,
 #if defined(XvMCExtension) && defined(ENABLE_XVMC)
 	OPTION_XVMC,
 #define INTEL_XVMC 1

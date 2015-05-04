@@ -4502,38 +4502,6 @@ skip:
 	return len;
 }
 
-static void sna_output_del(xf86OutputPtr output)
-{
-	ScrnInfoPtr scrn = output->scrn;
-	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(scrn);
-	int i;
-
-	DBG(("%s(%s)\n", __FUNCTION__, output->name));
-	assert(to_sna_output(output));
-
-	RROutputDestroy(output->randr_output);
-	sna_output_destroy(output);
-
-	while (output->probed_modes)
-		xf86DeleteMode(&output->probed_modes, output->probed_modes);
-
-	free(output);
-
-	for (i = 0; i < config->num_output; i++)
-		if (config->output[i] == output)
-			break;
-	assert(i < to_sna(scrn)->mode.num_real_output);
-	DBG(("%s: removing output #%d of %d\n",
-	     __FUNCTION__, i, to_sna(scrn)->mode.num_real_output));
-
-	for (; i < config->num_output; i++) {
-		config->output[i] = config->output[i+1];
-		config->output[i]->possible_clones >>= 1;
-	}
-	config->num_output--;
-	to_sna(scrn)->mode.num_real_output--;
-}
-
 static int output_rank(const void *A, const void *B)
 {
 	const xf86OutputPtr *a = A;
@@ -4674,17 +4642,11 @@ void sna_mode_discover(struct sna *sna)
 		    sna_output->serial, serial));
 
 		xf86DrvMsg(sna->scrn->scrnIndex, X_INFO,
-			   "%s output %s\n",
-			   sna->flags & SNA_REMOVE_OUTPUTS ? "Removed" : "Disabled",
+			   "Disabled output %s\n",
 			   output->name);
-		if (sna->flags & SNA_REMOVE_OUTPUTS) {
-			sna_output_del(output);
-			i--;
-		} else {
-			sna_output->id = 0;
-			output->crtc = NULL;
-			RROutputChanged(output->randr_output, TRUE);
-		}
+		sna_output->id = 0;
+		output->crtc = NULL;
+		RROutputChanged(output->randr_output, TRUE);
 		changed |= 2;
 	}
 

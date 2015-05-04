@@ -621,9 +621,6 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int probe)
 	if (xf86ReturnOptValBool(sna->Options, OPTION_TILING_FB, FALSE))
 		sna->flags |= SNA_LINEAR_FB;
 
-	if (xf86ReturnOptValBool(sna->Options, OPTION_DELETE_DP12, FALSE))
-		sna->flags |= SNA_REMOVE_OUTPUTS;
-
 	if (!xf86ReturnOptValBool(sna->Options, OPTION_SWAPBUFFERS_WAIT, TRUE))
 		sna->flags |= SNA_NO_WAIT;
 	DBG(("%s: swapbuffer wait? %s\n", __FUNCTION__, sna->flags & SNA_NO_WAIT ? "disabled" : "enabled"));
