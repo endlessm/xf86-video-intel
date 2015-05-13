@@ -1654,6 +1654,26 @@ static void display_load_visible_cursor(struct display *display, XFixesCursorIma
 	dst = display->cursor_image.pixels;
 	while (n--)
 		*dst++ = *src++;
+
+	if (verbose & CURSOR) {
+		int x, y;
+
+		printf("%s cursor image %dx%d, serial %d:\n",
+		       DisplayString(display->dpy),
+		       cur->width, cur->height,
+		       display->cursor_serial);
+		dst = display->cursor_image.pixels;
+		for (y = 0; y < cur->height; y++) {
+			for (x = 0; x < cur->width; x++) {
+				if (x == cur->xhot && y == cur->yhot)
+					printf("+");
+				else
+					printf("%c", *dst ? *dst >> 24 >= 127 ? 'x' : '.' : ' ');
+				dst++;
+			}
+			printf("\n");
+		}
+	}
 }
 
 static void display_cursor_move(struct display *display, int x, int y, int visible)
