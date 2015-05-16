@@ -514,6 +514,9 @@ static enum accel_method { NOACCEL, SNA, UXA } get_accel_method(void)
 	if (hosted())
 		return SNA;
 
+	if (xf86configptr == NULL) /* X -configure */
+		return SNA;
+
 	dev = _xf86findDriver("intel", xf86configptr->conf_device_lst);
 	if (dev && dev->dev_option_lst) {
 		const char *s;
