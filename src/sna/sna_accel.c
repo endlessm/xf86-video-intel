@@ -2365,21 +2365,26 @@ skip_inplace_map:
 				assert(pixmap->devPrivate.ptr == MAP(priv->cpu_bo->map__cpu));
 			}
 
-			assert(pixmap->devKind);
-			if (priv->clear_color == 0 ||
-			    pixmap->drawable.bitsPerPixel == 8 ||
-			    priv->clear_color == (1 << pixmap->drawable.depth) - 1) {
-				memset(pixmap->devPrivate.ptr, priv->clear_color,
-				       (size_t)pixmap->devKind * pixmap->drawable.height);
-			} else {
-				pixman_fill(pixmap->devPrivate.ptr,
-					    pixmap->devKind/sizeof(uint32_t),
-					    pixmap->drawable.bitsPerPixel,
-					    0, 0,
-					    pixmap->drawable.width,
-					    pixmap->drawable.height,
-					    priv->clear_color);
-			}
+			if (sigtrap_get() == 0) {
+				assert(pixmap->devKind);
+				sigtrap_assert_active();
+				if (priv->clear_color == 0 ||
+				    pixmap->drawable.bitsPerPixel == 8 ||
+				    priv->clear_color == (1 << pixmap->drawable.depth) - 1) {
+					memset(pixmap->devPrivate.ptr, priv->clear_color,
+					       (size_t)pixmap->devKind * pixmap->drawable.height);
+				} else {
+					pixman_fill(pixmap->devPrivate.ptr,
+						    pixmap->devKind/sizeof(uint32_t),
+						    pixmap->drawable.bitsPerPixel,
+						    0, 0,
+						    pixmap->drawable.width,
+						    pixmap->drawable.height,
+						    priv->clear_color);
+				}
+				sigtrap_put();
+			} else
+				return false;
 
 clear_done:
 			sna_damage_all(&priv->cpu_damage, pixmap);
@@ -2929,6 +2934,7 @@ move_to_cpu:
 		}
 
 		assert(pixmap->devKind);
+		sigtrap_assert_active();
 		do {
 			pixman_fill(pixmap->devPrivate.ptr,
 				    pixmap->devKind/sizeof(uint32_t),
@@ -6869,6 +6875,7 @@ fallback:
 
 		assert(dst_pixmap->devPrivate.ptr);
 		assert(dst_pixmap->devKind);
+		sigtrap_assert_active();
 		do {
 			pixman_fill(dst_pixmap->devPrivate.ptr,
 				    dst_pixmap->devKind/sizeof(uint32_t),
@@ -17064,6 +17071,7 @@ sna_get_image__fast(PixmapPtr pixmap,
 		     __FUNCTION__, priv->clear_color));
 		assert(DAMAGE_IS_ALL(priv->gpu_damage));
 		assert(priv->cpu_damage == NULL);
+		sigtrap_assert_active();
 
 		if (priv->clear_color == 0 ||
 		    pixmap->drawable.bitsPerPixel == 8 ||

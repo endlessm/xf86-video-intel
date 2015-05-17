@@ -1013,6 +1013,7 @@ mono_inplace_fill_box(struct sna *sna,
 	     box->x2 - box->x1,
 	     box->y2 - box->y1,
 	     fill->color));
+	sigtrap_assert_active();
 	pixman_fill(fill->data, fill->stride, fill->bpp,
 		    box->x1, box->y1,
 		    box->x2 - box->x1,
@@ -1034,6 +1035,7 @@ mono_inplace_fill_boxes(struct sna *sna,
 		     box->x2 - box->x1,
 		     box->y2 - box->y1,
 		     fill->color));
+		sigtrap_assert_active();
 		pixman_fill(fill->data, fill->stride, fill->bpp,
 			    box->x1, box->y1,
 			    box->x2 - box->x1,

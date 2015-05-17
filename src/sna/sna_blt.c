@@ -86,6 +86,11 @@ static const uint8_t fill_ROP[] = {
 	ROP_1
 };
 
+static void sig_done(struct sna *sna, const struct sna_composite_op *op)
+{
+	sigtrap_put();
+}
+
 static void nop_done(struct sna *sna, const struct sna_composite_op *op)
 {
 	assert(sna->kgem.nbatch <= KGEM_BATCH_SIZE(&sna->kgem));
@@ -1005,6 +1010,7 @@ static void blt_composite_fill__cpu(struct sna *sna,
 
 	assert(op->dst.pixmap->devPrivate.ptr);
 	assert(op->dst.pixmap->devKind);
+	sigtrap_assert_active();
 	pixman_fill(op->dst.pixmap->devPrivate.ptr,
 		    op->dst.pixmap->devKind / sizeof(uint32_t),
 		    op->dst.pixmap->drawable.bitsPerPixel,
@@ -1024,6 +1030,7 @@ blt_composite_fill_box_no_offset__cpu(struct sna *sna,
 
 	assert(op->dst.pixmap->devPrivate.ptr);
 	assert(op->dst.pixmap->devKind);
+	sigtrap_assert_active();
 	pixman_fill(op->dst.pixmap->devPrivate.ptr,
 		    op->dst.pixmap->devKind / sizeof(uint32_t),
 		    op->dst.pixmap->drawable.bitsPerPixel,
@@ -1044,6 +1051,7 @@ blt_composite_fill_boxes_no_offset__cpu(struct sna *sna,
 
 		assert(op->dst.pixmap->devPrivate.ptr);
 		assert(op->dst.pixmap->devKind);
+		sigtrap_assert_active();
 		pixman_fill(op->dst.pixmap->devPrivate.ptr,
 			    op->dst.pixmap->devKind / sizeof(uint32_t),
 			    op->dst.pixmap->drawable.bitsPerPixel,
@@ -1065,6 +1073,7 @@ blt_composite_fill_box__cpu(struct sna *sna,
 
 	assert(op->dst.pixmap->devPrivate.ptr);
 	assert(op->dst.pixmap->devKind);
+	sigtrap_assert_active();
 	pixman_fill(op->dst.pixmap->devPrivate.ptr,
 		    op->dst.pixmap->devKind / sizeof(uint32_t),
 		    op->dst.pixmap->drawable.bitsPerPixel,
@@ -1086,6 +1095,7 @@ blt_composite_fill_boxes__cpu(struct sna *sna,
 
 		assert(op->dst.pixmap->devPrivate.ptr);
 		assert(op->dst.pixmap->devKind);
+		sigtrap_assert_active();
 		pixman_fill(op->dst.pixmap->devPrivate.ptr,
 			    op->dst.pixmap->devKind / sizeof(uint32_t),
 			    op->dst.pixmap->drawable.bitsPerPixel,
@@ -1464,6 +1474,7 @@ prepare_blt_clear(struct sna *sna,
 	DBG(("%s\n", __FUNCTION__));
 
 	if (op->dst.bo == NULL) {
+		op->u.blt.pixel = 0;
 		op->blt   = blt_composite_fill__cpu;
 		if (op->dst.x|op->dst.y) {
 			op->box   = blt_composite_fill_box__cpu;
@@ -1474,9 +1485,8 @@ prepare_blt_clear(struct sna *sna,
 			op->boxes = blt_composite_fill_boxes_no_offset__cpu;
 			op->thread_boxes = blt_composite_fill_boxes_no_offset__cpu;
 		}
-		op->done  = nop_done;
-		op->u.blt.pixel = 0;
-		return true;
+		op->done = sig_done;
+		return sigtrap_get() == 0;
 	}
 
 	op->blt = blt_composite_fill;
@@ -1519,8 +1529,8 @@ prepare_blt_fill(struct sna *sna,
 			op->boxes = blt_composite_fill_boxes_no_offset__cpu;
 			op->thread_boxes = blt_composite_fill_boxes_no_offset__cpu;
 		}
-		op->done = nop_done;
-		return true;
+		op->done = sig_done;
+		return sigtrap_get() == 0;
 	}
 
 	op->blt = blt_composite_fill;
@@ -2436,6 +2446,9 @@ prepare_blt_put(struct sna *sna,
 			op->box   = blt_put_composite_box;
 			op->boxes = blt_put_composite_boxes;
 		}
+
+		op->done = nop_done;
+		return true;
 	} else {
 		if (alpha_fixup) {
 			op->u.blt.pixel = alpha_fixup;
@@ -2447,10 +2460,10 @@ prepare_blt_put(struct sna *sna,
 			op->box   = blt_put_composite_box__cpu;
 			op->boxes = blt_put_composite_boxes__cpu;
 		}
-	}
-	op->done = nop_done;
 
-	return true;
+		op->done = sig_done;
+		return sigtrap_get() == 0;
+	}
 }
 
 static bool

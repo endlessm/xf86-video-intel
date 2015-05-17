@@ -2370,6 +2370,7 @@ tor_blt_lerp32(struct sna *sna,
 	if (coverage == 0)
 		return;
 
+	sigtrap_assert_active();
 	ptr += box->y1 * stride + box->x1;
 
 	h = box->y2 - box->y1;
