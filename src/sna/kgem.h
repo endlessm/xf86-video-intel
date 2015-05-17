@@ -410,7 +410,7 @@ static inline void kgem_set_mode(struct kgem *kgem,
 				 enum kgem_mode mode,
 				 struct kgem_bo *bo)
 {
-	assert(!kgem->wedged);
+	warn_unless(!kgem->wedged);
 
 #if DEBUG_FLUSH_BATCH
 	kgem_submit(kgem);
@@ -432,7 +432,7 @@ static inline void _kgem_set_mode(struct kgem *kgem, enum kgem_mode mode)
 {
 	assert(kgem->mode == KGEM_NONE);
 	assert(kgem->nbatch == 0);
-	assert(!kgem->wedged);
+	warn_unless(!kgem->wedged);
 	kgem->context_switch(kgem, mode);
 	kgem->mode = mode;
 }
