@@ -223,6 +223,12 @@ static struct kgem_bo *__kgem_freed_bo;
 static struct kgem_request *__kgem_freed_request;
 static struct drm_i915_gem_exec_object2 _kgem_dummy_exec;
 
+static inline struct sna *__to_sna(struct kgem *kgem)
+{
+	/* minor layering violations */
+	return container_of(kgem, struct sna, kgem);
+}
+
 static inline int bytes(struct kgem_bo *bo)
 {
 	return __kgem_bo_size(bo);
@@ -316,16 +322,108 @@ static void assert_bo_retired(struct kgem_bo *bo)
 #define assert_bo_retired(bo)
 #endif
 
+static int __find_debugfs(struct kgem *kgem)
+{
+	int i;
+
+	for (i = 0; i < DRM_MAX_MINOR; i++) {
+		char path[80];
+
+		sprintf(path, "/sys/kernel/debug/dri/%d/i915_wedged", i);
+		if (access(path, R_OK) == 0)
+			return i;
+
+		sprintf(path, "/debug/dri/%d/i915_wedged", i);
+		if (access(path, R_OK) == 0)
+			return i;
+	}
+
+	return -1;
+}
+
+static int kgem_get_minor(struct kgem *kgem)
+{
+	struct stat st;
+
+	if (fstat(kgem->fd, &st))
+		return __find_debugfs(kgem);
+
+	if (!S_ISCHR(st.st_mode))
+		return __find_debugfs(kgem);
+
+	return st.st_rdev & 0x63;
+}
+
+static bool find_hang_state(struct kgem *kgem, char *path, int maxlen)
+{
+	int minor = kgem_get_minor(kgem);
+
+	/* Search for our hang state in a few canonical locations.
+	 * In the unlikely event of having multiple devices, we
+	 * will need to check which minor actually corresponds to ours.
+	 */
+
+	snprintf(path, maxlen, "/sys/class/drm/card%d/error", minor);
+	if (access(path, R_OK) == 0)
+		return true;
+
+	snprintf(path, maxlen, "/sys/kernel/debug/dri/%d/i915_error_state", minor);
+	if (access(path, R_OK) == 0)
+		return true;
+
+	snprintf(path, maxlen, "/debug/dri/%d/i915_error_state", minor);
+	if (access(path, R_OK) == 0)
+		return true;
+
+	path[0] = '\0';
+	return false;
+}
+
+static bool has_error_state(struct kgem *kgem, char *path)
+{
+   bool ret = false;
+   char no;
+   int fd;
+
+   fd = open(path, O_RDONLY);
+   if (fd >= 0) {
+      ret = read(fd, &no, 1) == 1 && no != 'N';
+      close(fd);
+   }
+
+   return ret;
+}
+
+static int kgem_get_screen_index(struct kgem *kgem)
+{
+	return __to_sna(kgem)->scrn->scrnIndex;
+}
+
 static void
 __kgem_set_wedged(struct kgem *kgem)
 {
+	static int once;
+	char path[256];
+
+	if (kgem->wedged)
+		return;
+
+	if (!once &&
+	    find_hang_state(kgem, path, sizeof(path)) &&
+            has_error_state(kgem, path)) {
+		xf86DrvMsg(kgem_get_screen_index(kgem), X_ERROR,
+			   "When reporting this, please include %s and the full dmesg.\n",
+			   path);
+		once = 1;
+	}
+
 	kgem->wedged = true;
-	sna_render_mark_wedged(container_of(kgem, struct sna, kgem));
+	sna_render_mark_wedged(__to_sna(kgem));
 }
 
 static void kgem_sna_reset(struct kgem *kgem)
 {
-	struct sna *sna = container_of(kgem, struct sna, kgem);
+	struct sna *sna = __to_sna(kgem);
 
 	sna->render.reset(sna);
 	sna->blt_state.fill_bo = 0;
@@ -333,7 +431,7 @@ static void kgem_sna_reset(struct kgem *kgem)
 
 static void kgem_sna_flush(struct kgem *kgem)
 {
-	struct sna *sna = container_of(kgem, struct sna, kgem);
+	struct sna *sna = __to_sna(kgem);
 
 	sna->render.flush(sna);
 
@@ -1357,44 +1455,6 @@ static bool test_has_pinned_batches(struct kgem *kgem)
 		return false;
 
 	return gem_param(kgem, LOCAL_I915_PARAM_HAS_PINNED_BATCHES) > 0;
-}
-
-static int kgem_get_screen_index(struct kgem *kgem)
-{
-	struct sna *sna = container_of(kgem, struct sna, kgem);
-	return sna->scrn->scrnIndex;
-}
-
-static int __find_debugfs(struct kgem *kgem)
-{
-	int i;
-
-	for (i = 0; i < DRM_MAX_MINOR; i++) {
-		char path[80];
-
-		sprintf(path, "/sys/kernel/debug/dri/%d/i915_wedged", i);
-		if (access(path, R_OK) == 0)
-			return i;
-
-		sprintf(path, "/debug/dri/%d/i915_wedged", i);
-		if (access(path, R_OK) == 0)
-			return i;
-	}
-
-	return -1;
-}
-
-static int kgem_get_minor(struct kgem *kgem)
-{
-	struct stat st;
-
-	if (fstat(kgem->fd, &st))
-		return __find_debugfs(kgem);
-
-	if (!S_ISCHR(st.st_mode))
-		return __find_debugfs(kgem);
-
-	return st.st_rdev & 0x63;
 }
 
 static bool kgem_init_pinned_batches(struct kgem *kgem)
@@ -3765,13 +3825,13 @@ retry:
 	xf86DrvMsg(kgem_get_screen_index(kgem), X_WARNING,
 		   "Failed to submit rendering commands, trying again with outputs disabled.\n");
 
-	if (sna_mode_disable(container_of(kgem, struct sna, kgem))) {
+	if (sna_mode_disable(__to_sna(kgem))) {
 		kgem_cleanup_cache(kgem);
 		ret = do_ioctl(kgem->fd,
 			       DRM_IOCTL_I915_GEM_EXECBUFFER2,
 			       execbuf);
 		DBG(("%s: last_gasp ret=%d\n", __FUNCTION__, ret));
-		sna_mode_enable(container_of(kgem, struct sna, kgem));
+		sna_mode_enable(__to_sna(kgem));
 	}
 
 	return ret;
@@ -3945,49 +4005,14 @@ void _kgem_submit(struct kgem *kgem)
 	assert(kgem->next_request != NULL);
 }
 
-static bool find_hang_state(struct kgem *kgem, char *path, int maxlen)
-{
-	int minor = kgem_get_minor(kgem);
-
-	/* Search for our hang state in a few canonical locations.
-	 * In the unlikely event of having multiple devices, we
-	 * will need to check which minor actually corresponds to ours.
-	 */
-
-	snprintf(path, maxlen, "/sys/class/drm/card%d/error", minor);
-	if (access(path, R_OK) == 0)
-		return true;
-
-	snprintf(path, maxlen, "/sys/kernel/debug/dri/%d/i915_error_state", minor);
-	if (access(path, R_OK) == 0)
-		return true;
-
-	snprintf(path, maxlen, "/debug/dri/%d/i915_error_state", minor);
-	if (access(path, R_OK) == 0)
-		return true;
-
-	path[0] = '\0';
-	return false;
-}
-
 void kgem_throttle(struct kgem *kgem)
 {
 	if (kgem->wedged)
 		return;
 
 	if (__kgem_throttle(kgem, true)) {
-		static int once;
-		char path[128];
-
 		xf86DrvMsg(kgem_get_screen_index(kgem), X_ERROR,
 			   "Detected a hung GPU, disabling acceleration.\n");
-		if (!once && find_hang_state(kgem, path, sizeof(path))) {
-			xf86DrvMsg(kgem_get_screen_index(kgem), X_ERROR,
-				   "When reporting this, please include %s and the full dmesg.\n",
-				   path);
-			once = 1;
-		}
-
 		__kgem_set_wedged(kgem);
 		kgem->need_throttle = false;
 	}
@@ -4084,7 +4109,7 @@ bool kgem_expire_cache(struct kgem *kgem)
 	}
 
 	kgem_clean_large_cache(kgem);
-	if (container_of(kgem, struct sna, kgem)->scrn->vtSema)
+	if (__to_sna(kgem)->scrn->vtSema)
 		kgem_clean_scanout_cache(kgem);
 
 	expire = 0;
@@ -4969,8 +4994,7 @@ static void __kgem_bo_make_scanout(struct kgem *kgem,
 				   struct kgem_bo *bo,
 				   int width, int height)
 {
-	ScrnInfoPtr scrn =
-		container_of(kgem, struct sna, kgem)->scrn;
+	ScrnInfoPtr scrn = __to_sna(kgem)->scrn;
 	struct drm_mode_fb_cmd arg;
 
 	assert(bo->proxy == NULL);
@@ -5101,8 +5125,8 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 			return last;
 		}
 
-		if (container_of(kgem, struct sna, kgem)->scrn->vtSema) {
-			ScrnInfoPtr scrn = container_of(kgem, struct sna, kgem)->scrn;
+		if (__to_sna(kgem)->scrn->vtSema) {
+			ScrnInfoPtr scrn = __to_sna(kgem)->scrn;
 
 			list_for_each_entry_reverse(bo, &kgem->scanout, list) {
 				struct drm_mode_fb_cmd arg;
@@ -5932,7 +5956,7 @@ static inline bool kgem_flush(struct kgem *kgem, bool flush)
 	if (kgem->nreloc == 0)
 		return true;
 
-	if (container_of(kgem, struct sna, kgem)->flags & SNA_POWERSAVE)
+	if (__to_sna(kgem)->flags & SNA_POWERSAVE)
 		return true;
 
 	if (kgem->flush == flush && kgem->aperture < kgem->aperture_low)
