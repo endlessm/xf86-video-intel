@@ -2933,18 +2933,22 @@ move_to_cpu:
 			assert(pixmap->devPrivate.ptr == MAP(priv->cpu_bo->map__cpu));
 		}
 
-		assert(pixmap->devKind);
-		sigtrap_assert_active();
-		do {
-			pixman_fill(pixmap->devPrivate.ptr,
-				    pixmap->devKind/sizeof(uint32_t),
-				    pixmap->drawable.bitsPerPixel,
-				    box->x1, box->y1,
-				    box->x2 - box->x1,
-				    box->y2 - box->y1,
-				    priv->clear_color);
-			box++;
-		} while (--n);
+		if (sigtrap_get() == 0) {
+			assert(pixmap->devKind);
+			sigtrap_assert_active();
+			do {
+				pixman_fill(pixmap->devPrivate.ptr,
+					    pixmap->devKind/sizeof(uint32_t),
+					    pixmap->drawable.bitsPerPixel,
+					    box->x1, box->y1,
+					    box->x2 - box->x1,
+					    box->y2 - box->y1,
+					    priv->clear_color);
+				box++;
+			} while (--n);
+			sigtrap_put();
+		} else
+			return false;
 
 clear_done:
 		if (flags & MOVE_WRITE ||
@@ -6873,19 +6877,22 @@ fallback:
 				return;
 		}
 
-		assert(dst_pixmap->devPrivate.ptr);
-		assert(dst_pixmap->devKind);
-		sigtrap_assert_active();
-		do {
-			pixman_fill(dst_pixmap->devPrivate.ptr,
-				    dst_pixmap->devKind/sizeof(uint32_t),
-				    dst_pixmap->drawable.bitsPerPixel,
-				    box->x1, box->y1,
-				    box->x2 - box->x1,
-				    box->y2 - box->y1,
-				    src_priv->clear_color);
-			box++;
-		} while (--n);
+		if (sigtrap_get() == 0) {
+			assert(dst_pixmap->devPrivate.ptr);
+			assert(dst_pixmap->devKind);
+			sigtrap_assert_active();
+			do {
+				pixman_fill(dst_pixmap->devPrivate.ptr,
+					    dst_pixmap->devKind/sizeof(uint32_t),
+					    dst_pixmap->drawable.bitsPerPixel,
+					    box->x1, box->y1,
+					    box->x2 - box->x1,
+					    box->y2 - box->y1,
+					    src_priv->clear_color);
+				box++;
+			} while (--n);
+			sigtrap_put();
+		}
 	} else if (!sna_copy_boxes__inplace(sna, region, alu,
 					    src_pixmap, src_priv,
 					    src_dx, src_dy,
@@ -6942,36 +6949,39 @@ fallback:
 				((char *)src_pixmap->devPrivate.ptr +
 				 src_dy * src_stride + src_dx * bpp / 8);
 
-			do {
-				DBG(("%s: memcpy_blt(box=(%d, %d), (%d, %d), src=(%d, %d), pitches=(%d, %d))\n",
-				     __FUNCTION__,
-				     box->x1, box->y1,
-				     box->x2 - box->x1,
-				     box->y2 - box->y1,
-				     src_dx, src_dy,
-				     src_stride, dst_stride));
+			if (sigtrap_get() == 0) {
+				do {
+					DBG(("%s: memcpy_blt(box=(%d, %d), (%d, %d), src=(%d, %d), pitches=(%d, %d))\n",
+					     __FUNCTION__,
+					     box->x1, box->y1,
+					     box->x2 - box->x1,
+					     box->y2 - box->y1,
+					     src_dx, src_dy,
+					     src_stride, dst_stride));
 
-				assert(box->x1 >= 0);
-				assert(box->y1 >= 0);
-				assert(box->x2 <= dst_pixmap->drawable.width);
-				assert(box->y2 <= dst_pixmap->drawable.height);
+					assert(box->x1 >= 0);
+					assert(box->y1 >= 0);
+					assert(box->x2 <= dst_pixmap->drawable.width);
+					assert(box->y2 <= dst_pixmap->drawable.height);
 
-				assert(box->x1 + src_dx >= 0);
-				assert(box->y1 + src_dy >= 0);
-				assert(box->x2 + src_dx <= src_pixmap->drawable.width);
-				assert(box->y2 + src_dy <= src_pixmap->drawable.height);
-				assert(has_coherent_ptr(sna, src_priv, MOVE_READ));
-				assert(has_coherent_ptr(sna, dst_priv, MOVE_WRITE));
-				assert(src_stride);
-				assert(dst_stride);
-				memcpy_blt(src_bits, dst_bits, bpp,
-					   src_stride, dst_stride,
-					   box->x1, box->y1,
-					   box->x1, box->y1,
-					   box->x2 - box->x1,
-					   box->y2 - box->y1);
-				box++;
-			} while (--n);
+					assert(box->x1 + src_dx >= 0);
+					assert(box->y1 + src_dy >= 0);
+					assert(box->x2 + src_dx <= src_pixmap->drawable.width);
+					assert(box->y2 + src_dy <= src_pixmap->drawable.height);
+					assert(has_coherent_ptr(sna, src_priv, MOVE_READ));
+					assert(has_coherent_ptr(sna, dst_priv, MOVE_WRITE));
+					assert(src_stride);
+					assert(dst_stride);
+					memcpy_blt(src_bits, dst_bits, bpp,
+						   src_stride, dst_stride,
+						   box->x1, box->y1,
+						   box->x1, box->y1,
+						   box->x2 - box->x1,
+						   box->y2 - box->y1);
+					box++;
+				} while (--n);
+				sigtrap_put();
+			}
 		} else {
 			DBG(("%s: fallback -- miCopyRegion\n", __FUNCTION__));
 
