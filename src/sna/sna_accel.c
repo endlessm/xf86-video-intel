@@ -817,8 +817,8 @@ create_pixmap(struct sna *sna, ScreenPtr screen,
 		datasize += adjust;
 	}
 
-	DBG(("%s: allocating pixmap %dx%d, depth=%d, size=%ld\n",
-	     __FUNCTION__, width, height, depth, (long)datasize));
+	DBG(("%s: allocating pixmap %dx%d, depth=%d/%d, size=%ld\n",
+	     __FUNCTION__, width, height, depth, bpp, (long)datasize));
 	pixmap = AllocatePixmap(screen, datasize);
 	if (!pixmap)
 		return NullPixmap;
@@ -4091,7 +4091,7 @@ sna_pixmap_create_upload(ScreenPtr screen,
 	assert(width);
 	assert(height);
 
-	if (depth == 1)
+	if (depth < 8)
 		return create_pixmap(sna, screen, width, height, depth,
 				     CREATE_PIXMAP_USAGE_SCRATCH);
 

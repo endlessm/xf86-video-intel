@@ -12,6 +12,7 @@ stress_TESTS = \
 	DrawSegments \
 	cursor-test \
 	render-fill \
+	render-glyphs \
 	render-trapezoid \
 	render-trapezoid-image \
 	render-fill-copy \

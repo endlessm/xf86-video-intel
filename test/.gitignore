@@ -18,6 +18,7 @@ render-copyarea
 render-copyarea-mask
 render-copyarea-size
 render-copy-alphaless
+render-glyphs
 mixed-stress
 lowlevel-blt-bench
 vsync.avi
