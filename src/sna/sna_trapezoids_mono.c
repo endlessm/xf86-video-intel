@@ -79,7 +79,7 @@ struct mono {
 	struct mono_polygon polygon;
 };
 
-#define I(x) pixman_fixed_to_int ((x) + pixman_fixed_1_minus_e/2)
+#define I(x) pixman_fixed_to_int((x) + pixman_fixed_1_minus_e/2)
 
 static struct quorem
 floored_muldivrem(int32_t x, int32_t a, int32_t b)
@@ -250,22 +250,22 @@ mono_add_line(struct mono *mono,
 
 		e->dxdy = floored_muldivrem(dx, pixman_fixed_1, dy);
 
-		e->x = floored_muldivrem((ytop - dst_y) * pixman_fixed_1 + pixman_fixed_1_minus_e/2 - p1->y,
+		e->x = floored_muldivrem((ytop - dst_y) * pixman_fixed_1 + pixman_fixed_1/2 - p1->y,
 					 dx, dy);
 		e->x.quo += p1->x;
 		e->x.rem -= dy;
 
 		e->dy = dy;
-
-		__DBG(("%s: initial x=%d [%d.%d/%d] + dxdy=%d.%d/%d\n",
-		       __FUNCTION__,
-		       I(e->x.quo), e->x.quo, e->x.rem, e->dy,
-		       e->dxdy.quo, e->dxdy.rem, e->dy));
 	}
 	e->x.quo += dst_x*pixman_fixed_1;
+	__DBG(("%s: initial x=%d [%d.%d/%d] + dxdy=%d.%d/%d\n",
+	       __FUNCTION__,
+	       I(e->x.quo), e->x.quo, e->x.rem, e->dy,
+	       e->dxdy.quo, e->dxdy.rem, e->dy));
 
 	{
 		struct mono_edge **ptail = &polygon->y_buckets[ytop - mono->clip.extents.y1];
+		assert(ytop - mono->clip.extents.y1 < mono->clip.extents.y2 - mono->clip.extents.y1);
 		if (*ptail)
 			(*ptail)->prev = e;
 		e->next = *ptail;
@@ -369,6 +369,10 @@ static struct mono_edge *mono_filter(struct mono_edge *edges)
 		    e->x.rem == n->x.rem &&
 		    e->dxdy.quo == n->dxdy.quo &&
 		    e->dxdy.rem == n->dxdy.rem) {
+			assert(e->dy == n->dy);
+			__DBG(("%s: discarding cancellation pair (%d.%d) + (%d.%d)\n",
+			       __FUNCTION__, e->x.quo, e->x.rem, e->dxdy.quo, e->dxdy.rem));
+
 			if (e->prev)
 				e->prev->next = n->next;
 			else
@@ -379,8 +383,11 @@ static struct mono_edge *mono_filter(struct mono_edge *edges)
 				break;
 
 			e = n->next;
-		} else
+		} else {
+			__DBG(("%s: adding edge (%d.%d) + (%d.%d)/%d, height=%d\n",
+			       __FUNCTION__, n->x.quo, n->x.rem, n->dxdy.quo, n->dxdy.rem, n->dy, n->height_left));
 			e = n;
+		}
 	}
 
 	return edges;
@@ -571,6 +578,8 @@ mono_row(struct mono *c, int16_t y, int16_t h)
 	int winding = 0;
 	BoxRec box;
 
+	__DBG(("%s: y=%d, h=%d\n", __FUNCTION__, y, h));
+
 	DBG_MONO_EDGES(edge);
 	VALIDATE_MONO_EDGES(&c->head);
 
@@ -581,6 +590,8 @@ mono_row(struct mono *c, int16_t y, int16_t h)
 		struct mono_edge *next = edge->next;
 		int16_t xend = I(edge->x.quo);
 
+		__DBG(("%s: adding edge dir=%d [winding=%d], x=%d [%d]\n",
+		       __FUNCTION__, edge->dir, winding + edge->dir, xend, edge->x.quo));
 		if (--edge->height_left) {
 			if (edge->dy) {
 				edge->x.quo += edge->dxdy.quo;
@@ -589,6 +600,8 @@ mono_row(struct mono *c, int16_t y, int16_t h)
 					++edge->x.quo;
 					edge->x.rem -= edge->dy;
 				}
+				__DBG(("%s: stepped edge (%d.%d) + (%d.%d)/%d, height=%d, prev_x=%d\n",
+				       __FUNCTION__, edge->x.quo, edge->x.rem, edge->dxdy.quo, edge->dxdy.rem, edge->dy, edge->height_left, edge->x.quo));
 			}
 
 			if (edge->x.quo < prev_x) {
@@ -612,17 +625,22 @@ mono_row(struct mono *c, int16_t y, int16_t h)
 		winding += edge->dir;
 		if (winding == 0) {
 			assert(I(next->x.quo) >= xend);
-			if (I(next->x.quo) > xend + 1) {
+			if (I(next->x.quo) > xend) {
+				__DBG(("%s: end span: %d\n", __FUNCTION__, xend));
 				if (xstart < c->clip.extents.x1)
 					xstart = c->clip.extents.x1;
 				if (xend > c->clip.extents.x2)
 					xend = c->clip.extents.x2;
-				if (xend > xstart)
+				if (xend > xstart) {
+					__DBG(("%s: emit span [%d, %d]\n", __FUNCTION__, xstart, xend));
 					c->span(c, xstart, xend, &box);
+				}
 				xstart = INT16_MIN;
 			}
-		} else if (xstart == INT16_MIN)
+		} else if (xstart == INT16_MIN) {
+			__DBG(("%s: starting new span: %d\n", __FUNCTION__, xend));
 			xstart = xend;
+		}
 
 		edge = next;
 	}
@@ -684,9 +702,14 @@ mono_render(struct mono *mono)
 	for (i = 0; i < h; i = j) {
 		j = i + 1;
 
+		__DBG(("%s: row=%d, new edges? %d\n", __FUNCTION__,
+		       i, polygon->y_buckets[i] != NULL));
+
 		if (polygon->y_buckets[i])
 			mono_merge_edges(mono, polygon->y_buckets[i]);
 
+		__DBG(("%s: row=%d, vertical? %d\n", __FUNCTION__,
+		       i, mono->is_vertical));
 		if (mono->is_vertical) {
 			struct mono_edge *e = mono->head.next;
 			int min_height = h - i;
@@ -701,6 +724,7 @@ mono_render(struct mono *mono)
 				j++;
 			if (j != i + 1)
 				mono_step_edges(mono, j - (i + 1));
+			__DBG(("%s: %d vertical rows\n", __FUNCTION__, j-i));
 		}
 
 		mono_row(mono, i, j-i);
@@ -1423,9 +1447,12 @@ mono_triangles_span_converter(struct sna *sna,
 		mono_render(&mono);
 		mono.op.done(mono.sna, &mono.op);
 	}
+	mono_fini(&mono);
 
 	if (!was_clear && !operator_is_bounded(op)) {
 		xPointFixed p1, p2;
+
+		DBG(("%s: performing unbounded clear\n", __FUNCTION__));
 
 		if (!mono_init(&mono, 2+3*count))
 			return false;
@@ -1472,7 +1499,6 @@ mono_triangles_span_converter(struct sna *sna,
 		mono_fini(&mono);
 	}
 
-	mono_fini(&mono);
 	REGION_UNINIT(NULL, &mono.clip);
 	return true;
 }

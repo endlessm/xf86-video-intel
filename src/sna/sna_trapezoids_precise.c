@@ -1655,8 +1655,7 @@ static void span_thread_add_box(struct sna *sna, void *data,
 {
 	struct span_thread_boxes *b = data;
 
-	__DBG(("%s: adding %d boxes with alpha=%f\n",
-	       __FUNCTION__, count, alpha));
+	__DBG(("%s: adding box with alpha=%f\n", __FUNCTION__, alpha));
 
 	if (unlikely(b->num_boxes == SPAN_THREAD_MAX_BOXES)) {
 		DBG(("%s: flushing %d boxes\n", __FUNCTION__, b->num_boxes));
