@@ -17072,7 +17072,7 @@ sna_get_image__fast(PixmapPtr pixmap,
 	if (priv == NULL || priv->gpu_damage == NULL)
 		return false;
 
-	if (priv->clear) {
+	if (priv->clear && sigtrap_get() == 0) {
 		int w = region->extents.x2 - region->extents.x1;
 		int h = region->extents.y2 - region->extents.y1;
 		int pitch = PixmapBytePad(w, pixmap->drawable.depth);
@@ -17098,6 +17098,7 @@ sna_get_image__fast(PixmapPtr pixmap,
 				    priv->clear_color);
 		}
 
+		sigtrap_put();
 		return true;
 	}
 
