@@ -5215,6 +5215,28 @@ static inline void sigio_unblock(int was_blocked)
 }
 #endif
 
+static void __restore_swcursor(ScrnInfoPtr scrn)
+{
+	DBG(("%s: attempting to restore SW cursor\n", __FUNCTION__));
+	scrn->EnableDisableFBAccess(scrn, FALSE);
+	scrn->EnableDisableFBAccess(scrn, TRUE);
+
+	RemoveBlockAndWakeupHandlers((BlockHandlerProcPtr)__restore_swcursor,
+				     (WakeupHandlerProcPtr)NoopDDA,
+				     scrn);
+}
+
+static void restore_swcursor(struct sna *sna)
+{
+	/* XXX Force the cursor to be restored (avoiding recursion) */
+	FreeCursor(sna->cursor.ref, None);
+	sna->cursor.ref = NULL;
+
+	RegisterBlockAndWakeupHandlers((BlockHandlerProcPtr)__restore_swcursor,
+				       (WakeupHandlerProcPtr)NoopDDA,
+				       sna->scrn);
+}
+
 static void
 sna_show_cursors(ScrnInfoPtr scrn)
 {
@@ -5268,10 +5290,17 @@ sna_show_cursors(ScrnInfoPtr scrn)
 			cursor->ref++;
 			sna_crtc->cursor = cursor;
 			sna_crtc->last_cursor_size = cursor->size;
+		} else {
+			ERR(("%s: failed to show cursor on CRTC:%d [pipe=%d], disabling hwcursor\n",
+			     __FUNCTION__, sna_crtc_id(crtc), sna_crtc_pipe(crtc)));
+			sna->cursor.disable = true;
 		}
 	}
 	sigio_unblock(sigio);
 	sna->cursor.active = true;
+
+	if (unlikely(sna->cursor.disable))
+		restore_swcursor(sna);
 }
 
 static void
@@ -5493,14 +5522,17 @@ disable:
 		} else {
 			ERR(("%s: failed to update cursor on CRTC:%d [pipe=%d], disabling hwcursor\n",
 			     __FUNCTION__, sna_crtc_id(crtc), sna_crtc_pipe(crtc)));
-			sna_crtc->hwcursor = false;
 			/* XXX How to force switch back to SW cursor?
 			 * Right now we just want until the next cursor image
 			 * change, which is fairly frequent.
 			 */
+			sna->cursor.disable = true;
 		}
 	}
 	sigio_unblock(sigio);
+
+	if (unlikely(sna->cursor.disable))
+		restore_swcursor(sna);
 }
 
 #if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,15,99,902,2)
@@ -5595,6 +5627,9 @@ sna_use_hw_cursor(ScreenPtr screen, CursorPtr cursor)
 
 	DBG(("%s (%dx%d)?\n", __FUNCTION__,
 	     cursor->bits->width, cursor->bits->height));
+
+	if (sna->cursor.disable)
+		return FALSE;
 
 	/* cursors are invariant */
 	if (cursor == sna->cursor.ref)
@@ -6453,6 +6488,7 @@ sna_crtc_config_notify(ScreenPtr screen)
 	}
 
 	update_flush_interval(sna);
+	sna->cursor.disable = false; /* Reset HW cursor until the next fail */
 	sna_cursors_reload(sna);
 
 	probe_capabilities(sna);
