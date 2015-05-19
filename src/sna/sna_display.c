@@ -5474,8 +5474,10 @@ disable:
 		       __FUNCTION__, __sna_crtc_id(sna_crtc), arg.x, arg.y, arg.handle, arg.flags, sna_crtc->cursor ? sna_crtc->cursor->handle : 0,
 		       arg.flags & DRM_MODE_CURSOR_MOVE, arg.flags & DRM_MODE_CURSOR_BO));
 
-		if (arg.flags &&
-		    drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg) == 0) {
+		if (arg.flags == 0)
+			continue;
+
+		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg) == 0) {
 			if (arg.flags & DRM_MODE_CURSOR_BO) {
 				if (sna_crtc->cursor) {
 					assert(sna_crtc->cursor->ref > 0);
@@ -5488,6 +5490,14 @@ disable:
 				} else
 					sna_crtc->last_cursor_size = 0;
 			}
+		} else {
+			ERR(("%s: failed to update cursor on CRTC:%d [pipe=%d], disabling hwcursor\n",
+			     __FUNCTION__, sna_crtc_id(crtc), sna_crtc_pipe(crtc)));
+			sna_crtc->hwcursor = false;
+			/* XXX How to force switch back to SW cursor?
+			 * Right now we just want until the next cursor image
+			 * change, which is fairly frequent.
+			 */
 		}
 	}
 	sigio_unblock(sigio);
