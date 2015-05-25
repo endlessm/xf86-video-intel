@@ -1692,6 +1692,25 @@ static struct kgem_bo *kgem_new_batch(struct kgem *kgem)
 	return last;
 }
 
+static void
+no_retire(struct kgem *kgem)
+{
+	(void)kgem;
+}
+
+static void
+no_expire(struct kgem *kgem)
+{
+	(void)kgem;
+}
+
+static void
+no_context_switch(struct kgem *kgem, int new_mode)
+{
+	(void)kgem;
+	(void)new_mode;
+}
+
 void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 {
 	struct drm_i915_gem_get_aperture aperture;
@@ -1703,6 +1722,10 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 
 	kgem->fd = fd;
 	kgem->gen = gen;
+
+	kgem->retire = no_retire;
+	kgem->expire = no_expire;
+	kgem->context_switch = no_context_switch;
 
 	list_init(&kgem->requests[0]);
 	list_init(&kgem->requests[1]);

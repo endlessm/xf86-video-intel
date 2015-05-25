@@ -272,18 +272,6 @@ no_render_context_switch(struct kgem *kgem,
 }
 
 static void
-no_render_retire(struct kgem *kgem)
-{
-	(void)kgem;
-}
-
-static void
-no_render_expire(struct kgem *kgem)
-{
-	(void)kgem;
-}
-
-static void
 no_render_fini(struct sna *sna)
 {
 	(void)sna;
@@ -316,8 +304,6 @@ const char *no_render_init(struct sna *sna)
 	render->fini = no_render_fini;
 
 	sna->kgem.context_switch = no_render_context_switch;
-	sna->kgem.retire = no_render_retire;
-	sna->kgem.expire = no_render_expire;
 	if (sna->kgem.has_blt)
 		sna->kgem.ring = KGEM_BLT;
 
