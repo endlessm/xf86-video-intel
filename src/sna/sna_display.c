@@ -3860,6 +3860,7 @@ static void update_properties(struct sna *sna, struct sna_output *output)
 	compat_conn.conn.prop_values_ptr = (uintptr_t)output->prop_values;
 	compat_conn.conn.count_modes = 1; /* skip detect */
 	compat_conn.conn.modes_ptr = (uintptr_t)&dummy;
+	compat_conn.conn.count_encoders = 0;
 
 	(void)drmIoctl(sna->kgem.fd,
 		       DRM_IOCTL_MODE_GETCONNECTOR,
