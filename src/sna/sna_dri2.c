@@ -870,6 +870,22 @@ static void set_bo(PixmapPtr pixmap, struct kgem_bo *bo)
 	}
 }
 
+#if defined(__GNUC__)
+#define popcount(x) __builtin_popcount(x)
+#else
+static int popcount(unsigned int x)
+{
+	int count = 0;
+
+	while (x) {
+		count += x&1;
+		x >>= 1;
+	}
+
+	return count;
+}
+#endif
+
 static void sna_dri2_select_mode(struct sna *sna, struct kgem_bo *dst, struct kgem_bo *src, bool sync)
 {
 	struct drm_i915_gem_busy busy;
@@ -940,9 +956,12 @@ static void sna_dri2_select_mode(struct sna *sna, struct kgem_bo *dst, struct kg
 	 * The ultimate question is whether preserving the ring outweighs
 	 * the cost of the query.
 	 */
-	mode = KGEM_RENDER;
-	if (busy.busy & (0xfffe << 16))
+	if (popcount(busy.busy >> 16) > 1)
+		mode = busy.busy & 0xffff ? KGEM_BLT : KGEM_RENDER;
+	else if (busy.busy & (0xfffe << 16))
 		mode = KGEM_BLT;
+	else
+		mode = KGEM_RENDER;
 	kgem_bo_mark_busy(&sna->kgem, busy.handle == src->handle ? src : dst, mode);
 	_kgem_set_mode(&sna->kgem, mode);
 }
