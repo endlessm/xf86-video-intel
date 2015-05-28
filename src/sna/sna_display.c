@@ -7181,7 +7181,8 @@ sna_wait_for_scanline(struct sna *sna,
 void sna_mode_check(struct sna *sna)
 {
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
-	int i;
+	bool disabled = false;
+	int c, o;
 
 	if (sna->flags & SNA_IS_HOSTED)
 		return;
@@ -7191,8 +7192,8 @@ void sna_mode_check(struct sna *sna)
 		return;
 
 	/* Validate CRTC attachments and force consistency upon the kernel */
-	for (i = 0; i < sna->mode.num_real_crtc; i++) {
-		xf86CrtcPtr crtc = config->crtc[i];
+	for (c = 0; c < sna->mode.num_real_crtc; c++) {
+		xf86CrtcPtr crtc = config->crtc[c];
 		struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
 		struct drm_mode_crtc mode;
 		uint32_t expected[2];
@@ -7220,11 +7221,28 @@ void sna_mode_check(struct sna *sna)
 				   "%s: invalid state found on pipe %d, disabling CRTC:%d\n",
 				   __FUNCTION__, __sna_crtc_pipe(sna_crtc), __sna_crtc_id(sna_crtc));
 			sna_crtc_disable(crtc, true);
+#if XF86_CRTC_VERSION >= 3
+			crtc->active = FALSE;
+#endif
+			if (crtc->enabled) {
+				crtc->enabled = FALSE;
+				disabled = true;
+			}
+
+			for (o = 0; o < sna->mode.num_real_output; o++) {
+				xf86OutputPtr output = config->output[o];
+
+				if (output->crtc != crtc)
+					continue;
+
+				output->funcs->dpms(output, DPMSModeOff);
+				output->crtc = NULL;
+			}
 		}
 	}
 
-	for (i = 0; i < config->num_output; i++) {
-		xf86OutputPtr output = config->output[i];
+	for (o = 0; o < config->num_output; o++) {
+		xf86OutputPtr output = config->output[o];
 		struct sna_output *sna_output;
 
 		if (output->crtc)
@@ -7238,6 +7256,9 @@ void sna_mode_check(struct sna *sna)
 	}
 
 	update_flush_interval(sna);
+
+	if (disabled)
+		xf86RandR12TellChanged(xf86ScrnToScreen(sna->scrn));
 }
 
 static bool
