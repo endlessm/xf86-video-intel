@@ -445,6 +445,15 @@ static bool kgem_set_tiling(struct kgem *kgem, struct kgem_bo *bo,
 	struct drm_i915_gem_set_tiling set_tiling;
 	int err;
 
+	if (tiling == bo->tiling) {
+		if (tiling == I915_TILING_NONE) {
+			bo->pitch = stride;
+			return true;
+		}
+		if (stride == bo->pitch)
+			return true;
+	}
+
 	if (DBG_NO_TILING)
 		return false;
 
@@ -452,11 +461,11 @@ static bool kgem_set_tiling(struct kgem *kgem, struct kgem_bo *bo,
 restart:
 	set_tiling.handle = bo->handle;
 	set_tiling.tiling_mode = tiling;
-	set_tiling.stride = stride;
+	set_tiling.stride = tiling ? stride : 0;
 
 	if (ioctl(kgem->fd, DRM_IOCTL_I915_GEM_SET_TILING, &set_tiling) == 0) {
 		bo->tiling = set_tiling.tiling_mode;
-		bo->pitch = set_tiling.stride;
+		bo->pitch = set_tiling.tiling_mode ? set_tiling.stride : stride;
 		return set_tiling.tiling_mode == tiling;
 	}
 
@@ -4356,7 +4365,7 @@ retry_large:
 				goto discard;
 
 			if (bo->tiling != I915_TILING_NONE) {
-				if (use_active)
+				if (use_active && kgem->gen < 040)
 					goto discard;
 
 				if (!kgem_set_tiling(kgem, bo,
@@ -4445,9 +4454,10 @@ discard:
 				break;
 			}
 
-			if (I915_TILING_NONE != bo->tiling &&
-			    !kgem_set_tiling(kgem, bo, I915_TILING_NONE, 0))
-				continue;
+			if (!kgem_set_tiling(kgem, bo, I915_TILING_NONE, 0)) {
+				kgem_bo_free(kgem, bo);
+				break;
+			}
 
 			kgem_bo_remove_from_inactive(kgem, bo);
 			assert(list_is_empty(&bo->vma));
@@ -4500,8 +4510,10 @@ discard:
 			if (first)
 				continue;
 
-			if (!kgem_set_tiling(kgem, bo, I915_TILING_NONE, 0))
-				continue;
+			if (!kgem_set_tiling(kgem, bo, I915_TILING_NONE, 0)) {
+				kgem_bo_free(kgem, bo);
+				break;
+			}
 		}
 		assert(bo->tiling == I915_TILING_NONE);
 		assert(bo->pitch == 0);
@@ -5261,11 +5273,8 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 				if (num_pages(bo) < size)
 					continue;
 
-				if (bo->pitch != pitch || bo->tiling != tiling) {
-					if (!kgem_set_tiling(kgem, bo,
-							    tiling, pitch))
-						continue;
-				}
+				if (!kgem_set_tiling(kgem, bo, tiling, pitch))
+					continue;
 			}
 
 			kgem_bo_remove_from_active(kgem, bo);
@@ -5291,11 +5300,8 @@ large_inactive:
 			if (size > num_pages(bo))
 				continue;
 
-			if (bo->tiling != tiling ||
-			    (tiling != I915_TILING_NONE && bo->pitch != pitch)) {
-				if (!kgem_set_tiling(kgem, bo, tiling, pitch))
-					continue;
-			}
+			if (!kgem_set_tiling(kgem, bo, tiling, pitch))
+				continue;
 
 			if (bo->purged && !kgem_bo_clear_purgeable(kgem, bo)) {
 				kgem_bo_free(kgem, bo);
@@ -5368,7 +5374,7 @@ large_inactive:
 				}
 
 				assert(bo->tiling == tiling);
-				bo->pitch = pitch;
+				assert(bo->pitch >= pitch);
 				bo->delta = 0;
 				bo->unique_id = kgem_get_unique_id(kgem);
 
@@ -5434,12 +5440,13 @@ search_active:
 				if (num_pages(bo) < size)
 					continue;
 
-				if (bo->pitch != pitch &&
-				    !kgem_set_tiling(kgem, bo, tiling, pitch)) {
+				if (!kgem_set_tiling(kgem, bo, tiling, pitch)) {
 					kgem_bo_free(kgem, bo);
 					break;
 				}
 			}
+			assert(bo->tiling == tiling);
+			assert(bo->pitch >= pitch);
 
 			kgem_bo_remove_from_active(kgem, bo);
 
@@ -5494,14 +5501,12 @@ search_active:
 				if (num_pages(bo) < size)
 					continue;
 
-				if (bo->tiling != tiling ||
-				    (tiling != I915_TILING_NONE && bo->pitch != pitch)) {
-					if (!kgem_set_tiling(kgem, bo,
-							     tiling, pitch)) {
-						kgem_bo_free(kgem, bo);
-						break;
-					}
+				if (!kgem_set_tiling(kgem, bo, tiling, pitch)) {
+					kgem_bo_free(kgem, bo);
+					break;
 				}
+				assert(bo->tiling == tiling);
+				assert(bo->pitch >= pitch);
 
 				kgem_bo_remove_from_active(kgem, bo);
 
@@ -5583,12 +5588,9 @@ search_inactive:
 			continue;
 		}
 
-		if (bo->tiling != tiling ||
-		    (tiling != I915_TILING_NONE && bo->pitch != pitch)) {
-			if (!kgem_set_tiling(kgem, bo, tiling, pitch)) {
-				kgem_bo_free(kgem, bo);
-				break;
-			}
+		if (!kgem_set_tiling(kgem, bo, tiling, pitch)) {
+			kgem_bo_free(kgem, bo);
+			break;
 		}
 
 		if (bo->purged && !kgem_bo_clear_purgeable(kgem, bo)) {
@@ -5599,6 +5601,8 @@ search_inactive:
 		kgem_bo_remove_from_inactive(kgem, bo);
 		assert(list_is_empty(&bo->list));
 		assert(list_is_empty(&bo->vma));
+		assert(bo->tiling == tiling);
+		assert(bo->pitch >= pitch);
 
 		bo->delta = 0;
 		bo->unique_id = kgem_get_unique_id(kgem);
@@ -5646,12 +5650,12 @@ search_inactive:
 			kgem_bo_remove_from_active(kgem, bo);
 			__kgem_bo_clear_busy(bo);
 
-			if (tiling != I915_TILING_NONE && bo->pitch != pitch) {
-				if (!kgem_set_tiling(kgem, bo, tiling, pitch)) {
-					kgem_bo_free(kgem, bo);
-					goto no_retire;
-				}
+			if (!kgem_set_tiling(kgem, bo, tiling, pitch)) {
+				kgem_bo_free(kgem, bo);
+				goto no_retire;
 			}
+			assert(bo->tiling == tiling);
+			assert(bo->pitch >= pitch);
 
 			bo->unique_id = kgem_get_unique_id(kgem);
 			bo->delta = 0;
@@ -5697,8 +5701,7 @@ create:
 	}
 
 	bo->unique_id = kgem_get_unique_id(kgem);
-	if (tiling == I915_TILING_NONE ||
-	    kgem_set_tiling(kgem, bo, tiling, pitch)) {
+	if (kgem_set_tiling(kgem, bo, tiling, pitch)) {
 		if (flags & CREATE_SCANOUT)
 			__kgem_bo_make_scanout(kgem, bo, width, height);
 	} else {
