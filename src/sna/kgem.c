@@ -4363,6 +4363,8 @@ retry_large:
 						    I915_TILING_NONE, 0))
 					goto discard;
 			}
+			assert(bo->tiling == I915_TILING_NONE);
+			assert(bo->pitch == 0);
 
 			if (bo->purged && !kgem_bo_clear_purgeable(kgem, bo))
 				goto discard;
@@ -4451,6 +4453,8 @@ discard:
 			assert(list_is_empty(&bo->vma));
 			assert(list_is_empty(&bo->list));
 
+			assert(bo->tiling == I915_TILING_NONE);
+			assert(bo->pitch == 0);
 			bo->delta = 0;
 			DBG(("  %s: found handle=%d (num_pages=%d) in linear vma cache\n",
 			     __FUNCTION__, bo->handle, num_pages(bo)));
@@ -4499,6 +4503,8 @@ discard:
 			if (!kgem_set_tiling(kgem, bo, I915_TILING_NONE, 0))
 				continue;
 		}
+		assert(bo->tiling == I915_TILING_NONE);
+		assert(bo->pitch == 0);
 
 		if (bo->map__gtt || bo->map__wc || bo->map__cpu) {
 			if (flags & (CREATE_CPU_MAP | CREATE_GTT_MAP)) {
