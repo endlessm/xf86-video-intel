@@ -439,7 +439,8 @@ static void kgem_sna_flush(struct kgem *kgem)
 		sna_render_flush_solid(sna);
 }
 
-static bool gem_set_tiling(int fd, uint32_t handle, int tiling, int stride)
+static bool kgem_set_tiling(struct kgem *kgem, struct kgem_bo *bo,
+			    int tiling, int stride)
 {
 	struct drm_i915_gem_set_tiling set_tiling;
 	int err;
@@ -449,12 +450,15 @@ static bool gem_set_tiling(int fd, uint32_t handle, int tiling, int stride)
 
 	VG_CLEAR(set_tiling);
 restart:
-	set_tiling.handle = handle;
+	set_tiling.handle = bo->handle;
 	set_tiling.tiling_mode = tiling;
 	set_tiling.stride = stride;
 
-	if (ioctl(fd, DRM_IOCTL_I915_GEM_SET_TILING, &set_tiling) == 0)
+	if (ioctl(kgem->fd, DRM_IOCTL_I915_GEM_SET_TILING, &set_tiling) == 0) {
+		bo->tiling = set_tiling.tiling_mode;
+		bo->pitch = set_tiling.stride;
 		return set_tiling.tiling_mode == tiling;
+	}
 
 	err = errno;
 	if (err == EINTR)
@@ -1389,6 +1393,24 @@ static bool test_can_blt_y(struct kgem *kgem)
 	gem_close(kgem->fd, object.handle);
 
 	return ret == 0;
+}
+
+static bool gem_set_tiling(int fd, uint32_t handle, int tiling, int stride)
+{
+	struct drm_i915_gem_set_tiling set_tiling;
+
+	if (DBG_NO_TILING)
+		return false;
+
+	VG_CLEAR(set_tiling);
+	set_tiling.handle = handle;
+	set_tiling.tiling_mode = tiling;
+	set_tiling.stride = stride;
+
+	if (ioctl(fd, DRM_IOCTL_I915_GEM_SET_TILING, &set_tiling) == 0)
+		return set_tiling.tiling_mode == tiling;
+
+	return false;
 }
 
 static bool test_can_scanout_y(struct kgem *kgem)
@@ -4337,12 +4359,9 @@ retry_large:
 				if (use_active)
 					goto discard;
 
-				if (!gem_set_tiling(kgem->fd, bo->handle,
+				if (!kgem_set_tiling(kgem, bo,
 						    I915_TILING_NONE, 0))
 					goto discard;
-
-				bo->tiling = I915_TILING_NONE;
-				bo->pitch = 0;
 			}
 
 			if (bo->purged && !kgem_bo_clear_purgeable(kgem, bo))
@@ -4425,16 +4444,13 @@ discard:
 			}
 
 			if (I915_TILING_NONE != bo->tiling &&
-			    !gem_set_tiling(kgem->fd, bo->handle,
-					    I915_TILING_NONE, 0))
+			    !kgem_set_tiling(kgem, bo, I915_TILING_NONE, 0))
 				continue;
 
 			kgem_bo_remove_from_inactive(kgem, bo);
 			assert(list_is_empty(&bo->vma));
 			assert(list_is_empty(&bo->list));
 
-			bo->tiling = I915_TILING_NONE;
-			bo->pitch = 0;
 			bo->delta = 0;
 			DBG(("  %s: found handle=%d (num_pages=%d) in linear vma cache\n",
 			     __FUNCTION__, bo->handle, num_pages(bo)));
@@ -4480,12 +4496,8 @@ discard:
 			if (first)
 				continue;
 
-			if (!gem_set_tiling(kgem->fd, bo->handle,
-					    I915_TILING_NONE, 0))
+			if (!kgem_set_tiling(kgem, bo, I915_TILING_NONE, 0))
 				continue;
-
-			bo->tiling = I915_TILING_NONE;
-			bo->pitch = 0;
 		}
 
 		if (bo->map__gtt || bo->map__wc || bo->map__cpu) {
@@ -4524,7 +4536,7 @@ discard:
 			kgem_bo_remove_from_inactive(kgem, bo);
 
 		assert(bo->tiling == I915_TILING_NONE);
-		bo->pitch = 0;
+		assert(bo->pitch == 0);
 		bo->delta = 0;
 		DBG(("  %s: found handle=%d (num_pages=%d) in linear %s cache\n",
 		     __FUNCTION__, bo->handle, num_pages(bo),
@@ -5171,11 +5183,8 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 						bo->delta = 0;
 					}
 
-					if (gem_set_tiling(kgem->fd, bo->handle,
-							   tiling, pitch)) {
-						bo->tiling = tiling;
-						bo->pitch = pitch;
-					} else {
+					if (!kgem_set_tiling(kgem, bo,
+							     tiling, pitch)) {
 						kgem_bo_free(kgem, bo);
 						break;
 					}
@@ -5247,12 +5256,9 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 					continue;
 
 				if (bo->pitch != pitch || bo->tiling != tiling) {
-					if (!gem_set_tiling(kgem->fd, bo->handle,
+					if (!kgem_set_tiling(kgem, bo,
 							    tiling, pitch))
 						continue;
-
-					bo->pitch = pitch;
-					bo->tiling = tiling;
 				}
 			}
 
@@ -5281,12 +5287,8 @@ large_inactive:
 
 			if (bo->tiling != tiling ||
 			    (tiling != I915_TILING_NONE && bo->pitch != pitch)) {
-				if (!gem_set_tiling(kgem->fd, bo->handle,
-						    tiling, pitch))
+				if (!kgem_set_tiling(kgem, bo, tiling, pitch))
 					continue;
-
-				bo->tiling = tiling;
-				bo->pitch = pitch;
 			}
 
 			if (bo->purged && !kgem_bo_clear_purgeable(kgem, bo)) {
@@ -5298,7 +5300,6 @@ large_inactive:
 
 			assert(bo->domain != DOMAIN_GPU);
 			bo->unique_id = kgem_get_unique_id(kgem);
-			bo->pitch = pitch;
 			bo->delta = 0;
 			DBG(("  1:from large inactive: pitch=%d, tiling=%d, handle=%d, id=%d\n",
 			     bo->pitch, bo->tiling, bo->handle, bo->unique_id));
@@ -5347,14 +5348,12 @@ large_inactive:
 				if (bo->tiling != tiling ||
 				    (tiling != I915_TILING_NONE && bo->pitch != pitch)) {
 					if (bo->map__gtt ||
-					    !gem_set_tiling(kgem->fd, bo->handle,
-							    tiling, pitch)) {
+					    !kgem_set_tiling(kgem, bo,
+							     tiling, pitch)) {
 						DBG(("inactive GTT vma with wrong tiling: %d < %d\n",
 						     bo->tiling, tiling));
 						continue;
 					}
-					bo->tiling = tiling;
-					bo->pitch = pitch;
 				}
 
 				if (bo->purged && !kgem_bo_clear_purgeable(kgem, bo)) {
@@ -5429,13 +5428,10 @@ search_active:
 				if (num_pages(bo) < size)
 					continue;
 
-				if (bo->pitch != pitch) {
-					if (!gem_set_tiling(kgem->fd,
-							    bo->handle,
-							    tiling, pitch))
-						continue;
-
-					bo->pitch = pitch;
+				if (bo->pitch != pitch &&
+				    !kgem_set_tiling(kgem, bo, tiling, pitch)) {
+					kgem_bo_free(kgem, bo);
+					break;
 				}
 			}
 
@@ -5494,17 +5490,16 @@ search_active:
 
 				if (bo->tiling != tiling ||
 				    (tiling != I915_TILING_NONE && bo->pitch != pitch)) {
-					if (!gem_set_tiling(kgem->fd,
-							    bo->handle,
-							    tiling, pitch))
-						continue;
+					if (!kgem_set_tiling(kgem, bo,
+							     tiling, pitch)) {
+						kgem_bo_free(kgem, bo);
+						break;
+					}
 				}
 
 				kgem_bo_remove_from_active(kgem, bo);
 
 				bo->unique_id = kgem_get_unique_id(kgem);
-				bo->pitch = pitch;
-				bo->tiling = tiling;
 				bo->delta = 0;
 				DBG(("  1:from active: pitch=%d, tiling=%d, handle=%d, id=%d\n",
 				     bo->pitch, bo->tiling, bo->handle, bo->unique_id));
@@ -5584,9 +5579,10 @@ search_inactive:
 
 		if (bo->tiling != tiling ||
 		    (tiling != I915_TILING_NONE && bo->pitch != pitch)) {
-			if (!gem_set_tiling(kgem->fd, bo->handle,
-					    tiling, pitch))
-				continue;
+			if (!kgem_set_tiling(kgem, bo, tiling, pitch)) {
+				kgem_bo_free(kgem, bo);
+				break;
+			}
 		}
 
 		if (bo->purged && !kgem_bo_clear_purgeable(kgem, bo)) {
@@ -5597,9 +5593,6 @@ search_inactive:
 		kgem_bo_remove_from_inactive(kgem, bo);
 		assert(list_is_empty(&bo->list));
 		assert(list_is_empty(&bo->vma));
-
-		bo->pitch = pitch;
-		bo->tiling = tiling;
 
 		bo->delta = 0;
 		bo->unique_id = kgem_get_unique_id(kgem);
@@ -5648,13 +5641,12 @@ search_inactive:
 			__kgem_bo_clear_busy(bo);
 
 			if (tiling != I915_TILING_NONE && bo->pitch != pitch) {
-				if (!gem_set_tiling(kgem->fd, bo->handle, tiling, pitch)) {
+				if (!kgem_set_tiling(kgem, bo, tiling, pitch)) {
 					kgem_bo_free(kgem, bo);
 					goto no_retire;
 				}
 			}
 
-			bo->pitch = pitch;
 			bo->unique_id = kgem_get_unique_id(kgem);
 			bo->delta = 0;
 			DBG(("  2:from active: pitch=%d, tiling=%d, handle=%d, id=%d\n",
@@ -5700,9 +5692,7 @@ create:
 
 	bo->unique_id = kgem_get_unique_id(kgem);
 	if (tiling == I915_TILING_NONE ||
-	    gem_set_tiling(kgem->fd, handle, tiling, pitch)) {
-		bo->tiling = tiling;
-		bo->pitch = pitch;
+	    kgem_set_tiling(kgem, bo, tiling, pitch)) {
 		if (flags & CREATE_SCANOUT)
 			__kgem_bo_make_scanout(kgem, bo, width, height);
 	} else {
