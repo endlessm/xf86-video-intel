@@ -454,7 +454,7 @@ restart:
 	set_tiling.stride = stride;
 
 	if (ioctl(fd, DRM_IOCTL_I915_GEM_SET_TILING, &set_tiling) == 0)
-		return true;
+		return set_tiling.tiling_mode == tiling;
 
 	err = errno;
 	if (err == EINTR)
