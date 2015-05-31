@@ -4373,7 +4373,7 @@ retry_large:
 					goto discard;
 			}
 			assert(bo->tiling == I915_TILING_NONE);
-			assert(bo->pitch == 0);
+			bo->pitch = 0;
 
 			if (bo->purged && !kgem_bo_clear_purgeable(kgem, bo))
 				goto discard;
@@ -4516,7 +4516,7 @@ discard:
 			}
 		}
 		assert(bo->tiling == I915_TILING_NONE);
-		assert(bo->pitch == 0);
+		bo->pitch = 0;
 
 		if (bo->map__gtt || bo->map__wc || bo->map__cpu) {
 			if (flags & (CREATE_CPU_MAP | CREATE_GTT_MAP)) {
@@ -5372,6 +5372,9 @@ large_inactive:
 					kgem_bo_free(kgem, bo);
 					break;
 				}
+
+				if (tiling == I915_TILING_NONE)
+					bo->pitch = pitch;
 
 				assert(bo->tiling == tiling);
 				assert(bo->pitch >= pitch);
