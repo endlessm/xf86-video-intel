@@ -683,6 +683,12 @@ struct kgem_bo *sna_pixmap_change_tiling(PixmapPtr pixmap, uint32_t tiling)
 		return NULL;
 	}
 
+	if (bo->tiling == priv->gpu_bo->tiling) {
+		DBG(("%s: tiling request failed\n", __FUNCTION__));
+		kgem_bo_destroy(&sna->kgem, bo);
+		return NULL;
+	}
+
 	box.x1 = box.y1 = 0;
 	box.x2 = pixmap->drawable.width;
 	box.y2 = pixmap->drawable.height;
