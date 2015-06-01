@@ -562,6 +562,9 @@ static void *__kgem_bo_map__gtt(struct kgem *kgem, struct kgem_bo *bo)
 	DBG(("%s(handle=%d, size=%d)\n", __FUNCTION__,
 	     bo->handle, bytes(bo)));
 
+	if (!kgem->can_fence)
+		return NULL;
+
 	VG_CLEAR(gtt);
 retry_gtt:
 	gtt.handle = bo->handle;
@@ -1599,6 +1602,8 @@ static void kgem_init_swizzling(struct kgem *kgem)
 
 	if (!DBG_NO_DETILING)
 		choose_memcpy_tiled_x(kgem, tiling.swizzle_mode);
+
+	kgem->can_fence = tiling.swizzle_mode != I915_BIT_6_SWIZZLE_UNKNOWN;
 out:
 	gem_close(kgem->fd, tiling.handle);
 }
@@ -5273,8 +5278,11 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 				if (num_pages(bo) < size)
 					continue;
 
-				if (!kgem_set_tiling(kgem, bo, tiling, pitch))
-					continue;
+				if (!kgem_set_tiling(kgem, bo, tiling, pitch)) {
+					assert(!kgem->can_fence);
+					bo->tiling = tiling;
+					bo->pitch = pitch;
+				}
 			}
 
 			kgem_bo_remove_from_active(kgem, bo);
@@ -5300,8 +5308,14 @@ large_inactive:
 			if (size > num_pages(bo))
 				continue;
 
-			if (!kgem_set_tiling(kgem, bo, tiling, pitch))
-				continue;
+			if (!kgem_set_tiling(kgem, bo, tiling, pitch)) {
+				if (kgem->gen >= 040) {
+					assert(!kgem->can_fence);
+					bo->tiling = tiling;
+					bo->pitch = pitch;
+				} else
+					continue;
+			}
 
 			if (bo->purged && !kgem_bo_clear_purgeable(kgem, bo)) {
 				kgem_bo_free(kgem, bo);
@@ -5364,7 +5378,8 @@ large_inactive:
 							     tiling, pitch)) {
 						DBG(("inactive GTT vma with wrong tiling: %d < %d\n",
 						     bo->tiling, tiling));
-						continue;
+						kgem_bo_free(kgem, bo);
+						break;
 					}
 				}
 
@@ -5444,8 +5459,9 @@ search_active:
 					continue;
 
 				if (!kgem_set_tiling(kgem, bo, tiling, pitch)) {
-					kgem_bo_free(kgem, bo);
-					break;
+					assert(!kgem->can_fence);
+					bo->tiling = tiling;
+					bo->pitch = pitch;
 				}
 			}
 			assert(bo->tiling == tiling);
@@ -5505,8 +5521,14 @@ search_active:
 					continue;
 
 				if (!kgem_set_tiling(kgem, bo, tiling, pitch)) {
-					kgem_bo_free(kgem, bo);
-					break;
+					if (kgem->gen >= 040) {
+						assert(!kgem->can_fence);
+						bo->tiling = tiling;
+						bo->pitch = pitch;
+					} else {
+						kgem_bo_free(kgem, bo);
+						break;
+					}
 				}
 				assert(bo->tiling == tiling);
 				assert(bo->pitch >= pitch);
@@ -5592,8 +5614,14 @@ search_inactive:
 		}
 
 		if (!kgem_set_tiling(kgem, bo, tiling, pitch)) {
-			kgem_bo_free(kgem, bo);
-			break;
+			if (kgem->gen >= 040) {
+				assert(!kgem->can_fence);
+				bo->tiling = tiling;
+				bo->pitch = pitch;
+			} else {
+				kgem_bo_free(kgem, bo);
+				break;
+			}
 		}
 
 		if (bo->purged && !kgem_bo_clear_purgeable(kgem, bo)) {
@@ -5654,8 +5682,14 @@ search_inactive:
 			__kgem_bo_clear_busy(bo);
 
 			if (!kgem_set_tiling(kgem, bo, tiling, pitch)) {
-				kgem_bo_free(kgem, bo);
-				goto no_retire;
+				if (kgem->gen >= 040) {
+					assert(!kgem->can_fence);
+					bo->tiling = tiling;
+					bo->pitch = pitch;
+				} else {
+					kgem_bo_free(kgem, bo);
+					goto no_retire;
+				}
 			}
 			assert(bo->tiling == tiling);
 			assert(bo->pitch >= pitch);
@@ -5708,11 +5742,17 @@ create:
 		if (flags & CREATE_SCANOUT)
 			__kgem_bo_make_scanout(kgem, bo, width, height);
 	} else {
-		if (flags & CREATE_EXACT) {
-			DBG(("%s: failed to set exact tiling (gem_set_tiling)\n", __FUNCTION__));
-			gem_close(kgem->fd, handle);
-			free(bo);
-			return NULL;
+		if (kgem->gen >= 040) {
+			assert(!kgem->can_fence);
+			bo->tiling = tiling;
+			bo->pitch = pitch;
+		} else {
+			if (flags & CREATE_EXACT) {
+				DBG(("%s: failed to set exact tiling (gem_set_tiling)\n", __FUNCTION__));
+				gem_close(kgem->fd, handle);
+				free(bo);
+				return NULL;
+			}
 		}
 	}
 
