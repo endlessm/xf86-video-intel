@@ -111,7 +111,7 @@ struct display {
 	Cursor invisible_cursor;
 	Cursor visible_cursor;
 
-	XcursorImage cursor_image;
+	XcursorImage cursor_image; /* first only */
 	int cursor_serial;
 	int cursor_x;
 	int cursor_y;
@@ -1614,14 +1614,17 @@ static Cursor display_load_invisible_cursor(struct display *display)
 
 static Cursor display_get_visible_cursor(struct display *display)
 {
-	if (display->cursor_serial != display->cursor_image.size) {
-		DBG(CURSOR, ("%s updating cursor\n", DisplayString(display->dpy)));
+	struct display *first = display->ctx->display;
+
+	if (display->cursor_serial != first->cursor_serial) {
+		DBG(CURSOR, ("%s updating cursor %dx%d, serial %d\n",
+		    DisplayString(display->dpy), first->cursor_image.width, first->cursor_image.height, first->cursor_serial));
 
 		if (display->visible_cursor)
 			XFreeCursor(display->dpy, display->visible_cursor);
 
-		display->visible_cursor = XcursorImageLoadCursor(display->dpy, &display->cursor_image);
-		display->cursor_serial = display->cursor_image.size;
+		display->visible_cursor = XcursorImageLoadCursor(display->dpy, &first->cursor_image);
+		display->cursor_serial = first->cursor_serial;
 	}
 
 	return display->visible_cursor;
@@ -1644,7 +1647,7 @@ static void display_load_visible_cursor(struct display *display, XFixesCursorIma
 	display->cursor_image.height = cur->height;
 	display->cursor_image.xhot = cur->xhot;
 	display->cursor_image.yhot = cur->yhot;
-	display->cursor_image.size++;
+	display->cursor_serial++;
 
 	n = cur->width*cur->height;
 	src = cur->pixels;
@@ -1652,11 +1655,24 @@ static void display_load_visible_cursor(struct display *display, XFixesCursorIma
 	while (n--)
 		*dst++ = *src++;
 
-	DBG(CURSOR, ("%s marking cursor changed\n", DisplayString(display->dpy)));
-	display->cursor_moved++;
-	if (display->cursor != display->invisible_cursor) {
-		display->cursor_visible++;
-		context_enable_timer(display->ctx);
+	if (verbose & CURSOR) {
+		int x, y;
+
+		printf("%s cursor image %dx%d, serial %d:\n",
+		       DisplayString(display->dpy),
+		       cur->width, cur->height,
+		       display->cursor_serial);
+		dst = display->cursor_image.pixels;
+		for (y = 0; y < cur->height; y++) {
+			for (x = 0; x < cur->width; x++) {
+				if (x == cur->xhot && y == cur->yhot)
+					printf("+");
+				else
+					printf("%c", *dst ? *dst >> 24 >= 127 ? 'x' : '.' : ' ');
+				dst++;
+			}
+			printf("\n");
+		}
 	}
 }
 
@@ -1700,6 +1716,8 @@ static void display_flush_cursor(struct display *display)
 	if (cursor == None)
 		cursor = display->invisible_cursor;
 	if (cursor != display->cursor) {
+		DBG(CURSOR, ("%s setting cursor shape %lx\n",
+		    DisplayString(display->dpy), (long)cursor));
 		XDefineCursor(display->dpy, display->root, cursor);
 		display->cursor = cursor;
 	}
@@ -3405,8 +3423,17 @@ int main(int argc, char **argv)
 					if (cur == NULL)
 						continue;
 
-					for (i = 1; i < ctx.ndisplay; i++)
-						display_load_visible_cursor(&ctx.display[i], cur);
+					display_load_visible_cursor(&ctx.display[0], cur);
+					for (i = 1; i < ctx.ndisplay; i++) {
+						struct display *display = &ctx.display[i];
+
+						DBG(CURSOR, ("%s marking cursor changed\n", DisplayString(display->dpy)));
+						display->cursor_moved++;
+						if (display->cursor != display->invisible_cursor) {
+							display->cursor_visible++;
+							context_enable_timer(display->ctx);
+						}
+					}
 
 					XFree(cur);
 				} else if (e.type == ctx.display->rr_event + RRScreenChangeNotify) {

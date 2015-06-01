@@ -12,8 +12,10 @@ stress_TESTS = \
 	DrawSegments \
 	cursor-test \
 	render-fill \
+	render-glyphs \
 	render-trapezoid \
 	render-trapezoid-image \
+	render-triangle \
 	render-fill-copy \
 	render-composite-solid \
 	render-composite-solid-mask \

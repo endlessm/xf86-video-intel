@@ -248,7 +248,6 @@ struct sna {
 #define SNA_FLUSH_GTT		0x400
 #define SNA_PERFORMANCE		0x1000
 #define SNA_POWERSAVE		0x2000
-#define SNA_REMOVE_OUTPUTS	0x4000
 #define SNA_HAS_FLIP		0x10000
 #define SNA_HAS_ASYNC_FLIP	0x20000
 #define SNA_LINEAR_FB		0x40000
@@ -323,7 +322,8 @@ struct sna {
 		uint32_t fg, bg;
 		int size;
 
-		int active;
+		bool disable;
+		bool active;
 		int last_x;
 		int last_y;
 
@@ -591,12 +591,50 @@ static inline void sna_present_vblank_handler(struct drm_event_vblank *event) { 
 #endif
 
 extern bool sna_crtc_set_sprite_rotation(xf86CrtcPtr crtc, uint32_t rotation);
-extern int sna_crtc_to_pipe(xf86CrtcPtr crtc);
-extern int sna_crtc_to_pipe__safe(xf86CrtcPtr crtc);
 extern uint32_t sna_crtc_to_sprite(xf86CrtcPtr crtc);
-extern uint32_t sna_crtc_id(xf86CrtcPtr crtc);
-extern bool sna_crtc_is_on(xf86CrtcPtr crtc);
 extern bool sna_crtc_is_transformed(xf86CrtcPtr crtc);
+
+#define CRTC_VBLANK 0x3
+#define CRTC_ON 0x80000000
+
+static inline unsigned long *sna_crtc_flags(xf86CrtcPtr crtc)
+{
+	unsigned long *flags = crtc->driver_private;
+	assert(flags);
+	return flags;
+}
+
+static inline unsigned sna_crtc_pipe(xf86CrtcPtr crtc)
+{
+	return *sna_crtc_flags(crtc) >> 8 & 0xff;
+}
+
+static inline unsigned sna_crtc_id(xf86CrtcPtr crtc)
+{
+	return *sna_crtc_flags(crtc) >> 16 & 0xff;
+}
+
+static inline bool sna_crtc_is_on(xf86CrtcPtr crtc)
+{
+	return *sna_crtc_flags(crtc) & CRTC_ON;
+}
+
+static inline void sna_crtc_set_vblank(xf86CrtcPtr crtc)
+{
+	assert((*sna_crtc_flags(crtc) & CRTC_VBLANK) < 2);
+	++*sna_crtc_flags(crtc);
+}
+
+static inline void sna_crtc_clear_vblank(xf86CrtcPtr crtc)
+{
+	assert(*sna_crtc_flags(crtc) & CRTC_VBLANK);
+	--*sna_crtc_flags(crtc);
+}
+
+static inline bool sna_crtc_has_vblank(xf86CrtcPtr crtc)
+{
+	return *sna_crtc_flags(crtc) & CRTC_VBLANK;
+}
 
 CARD32 sna_format_for_depth(int depth);
 CARD32 sna_render_format_for_depth(int depth);

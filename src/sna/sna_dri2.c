@@ -400,6 +400,9 @@ static uint32_t color_tiling(struct sna *sna, DrawablePtr draw)
 {
 	uint32_t tiling;
 
+	if (!sna->kgem.can_fence)
+		return I915_TILING_NONE;
+
 	if (COLOR_PREFER_TILING_Y &&
 	    (draw->width  != sna->front->drawable.width ||
 	     draw->height != sna->front->drawable.height))
@@ -427,7 +430,6 @@ static struct kgem_bo *sna_pixmap_set_dri(struct sna *sna,
 					  PixmapPtr pixmap)
 {
 	struct sna_pixmap *priv;
-	int tiling;
 
 	DBG(("%s: attaching DRI client to pixmap=%ld\n",
 	     __FUNCTION__, pixmap->drawable.serialNumber));
@@ -451,11 +453,18 @@ static struct kgem_bo *sna_pixmap_set_dri(struct sna *sna,
 	assert(priv->gpu_bo->proxy == NULL);
 	assert(priv->gpu_bo->flush == false);
 
-	tiling = color_tiling(sna, &pixmap->drawable);
-	if (tiling < 0)
-		tiling = -tiling;
-	if (priv->gpu_bo->tiling != tiling && !priv->gpu_bo->scanout)
-		sna_pixmap_change_tiling(pixmap, tiling);
+	if (!sna->kgem.can_fence) {
+		if (!sna_pixmap_change_tiling(pixmap, I915_TILING_NONE)) {
+			DBG(("%s: failed to discard tiling (%d) for DRI2 protocol\n", __FUNCTION__, priv->gpu_bo->tiling));
+			return NULL;
+		}
+	} else {
+		int tiling = color_tiling(sna, &pixmap->drawable);
+		if (tiling < 0)
+			tiling = -tiling;
+		if (priv->gpu_bo->tiling < tiling && !priv->gpu_bo->scanout)
+			sna_pixmap_change_tiling(pixmap, tiling);
+	}
 
 	return priv->gpu_bo;
 }
@@ -870,6 +879,22 @@ static void set_bo(PixmapPtr pixmap, struct kgem_bo *bo)
 	}
 }
 
+#if defined(__GNUC__)
+#define popcount(x) __builtin_popcount(x)
+#else
+static int popcount(unsigned int x)
+{
+	int count = 0;
+
+	while (x) {
+		count += x&1;
+		x >>= 1;
+	}
+
+	return count;
+}
+#endif
+
 static void sna_dri2_select_mode(struct sna *sna, struct kgem_bo *dst, struct kgem_bo *src, bool sync)
 {
 	struct drm_i915_gem_busy busy;
@@ -940,9 +965,12 @@ static void sna_dri2_select_mode(struct sna *sna, struct kgem_bo *dst, struct kg
 	 * The ultimate question is whether preserving the ring outweighs
 	 * the cost of the query.
 	 */
-	mode = KGEM_RENDER;
-	if (busy.busy & (0xfffe << 16))
+	if (popcount(busy.busy >> 16) > 1)
+		mode = busy.busy & 0xffff ? KGEM_BLT : KGEM_RENDER;
+	else if (busy.busy & (0xfffe << 16))
 		mode = KGEM_BLT;
+	else
+		mode = KGEM_RENDER;
 	kgem_bo_mark_busy(&sna->kgem, busy.handle == src->handle ? src : dst, mode);
 	_kgem_set_mode(&sna->kgem, mode);
 }
@@ -1312,8 +1340,8 @@ draw_current_msc(DrawablePtr draw, xf86CrtcPtr crtc, uint64_t msc)
 			const struct ust_msc *this = sna_crtc_last_swap(crtc);
 			DBG(("%s: Window transferring from pipe=%d [msc=%llu] to pipe=%d [msc=%llu], delta now %lld\n",
 			     __FUNCTION__,
-			     sna_crtc_to_pipe(priv->crtc), (long long)last->msc,
-			     sna_crtc_to_pipe(crtc), (long long)this->msc,
+			     sna_crtc_pipe(priv->crtc), (long long)last->msc,
+			     sna_crtc_pipe(crtc), (long long)this->msc,
 			     (long long)(priv->msc_delta + this->msc - last->msc)));
 			priv->msc_delta += this->msc - last->msc;
 			priv->crtc = crtc;
@@ -1491,7 +1519,7 @@ sna_dri2_add_event(struct sna *sna,
 	info->sna = sna;
 	info->draw = draw;
 	info->crtc = crtc;
-	info->pipe = sna_crtc_to_pipe(crtc);
+	info->pipe = sna_crtc_pipe(crtc);
 
 	if (!add_event_to_client(info, sna, client)) {
 		free(info);
@@ -1685,7 +1713,7 @@ can_flip(struct sna * sna,
 	}
 
 	if (!sna_crtc_is_on(crtc)) {
-		DBG(("%s: ref-pipe=%d is disabled\n", __FUNCTION__, sna_crtc_to_pipe(crtc)));
+		DBG(("%s: ref-pipe=%d is disabled\n", __FUNCTION__, sna_crtc_pipe(crtc)));
 		return false;
 	}
 
@@ -2137,7 +2165,7 @@ static void fake_swap_complete(struct sna *sna, ClientPtr client,
 
 	swap = sna_crtc_last_swap(crtc);
 	DBG(("%s(type=%d): draw=%ld, pipe=%d, frame=%lld [msc %lld], tv=%d.%06d\n",
-	     __FUNCTION__, type, (long)draw->id, crtc ? sna_crtc_to_pipe(crtc) : -1,
+	     __FUNCTION__, type, (long)draw->id, crtc ? sna_crtc_pipe(crtc) : -1,
 	     (long long)swap->msc,
 	     (long long)draw_current_msc(draw, crtc, swap->msc),
 	     swap->tv_sec, swap->tv_usec));
@@ -2587,7 +2615,7 @@ get_current_msc(struct sna *sna, DrawablePtr draw, xf86CrtcPtr crtc)
 	VG_CLEAR(vbl);
 	vbl.request.type = _DRM_VBLANK_RELATIVE;
 	vbl.request.sequence = 0;
-	if (sna_wait_vblank(sna, &vbl, sna_crtc_to_pipe(crtc)) == 0)
+	if (sna_wait_vblank(sna, &vbl, sna_crtc_pipe(crtc)) == 0)
 		ret = sna_crtc_record_vblank(crtc, &vbl);
 	else
 		ret = sna_crtc_last_swap(crtc)->msc;
@@ -2704,7 +2732,7 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 	if (immediate) {
 		info = sna->dri2.flip_pending;
 		DBG(("%s: performing immediate swap on pipe %d, pending? %d, mode: %d, continuation? %d\n",
-		     __FUNCTION__, sna_crtc_to_pipe(crtc),
+		     __FUNCTION__, sna_crtc_pipe(crtc),
 		     info != NULL, info ? info->flip_continue : 0,
 		     info && info->draw == draw));
 
@@ -2844,7 +2872,7 @@ sna_dri2_schedule_xchg(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 	DBG(("%s: synchronous?=%d, send-event?=%d\n", __FUNCTION__, sync, event));
 	if (!sync || event) {
 		DBG(("%s: performing immediate xchg on pipe %d\n",
-		     __FUNCTION__, sna_crtc_to_pipe(crtc)));
+		     __FUNCTION__, sna_crtc_pipe(crtc)));
 		sna_dri2_xchg(draw, front, back);
 	}
 	if (sync) {
@@ -2906,7 +2934,7 @@ sna_dri2_schedule_xchg_crtc(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc
 	DBG(("%s: synchronous?=%d, send-event?=%d\n", __FUNCTION__, sync, event));
 	if (!sync || event) {
 		DBG(("%s: performing immediate xchg only on pipe %d\n",
-		     __FUNCTION__, sna_crtc_to_pipe(crtc)));
+		     __FUNCTION__, sna_crtc_pipe(crtc)));
 		sna_dri2_xchg_crtc(sna, draw, crtc, front, back);
 	}
 	if (sync) {
@@ -3173,7 +3201,7 @@ sna_dri2_get_msc(DrawablePtr draw, CARD64 *ust, CARD64 *msc)
 	const struct ust_msc *swap;
 
 	DBG(("%s(draw=%ld, pipe=%d)\n", __FUNCTION__, draw->id,
-	     crtc ? sna_crtc_to_pipe(crtc) : -1));
+	     crtc ? sna_crtc_pipe(crtc) : -1));
 
 	if (crtc != NULL) {
 		union drm_wait_vblank vbl;
@@ -3181,7 +3209,7 @@ sna_dri2_get_msc(DrawablePtr draw, CARD64 *ust, CARD64 *msc)
 		VG_CLEAR(vbl);
 		vbl.request.type = _DRM_VBLANK_RELATIVE;
 		vbl.request.sequence = 0;
-		if (sna_wait_vblank(sna, &vbl, sna_crtc_to_pipe(crtc)) == 0)
+		if (sna_wait_vblank(sna, &vbl, sna_crtc_pipe(crtc)) == 0)
 			sna_crtc_record_vblank(crtc, &vbl);
 	} else
 		/* Drawable not displayed, make up a *monotonic* value */
@@ -3215,7 +3243,7 @@ sna_dri2_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc
 
 	crtc = sna_dri2_get_crtc(draw);
 	DBG(("%s(pipe=%d, target_msc=%llu, divisor=%llu, rem=%llu)\n",
-	     __FUNCTION__, crtc ? sna_crtc_to_pipe(crtc) : -1,
+	     __FUNCTION__, crtc ? sna_crtc_pipe(crtc) : -1,
 	     (long long)target_msc,
 	     (long long)divisor,
 	     (long long)remainder));
@@ -3224,7 +3252,7 @@ sna_dri2_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc
 	if (crtc == NULL)
 		goto out_complete;
 
-	pipe = sna_crtc_to_pipe(crtc);
+	pipe = sna_crtc_pipe(crtc);
 
 	VG_CLEAR(vbl);
 

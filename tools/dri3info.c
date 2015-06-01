@@ -20,6 +20,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  *
+ * To compile standalone: gcc -o dri3info dri3info.c `pkg-config --cflags --libs xcb-dri3 x11-xcb xrandr xxf86vm libdrm`
  */
 
 #include <X11/Xlib.h>

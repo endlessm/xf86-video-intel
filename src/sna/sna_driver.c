@@ -199,7 +199,7 @@ sna_set_fallback_mode(ScrnInfoPtr scrn)
 #endif
 }
 
-static Bool sna_set_desired_mode(struct sna *sna)
+static void sna_set_desired_mode(struct sna *sna)
 {
 	ScrnInfoPtr scrn = sna->scrn;
 
@@ -212,7 +212,6 @@ static Bool sna_set_desired_mode(struct sna *sna)
 	}
 
 	sna_mode_check(sna);
-	return TRUE;
 }
 
 /**
@@ -282,7 +281,7 @@ static Bool sna_create_screen_resources(ScreenPtr screen)
 		if (serverGeneration == 1 && (sna->flags & SNA_IS_HOSTED) == 0)
 			sna_copy_fbcon(sna);
 
-		(void)sna_set_desired_mode(sna);
+		sna_set_desired_mode(sna);
 	}
 
 	return TRUE;
@@ -620,9 +619,8 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int probe)
 
 	if (xf86ReturnOptValBool(sna->Options, OPTION_TILING_FB, FALSE))
 		sna->flags |= SNA_LINEAR_FB;
-
-	if (xf86ReturnOptValBool(sna->Options, OPTION_DELETE_DP12, FALSE))
-		sna->flags |= SNA_REMOVE_OUTPUTS;
+	if (!sna->kgem.can_fence)
+		sna->flags |= SNA_LINEAR_FB;
 
 	if (!xf86ReturnOptValBool(sna->Options, OPTION_SWAPBUFFERS_WAIT, TRUE))
 		sna->flags |= SNA_NO_WAIT;
@@ -1220,13 +1218,8 @@ static Bool sna_enter_vt(VT_FUNC_ARGS_DECL)
 		sna_mode_discover(sna);
 		sna->flags &= ~SNA_REPROBE;
 	}
-	sna_mode_check(sna);
 
-	if (!sna_set_desired_mode(sna)) {
-		sna_accel_leave(sna);
-		intel_put_master(sna->dev);
-		return FALSE;
-	}
+	sna_set_desired_mode(sna);
 
 	return TRUE;
 }

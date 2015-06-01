@@ -523,7 +523,7 @@ void backlight_disable(struct backlight *b)
 void backlight_close(struct backlight *b)
 {
 	backlight_disable(b);
-	if (b->pid)
+	if (b->pid > 0)
 		waitpid(b->pid, NULL, 0);
 }
 

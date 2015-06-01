@@ -1564,6 +1564,7 @@ static int test_dri3_tiling(Display *dpy)
 	unsigned int width, height;
 	unsigned border, depth, bpp;
 	unsigned stride, size;
+	void *Q;
 	int x, y;
 	int device;
 	int line = -1;
@@ -1594,8 +1595,10 @@ static int test_dri3_tiling(Display *dpy)
 	       width, height, stride, size);
 
 	_x_error_occurred = 0;
+	Q = setup_msc(dpy, root);
 
 	for (t = 0; t < sizeof(tiling)/sizeof(tiling[0]); t++) {
+		uint64_t msc;
 		uint32_t src;
 		int src_fd;
 		Pixmap src_pix;
@@ -1618,6 +1621,8 @@ static int test_dri3_tiling(Display *dpy)
 					     width, height, depth,
 					     src_fd, bpp, stride, size);
 
+		msc = wait_vblank(dpy, root, Q);
+
 		xcb_present_pixmap(XGetXCBConnection(dpy),
 				   win, src_pix,
 				   0, /* sbc */
@@ -1629,10 +1634,27 @@ static int test_dri3_tiling(Display *dpy)
 				   None, /* wait fence */
 				   None,
 				   XCB_PRESENT_OPTION_NONE,
-				   0, /* target msc */
-				   0, /* divisor */
+				   msc + 2, /* target msc */
+				   1, /* divisor */
 				   0, /* remainder */
 				   0, NULL);
+
+		xcb_present_pixmap(XGetXCBConnection(dpy),
+				   win, src_pix,
+				   0, /* sbc */
+				   0, /* valid */
+				   0, /* update */
+				   0, /* x_off */
+				   0, /* y_off */
+				   None,
+				   None, /* wait fence */
+				   None,
+				   XCB_PRESENT_OPTION_NONE,
+				   msc + 3, /* target msc */
+				   1, /* divisor */
+				   0, /* remainder */
+				   0, NULL);
+
 		XSync(dpy, True);
 		if (_x_error_occurred) {
 			line = __LINE__;
@@ -1645,10 +1667,12 @@ static int test_dri3_tiling(Display *dpy)
 		gem_close(device, src);
 	}
 
+	teardown_msc(dpy, Q);
 	return 0;
 
 fail:
 	printf("%s failed with tiling %d, line %d\n", __func__, tiling[t], line);
+	teardown_msc(dpy, Q);
 	return 1;
 }
 

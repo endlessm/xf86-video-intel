@@ -592,6 +592,8 @@ lerp32_opacity(PixmapPtr scratch,
 	uint32_t *ptr;
 	int stride, i;
 
+	sigtrap_assert_active();
+
 	ptr = (uint32_t*)((uint8_t *)scratch->devPrivate.ptr + scratch->devKind * y);
 	ptr += x;
 	stride = scratch->devKind / 4;

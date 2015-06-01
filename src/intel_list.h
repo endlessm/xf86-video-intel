@@ -402,6 +402,34 @@ static inline void list_move_tail(struct list *list, struct list *head)
 #define container_of(ptr, type, member) \
 	((type *)((char *)(ptr) - (char *) &((type *)0)->member))
 
+static inline void __list_splice(const struct list *list,
+				 struct list *prev,
+				 struct list *next)
+{
+	struct list *first = list->next;
+	struct list *last = list->prev;
+
+	first->prev = prev;
+	prev->next = first;
+
+	last->next = next;
+	next->prev = last;
+}
+
+static inline void list_splice(const struct list *list,
+			       struct list *head)
+{
+	if (!list_is_empty(list))
+		__list_splice(list, head, head->next);
+}
+
+static inline void list_splice_tail(const struct list *list,
+				    struct list *head)
+{
+	if (!list_is_empty(list))
+		__list_splice(list, head->prev, head);
+}
+
 static inline int list_is_singular(const struct list *list)
 {
 	return list->next == list->prev;

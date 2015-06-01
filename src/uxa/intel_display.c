@@ -94,8 +94,6 @@ struct intel_mode {
 		intel_pageflip_abort_proc abort;
 		void *data;
 	} pageflip;
-
-	Bool delete_dp_12_displays;
 };
 
 struct intel_pageflip {
@@ -2248,10 +2246,6 @@ Bool intel_mode_pre_init(ScrnInfoPtr scrn, int fd, int cpp)
 		intel->use_pageflipping = TRUE;
 	}
 
-	if (xf86ReturnOptValBool(intel->Options, OPTION_DELETE_DP12, FALSE)) {
-		mode->delete_dp_12_displays = TRUE;
-	}
-
 	intel->modes = mode;
 	drmModeFreeResources(mode_res);
 	return TRUE;
@@ -2515,12 +2509,11 @@ intel_mode_hotplug(struct intel_screen_private *intel)
 	int i, j;
 	Bool found;
 	Bool changed = FALSE;
-	struct intel_mode *mode = intel->modes;
+
 	mode_res = drmModeGetResources(intel->drmSubFD);
 	if (!mode_res)
 		goto out;
 
-restart_destroy:
 	for (i = 0; i < config->num_output; i++) {
 		xf86OutputPtr output = config->output[i];
 		struct intel_output *intel_output;
@@ -2542,11 +2535,6 @@ restart_destroy:
 		RROutputChanged(output->randr_output, TRUE);
 
 		changed = TRUE;
-		if (mode->delete_dp_12_displays) {
-			RROutputDestroy(output->randr_output);
-			xf86OutputDestroy(output);
-			goto restart_destroy;
-		}
 	}
 
 	/* find new output ids we don't have outputs for */

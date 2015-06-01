@@ -238,8 +238,9 @@ struct sna_render {
 			  int16_t w, int16_t h,
 			  unsigned flags,
 			  struct sna_composite_op *tmp);
-#define COMPOSITE_PARTIAL 0x1
-#define COMPOSITE_FALLBACK 0x80000000
+#define COMPOSITE_PARTIAL	0x1
+#define COMPOSITE_UPLOAD	0x40000000
+#define COMPOSITE_FALLBACK	0x80000000
 
 	bool (*check_composite_spans)(struct sna *sna, uint8_t op,
 				      PicturePtr dst, PicturePtr src,
@@ -540,7 +541,7 @@ enum {
 
 struct gen8_render_state {
 	unsigned gt;
-
+	const struct gt_info *info;
 	struct kgem_bo *general_bo;
 
 	uint32_t vs_state;

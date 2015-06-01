@@ -766,7 +766,7 @@ I830HandleUEvents(int fd, void *closure)
 	udev_device_unref(dev);
 }
 
-static bool has_randr(void)
+static int has_randr(void)
 {
 #if HAS_DIXREGISTERPRIVATEKEY
 	return dixPrivateKeyRegistered(rrPrivKey);
