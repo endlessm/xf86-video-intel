@@ -400,6 +400,9 @@ static uint32_t color_tiling(struct sna *sna, DrawablePtr draw)
 {
 	uint32_t tiling;
 
+	if (!sna->kgem.can_fence)
+		return I915_TILING_NONE;
+
 	if (COLOR_PREFER_TILING_Y &&
 	    (draw->width  != sna->front->drawable.width ||
 	     draw->height != sna->front->drawable.height))
@@ -427,7 +430,6 @@ static struct kgem_bo *sna_pixmap_set_dri(struct sna *sna,
 					  PixmapPtr pixmap)
 {
 	struct sna_pixmap *priv;
-	int tiling;
 
 	DBG(("%s: attaching DRI client to pixmap=%ld\n",
 	     __FUNCTION__, pixmap->drawable.serialNumber));
@@ -451,11 +453,18 @@ static struct kgem_bo *sna_pixmap_set_dri(struct sna *sna,
 	assert(priv->gpu_bo->proxy == NULL);
 	assert(priv->gpu_bo->flush == false);
 
-	tiling = color_tiling(sna, &pixmap->drawable);
-	if (tiling < 0)
-		tiling = -tiling;
-	if (priv->gpu_bo->tiling < tiling && !priv->gpu_bo->scanout)
-		sna_pixmap_change_tiling(pixmap, tiling);
+	if (!sna->kgem.can_fence) {
+		if (!sna_pixmap_change_tiling(pixmap, I915_TILING_NONE)) {
+			DBG(("%s: failed to discard tiling (%d) for DRI2 protocol\n", __FUNCTION__, priv->gpu_bo->tiling));
+			return NULL;
+		}
+	} else {
+		int tiling = color_tiling(sna, &pixmap->drawable);
+		if (tiling < 0)
+			tiling = -tiling;
+		if (priv->gpu_bo->tiling < tiling && !priv->gpu_bo->scanout)
+			sna_pixmap_change_tiling(pixmap, tiling);
+	}
 
 	return priv->gpu_bo;
 }

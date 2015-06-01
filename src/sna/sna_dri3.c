@@ -327,6 +327,15 @@ static int sna_dri3_fd_from_pixmap(ScreenPtr screen,
 		return -1;
 	}
 
+	if (bo->tiling && !sna->kgem.can_fence) {
+		if (!sna_pixmap_change_tiling(pixmap, I915_TILING_NONE)) {
+			DBG(("%s: unable to discard GPU tiling (%d) for DRI3 protocol\n",
+			     __FUNCTION__, bo->tiling));
+			return -1;
+		}
+		bo = priv->gpu_bo;
+	}
+
 	fd = kgem_bo_export_to_prime(&sna->kgem, bo);
 	if (fd == -1) {
 		DBG(("%s: exporting handle=%d to fd failed\n", __FUNCTION__, bo->handle));
