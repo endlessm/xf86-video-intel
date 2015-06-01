@@ -469,7 +469,8 @@ static struct kgem_bo *sna_pixmap_set_dri(struct sna *sna,
 	assert(priv->gpu_bo->flush == false);
 
 	if (!sna->kgem.can_fence) {
-		if (!sna_pixmap_change_tiling(pixmap, I915_TILING_NONE)) {
+		if (priv->gpu_bo->tiling &&
+		    !sna_pixmap_change_tiling(pixmap, I915_TILING_NONE)) {
 			DBG(("%s: failed to discard tiling (%d) for DRI2 protocol\n", __FUNCTION__, priv->gpu_bo->tiling));
 			return NULL;
 		}
