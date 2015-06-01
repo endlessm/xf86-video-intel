@@ -285,6 +285,9 @@ static void assert_tiling(struct kgem *kgem, struct kgem_bo *bo)
 
 	assert(bo);
 
+	if (!kgem->can_fence && kgem->gen >= 040 && bo->tiling)
+		return; /* lies */
+
 	VG_CLEAR(tiling);
 	tiling.handle = bo->handle;
 	tiling.tiling_mode = bo->tiling;
