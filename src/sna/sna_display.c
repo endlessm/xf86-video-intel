@@ -5216,11 +5216,23 @@ static inline void sigio_unblock(int was_blocked)
 }
 #endif
 
+static void enable_fb_access(ScrnInfoPtr scrn, int state)
+{
+	scrn->EnableDisableFBAccess(
+#ifdef XF86_HAS_SCRN_CONV
+				    scrn,
+#else
+				    scrn->scrnIndex,
+#endif
+				    state);
+}
+
+
 static void __restore_swcursor(ScrnInfoPtr scrn)
 {
 	DBG(("%s: attempting to restore SW cursor\n", __FUNCTION__));
-	scrn->EnableDisableFBAccess(scrn, FALSE);
-	scrn->EnableDisableFBAccess(scrn, TRUE);
+	enable_fb_access(scrn, FALSE);
+	enable_fb_access(scrn, TRUE);
 
 	RemoveBlockAndWakeupHandlers((BlockHandlerProcPtr)__restore_swcursor,
 				     (WakeupHandlerProcPtr)NoopDDA,

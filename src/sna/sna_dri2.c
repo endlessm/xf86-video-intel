@@ -155,6 +155,20 @@ struct sna_dri2_event {
 static void sna_dri2_flip_event(struct sna_dri2_event *flip);
 inline static DRI2BufferPtr dri2_window_get_front(WindowPtr win);
 
+static struct kgem_bo *
+__sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
+		      DRI2BufferPtr src, DRI2BufferPtr dst,
+		      unsigned flags);
+
+inline static void
+__sna_dri2_copy_event(struct sna_dri2_event *info, unsigned flags)
+{
+	info->bo = __sna_dri2_copy_region(info->sna, info->draw, NULL,
+					  info->back, info->front,
+					  flags);
+	info->front->flags = info->back->flags;
+}
+
 static int front_pitch(DrawablePtr draw)
 {
 	DRI2BufferPtr buffer;
@@ -314,6 +328,7 @@ inline static DRI2BufferPtr dri2_window_get_front(WindowPtr win)
 }
 #else
 inline static void *dri2_window_get_front(WindowPtr win) { return NULL; }
+#define APPLY_DAMAGE 0
 #endif
 
 #if DRI2INFOREC_VERSION < 6
@@ -537,7 +552,7 @@ sna_dri2_create_buffer(DrawablePtr draw,
 		if (draw->type != DRAWABLE_PIXMAP)
 			buffer = dri2_window_get_front((WindowPtr)draw);
 		if (buffer == NULL)
-			buffer = sna_pixmap_get_buffer(pixmap);
+			buffer = (DRI2Buffer2Ptr)sna_pixmap_get_buffer(pixmap);
 		if (buffer) {
 			private = get_private(buffer);
 
@@ -1231,15 +1246,6 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 	return bo;
 }
 
-inline static void
-__sna_dri2_copy_event(struct sna_dri2_event *info, unsigned flags)
-{
-	info->bo = __sna_dri2_copy_region(info->sna, info->draw, NULL,
-					  info->back, info->front,
-					  flags);
-	info->front->flags = info->back->flags;
-}
-
 static void
 sna_dri2_copy_region(DrawablePtr draw,
 		     RegionPtr region,
@@ -1727,7 +1733,7 @@ can_flip(struct sna * sna,
 	if (sna_pixmap_get_buffer(pixmap) != front) {
 		DBG(("%s: no, DRI2 drawable is no longer attached (old name=%d, new name=%d) to pixmap=%ld\n",
 		     __FUNCTION__, front->name,
-		     sna_pixmap_get_buffer(pixmap) ? ((DRI2BufferPtr)sna_pixmap_get_buffer(pixmap))->name : 0,
+		     sna_pixmap_get_buffer(pixmap) ? sna_pixmap_get_buffer(pixmap)->name : 0,
 		     pixmap->drawable.serialNumber));
 		return false;
 	}

@@ -140,6 +140,7 @@ search_snoop_cache(struct kgem *kgem, unsigned int num_pages, unsigned flags);
 #define LOCAL_I915_PARAM_HAS_WT			27
 #define LOCAL_I915_PARAM_MMAP_VERSION		30
 
+#define LOCAL_I915_EXEC_BLT			(2<<0)
 #define LOCAL_I915_EXEC_IS_PINNED		(1<<10)
 #define LOCAL_I915_EXEC_NO_RELOC		(1<<11)
 #define LOCAL_I915_EXEC_HANDLE_LUT		(1<<12)
@@ -1399,7 +1400,7 @@ static bool test_can_blt_y(struct kgem *kgem)
 		memset(&execbuf, 0, sizeof(execbuf));
 		execbuf.buffers_ptr = (uintptr_t)&object;
 		execbuf.buffer_count = 1;
-		execbuf.flags = I915_EXEC_BLT;
+		execbuf.flags = LOCAL_I915_EXEC_BLT;
 
 		ret = do_ioctl(kgem->fd,
 			       DRM_IOCTL_I915_GEM_EXECBUFFER2,
