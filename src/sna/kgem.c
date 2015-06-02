@@ -1601,6 +1601,8 @@ static void kgem_init_swizzling(struct kgem *kgem)
 	if (do_ioctl(kgem->fd, LOCAL_IOCTL_I915_GEM_GET_TILING, &tiling))
 		goto out;
 
+	DBG(("%s: swizzle_mode=%d, phys_swizzle_mode=%d\n",
+	     __FUNCTION__, tiling.swizzle_mode, tiling.phys_swizzle_mode));
 	if (kgem->gen < 50 && tiling.phys_swizzle_mode != tiling.swizzle_mode)
 		goto out;
 
@@ -1610,6 +1612,7 @@ static void kgem_init_swizzling(struct kgem *kgem)
 	kgem->can_fence = tiling.swizzle_mode != I915_BIT_6_SWIZZLE_UNKNOWN;
 out:
 	gem_close(kgem->fd, tiling.handle);
+	DBG(("%s: can fence?=%d\n", __FUNCTION__, kgem->can_fence));
 }
 
 static void kgem_fixup_relocs(struct kgem *kgem, struct kgem_bo *bo, int shrink)
