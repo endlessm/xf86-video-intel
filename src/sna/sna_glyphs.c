@@ -1559,11 +1559,12 @@ skip_glyph:
 		}
 	}
 
+	assert(format);
+	DBG(("%s: format=%08d, depth=%d\n",
+	     __FUNCTION__, format->format, format->depth));
 out:
 	if (list_extents != stack_extents)
 		free(list_extents);
-	DBG(("%s: format=%08d, depth=%d\n",
-	     __FUNCTION__, format->format, format->depth));
 	return format;
 }
 
