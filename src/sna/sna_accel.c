@@ -3796,8 +3796,11 @@ create_gpu_bo:
 				else
 					move = MOVE_WRITE | MOVE_READ | MOVE_ASYNC_HINT;
 
-				if (sna_pixmap_move_to_gpu(pixmap, move))
+				if (sna_pixmap_move_to_gpu(pixmap, move)) {
+					sna_damage_all(&priv->gpu_damage,
+						       pixmap);
 					goto use_gpu_bo;
+				}
 			}
 
 			if (DAMAGE_IS_ALL(priv->gpu_damage) ||
