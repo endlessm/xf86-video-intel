@@ -1203,6 +1203,7 @@ static inline void _sna_blt_maybe_clear(const struct sna_composite_op *op, const
 	    box->y2 - box->y1 >= op->dst.height) {
 		struct sna_pixmap *priv = sna_pixmap(op->dst.pixmap);
 		if (op->dst.bo == priv->gpu_bo) {
+			sna_damage_all(&priv->gpu_damage, op->dst.pixmap);
 			priv->clear = true;
 			priv->clear_color = op->u.blt.pixel;
 			DBG(("%s: pixmap=%ld marking clear [%08x]\n",
