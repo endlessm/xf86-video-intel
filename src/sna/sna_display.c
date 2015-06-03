@@ -6213,6 +6213,7 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 {
 	ScrnInfoPtr scrn = sna->scrn;
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(scrn);
+	int crtc_active, crtc_enabled;
 	int width, height;
 	int i, j;
 
@@ -6250,6 +6251,7 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 	}
 
 	/* Copy the existing modes on each CRTCs */
+	crtc_active = crtc_enabled = 0;
 	for (i = 0; i < sna->mode.num_real_crtc; i++) {
 		xf86CrtcPtr crtc = config->crtc[i];
 		struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
@@ -6278,6 +6280,7 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 		crtc->desiredX = mode.x;
 		crtc->desiredY = mode.y;
 		crtc->desiredTransformPresent = FALSE;
+		crtc_active++;
 	}
 
 	/* Reconstruct outputs pointing to active CRTC */
@@ -6332,6 +6335,7 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 				output->crtc = crtc;
 				output->status = XF86OutputStatusConnected;
 				crtc->enabled = TRUE;
+				crtc_enabled++;
 
 				if (output->mm_width == 0 || output->mm_height == 0) {
 					output->mm_height = (crtc->desiredMode.VDisplay * 254) / (10*DEFAULT_DPI);
@@ -6358,6 +6362,12 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 			     __FUNCTION__));
 			return false;
 		}
+	}
+
+	if (crtc_active != crtc_enabled) {
+		DBG(("%s: only enabled %d out of %d active CRTC, forcing a reconfigure\n",
+		     __FUNCTION__, crtc_enabled, crtc_active));
+		return false;
 	}
 
 	width = height = 0;
