@@ -4520,6 +4520,7 @@ static void sort_config_outputs(struct sna *sna)
 {
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
 	qsort(config->output, sna->mode.num_real_output, sizeof(*config->output), output_rank);
+	config->compat_output = 0; /* make sure it is a sane value */
 	sna_mode_compute_possible_outputs(sna);
 }
 
@@ -6337,12 +6338,22 @@ static bool sna_probe_initial_configuration(struct sna *sna)
 				crtc->enabled = TRUE;
 				crtc_enabled++;
 
+				output_set_gamma(output, crtc);
+
+				if (output->conf_monitor) {
+					output->mm_width = output->conf_monitor->mon_width;
+					output->mm_height = output->conf_monitor->mon_height;
+				}
+
+#if 0
+				sna_output_attach_edid(output);
+				sna_output_attach_tile(output);
+#endif
+
 				if (output->mm_width == 0 || output->mm_height == 0) {
 					output->mm_height = (crtc->desiredMode.VDisplay * 254) / (10*DEFAULT_DPI);
 					output->mm_width = (crtc->desiredMode.HDisplay * 254) / (10*DEFAULT_DPI);
 				}
-
-				output_set_gamma(output, crtc);
 
 				M = calloc(1, sizeof(DisplayModeRec));
 				if (M) {
@@ -6564,6 +6575,7 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 
 		xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
 		xf86_config->xf86_crtc_notify = sna_crtc_config_notify;
+		xf86_config->compat_output = 0;
 
 		for (i = 0; i < res->count_crtcs; i++)
 			if (!sna_crtc_add(scrn, res->crtcs[i]))
