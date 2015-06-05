@@ -328,7 +328,7 @@ inline static DRI2BufferPtr dri2_window_get_front(WindowPtr win)
 }
 #else
 inline static void *dri2_window_get_front(WindowPtr win) { return NULL; }
-#define APPLY_DAMAGE 0
+#define APPLY_DAMAGE 1
 #endif
 
 #if DRI2INFOREC_VERSION < 6
