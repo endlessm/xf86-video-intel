@@ -2046,6 +2046,10 @@ sna_pixmap_make_cow(struct sna *sna,
 		     cow->bo->handle));
 
 		src_priv->cow = MAKE_COW_OWNER(cow);
+		if (src_priv->flush) {
+			assert(!src_priv->shm);
+			sna_add_flush_pixmap(sna, src_priv, src_priv->gpu_bo);
+		}
 	}
 
 	if (cow == COW(dst_priv->cow)) {
@@ -17316,17 +17320,19 @@ void sna_accel_flush(struct sna *sna)
 				__sna_free_pixmap(sna, priv->pixmap, priv);
 			}
 		} else {
+			unsigned hints;
 			DBG(("%s: flushing DRI pixmap=%ld\n", __FUNCTION__,
 			     priv->pixmap->drawable.serialNumber));
 			assert(priv->flush);
-			if (sna_pixmap_move_to_gpu(priv->pixmap,
-						   MOVE_READ | __MOVE_FORCE)) {
+			hints = MOVE_READ | __MOVE_FORCE;
+			if (priv->flush & IS_CLIPPED)
+				hints |= MOVE_WRITE;
+			if (sna_pixmap_move_to_gpu(priv->pixmap, hints)) {
 				if (priv->flush & IS_CLIPPED) {
 					kgem_bo_unclean(&sna->kgem, priv->gpu_bo);
 					sna_damage_all(&priv->gpu_damage, priv->pixmap);
 					assert(priv->cpu_damage == NULL);
-					priv->clear = false;
-					priv->cpu = false;
+					assert(priv->clear == false);
 				}
 			}
 		}
