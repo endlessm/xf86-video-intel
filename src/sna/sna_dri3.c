@@ -55,7 +55,7 @@ static inline void mark_dri3_pixmap(struct sna *sna, struct sna_pixmap *priv, st
 	if (bo->exec)
 		sna->kgem.flush = 1;
 	if (bo == priv->gpu_bo)
-		priv->flush |= 3;
+		priv->flush |= FLUSH_READ | FLUSH_WRITE;
 	else
 		priv->shm = true;
 

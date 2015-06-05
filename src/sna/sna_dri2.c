@@ -715,14 +715,14 @@ sna_dri2_create_buffer(DrawablePtr draw,
 		if (priv->gpu_bo->exec)
 			sna->kgem.flush = 1;
 
-		priv->flush |= 1;
+		priv->flush |= FLUSH_READ;
 		if (draw->type == DRAWABLE_PIXMAP) {
 			/* DRI2 renders directly into GLXPixmaps, treat as hostile */
 			kgem_bo_unclean(&sna->kgem, priv->gpu_bo);
 			sna_damage_all(&priv->gpu_damage, pixmap);
 			priv->clear = false;
 			priv->cpu = false;
-			priv->flush |= 2;
+			priv->flush |= FLUSH_WRITE;
 		}
 
 		sna_accel_watch_flush(sna, 1);

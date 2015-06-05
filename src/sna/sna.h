@@ -154,6 +154,8 @@ struct sna_pixmap {
 #define MAPPED_GTT 1
 #define MAPPED_CPU 2
 	uint8_t flush :2;
+#define FLUSH_READ 1
+#define FLUSH_WRITE 2
 	uint8_t shm :1;
 	uint8_t clear :1;
 	uint8_t header :1;
