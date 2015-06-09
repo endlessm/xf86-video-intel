@@ -7910,6 +7910,9 @@ bool kgem_bo_convert_to_gpu(struct kgem *kgem,
 	     __FUNCTION__, bo->handle, flags, __kgem_bo_is_busy(kgem, bo)));
 	assert(bo->tiling == I915_TILING_NONE);
 
+	if (flags & (__MOVE_PRIME | __MOVE_SCANOUT))
+		return false;
+
 	if (kgem->has_llc)
 		return true;
 

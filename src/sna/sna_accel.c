@@ -1132,7 +1132,7 @@ sna_share_pixmap_backing(PixmapPtr pixmap, ScreenPtr slave, void **fd_handle)
 				    pixmap->drawable.height,
 				    pixmap->drawable.bitsPerPixel,
 				    I915_TILING_NONE,
-				    CREATE_GTT_MAP | CREATE_PRIME | CREATE_EXACT);
+				    CREATE_GTT_MAP | CREATE_SCANOUT | CREATE_PRIME | CREATE_EXACT);
 		if (bo == NULL) {
 			DBG(("%s: allocation failed\n", __FUNCTION__));
 			return FALSE;
@@ -1251,7 +1251,7 @@ sna_create_pixmap_shared(struct sna *sna, ScreenPtr screen,
 					      width, height,
 					      pixmap->drawable.bitsPerPixel,
 					      I915_TILING_NONE,
-					      CREATE_GTT_MAP | CREATE_PRIME | CREATE_EXACT);
+					      CREATE_GTT_MAP | CREATE_SCANOUT | CREATE_PRIME | CREATE_EXACT);
 		if (priv->gpu_bo == NULL) {
 			free(priv);
 			FreePixmap(pixmap);
@@ -1958,7 +1958,7 @@ sna_pixmap_undo_cow(struct sna *sna, struct sna_pixmap *priv, unsigned flags)
 			box.y2 = pixmap->drawable.height;
 
 			if (flags & __MOVE_PRIME) {
-				create = CREATE_GTT_MAP | CREATE_PRIME | CREATE_EXACT;
+				create = CREATE_GTT_MAP | CREATE_SCANOUT | CREATE_PRIME | CREATE_EXACT;
 				tiling = I915_TILING_NONE;
 			} else {
 				create = 0;
@@ -4286,7 +4286,7 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 				if (flags & MOVE_INPLACE_HINT || (priv->cpu_damage && priv->cpu_bo == NULL))
 					create = CREATE_GTT_MAP | CREATE_INACTIVE;
 				if (flags & __MOVE_PRIME)
-					create |= CREATE_GTT_MAP | CREATE_PRIME | CREATE_EXACT;
+					create |= CREATE_GTT_MAP | CREATE_SCANOUT | CREATE_PRIME | CREATE_EXACT;
 
 				sna_pixmap_alloc_gpu(sna, pixmap, priv, create);
 			}
