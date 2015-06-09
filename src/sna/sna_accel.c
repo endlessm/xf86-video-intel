@@ -17528,7 +17528,6 @@ static void sna_accel_post_damage(struct sna *sna)
 #if HAS_PIXMAP_SHARING
 	ScreenPtr screen = to_screen_from_sna(sna);
 	PixmapDirtyUpdatePtr dirty;
-	bool flush = false;
 
 	xorg_list_for_each_entry(dirty, &screen->pixmap_dirty_list, ent) {
 		RegionRec region, *damage;
@@ -17638,7 +17637,14 @@ fallback:
 						    box, n, COPY_LAST))
 				goto fallback;
 
-			flush = true;
+			/* Before signalling the slave via ProcessPending,
+			 * ensure not only the batch is submitted as the
+			 * slave may be using the Damage callback to perform
+			 * its copy, but also that the memory must be coherent
+			 * - we need to treat it as uncached for the PCI slave
+			 * will bypass LLC.
+			 */
+			kgem_bo_sync__gtt(&sna->kgem, __sna_pixmap_get_bo(dst));
 		}
 
 		DamageRegionProcessPending(&dirty->slave_dst->drawable);
@@ -17646,8 +17652,6 @@ skip:
 		RegionUninit(&region);
 		DamageEmpty(dirty->damage);
 	}
-	if (flush)
-		kgem_submit(&sna->kgem);
 #endif
 }
 
