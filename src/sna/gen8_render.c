@@ -900,7 +900,7 @@ gen8_emit_cc(struct sna *sna, uint32_t blend)
 	assert(blend / GEN8_BLENDFACTOR_COUNT > 0);
 	assert(blend % GEN8_BLENDFACTOR_COUNT > 0);
 
-	/* XXX can have upto 8 blend states preload, selectable via
+	/* XXX can have up to 8 blend states preload, selectable via
 	 * Render Target Index. What other side-effects of Render Target Index?
 	 */
 

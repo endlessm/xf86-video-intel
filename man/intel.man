@@ -431,11 +431,11 @@ First DVI SDVO output
 Second DVI SDVO output
 
 .SS "TMDS-1", "TMDS-2", "HDMI-1", "HDMI-2"
-DVI/HDMI outputs. Avaliable common properties include:
+DVI/HDMI outputs. Available common properties include:
 .TP
 \fBBROADCAST_RGB\fP - method used to set RGB color range
 Adjusting this property allows you to set RGB color range on each
-channel in order to match HDTV requirment(default 0 for full
+channel in order to match HDTV requirement(default 0 for full
 range). Setting 1 means RGB color range is 16-235, 0 means RGB color
 range is 0-255 on each channel.  (Full range is 0-255, not 16-235)
 

@@ -5476,7 +5476,7 @@ sna_set_cursor_position(ScrnInfoPtr scrn, int x, int y)
 
 			rotate_coord_back(crtc->rotation, sna->cursor.size, &xhot, &yhot);
 
-			/* cursor will have 0.5 added to it already so floor is sufficent */
+			/* cursor will have 0.5 added to it already so floor is sufficient */
 			arg.x = floor(v.v[0]) - xhot;
 			arg.y = floor(v.v[1]) - yhot;
 		} else {

@@ -808,7 +808,7 @@ gen7_emit_cc(struct sna *sna, uint32_t blend_offset)
 
 	DBG(("%s: blend = %x\n", __FUNCTION__, blend_offset));
 
-	/* XXX can have upto 8 blend states preload, selectable via
+	/* XXX can have up to 8 blend states preload, selectable via
 	 * Render Target Index. What other side-effects of Render Target Index?
 	 */
 
