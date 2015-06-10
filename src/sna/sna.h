@@ -623,7 +623,7 @@ static inline bool sna_crtc_is_on(xf86CrtcPtr crtc)
 
 static inline void sna_crtc_set_vblank(xf86CrtcPtr crtc)
 {
-	assert((*sna_crtc_flags(crtc) & CRTC_VBLANK) < 2);
+	assert((*sna_crtc_flags(crtc) & CRTC_VBLANK) < 3);
 	++*sna_crtc_flags(crtc);
 }
 
