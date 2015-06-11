@@ -69,7 +69,7 @@ static inline struct kgem_bo *ref(struct kgem_bo *bo)
 
 struct sna_dri2_private {
 	PixmapPtr pixmap;
-	struct kgem_bo *bo;
+	struct kgem_bo *bo, *copy;
 	DRI2Buffer2Ptr proxy;
 	bool stale;
 	uint32_t size;
@@ -298,6 +298,9 @@ sna_dri2_get_back(struct sna *sna,
 	back->name = name;
 	back->flags = flags;
 
+	assert(back->pitch);
+	assert(back->name);
+
 	get_private(back)->stale = false;
 }
 
@@ -381,7 +384,7 @@ sna_dri2_reuse_buffer(DrawablePtr draw, DRI2BufferPtr buffer)
 	     __FUNCTION__, get_drawable_pixmap(draw)->drawable.serialNumber,
 	     buffer->attachment, get_private(buffer)->bo->handle, buffer->name));
 	assert(get_private(buffer)->refcnt);
-	assert(get_private(buffer)->bo->refcnt > get_private(buffer)->bo->active_scanout);
+	assert(get_private(buffer)->bo->refcnt >= get_private(buffer)->bo->active_scanout);
 	assert(kgem_bo_flink(&to_sna_from_drawable(draw)->kgem, get_private(buffer)->bo) == buffer->name);
 
 	if (buffer->attachment == DRI2BufferBackLeft &&
@@ -391,7 +394,9 @@ sna_dri2_reuse_buffer(DrawablePtr draw, DRI2BufferPtr buffer)
 		assert(get_private(buffer)->bo->refcnt);
 		assert(get_private(buffer)->bo->active_scanout == 0);
 		assert(kgem_bo_flink(&to_sna_from_drawable(draw)->kgem, get_private(buffer)->bo) == buffer->name);
-		DBG(("reusing back buffer, age = %d\n", buffer->flags));
+		DBG(("%s: reusing back buffer handle=%d, name=%d, pitch=%d, age=%d\n",
+		     __FUNCTION__, get_private(buffer)->bo->handle,
+		     buffer->name, buffer->pitch, buffer->flags));
 	}
 }
 
@@ -2187,6 +2192,7 @@ static void fake_swap_complete(struct sna *sna, ClientPtr client,
 static void chain_swap(struct sna_dri2_event *chain)
 {
 	union drm_wait_vblank vbl;
+	struct kgem_bo *tmp;
 
 	if (chain->draw == NULL) {
 		sna_dri2_event_free(chain);
@@ -2221,6 +2227,24 @@ static void chain_swap(struct sna_dri2_event *chain)
 			DBG(("%s -- requeue failed, errno=%d\n", __FUNCTION__, errno));
 		}
 
+		/* We tracked the most recent completed swap in back->copy,
+		 * back->bo holds the buffer we last gave back to the client
+		 * i.e. its current render target. To simplify our swap
+		 * routines, we do an exchange here to emit the copy, then
+		 * exchange back again so that we are consistent with the
+		 * client once more.
+		 */
+		assert(get_private(chain->back)->copy);
+		DBG(("%s: removing active marker [%d] from handle=%d\n",
+		     __FUNCTION__,
+		     get_private(chain->back)->copy->active_scanout,
+		     get_private(chain->back)->copy->handle));
+		assert(get_private(chain->back)->copy->active_scanout);
+		get_private(chain->back)->copy->active_scanout--;
+
+		tmp = get_private(chain->back)->bo;
+		 get_private(chain->back)->bo = get_private(chain->back)->copy;
+
 		if (can_xchg(chain->sna, chain->draw, chain->front, chain->back)) {
 			sna_dri2_xchg(chain->draw, chain->front, chain->back);
 		} else if (can_xchg_crtc(chain->sna, chain->draw, chain->front, chain->back, chain->crtc)) {
@@ -2229,6 +2253,10 @@ static void chain_swap(struct sna_dri2_event *chain)
 			assert(chain->queued);
 			__sna_dri2_copy_event(chain, 0);
 		}
+		get_private(chain->back)->bo = tmp;
+		kgem_bo_destroy(&chain->sna->kgem,
+				get_private(chain->back)->copy);
+		get_private(chain->back)->copy = NULL;
 	case SWAP:
 		break;
 	default:
@@ -2437,6 +2465,21 @@ sna_dri2_immediate_blit(struct sna *sna,
 		}
 		return;
 	}
+
+	DBG(("%s: adding active marker [%d] to handle=%d, removing [%d] from handle=%d\n",
+	     __FUNCTION__,
+	     get_private(info->back)->bo->active_scanout,
+	     get_private(info->back)->bo->handle,
+	     get_private(info->back)->copy ? get_private(info->back)->copy->active_scanout : 0,
+	     get_private(info->back)->copy ? get_private(info->back)->copy->handle : 0));
+	if (get_private(info->back)->copy) {
+		get_private(info->back)->copy->active_scanout--;
+		kgem_bo_destroy(&info->sna->kgem,
+				get_private(info->back)->copy);
+	}
+	get_private(info->back)->copy = ref(get_private(info->back)->bo);
+	assert(get_private(info->back)->bo->active_scanout == 0);
+	get_private(info->back)->bo->active_scanout++;
 
 	if (chain->chain != info && chain->chain->type == SWAP_THROTTLE) {
 		struct sna_dri2_event *tmp = chain->chain;
