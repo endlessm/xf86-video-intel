@@ -313,7 +313,7 @@ sna_present_queue_vblank(RRCrtcPtr crtc, uint64_t event_id, uint64_t msc)
 	     (long long)event_id, (long long)msc));
 
 	swap = sna_crtc_last_swap(crtc->devPrivate);
-	assert((int64_t)(msc - swap->msc) >= 0);
+	warn_unless((int64_t)(msc - swap->msc) >= 0);
 	if ((int64_t)(msc - swap->msc) <= 0) {
 		DBG(("%s: pipe=%d tv=%d.%06d msc=%lld (target=%lld), event=%lld complete\n", __FUNCTION__,
 		     sna_crtc_pipe(crtc->devPrivate),
