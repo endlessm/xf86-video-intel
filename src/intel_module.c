@@ -126,6 +126,9 @@ static const struct intel_device_info intel_skylake_info = {
 	.gen = 0110,
 };
 
+static const struct intel_device_info intel_broxton_info = {
+	.gen = 0111,
+};
 
 static const SymTabRec intel_chipsets[] = {
 	{PCI_CHIP_I810,				"i810"},
@@ -323,6 +326,8 @@ static const struct pci_id_match intel_device_match[] = {
 	INTEL_CHV_IDS(&intel_cherryview_info),
 
 	INTEL_SKL_IDS(&intel_skylake_info),
+
+	INTEL_BXT_IDS(&intel_broxton_info),
 
 	INTEL_VGA_DEVICE(PCI_MATCH_ANY, &intel_generic_info),
 #endif
