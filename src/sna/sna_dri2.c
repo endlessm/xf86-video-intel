@@ -462,7 +462,7 @@ static struct kgem_bo *sna_pixmap_set_dri(struct sna *sna,
 		return NULL;
 	}
 
-	assert(priv->flush == false);
+	assert(priv->flush == false || priv->pinned & PIN_DRI3);
 	assert(priv->cpu_damage == NULL);
 	assert(priv->gpu_bo);
 	assert(priv->gpu_bo->proxy == NULL);
@@ -699,7 +699,7 @@ sna_dri2_create_buffer(DrawablePtr draw,
 		pixmap->refcnt++;
 
 		priv = sna_pixmap(pixmap);
-		assert(priv->flush == false);
+		assert(priv->flush == false || priv->pinned & PIN_DRI3);
 		assert((priv->pinned & PIN_DRI2) == 0);
 
 		/* Don't allow this named buffer to be replaced */
@@ -780,7 +780,8 @@ static void _sna_dri2_destroy_buffer(struct sna *sna, DRI2Buffer2Ptr buffer)
 		priv->gpu_bo->flush = false;
 		priv->pinned &= ~PIN_DRI2;
 
-		priv->flush = false;
+		if ((priv->pinned & PIN_DRI3) == 0)
+			priv->flush = false;
 		sna_accel_watch_flush(sna, -1);
 
 		sna_pixmap_set_buffer(pixmap, NULL);
