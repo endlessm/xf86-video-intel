@@ -468,10 +468,10 @@ static struct kgem_bo *sna_pixmap_set_dri(struct sna *sna,
 	}
 
 	assert(priv->flush == false || priv->pinned & PIN_DRI3);
+	assert(priv->gpu_bo->flush == false || priv->pinned & PIN_DRI3);
 	assert(priv->cpu_damage == NULL);
 	assert(priv->gpu_bo);
 	assert(priv->gpu_bo->proxy == NULL);
-	assert(priv->gpu_bo->flush == false);
 
 	if (!sna->kgem.can_fence) {
 		if (priv->gpu_bo->tiling &&
@@ -782,17 +782,17 @@ static void _sna_dri2_destroy_buffer(struct sna *sna, DRI2Buffer2Ptr buffer)
 		list_del(&priv->flush_list);
 
 		DBG(("%s: dropping flush hint from handle=%d\n", __FUNCTION__, private->bo->handle));
-		priv->gpu_bo->flush = false;
 		priv->pinned &= ~PIN_DRI2;
 
-		if ((priv->pinned & PIN_DRI3) == 0)
+		if ((priv->pinned & PIN_DRI3) == 0) {
+			priv->gpu_bo->flush = false;
 			priv->flush = false;
+		}
 		sna_accel_watch_flush(sna, -1);
 
 		sna_pixmap_set_buffer(pixmap, NULL);
 		pixmap->drawable.pScreen->DestroyPixmap(pixmap);
 	}
-	assert(private->bo->flush == false);
 
 	kgem_bo_destroy(&sna->kgem, private->bo);
 	free(buffer);
