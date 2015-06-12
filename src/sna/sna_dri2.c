@@ -1240,12 +1240,14 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 				  boxes, n, hint);
 
 	if (flags & (DRI2_SYNC | DRI2_BO)) { /* STAT! */
-		struct kgem_request *rq = sna->kgem.next_request;
-		DBG(("%s: flushing\n", __FUNCTION__));
-		kgem_submit(&sna->kgem);
-		if (rq->bo) {
+		struct kgem_request *rq = RQ(dst_bo->rq);
+		if (rq != (void *)&sna->kgem) {
+			if (rq->bo == NULL)
+				kgem_submit(&sna->kgem);
+			assert(rq->bo);
 			bo = ref(rq->bo);
-			DBG(("%s: recording sync fence handle=%d\n", __FUNCTION__, bo->handle));
+			DBG(("%s: recording sync fence handle=%d\n",
+			     __FUNCTION__, bo->handle));
 		}
 	}
 
