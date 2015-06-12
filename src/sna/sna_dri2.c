@@ -763,6 +763,11 @@ static void _sna_dri2_destroy_buffer(struct sna *sna, DRI2Buffer2Ptr buffer)
 		private->pixmap = NULL;
 	}
 
+	if (private->copy) {
+		private->copy->active_scanout--;
+		kgem_bo_destroy(&sna->kgem, private->copy);
+	}
+
 	if (private->pixmap) {
 		PixmapPtr pixmap = private->pixmap;
 		struct sna_pixmap *priv = sna_pixmap(pixmap);
@@ -2271,6 +2276,8 @@ static void chain_swap(struct sna_dri2_event *chain)
 			__sna_dri2_copy_event(chain, DRI2_BO);
 		}
 		get_private(chain->back)->bo = tmp;
+		kgem_bo_destroy(&chain->sna->kgem,
+				get_private(chain->back)->copy);
 		get_private(chain->back)->copy = NULL;
 	case SWAP:
 		break;
@@ -2488,9 +2495,12 @@ sna_dri2_immediate_blit(struct sna *sna,
 	     get_private(info->back)->copy ? get_private(info->back)->copy->active_scanout : 0,
 	     get_private(info->back)->copy ? get_private(info->back)->copy->handle : 0));
 	assert(get_private(info->back)->bo->active_scanout == 0);
-	if (get_private(info->back)->copy)
+	if (get_private(info->back)->copy) {
 		get_private(info->back)->copy->active_scanout--;
-	get_private(info->back)->copy = get_private(info->back)->bo;
+		kgem_bo_destroy(&chain->sna->kgem,
+				get_private(chain->back)->copy);
+	}
+	get_private(info->back)->copy = ref(get_private(info->back)->bo);
 	get_private(info->back)->bo->active_scanout++;
 
 	if (chain->chain != info && chain->chain->type == SWAP_THROTTLE) {
