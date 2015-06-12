@@ -162,6 +162,7 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 inline static void
 __sna_dri2_copy_event(struct sna_dri2_event *info, unsigned flags)
 {
+	DBG(("%s: flags = %x\n", __FUNCTION__, flags));
 	info->bo = __sna_dri2_copy_region(info->sna, info->draw, NULL,
 					  info->back, info->front,
 					  flags);
@@ -1238,9 +1239,9 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 				  dst_draw, dst_bo, dx, dy,
 				  boxes, n, hint);
 
-	DBG(("%s: flushing? %d\n", __FUNCTION__, sync));
 	if (flags & (DRI2_SYNC | DRI2_BO)) { /* STAT! */
 		struct kgem_request *rq = sna->kgem.next_request;
+		DBG(("%s: flushing\n", __FUNCTION__));
 		kgem_submit(&sna->kgem);
 		if (rq->bo) {
 			bo = ref(rq->bo);
