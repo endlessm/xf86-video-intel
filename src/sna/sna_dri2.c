@@ -1004,6 +1004,7 @@ static bool is_front(int attachment)
 
 #define DRI2_SYNC 0x1
 #define DRI2_DAMAGE 0x2
+#define DRI2_BO 0x4
 static struct kgem_bo *
 __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		      DRI2BufferPtr src, DRI2BufferPtr dst,
@@ -1233,7 +1234,7 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 				  boxes, n, hint);
 
 	DBG(("%s: flushing? %d\n", __FUNCTION__, sync));
-	if (flags & DRI2_SYNC) { /* STAT! */
+	if (flags & (DRI2_SYNC | DRI2_BO)) { /* STAT! */
 		struct kgem_request *rq = sna->kgem.next_request;
 		kgem_submit(&sna->kgem);
 		if (rq->bo) {
@@ -2267,7 +2268,7 @@ static void chain_swap(struct sna_dri2_event *chain)
 			sna_dri2_xchg_crtc(chain->sna, chain->draw, chain->crtc, chain->front, chain->back);
 		} else {
 			assert(chain->queued);
-			__sna_dri2_copy_event(chain, 0);
+			__sna_dri2_copy_event(chain, DRI2_BO);
 		}
 		get_private(chain->back)->bo = tmp;
 		get_private(chain->back)->copy = NULL;
@@ -2463,7 +2464,7 @@ sna_dri2_immediate_blit(struct sna *sna,
 		DBG(("%s: no pending blit, starting chain\n", __FUNCTION__));
 
 		info->queued = true;
-		__sna_dri2_copy_event(info, sync);
+		__sna_dri2_copy_event(info, sync | DRI2_BO);
 
 		VG_CLEAR(vbl);
 		vbl.request.type =
