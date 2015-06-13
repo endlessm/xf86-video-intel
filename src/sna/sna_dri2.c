@@ -100,6 +100,7 @@ enum event_type {
 	SWAP,
 	SWAP_WAIT,
 	SWAP_THROTTLE,
+	SWAP_ALIVE,
 	FLIP,
 	FLIP_THROTTLE,
 	FLIP_COMPLETE,
@@ -1543,6 +1544,7 @@ sna_dri2_add_event(struct sna *sna,
 	info->draw = draw;
 	info->crtc = crtc;
 	info->pipe = sna_crtc_pipe(crtc);
+	info->keepalive = 1;
 
 	if (!add_event_to_client(info, sna, client)) {
 		free(info);
@@ -2426,6 +2428,8 @@ void sna_dri2_vblank_handler(struct drm_event_vblank *event)
 			frame_swap_complete(info, DRI2_BLIT_COMPLETE);
 		}
 		break;
+	case SWAP_ALIVE:
+		break;
 
 	case WAITMSC:
 		assert(info->client);
@@ -2445,6 +2449,21 @@ void sna_dri2_vblank_handler(struct drm_event_vblank *event)
 		sna_dri2_remove_event((WindowPtr)draw, info);
 		chain_swap(info->chain);
 		info->draw = NULL;
+	} else if (--info->keepalive) {
+		assert(info->type = SWAP_ALIVE || SWAP_THROTTLE);
+		info->type = SWAP_ALIVE;
+		info->queued = true;
+
+		DBG(("%s: requeing keepalive=%d\n",
+		     __FUNCTION__, info->keepalive));
+
+		VG_CLEAR(vbl);
+		vbl.request.type =
+			DRM_VBLANK_RELATIVE |
+			DRM_VBLANK_EVENT;
+		vbl.request.sequence = 1;
+		vbl.request.signal = (uintptr_t)info;
+		return;
 	}
 
 done:
@@ -2468,6 +2487,7 @@ sna_dri2_immediate_blit(struct sna *sna,
 
 	info->type = SWAP_THROTTLE;
 	info->sync = sync;
+	info->keepalive = KEEPALIVE;
 	if (chain == info) {
 		union drm_wait_vblank vbl;
 
