@@ -2525,8 +2525,7 @@ sna_dri2_immediate_blit(struct sna *sna,
 	assert(get_private(info->back)->bo->active_scanout == 0);
 	if (get_private(info->back)->copy) {
 		get_private(info->back)->copy->active_scanout--;
-		kgem_bo_destroy(&chain->sna->kgem,
-				get_private(chain->back)->copy);
+		kgem_bo_destroy(&sna->kgem, get_private(info->back)->copy);
 	}
 	get_private(info->back)->copy = ref(get_private(info->back)->bo);
 	get_private(info->back)->bo->active_scanout++;
