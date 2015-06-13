@@ -144,7 +144,7 @@ struct sna_dri2_event {
 #endif
 
 #if USE_ASYNC_SWAP
-#define KEEPALIVE 4 /* wait ~50ms before discarding swap caches */
+#define KEEPALIVE 8 /* wait ~100ms before discarding swap caches */
 #define APPLY_DAMAGE 0
 #else
 #define USE_ASYNC_SWAP 0
