@@ -2261,16 +2261,10 @@ static void chain_swap(struct sna_dri2_event *chain)
 		 * exchange back again so that we are consistent with the
 		 * client once more.
 		 */
-		assert(get_private(chain->back)->copy);
-		DBG(("%s: removing active marker [%d] from handle=%d\n",
-		     __FUNCTION__,
-		     get_private(chain->back)->copy->active_scanout,
-		     get_private(chain->back)->copy->handle));
-		assert(get_private(chain->back)->copy->active_scanout);
-		get_private(chain->back)->copy->active_scanout--;
-
-		tmp = get_private(chain->back)->bo;
-		 get_private(chain->back)->bo = get_private(chain->back)->copy;
+		if (get_private(chain->back)->copy) {
+			tmp = get_private(chain->back)->bo;
+			get_private(chain->back)->bo = get_private(chain->back)->copy;
+		}
 
 		if (can_xchg(chain->sna, chain->draw, chain->front, chain->back)) {
 			sna_dri2_xchg(chain->draw, chain->front, chain->back);
@@ -2280,10 +2274,21 @@ static void chain_swap(struct sna_dri2_event *chain)
 			assert(chain->queued);
 			__sna_dri2_copy_event(chain, DRI2_BO);
 		}
-		get_private(chain->back)->bo = tmp;
-		kgem_bo_destroy(&chain->sna->kgem,
-				get_private(chain->back)->copy);
-		get_private(chain->back)->copy = NULL;
+
+		if (get_private(chain->back)->copy) {
+			DBG(("%s: removing active marker [%d] from handle=%d\n",
+			     __FUNCTION__,
+			     get_private(chain->back)->copy->active_scanout,
+			     get_private(chain->back)->copy->handle));
+			assert(get_private(chain->back)->copy->active_scanout);
+			get_private(chain->back)->copy->active_scanout--;
+
+			kgem_bo_destroy(&chain->sna->kgem,
+					get_private(chain->back)->copy);
+			get_private(chain->back)->copy = NULL;
+
+			get_private(chain->back)->bo = tmp;
+		}
 	case SWAP:
 		break;
 	default:
