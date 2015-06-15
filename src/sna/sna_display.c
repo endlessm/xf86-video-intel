@@ -213,7 +213,7 @@ struct sna_output {
 	int panel_vdisplay;
 
 	uint32_t dpms_id;
-	int dpms_mode;
+	uint8_t dpms_mode;
 	struct backlight backlight;
 	int backlight_active_level;
 
@@ -251,6 +251,7 @@ enum { /* XXX copied from hw/xfree86/modes/xf86Crtc.c */
 	OPTION_DEFAULT_MODES,
 };
 
+static void __sna_output_dpms(xf86OutputPtr output, int dpms, int fixup);
 static void sna_crtc_disable_cursor(struct sna *sna, struct sna_crtc *crtc);
 
 static bool is_zaphod(ScrnInfoPtr scrn)
@@ -936,7 +937,7 @@ sna_crtc_force_outputs_on(xf86CrtcPtr crtc)
 		if (output->crtc != crtc)
 			continue;
 
-		output->funcs->dpms(output, DPMSModeOn);
+		__sna_output_dpms(output, DPMSModeOn, false);
 	}
 
 #if XF86_CRTC_VERSION >= 3
@@ -966,7 +967,7 @@ sna_crtc_force_outputs_off(xf86CrtcPtr crtc)
 		if (output->crtc != crtc)
 			continue;
 
-		output->funcs->dpms(output, DPMSModeOff);
+		__sna_output_dpms(output, DPMSModeOff, false);
 	}
 }
 
@@ -1099,7 +1100,7 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 		 * and we lose track of the user settings.
 		 */
 		if (output->crtc == NULL)
-			output->funcs->dpms(output, DPMSModeOff);
+			__sna_output_dpms(output, DPMSModeOff, false);
 
 		if (output->crtc != crtc)
 			continue;
@@ -3580,7 +3581,7 @@ sna_output_destroy(xf86OutputPtr output)
 }
 
 static void
-sna_output_dpms(xf86OutputPtr output, int dpms)
+__sna_output_dpms(xf86OutputPtr output, int dpms, int fixup)
 {
 	struct sna *sna = to_sna(output->scrn);
 	struct sna_output *sna_output = output->driver_private;
@@ -3607,8 +3608,9 @@ sna_output_dpms(xf86OutputPtr output, int dpms)
 	if (sna_output->backlight.iface && dpms != DPMSModeOn) {
 		if (old_dpms == DPMSModeOn) {
 			sna_output->backlight_active_level = sna_output_backlight_get(output);
-			DBG(("%s: saving current backlight %d\n",
-			     __FUNCTION__, sna_output->backlight_active_level));
+			DBG(("%s(%s:%d): saving current backlight %d\n",
+			     __FUNCTION__, output->name, sna_output->id,
+			     sna_output->backlight_active_level));
 		}
 		sna_output->dpms_mode = dpms;
 		sna_output_backlight_off(sna_output);
@@ -3618,16 +3620,29 @@ sna_output_dpms(xf86OutputPtr output, int dpms)
 	    drmModeConnectorSetProperty(sna->kgem.fd,
 					sna_output->id,
 					sna_output->dpms_id,
-					dpms))
-		dpms = old_dpms;
+					dpms)) {
+		DBG(("%s(%s:%d): failed to set DPMS to %d (fixup? %d)\n",
+		     __FUNCTION__, output->name, sna_output->id, dpms, fixup));
+		if (fixup) {
+			sna_crtc_disable(output->crtc, false);
+			return;
+		}
+	}
 
 	if (sna_output->backlight.iface && dpms == DPMSModeOn) {
-		DBG(("%s: restoring previous backlight %d\n",
-		     __FUNCTION__, sna_output->backlight_active_level));
+		DBG(("%s(%d:%d: restoring previous backlight %d\n",
+		     __FUNCTION__, output->name, sna_output->id,
+		     sna_output->backlight_active_level));
 		sna_output_backlight_on(sna_output);
 	}
 
 	sna_output->dpms_mode = dpms;
+}
+
+static void
+sna_output_dpms(xf86OutputPtr output, int dpms)
+{
+	__sna_output_dpms(output, dpms, true);
 }
 
 static bool
@@ -4438,10 +4453,8 @@ reset:
 		sna_output->dpms_mode = sna_output->prop_values[i];
 		DBG(("%s: found 'DPMS' (idx=%d, id=%d), initial value=%d\n",
 		     __FUNCTION__, i, sna_output->dpms_id, sna_output->dpms_mode));
-	} else {
-		sna_output->dpms_id = -1;
+	} else
 		sna_output->dpms_mode = DPMSModeOff;
-	}
 
 	sna_output->possible_encoders = possible_encoders;
 	sna_output->attached_encoders = attached_encoders;
