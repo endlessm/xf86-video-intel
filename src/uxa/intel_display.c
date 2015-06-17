@@ -192,7 +192,7 @@ intel_output_backlight_init(xf86OutputPtr output)
 
 	str = xf86GetOptValString(intel->Options, OPTION_BACKLIGHT);
 	if (str != NULL) {
-		if (backlight_exists(str) != BL_NONE) {
+		if (backlight_exists(str)) {
 			intel_output->backlight_active_level =
 				backlight_open(&intel_output->backlight,
 					       strdup(str));

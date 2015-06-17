@@ -767,7 +767,7 @@ has_user_backlight_override(xf86OutputPtr output)
 	if (*str == '\0')
 		return (char *)str;
 
-	if (backlight_exists(str) == BL_NONE) {
+	if (!backlight_exists(str)) {
 		xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
 			   "Unrecognised backlight control interface '%s'\n",
 			   str);
