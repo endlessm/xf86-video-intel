@@ -1294,10 +1294,11 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		if (rq != (void *)&sna->kgem) {
 			if (rq->bo == NULL)
 				kgem_submit(&sna->kgem);
-			assert(rq->bo);
-			bo = ref(rq->bo);
-			DBG(("%s: recording sync fence handle=%d\n",
-			     __FUNCTION__, bo->handle));
+			if (rq->bo) { /* Becareful in case the gpu is wedged */
+				bo = ref(rq->bo);
+				DBG(("%s: recording sync fence handle=%d\n",
+				     __FUNCTION__, bo->handle));
+			}
 		}
 	}
 
