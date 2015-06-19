@@ -6257,7 +6257,7 @@ sna_set_cursor_position(ScrnInfoPtr scrn, int x, int y)
 	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
 	struct sna *sna = to_sna(scrn);
 	struct kmsg kmsg;
-	int sigio, c;
+	int sigio, c, xu, yu;
 
 	__DBG(("%s(%d, %d), cursor? %d\n", __FUNCTION__,
 	       x, y, sna->cursor.ref!=NULL));
@@ -6310,8 +6310,8 @@ sna_set_cursor_position(ScrnInfoPtr scrn, int x, int y)
 			arg.y = y - crtc->y;
 		}
 
-		arg.x += sna_crtc->kmode.hskew >> 8;
-		arg.y += sna_crtc->kmode.hskew & 0xFF;
+		xu = sna_crtc->kmode.hskew >> 8;
+		yu = sna_crtc->kmode.hskew & 0xFF;
 
 		if (arg.x < crtc->mode.HDisplay && arg.x > -sna->cursor.size &&
 		    arg.y < crtc->mode.VDisplay && arg.y > -sna->cursor.size) {
@@ -6329,6 +6329,8 @@ sna_set_cursor_position(ScrnInfoPtr scrn, int x, int y)
 				arg.handle = cursor->handle;
 			}
 
+			arg.x += xu;
+			arg.y += yu;
 			arg.width = arg.height = cursor->size;
 			arg.flags |= DRM_MODE_CURSOR_MOVE;
 			crtc->cursor_in_range = true;
