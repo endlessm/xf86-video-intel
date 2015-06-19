@@ -286,8 +286,8 @@ sna_dri2_get_back(struct sna *sna,
 			name = c->name;
 			flags = c->flags;
 			DBG(("%s: reuse cache handle=%d, name=%d, flags=%d\n", __FUNCTION__, bo->handle, name, flags));
-			list_move_tail(&c->link, &priv->cache);
 			c->bo = NULL;
+			_list_del(&c->link);
 			break;
 		}
 	}
@@ -326,16 +326,7 @@ sna_dri2_get_back(struct sna *sna,
 	assert(bo->active_scanout == 0);
 
 	if (reuse && get_private(back)->bo->refcnt == 1) {
-		bool found = false;
-
-		list_for_each_entry_reverse(c, &priv->cache, link) {
-			if (c->bo == NULL) {
-				found = true;
-				_list_del(&c->link);
-				break;
-			}
-		}
-		if (!found)
+		if (&c->link == &priv->cache)
 			c = malloc(sizeof(*c));
 		if (c != NULL) {
 			c->bo = ref(get_private(back)->bo);
@@ -344,6 +335,9 @@ sna_dri2_get_back(struct sna *sna,
 			list_add(&c->link, &priv->cache);
 			DBG(("%s: cacheing handle=%d (name=%d, flags=%d, active_scanout=%d)\n", __FUNCTION__, c->bo->handle, c->name, c->flags, c->bo->active_scanout));
 		}
+	} else {
+		if (&c->link != &priv->cache)
+			free(c);
 	}
 
 	assert(bo->active_scanout == 0);
@@ -812,6 +806,7 @@ static void _sna_dri2_destroy_buffer(struct sna *sna,
 	}
 
 	if (private->copy.bo) {
+		assert(private->copy.bo->active_scanout);
 		private->copy.bo->active_scanout--;
 		sna_dri2_cache_bo(sna, draw, buffer,
 				  private->copy.bo,
@@ -2600,6 +2595,7 @@ sna_dri2_immediate_blit(struct sna *sna,
 		     get_private(info->back)->copy.bo ? get_private(info->back)->copy.bo->handle : 0));
 		assert(get_private(info->back)->bo->active_scanout == 0);
 		if (get_private(info->back)->copy.bo) {
+			assert(get_private(info->back)->copy.bo->active_scanout);
 			get_private(info->back)->copy.bo->active_scanout--;
 			sna_dri2_cache_bo(sna, info->draw, info->back,
 					  get_private(info->back)->copy.bo,
