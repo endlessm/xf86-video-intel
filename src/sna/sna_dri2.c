@@ -212,17 +212,31 @@ sna_dri2_cache_bo(struct sna *sna,
 {
 	struct dri_bo *c;
 
-	if (draw == NULL)
+	if (draw == NULL) {
+		DBG(("%s: no draw, releasing handle=%d\n",
+		     __FUNCTION__, bo->handle));
 		goto err;
+	}
 
-	if (bo->refcnt > 1)
+	if (bo->refcnt > 1) {
+		DBG(("%s: multiple references [%d], releasing handle\n",
+		     __FUNCTION__, bo->refcnt, bo->handle));
 		goto err;
+	}
 
-	if ((draw->height << 16 | draw->width) != get_private(buffer)->size)
+	if ((draw->height << 16 | draw->width) != get_private(buffer)->size) {
+		DBG(("%s: wrong size [%dx%d], releasing handle\n",
+		     __FUNCTION__,
+		     get_private(buffer)->size & 0xffff, get_private(buffer)->size >> 16,
+		     bo->handle));
 		goto err;
+	}
 
-	if (bo->scanout && front_pitch(draw) != bo->pitch)
+	if (bo->scanout && front_pitch(draw) != bo->pitch) {
+		DBG(("%s: scanout with pitch change [%d %= %d], releasing handle\n",
+		     __FUNCTION__, bo->pitch, front_pitch(draw), bo->handle));
 		goto err;
+	}
 
 	c = malloc(sizeof(*c));
 	if (!c)
@@ -237,7 +251,7 @@ sna_dri2_cache_bo(struct sna *sna,
 	return;
 
 err:
-	assert(bo->active_scanout == 0);
+	assert(bo->active_scanout == 0 || bo->scanout);
 	kgem_bo_destroy(&sna->kgem, bo);
 }
 
@@ -2234,7 +2248,7 @@ static void frame_swap_complete(struct sna_dri2_event *frame, int type)
 
 	swap = sna_crtc_last_swap(frame->crtc);
 	DBG(("%s(type=%d): draw=%ld, pipe=%d, frame=%lld [msc=%lld], tv=%d.%06d\n",
-	     __FUNCTION__, type, (long)frame->draw, frame->pipe,
+	     __FUNCTION__, type, (long)frame->draw->id, frame->pipe,
 	     (long long)swap->msc,
 	     (long long)draw_current_msc(frame->draw, frame->crtc, swap->msc),
 	     swap->tv_sec, swap->tv_usec));
@@ -2311,10 +2325,10 @@ static void chain_swap(struct sna_dri2_event *chain)
 		 */
 		if (get_private(chain->back)->copy.bo) {
 			tmp.bo = get_private(chain->back)->copy.bo;
-			assert(tmp.bo->active_scanout);
 			DBG(("%s: removing active marker [%d] from handle=%d\n",
 			     __FUNCTION__,
 			     tmp.bo->active_scanout, tmp.bo->handle));
+			assert(tmp.bo->active_scanout);
 			tmp.bo->active_scanout--;
 
 			tmp.bo = get_private(chain->back)->bo;
@@ -2351,6 +2365,10 @@ static void chain_swap(struct sna_dri2_event *chain)
 			get_private(chain->back)->copy.bo = ref(get_private(chain->back)->bo);
 			get_private(chain->back)->copy.name = chain->back->name;
 			get_private(chain->back)->copy.flags = chain->back->flags;
+			DBG(("%s: adding active marker [%d] to handle=%d\n",
+			     __FUNCTION__,
+			     get_private(chain->back)->bo->active_scanout,
+			     get_private(chain->back)->bo->handle));
 			get_private(chain->back)->bo->active_scanout++;
 		}
 		assert(get_private(chain->back)->bo != get_private(chain->front)->bo);
