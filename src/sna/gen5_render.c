@@ -2734,6 +2734,19 @@ gen5_render_fill_boxes(struct sna *sna,
 	tmp.dst.format = format;
 	tmp.dst.bo = dst_bo;
 
+	if (too_large(dst->width, dst->height)) {
+		BoxRec extents;
+
+		boxes_extents(box, n, &extents);
+		if (!sna_render_composite_redirect(sna, &tmp,
+						   extents.x1, extents.y1,
+						   extents.x2 - extents.x1,
+						   extents.y2 - extents.y1,
+						   n > 1))
+			return sna_tiling_fill_boxes(sna, op, format, color,
+						     dst, dst_bo, box, n);
+	}
+
 	tmp.src.bo = sna_render_get_solid(sna, pixel);
 	tmp.src.filter = SAMPLER_FILTER_NEAREST;
 	tmp.src.repeat = SAMPLER_EXTEND_REPEAT;
@@ -2780,6 +2793,7 @@ gen5_render_fill_boxes(struct sna *sna,
 
 	gen4_vertex_flush(sna);
 	kgem_bo_destroy(&sna->kgem, tmp.src.bo);
+	sna_render_composite_redirect_done(sna, &tmp);
 	return true;
 }
 
