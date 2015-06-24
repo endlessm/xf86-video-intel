@@ -242,7 +242,7 @@ sna_dri2_cache_bo(struct sna *sna,
 	if (!c)
 		goto err;
 
-	DBG(("%s: cacheing handle=%d (name=%d, flags=%d, active_scanout=%d)\n", __FUNCTION__, bo->handle, name, flags, bo->active_scanout));
+	DBG(("%s: caching handle=%d (name=%d, flags=%d, active_scanout=%d)\n", __FUNCTION__, bo->handle, name, flags, bo->active_scanout));
 
 	c->bo = bo;
 	c->name = name;
@@ -347,7 +347,7 @@ sna_dri2_get_back(struct sna *sna,
 			c->name = back->name;
 			c->flags = back->flags;
 			list_add(&c->link, &priv->cache);
-			DBG(("%s: cacheing handle=%d (name=%d, flags=%d, active_scanout=%d)\n", __FUNCTION__, c->bo->handle, c->name, c->flags, c->bo->active_scanout));
+			DBG(("%s: caching handle=%d (name=%d, flags=%d, active_scanout=%d)\n", __FUNCTION__, c->bo->handle, c->name, c->flags, c->bo->active_scanout));
 		}
 	} else {
 		if (&c->link != &priv->cache)
