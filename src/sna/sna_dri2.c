@@ -73,6 +73,7 @@ struct sna_dri2_private {
 	struct  copy {
 		struct kgem_bo *bo;
 		uint32_t name;
+		uint32_t size;
 		uint32_t flags;
 	} copy;
 	DRI2Buffer2Ptr proxy;
@@ -205,9 +206,9 @@ static struct dri2_window *dri2_window(WindowPtr win)
 static void
 sna_dri2_cache_bo(struct sna *sna,
 		  DrawablePtr draw,
-		  DRI2BufferPtr buffer,
 		  struct kgem_bo *bo,
 		  uint32_t name,
+		  uint32_t size,
 		  uint32_t flags)
 {
 	struct dri_bo *c;
@@ -224,10 +225,10 @@ sna_dri2_cache_bo(struct sna *sna,
 		goto err;
 	}
 
-	if ((draw->height << 16 | draw->width) != get_private(buffer)->size) {
+	if ((draw->height << 16 | draw->width) != size) {
 		DBG(("%s: wrong size [%dx%d], releasing handle\n",
 		     __FUNCTION__,
-		     get_private(buffer)->size & 0xffff, get_private(buffer)->size >> 16,
+		     size & 0xffff, size >> 16,
 		     bo->handle));
 		goto err;
 	}
@@ -822,9 +823,10 @@ static void _sna_dri2_destroy_buffer(struct sna *sna,
 	if (private->copy.bo) {
 		assert(private->copy.bo->active_scanout);
 		private->copy.bo->active_scanout--;
-		sna_dri2_cache_bo(sna, draw, buffer,
+		sna_dri2_cache_bo(sna, draw,
 				  private->copy.bo,
 				  private->copy.name,
+				  private->copy.size,
 				  private->copy.flags);
 	}
 
@@ -1720,6 +1722,7 @@ sna_dri2_flip(struct sna_dri2_event *info)
 
 	assert(sna_pixmap_get_buffer(info->sna->front) == info->front);
 	assert(get_drawable_pixmap(info->draw)->drawable.height * bo->pitch <= kgem_bo_size(bo));
+	assert(get_private(info->front)->size == get_private(info->back)->size);
 	assert(bo->refcnt);
 
 	if (info->sna->mode.flip_active) {
@@ -2125,6 +2128,7 @@ sna_dri2_xchg(DrawablePtr draw, DRI2BufferPtr front, DRI2BufferPtr back)
 	     __FUNCTION__, back_bo->handle, back_bo->pitch, kgem_bo_size(back_bo), back_bo->refcnt, back_bo->active_scanout));
 	DBG(("%s: front_bo handle=%d, pitch=%d, size=%d, ref=%d, active_scanout?=%d\n",
 	     __FUNCTION__, front_bo->handle, front_bo->pitch, kgem_bo_size(front_bo), front_bo->refcnt, front_bo->active_scanout));
+	assert(can_xchg(to_sna_from_drawable(draw), draw, front, back));
 
 	assert(front_bo != back_bo);
 	assert(front_bo->refcnt);
@@ -2156,6 +2160,9 @@ sna_dri2_xchg(DrawablePtr draw, DRI2BufferPtr front, DRI2BufferPtr back)
 	assert(front_bo->refcnt);
 	assert(back_bo->refcnt);
 
+	assert(front_bo->pitch == get_private(front)->bo->pitch);
+	assert(back_bo->pitch == get_private(back)->bo->pitch);
+
 	assert(get_private(front)->bo == sna_pixmap(pixmap)->gpu_bo);
 }
 
@@ -2174,6 +2181,7 @@ static void sna_dri2_xchg_crtc(struct sna *sna, DrawablePtr draw, xf86CrtcPtr cr
 	     get_window_pixmap(win)->drawable.serialNumber,
 	     get_window_pixmap(win)->drawable.width,
 	     get_window_pixmap(win)->drawable.height));
+	assert(can_xchg_crtc(to_sna_from_drawable(draw), draw, crtc, front, back));
 
 	if (APPLY_DAMAGE) {
 		DBG(("%s: marking drawable as damaged\n", __FUNCTION__));
@@ -2240,6 +2248,7 @@ static void sna_dri2_xchg_crtc(struct sna *sna, DrawablePtr draw, xf86CrtcPtr cr
 		if (bo != NULL) {
 			get_private(back)->bo = bo;
 			back->pitch = bo->pitch;
+			get_private(back)->size = draw->height << 16 | draw->width;
 			back->name = kgem_bo_flink(&sna->kgem, bo);
 		}
 		if (back->name == 0) {
@@ -2347,10 +2356,12 @@ static void chain_swap(struct sna_dri2_event *chain)
 
 			tmp.bo = get_private(chain->back)->bo;
 			tmp.name = chain->back->name;
+			tmp.size = get_private(chain->back)->size;
 			tmp.flags = chain->back->flags;
 
 			get_private(chain->back)->bo = get_private(chain->back)->copy.bo;
 			chain->back->name = get_private(chain->back)->copy.name;
+			get_private(chain->back)->size = get_private(chain->back)->copy.size;
 			chain->back->flags = get_private(chain->back)->copy.flags;
 			chain->back->pitch = get_private(chain->back)->copy.bo->pitch;
 		}
@@ -2370,6 +2381,7 @@ static void chain_swap(struct sna_dri2_event *chain)
 			if (get_private(chain->back)->copy.bo == get_private(chain->back)->bo) {
 				get_private(chain->back)->bo = tmp.bo;
 				chain->back->name = tmp.name;
+				get_private(chain->back)->size = tmp.size;
 				chain->back->flags = tmp.flags;
 				chain->back->pitch = tmp.bo->pitch;
 
@@ -2380,6 +2392,7 @@ static void chain_swap(struct sna_dri2_event *chain)
 
 			get_private(chain->back)->copy.bo = ref(get_private(chain->back)->bo);
 			get_private(chain->back)->copy.name = chain->back->name;
+			get_private(chain->back)->copy.size = get_private(chain->back)->size;
 			get_private(chain->back)->copy.flags = chain->back->flags;
 			DBG(("%s: adding active marker [%d] to handle=%d\n",
 			     __FUNCTION__,
@@ -2636,13 +2649,15 @@ sna_dri2_immediate_blit(struct sna *sna,
 		if (get_private(info->back)->copy.bo) {
 			assert(get_private(info->back)->copy.bo->active_scanout);
 			get_private(info->back)->copy.bo->active_scanout--;
-			sna_dri2_cache_bo(sna, info->draw, info->back,
+			sna_dri2_cache_bo(sna, info->draw,
 					  get_private(info->back)->copy.bo,
 					  get_private(info->back)->copy.name,
+					  get_private(info->back)->copy.size,
 					  get_private(info->back)->copy.flags);
 		}
 		get_private(info->back)->copy.bo = ref(get_private(info->back)->bo);
 		get_private(info->back)->copy.name = info->back->name;
+		get_private(info->back)->copy.size = get_private(info->back)->size;
 		get_private(info->back)->copy.flags = info->back->flags;
 		get_private(info->back)->bo->active_scanout++;
 	}
