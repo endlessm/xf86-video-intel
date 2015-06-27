@@ -1188,11 +1188,12 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		scratch.height = src_priv->size >> 16;
 		src_draw = &scratch;
 
-		DBG(("%s: source size %dx%d, region size %dx%d\n",
+		DBG(("%s: source size %dx%d, region size %dx%d, src offset %dx%d\n",
 		     __FUNCTION__,
 		     scratch.width, scratch.height,
 		     clip.extents.x2 - clip.extents.x1,
-		     clip.extents.y2 - clip.extents.y1));
+		     clip.extents.y2 - clip.extents.y1,
+		     -sx, -sy));
 
 		source.extents.x1 = -sx;
 		source.extents.y1 = -sy;
@@ -1203,6 +1204,10 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 		assert(region == NULL || region == &clip);
 		pixman_region_intersect(&clip, &clip, &source);
 
+		if (!pixman_region_not_empty(&clip)) {
+			DBG(("%s: region doesn't overlap pixmap\n", __FUNCTION__));
+			return NULL;
+		}
 	}
 
 	dst_bo = dst_priv->bo;
