@@ -195,6 +195,7 @@ struct dri2_window {
 	xf86CrtcPtr crtc;
 	int64_t msc_delta;
 	struct list cache;
+	uint32_t cache_size;
 };
 
 static struct dri2_window *dri2_window(WindowPtr win)
@@ -262,6 +263,7 @@ sna_dri2_get_back(struct sna *sna,
 		  DRI2BufferPtr back)
 {
 	struct dri2_window *priv = dri2_window((WindowPtr)draw);
+	uint32_t size;
 	struct kgem_bo *bo;
 	struct dri_bo *c;
 	uint32_t name;
@@ -276,7 +278,22 @@ sna_dri2_get_back(struct sna *sna,
 	     back->pitch, front_pitch(draw)));
 	assert(priv);
 
-	reuse = (draw->height << 16 | draw->width) == get_private(back)->size;
+	size = draw->height << 16 | draw->width;
+	if (size != priv->cache_size) {
+		while (!list_is_empty(&priv->cache)) {
+			c = list_first_entry(&priv->cache, struct dri_bo, link);
+			list_del(&c->link);
+
+			DBG(("%s: releasing cached handle=%d\n", __FUNCTION__, c->bo ? c->bo->handle : 0));
+			assert(c->bo);
+			kgem_bo_destroy(&sna->kgem, c->bo);
+
+			free(c);
+		}
+		priv->cache_size = size;
+	}
+
+	reuse = size == get_private(back)->size;
 	if (reuse && get_private(back)->bo->scanout)
 		reuse = front_pitch(draw) == back->pitch;
 	DBG(("%s: reuse backbuffer? %d\n", __FUNCTION__, reuse));
@@ -296,7 +313,8 @@ sna_dri2_get_back(struct sna *sna,
 	list_for_each_entry(c, &priv->cache, link) {
 		DBG(("%s: cache: handle=%d, active=%d\n",
 		     __FUNCTION__, c->bo ? c->bo->handle : 0, c->bo ? c->bo->active_scanout : -1));
-		if (c->bo && c->bo->active_scanout == 0) {
+		assert(c->bo);
+		if (c->bo->active_scanout == 0) {
 			bo = c->bo;
 			name = c->name;
 			flags = c->flags;
@@ -1497,9 +1515,8 @@ sna_dri2_remove_event(WindowPtr win, struct sna_dri2_event *info)
 			list_del(&c->link);
 
 			DBG(("%s: releasing cached handle=%d\n", __FUNCTION__, c->bo ? c->bo->handle : 0));
-			if (c->bo)
-				kgem_bo_destroy(&info->sna->kgem, c->bo);
-
+			assert(c->bo);
+			kgem_bo_destroy(&info->sna->kgem, c->bo);
 			free(c);
 		}
 	}
@@ -1655,15 +1672,16 @@ void sna_dri2_decouple_window(WindowPtr win)
 void sna_dri2_destroy_window(WindowPtr win)
 {
 	struct dri2_window *priv;
+	struct sna *sna;
 
 	priv = dri2_window(win);
 	if (priv == NULL)
 		return;
 
 	DBG(("%s: window=%ld\n", __FUNCTION__, win->drawable.id));
+	sna = to_sna_from_drawable(&win->drawable);
 
 	if (priv->front) {
-		struct sna *sna = to_sna_from_drawable(&win->drawable);
 		assert(priv->crtc);
 		sna_shadow_unset_crtc(sna, priv->crtc);
 		_sna_dri2_destroy_buffer(sna, NULL, priv->front);
@@ -1697,11 +1715,8 @@ void sna_dri2_destroy_window(WindowPtr win)
 		list_del(&c->link);
 
 		DBG(("%s: releasing cached handle=%d\n", __FUNCTION__, c->bo ? c->bo->handle : 0));
-		if (c->bo) {
-			struct sna *sna = to_sna_from_drawable(&win->drawable);
-			kgem_bo_destroy(&sna->kgem, c->bo);
-		}
-
+		assert(c->bo);
+		kgem_bo_destroy(&sna->kgem, c->bo);
 		free(c);
 	}
 
