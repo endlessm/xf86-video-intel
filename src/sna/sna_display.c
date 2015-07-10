@@ -53,6 +53,11 @@
 void *alloca(size_t);
 #endif
 
+#define _PARSE_EDID_
+/* Jump through a few hoops in order to fixup EDIDs */
+#undef VERSION
+#undef REVISION
+
 #include "sna.h"
 #include "sna_reg.h"
 #include "fb/fbpict.h"
@@ -3225,6 +3230,15 @@ sna_output_attach_edid(xf86OutputPtr output)
 	if (blob.length != sna_output->edid_len &&
 	    drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPBLOB, &blob))
 		goto done;
+
+	if (blob.length < 128)
+		goto done;
+
+	if (blob.length & 127) {
+		/* Truncated EDID! Make sure no one reads too far */
+		*SECTION(NO_EDID, (uint8_t*)raw) = blob.length/128 - 1;
+		blob.length &= -128;
+	}
 
 	if (old &&
 	    blob.length == sna_output->edid_len &&
