@@ -2601,7 +2601,10 @@ void sna_dri2_vblank_handler(struct drm_event_vblank *event)
 			DRM_VBLANK_EVENT;
 		vbl.request.sequence = 1;
 		vbl.request.signal = (uintptr_t)info;
-		return;
+		if (!sna_wait_vblank(sna, &vbl, info->pipe))
+			return;
+
+		info->queued = false;
 	}
 
 done:
