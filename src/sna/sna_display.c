@@ -828,6 +828,29 @@ done:
 		   sna_output->backlight.iface, best_iface, output->name);
 }
 
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,12,99,901,0)
+static inline int sigio_block(void)
+{
+	OsBlockSIGIO();
+	return 0;
+}
+static inline void sigio_unblock(int was_blocked)
+{
+	OsReleaseSIGIO();
+	(void)was_blocked;
+}
+#else
+#include <xf86_OSproc.h>
+static inline int sigio_block(void)
+{
+	return xf86BlockSIGIO();
+}
+static inline void sigio_unblock(int was_blocked)
+{
+	xf86UnblockSIGIO(was_blocked);
+}
+#endif
+
 static char *canonical_kmode_name(const struct drm_mode_modeinfo *kmode)
 {
 	char tmp[32], *buf;
@@ -1075,7 +1098,8 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 	struct drm_mode_crtc arg;
 	uint32_t output_ids[32];
 	int output_count = 0;
-	int i;
+	int sigio, i;
+	bool ret = false;
 
 	DBG(("%s CRTC:%d [pipe=%d], handle=%d\n", __FUNCTION__,
 	     __sna_crtc_id(sna_crtc), __sna_crtc_pipe(sna_crtc),
@@ -1086,6 +1110,8 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 		return false;
 	}
 
+	sigio = sigio_block();
+
 	assert(sna->mode.num_real_output < ARRAY_SIZE(output_ids));
 	sna_crtc_disable_cursor(sna, sna_crtc);
 
@@ -1093,7 +1119,7 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 		ERR(("%s: set-primary-rotation failed (rotation-id=%d, rotation=%d) on CRTC:%d [pipe=%d], errno=%d\n",
 		     __FUNCTION__, sna_crtc->primary.rotation.prop, sna_crtc->rotation, __sna_crtc_id(sna_crtc), __sna_crtc_pipe(sna_crtc), errno));
 		sna_crtc->primary.rotation.supported &= ~sna_crtc->rotation;
-		return false;
+		goto unblock;
 	}
 	DBG(("%s: CRTC:%d [pipe=%d] primary rotation set to %x\n",
 	     __FUNCTION__, __sna_crtc_id(sna_crtc), __sna_crtc_pipe(sna_crtc), sna_crtc->rotation));
@@ -1133,13 +1159,13 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 			DBG(("%s: too many outputs (%d) for me!\n",
 			     __FUNCTION__, output_count));
 			errno = EINVAL;
-			return false;
+			goto unblock;
 		}
 	}
 	if (output_count == 0) {
 		DBG(("%s: no outputs\n", __FUNCTION__));
 		errno = EINVAL;
-		return false;
+		goto unblock;
 	}
 
 	VG_CLEAR(arg);
@@ -1170,12 +1196,13 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 	     sna_crtc->transform ? " [transformed]" : "",
 	     output_count, output_count ? output_ids[0] : 0));
 
-	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_SETCRTC, &arg))
-		return false;
+	ret = drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_SETCRTC, &arg) == 0;
 
 	sna_crtc->mode_serial++;
 	sna_crtc_force_outputs_on(crtc);
-	return true;
+unblock:
+	sigio_unblock(sigio);
+	return ret;
 }
 
 static bool overlap(const BoxRec *a, const BoxRec *b)
@@ -5224,29 +5251,6 @@ sna_realize_cursor(xf86CursorInfoPtr info, CursorPtr cursor)
 {
 	return NULL;
 }
-
-#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,12,99,901,0)
-static inline int sigio_block(void)
-{
-	OsBlockSIGIO();
-	return 0;
-}
-static inline void sigio_unblock(int was_blocked)
-{
-	OsReleaseSIGIO();
-	(void)was_blocked;
-}
-#else
-#include <xf86_OSproc.h>
-static inline int sigio_block(void)
-{
-	return xf86BlockSIGIO();
-}
-static inline void sigio_unblock(int was_blocked)
-{
-	xf86UnblockSIGIO(was_blocked);
-}
-#endif
 
 static void enable_fb_access(ScrnInfoPtr scrn, int state)
 {
