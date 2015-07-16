@@ -132,6 +132,8 @@ struct local_mode_obj_get_properties {
 #define __DBG(x)
 #endif
 
+#define DBG_NATIVE_ROTATION ~0 /* minimum RR_Rotate_0 */
+
 extern XF86ConfigPtr xf86configptr;
 
 struct sna_cursor {
@@ -2831,6 +2833,8 @@ static int plane_details(struct sna *sna, struct plane *p)
 			}
 		}
 	}
+
+	p->rotation.supported &= DBG_NATIVE_ROTATION;
 
 	if (props != (uint32_t *)stack_props)
 		free(props);
