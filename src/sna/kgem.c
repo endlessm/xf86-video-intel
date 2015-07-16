@@ -659,7 +659,7 @@ retry:
 	arg.offset = 0;
 	arg.size = bytes(bo);
 	if ((err = do_ioctl(kgem->fd, LOCAL_IOCTL_I915_GEM_MMAP, &arg))) {
-		assert(err != EINVAL);
+		assert(err != -EINVAL || bo->prime);
 
 		if (__kgem_throttle_retire(kgem, 0))
 			goto retry;
@@ -667,8 +667,9 @@ retry:
 		if (kgem_cleanup_cache(kgem))
 			goto retry;
 
-		ERR(("%s: failed to mmap handle=%d, %d bytes, into CPU domain: %d\n",
-		     __FUNCTION__, bo->handle, bytes(bo), -err));
+		ERR(("%s: failed to mmap handle=%d (prime? %d), %d bytes, into CPU domain: %d\n",
+		     __FUNCTION__, bo->handle, bo->prime, bytes(bo), -err));
+		bo->purged = 1;
 		return NULL;
 	}
 
@@ -4638,7 +4639,6 @@ struct kgem_bo *kgem_create_for_name(struct kgem *kgem, uint32_t name)
 	bo->tiling = tiling.tiling_mode;
 	bo->reusable = false;
 	bo->prime = true;
-	bo->purged = true; /* no coherency guarantees */
 
 	debug_alloc__bo(kgem, bo);
 	return bo;
