@@ -214,6 +214,8 @@ struct sna_output {
 	uint32_t edid_blob_id;
 	uint32_t edid_len;
 	void *edid_raw;
+	xf86MonPtr fake_edid_mon;
+	void *fake_edid_raw;
 
 	bool has_panel_limits;
 	int panel_hdisplay;
@@ -3504,18 +3506,36 @@ sna_output_add_default_modes(xf86OutputPtr output, DisplayModePtr modes)
 }
 
 static DisplayModePtr
+sna_output_override_edid(xf86OutputPtr output)
+{
+	struct sna_output *sna_output = output->driver_private;
+
+	if (sna_output->fake_edid_mon == NULL)
+		return NULL;
+
+	xf86OutputSetEDID(output, sna_output->fake_edid_mon);
+	return xf86DDCGetModes(output->scrn->scrnIndex,
+			       sna_output->fake_edid_mon);
+}
+
+static DisplayModePtr
 sna_output_get_modes(xf86OutputPtr output)
 {
 	struct sna_output *sna_output = output->driver_private;
-	DisplayModePtr Modes = NULL, current = NULL;
+	DisplayModePtr Modes, current;
 	int i;
 
 	DBG(("%s(%s:%d)\n", __FUNCTION__, output->name, sna_output->id));
 	assert(sna_output->id);
 
+	Modes = sna_output_override_edid(output);
+	if (Modes)
+		return Modes;
+
 	sna_output_attach_edid(output);
 	sna_output_attach_tile(output);
 
+	current = NULL;
 	if (output->crtc) {
 		struct drm_mode_crtc mode;
 
@@ -3603,6 +3623,8 @@ sna_output_destroy(xf86OutputPtr output)
 		return;
 
 	free(sna_output->edid_raw);
+	free(sna_output->fake_edid_raw);
+
 	for (i = 0; i < sna_output->num_props; i++) {
 		if (sna_output->props[i].kprop == NULL)
 			continue;
@@ -4283,6 +4305,116 @@ static int name_from_path(struct sna *sna,
 	return 0;
 }
 
+static char *fake_edid_name(xf86OutputPtr output)
+{
+	struct sna *sna = to_sna(output->scrn);
+	const char *str, *colon;
+
+#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,7,99,901,0)
+	str = xf86GetOptValString(sna->Options, OPTION_EDID);
+#else
+	str = NULL;
+#endif
+	if (str == NULL)
+		return NULL;
+
+	do {
+		colon = strchr(str, ':');
+		if (colon == NULL)
+			return NULL;
+
+		if (strncmp(str, output->name, colon-str) == 0 &&
+		    output->name[colon-str] == '\0') {
+			char *path;
+			int len;
+
+			str = colon + 1;
+			colon = strchr(str, ',');
+			if (colon)
+				len = colon - str;
+			else
+				len = strlen(str) + 1;
+
+			path = malloc(len);
+			if (path == NULL)
+				return NULL;
+
+			memcpy(path, str, len - 1);
+			path[len] = '\0';
+			return path;
+		}
+
+		str = strchr(colon + 1, ',');
+		if (str == NULL)
+			return NULL;
+
+		str++;
+	} while (1);
+}
+
+static void
+sna_output_load_fake_edid(xf86OutputPtr output)
+{
+	struct sna_output *sna_output = output->driver_private;
+	const char *filename;
+	FILE *file;
+	void *raw;
+	int size;
+	xf86MonPtr mon;
+
+	filename = fake_edid_name(output);
+	if (filename == NULL)
+		return;
+
+	file = fopen(filename, "rb");
+	if (file == NULL)
+		goto err;
+
+	fseek(file, 0, SEEK_END);
+	size = ftell(file);
+	if (size % 128) {
+		fclose(file);
+		goto err;
+	}
+
+	raw = malloc(size);
+	if (raw == NULL) {
+		fclose(file);
+		free(raw);
+		goto err;
+	}
+
+	fseek(file, 0, SEEK_SET);
+	if (fread(raw, size, 1, file) != 1) {
+		fclose(file);
+		free(raw);
+		goto err;
+	}
+	fclose(file);
+
+	mon = xf86InterpretEDID(output->scrn->scrnIndex, raw);
+	if (mon == NULL) {
+		free(raw);
+		goto err;
+	}
+
+	if (mon && size > 128)
+		mon->flags |= MONITOR_EDID_COMPLETE_RAWDATA;
+
+	sna_output->fake_edid_mon = mon;
+	sna_output->fake_edid_raw = raw;
+
+	xf86DrvMsg(output->scrn->scrnIndex, X_CONFIG,
+		   "Loading EDID from \"%s\" for output %s\n",
+		   filename, output->name);
+	return;
+
+err:
+	xf86DrvMsg(output->scrn->scrnIndex, X_ERROR,
+		   "Could not read EDID file \"%s\" for output %s\n",
+		   filename, output->name);
+}
+
 static int
 sna_output_add(struct sna *sna, unsigned id, unsigned serial)
 {
@@ -4519,6 +4651,8 @@ reset:
 
 	output->possible_crtcs = possible_crtcs & count_to_mask(sna->mode.num_real_crtc);
 	output->interlaceAllowed = TRUE;
+
+	sna_output_load_fake_edid(output);
 
 	if (serial) {
 		if (output->randr_output == NULL) {

@@ -12,6 +12,7 @@ const OptionInfoRec intel_options[] = {
 	{OPTION_ACCEL_DISABLE,	"NoAccel",	OPTV_BOOLEAN,	{0},	0},
 	{OPTION_ACCEL_METHOD,	"AccelMethod",	OPTV_STRING,	{0},	0},
 	{OPTION_BACKLIGHT,	"Backlight",	OPTV_STRING,	{0},	0},
+	{OPTION_EDID,		"CustomEDID",	OPTV_STRING,	{0},	0},
 	{OPTION_DRI,		"DRI",		OPTV_STRING,	{0},	0},
 	{OPTION_PRESENT,	"Present",	OPTV_BOOLEAN,	{0},	1},
 	{OPTION_COLOR_KEY,	"ColorKey",	OPTV_INTEGER,	{0},	0},

@@ -201,6 +201,16 @@ that choice by specifying the entry under /sys/class/backlight to use.
 .IP
 Default: Automatic selection.
 .TP
+.BI "Option \*qCustomEDID\*q \*q" string \*q
+Override the probed EDID on particular outputs. Sometimes the manufacturer
+supplied EDID is corrupt or lacking a few usable modes and supplying a
+corrected EDID may be easier than specifying every modeline. This option
+allows to pass the path to load an EDID from per output. The format is a
+comma separated string of output:path pairs, e.g.
+DP1:/path/to/dp1.edid,DP2:/path/to/dp2.edid
+.IP
+Default: No override, use manufacturer supplied EDIDs.
+.TP
 .BI "Option \*qFallbackDebug\*q \*q" boolean \*q
 Enable printing of debugging information on acceleration fallbacks to the
 server log.
