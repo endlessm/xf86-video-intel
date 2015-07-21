@@ -78,6 +78,9 @@ int main(int argc, char **argv)
 
 	src = cur->pixels;
 	rows = malloc(cur->height*sizeof(png_byte*));
+	if (rows == NULL)
+		return 3;
+
 	for (y = 0; y < cur->height; y++) {
 		rows[y] = malloc(cur->width * 4);
 		for (x = 0; x < cur->width; x++) {
