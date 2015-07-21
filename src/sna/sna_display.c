@@ -4526,6 +4526,12 @@ sna_output_add(struct sna *sna, unsigned id, unsigned serial)
 	sna_output->num_props = compat_conn.conn.count_props;
 	sna_output->prop_ids = malloc(sizeof(uint32_t)*compat_conn.conn.count_props);
 	sna_output->prop_values = malloc(sizeof(uint64_t)*compat_conn.conn.count_props);
+	if (sna_output->prop_ids == NULL || sna_output->prop_values == NULL) {
+		free(sna_output->prop_ids);
+		free(sna_output->prop_values);
+		free(sna_output);
+		return -1;
+	}
 
 	compat_conn.conn.count_encoders = 0;
 
@@ -8240,7 +8246,7 @@ void sna_mode_redisplay(struct sna *sna)
 							    sna_crtc->bo->tiling,
 							    CREATE_SCANOUT);
 				if (bo == NULL)
-					goto disable1;
+					continue;
 
 				sna_crtc_redisplay(crtc, &damage, bo);
 				kgem_bo_submit(&sna->kgem, bo);
