@@ -4340,7 +4340,7 @@ static char *fake_edid_name(xf86OutputPtr output)
 				return NULL;
 
 			memcpy(path, str, len - 1);
-			path[len] = '\0';
+			path[len-1] = '\0';
 			return path;
 		}
 
