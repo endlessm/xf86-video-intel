@@ -4333,14 +4333,14 @@ static char *fake_edid_name(xf86OutputPtr output)
 			if (colon)
 				len = colon - str;
 			else
-				len = strlen(str) + 1;
+				len = strlen(str);
 
-			path = malloc(len);
+			path = malloc(len + 1);
 			if (path == NULL)
 				return NULL;
 
-			memcpy(path, str, len - 1);
-			path[len-1] = '\0';
+			memcpy(path, str, len);
+			path[len] = '\0';
 			return path;
 		}
 
