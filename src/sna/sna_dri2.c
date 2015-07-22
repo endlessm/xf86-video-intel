@@ -2481,6 +2481,7 @@ static bool sna_dri2_blit_complete(struct sna *sna,
 	}
 
 	DBG(("%s: blit finished\n", __FUNCTION__));
+	info->bo = NULL;
 	return true;
 }
 
@@ -2656,6 +2657,25 @@ sna_dri2_immediate_blit(struct sna *sna,
 			frame_swap_complete(info, DRI2_BLIT_COMPLETE);
 			sna_dri2_event_free(info);
 		}
+		return;
+	}
+
+	/* Takeover the placeholder vblank */
+	if (chain->type == SWAP_ALIVE) {
+		assert(chain->draw == info->draw);
+		assert(chain->bo == NULL);
+		assert(chain->queued);
+
+		_sna_dri2_destroy_buffer(chain->sna, chain->draw, chain->front);
+		_sna_dri2_destroy_buffer(chain->sna, chain->draw, chain->back);
+
+		_list_del(&info->link);
+		info->link = chain->link;
+
+		*chain = *info;
+		chain->queued = true;
+
+		free(info);
 		return;
 	}
 
