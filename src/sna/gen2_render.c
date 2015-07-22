@@ -596,39 +596,43 @@ gen2_get_batch(struct sna *sna, const struct sna_composite_op *op)
 		gen2_emit_invariant(sna);
 }
 
-static void gen2_emit_target(struct sna *sna, const struct sna_composite_op *op)
+static void gen2_emit_target(struct sna *sna,
+			     struct kgem_bo *bo,
+			     int width,
+			     int height,
+			     int format)
 {
-	assert(!too_large(op->dst.width, op->dst.height));
-	assert(op->dst.bo->pitch >= 8 && op->dst.bo->pitch <= MAX_3D_PITCH);
+	assert(!too_large(width, height));
+	assert(bo->pitch >= 8 && bo->pitch <= MAX_3D_PITCH);
 	assert(sna->render.vertex_offset == 0);
 
-	assert(op->dst.bo->unique_id);
-	if (sna->render_state.gen2.target == op->dst.bo->unique_id) {
-		kgem_bo_mark_dirty(op->dst.bo);
+	assert(bo->unique_id);
+	if (sna->render_state.gen2.target == bo->unique_id) {
+		kgem_bo_mark_dirty(bo);
 		return;
 	}
 
 	BATCH(_3DSTATE_BUF_INFO_CMD);
 	BATCH(BUF_3D_ID_COLOR_BACK |
-	      gen2_buf_tiling(op->dst.bo->tiling) |
-	      BUF_3D_PITCH(op->dst.bo->pitch));
+	      gen2_buf_tiling(bo->tiling) |
+	      BUF_3D_PITCH(bo->pitch));
 	BATCH(kgem_add_reloc(&sna->kgem, sna->kgem.nbatch,
-			     op->dst.bo,
+			     bo,
 			     I915_GEM_DOMAIN_RENDER << 16 |
 			     I915_GEM_DOMAIN_RENDER,
 			     0));
 
 	BATCH(_3DSTATE_DST_BUF_VARS_CMD);
-	BATCH(gen2_get_dst_format(op->dst.format));
+	BATCH(gen2_get_dst_format(format));
 
 	BATCH(_3DSTATE_DRAW_RECT_CMD);
 	BATCH(0);
 	BATCH(0);	/* ymin, xmin */
-	BATCH(DRAW_YMAX(op->dst.height - 1) |
-	      DRAW_XMAX(op->dst.width - 1));
+	BATCH(DRAW_YMAX(height - 1) |
+	      DRAW_XMAX(width - 1));
 	BATCH(0);	/* yorig, xorig */
 
-	sna->render_state.gen2.target = op->dst.bo->unique_id;
+	sna->render_state.gen2.target = bo->unique_id;
 }
 
 static void gen2_disable_logic_op(struct sna *sna)
@@ -701,7 +705,11 @@ static void gen2_emit_composite_state(struct sna *sna,
 		kgem_clear_dirty(&sna->kgem);
 	}
 
-	gen2_emit_target(sna, op);
+	gen2_emit_target(sna,
+			 op->dst.bo,
+			 op->dst.width,
+			 op->dst.height,
+			 op->dst.format);
 
 	unwind = sna->kgem.nbatch;
 	BATCH(_3DSTATE_LOAD_STATE_IMMEDIATE_1 |
@@ -2425,7 +2433,11 @@ static void gen2_emit_composite_spans_state(struct sna *sna,
 	uint32_t unwind;
 
 	gen2_get_batch(sna, &op->base);
-	gen2_emit_target(sna, &op->base);
+	gen2_emit_target(sna,
+			 op->base.dst.bo,
+			 op->base.dst.width,
+			 op->base.dst.height,
+			 op->base.dst.format);
 
 	unwind = sna->kgem.nbatch;
 	BATCH(_3DSTATE_LOAD_STATE_IMMEDIATE_1 |
@@ -2708,7 +2720,11 @@ static void gen2_emit_fill_composite_state(struct sna *sna,
 	uint32_t ls1;
 
 	gen2_get_batch(sna, op);
-	gen2_emit_target(sna, op);
+	gen2_emit_target(sna,
+			 op->dst.bo,
+			 op->dst.width,
+			 op->dst.height,
+			 op->dst.format);
 
 	ls1 = sna->kgem.nbatch;
 	BATCH(_3DSTATE_LOAD_STATE_IMMEDIATE_1 |
@@ -2870,7 +2886,11 @@ static void gen2_emit_fill_state(struct sna *sna,
 	uint32_t ls1;
 
 	gen2_get_batch(sna, op);
-	gen2_emit_target(sna, op);
+	gen2_emit_target(sna,
+			 op->dst.bo,
+			 op->dst.width,
+			 op->dst.height,
+			 op->dst.format);
 
 	ls1 = sna->kgem.nbatch;
 	BATCH(_3DSTATE_LOAD_STATE_IMMEDIATE_1 |
@@ -3178,7 +3198,11 @@ static void gen2_emit_copy_state(struct sna *sna, const struct sna_composite_op 
 			      PIPELINE_FLUSH_TEXTURE_CACHE);
 		kgem_clear_dirty(&sna->kgem);
 	}
-	gen2_emit_target(sna, op);
+	gen2_emit_target(sna,
+			 op->dst.bo,
+			 op->dst.width,
+			 op->dst.height,
+			 op->dst.format);
 
 	ls1 = sna->kgem.nbatch;
 	BATCH(_3DSTATE_LOAD_STATE_IMMEDIATE_1 |
