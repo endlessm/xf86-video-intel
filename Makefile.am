@@ -25,7 +25,7 @@ SUBDIRS = man libobj xvmc src tools
 MAINTAINERCLEANFILES = ChangeLog INSTALL
 
 if HAVE_X11
-SUBDIRS += test
+SUBDIRS += test benchmarks
 endif
 
 .PHONY: ChangeLog INSTALL
