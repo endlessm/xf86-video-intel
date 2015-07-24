@@ -1603,7 +1603,10 @@ static void kgem_init_swizzling(struct kgem *kgem)
 
 	DBG(("%s: swizzle_mode=%d, phys_swizzle_mode=%d\n",
 	     __FUNCTION__, tiling.swizzle_mode, tiling.phys_swizzle_mode));
-	kgem->can_fence = tiling.swizzle_mode != I915_BIT_6_SWIZZLE_UNKNOWN;
+
+	kgem->can_fence =
+		!DBG_NO_TILING &&
+		tiling.swizzle_mode != I915_BIT_6_SWIZZLE_UNKNOWN;
 
 	if (kgem->gen < 50 && tiling.phys_swizzle_mode != tiling.swizzle_mode)
 		goto out;
