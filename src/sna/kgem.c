@@ -481,6 +481,8 @@ restart:
 		goto restart;
 	}
 
+	ERR(("%s: failed to set-tiling(tiling=%d, pitch=%d) for handle=%d: %d\n",
+	     __FUNCTION__, tiling, stride, bo->handle, err));
 	return false;
 }
 
