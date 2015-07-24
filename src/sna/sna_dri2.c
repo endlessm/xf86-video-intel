@@ -329,7 +329,7 @@ sna_dri2_get_back(struct sna *sna,
 		bo = kgem_create_2d(&sna->kgem,
 				    draw->width, draw->height, draw->bitsPerPixel,
 				    get_private(back)->bo->tiling,
-				    get_private(back)->bo->scanout ? CREATE_SCANOUT : 0);
+				    get_private(back)->bo->scanout ? CREATE_SCANOUT | CREATE_EXACT : CREATE_EXACT);
 		if (bo == NULL)
 			return;
 
@@ -613,7 +613,7 @@ sna_dri2_create_buffer(DrawablePtr draw,
 	PixmapPtr pixmap;
 	struct kgem_bo *bo;
 	unsigned bpp = format ?: draw->bitsPerPixel;
-	unsigned flags = 0;
+	unsigned flags = CREATE_EXACT;
 	uint32_t size;
 
 	DBG(("%s pixmap=%ld, (attachment=%d, format=%d, drawable=%dx%d), window?=%d\n",
@@ -2263,7 +2263,7 @@ static void sna_dri2_xchg_crtc(struct sna *sna, DrawablePtr draw, xf86CrtcPtr cr
 		bo = kgem_create_2d(&sna->kgem,
 				    draw->width, draw->height, draw->bitsPerPixel,
 				    get_private(back)->bo->tiling,
-				    CREATE_SCANOUT);
+				    CREATE_SCANOUT | CREATE_EXACT);
 		if (bo != NULL) {
 			get_private(back)->bo = bo;
 			back->pitch = bo->pitch;

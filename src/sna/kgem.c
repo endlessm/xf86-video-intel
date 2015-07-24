@@ -5108,6 +5108,7 @@ static void __kgem_bo_make_scanout(struct kgem *kgem,
 
 static void set_gpu_tiling(struct kgem_bo *bo, int tiling, int pitch)
 {
+	assert(!kgem->can_fence);
 	bo->tiling = tiling;
 	bo->pitch = pitch;
 	if (tiling && bo->map__gtt) {
@@ -5294,10 +5295,9 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 				if (num_pages(bo) < size)
 					continue;
 
-				if (!kgem_set_tiling(kgem, bo, tiling, pitch)) {
-					assert(!kgem->can_fence);
+				if (!kgem_set_tiling(kgem, bo, tiling, pitch) &&
+				    !exact)
 					set_gpu_tiling(bo, tiling, pitch);
-				}
 			}
 
 			kgem_bo_remove_from_active(kgem, bo);
@@ -5324,10 +5324,9 @@ large_inactive:
 				continue;
 
 			if (!kgem_set_tiling(kgem, bo, tiling, pitch)) {
-				if (kgem->gen >= 040) {
-					assert(!kgem->can_fence);
+				if (kgem->gen >= 040 && !exact)
 					set_gpu_tiling(bo, tiling, pitch);
-				} else
+				else
 					continue;
 			}
 
@@ -5472,10 +5471,9 @@ search_active:
 				if (num_pages(bo) < size)
 					continue;
 
-				if (!kgem_set_tiling(kgem, bo, tiling, pitch)) {
-					assert(!kgem->can_fence);
+				if (!kgem_set_tiling(kgem, bo, tiling, pitch) &&
+				    !exact)
 					set_gpu_tiling(bo, tiling, pitch);
-				}
 			}
 			assert(bo->tiling == tiling);
 			assert(bo->pitch >= pitch);
@@ -5534,8 +5532,7 @@ search_active:
 					continue;
 
 				if (!kgem_set_tiling(kgem, bo, tiling, pitch)) {
-					if (kgem->gen >= 040) {
-						assert(!kgem->can_fence);
+					if (kgem->gen >= 040 && !exact) {
 						set_gpu_tiling(bo, tiling, pitch);
 					} else {
 						kgem_bo_free(kgem, bo);
@@ -5626,8 +5623,7 @@ search_inactive:
 		}
 
 		if (!kgem_set_tiling(kgem, bo, tiling, pitch)) {
-			if (kgem->gen >= 040) {
-				assert(!kgem->can_fence);
+			if (kgem->gen >= 040 && !exact) {
 				set_gpu_tiling(bo, tiling, pitch);
 			} else {
 				kgem_bo_free(kgem, bo);
@@ -5693,8 +5689,7 @@ search_inactive:
 			__kgem_bo_clear_busy(bo);
 
 			if (!kgem_set_tiling(kgem, bo, tiling, pitch)) {
-				if (kgem->gen >= 040) {
-					assert(!kgem->can_fence);
+				if (kgem->gen >= 040 && !exact) {
 					set_gpu_tiling(bo, tiling, pitch);
 				} else {
 					kgem_bo_free(kgem, bo);
