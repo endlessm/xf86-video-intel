@@ -2988,7 +2988,7 @@ static bool __kgem_bo_flush(struct kgem *kgem, struct kgem_bo *bo)
 	     __FUNCTION__, bo->handle));
 	list_add(&bo->request, &kgem->flushing);
 	bo->rq = MAKE_REQUEST(kgem, !!(busy.busy & ~0x1ffff));
-	bo->needs_flush = true;
+	bo->needs_flush = busy.busy & 0xffff;
 	kgem->need_retire = true;
 	return true;
 }
