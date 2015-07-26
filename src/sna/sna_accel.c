@@ -7240,19 +7240,25 @@ sna_copy_area(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	if (sna->ignore_copy_area)
 		return NULL;
 
-	DBG(("%s: src=(%d, %d)x(%d, %d)+(%d, %d) -> dst=(%d, %d)+(%d, %d); alu=%d, pm=%lx, depth=%d\n",
+	DBG(("%s: src=pixmap=%ld:(%d, %d)x(%d, %d)+(%d, %d) -> dst=pixmap=%ld:(%d, %d)+(%d, %d); alu=%d, pm=%lx, depth=%d\n",
 	     __FUNCTION__,
+	     get_drawable_pixmap(src)->drawable.serialNumber,
 	     src_x, src_y, width, height, src->x, src->y,
+	     get_drawable_pixmap(dst)->drawable.serialNumber,
 	     dst_x, dst_y, dst->x, dst->y,
 	     gc->alu, gc->planemask, gc->depth));
 
 	if (FORCE_FALLBACK || !ACCEL_COPY_AREA || wedged(sna) ||
-	    !PM_IS_SOLID(dst, gc->planemask) || gc->depth < 8)
+	    !PM_IS_SOLID(dst, gc->planemask) || gc->depth < 8) {
+		DBG(("%s: fallback copy\n", __FUNCTION__));
 		copy = sna_fallback_copy_boxes;
-	else if (src == dst)
+	} else if (src == dst) {
+		DBG(("%s: self copy\n", __FUNCTION__));
 		copy = sna_self_copy_boxes;
-	else
+	} else {
+		DBG(("%s: normal copy\n", __FUNCTION__));
 		copy = sna_copy_boxes;
+	}
 
 	return sna_do_copy(src, dst, gc,
 			   src_x, src_y,
@@ -17857,6 +17863,7 @@ sna_set_screen_pixmap(PixmapPtr pixmap)
 static Bool
 sna_create_window(WindowPtr win)
 {
+	DBG(("%s: window=%ld\n", __FUNCTION__, win->drawable.id));
 	sna_set_window_pixmap(win, win->drawable.pScreen->devPrivate);
 	return TRUE;
 }
@@ -17882,6 +17889,7 @@ sna_unmap_window(WindowPtr win)
 static Bool
 sna_destroy_window(WindowPtr win)
 {
+	DBG(("%s: window=%ld\n", __FUNCTION__, win->drawable.id));
 	sna_video_destroy_window(win);
 	sna_dri2_destroy_window(win);
 	return TRUE;
