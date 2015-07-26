@@ -27,6 +27,7 @@
 #include <sys/types.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/poll.h>
 #include <errno.h>
 #include <xf86drm.h>
 
@@ -697,8 +698,17 @@ sna_present_flip(RRCrtcPtr crtc,
 	assert(!sna->mode.shadow_enabled);
 
 	if (sna->mode.flip_active) {
-		DBG(("%s: flips still pending\n", __FUNCTION__));
-		return FALSE;
+		struct pollfd pfd;
+
+		DBG(("%s: flips still pending, stalling\n", __FUNCTION__));
+		pfd.fd = sna->kgem.fd;
+		pfd.events = POLLIN;
+		do {
+			if (poll(&pfd, 1, -1) != 1)
+				return FALSE;
+
+			sna_mode_wakeup(sna);
+		} while (sna->mode.flip_active);
 	}
 
 	bo = get_flip_bo(pixmap);
@@ -735,6 +745,7 @@ notify:
 		return;
 	}
 
+	assert(!sna->mode.shadow_enabled);
 	if (sna->mode.flip_active) {
 		DBG(("%s: %d outstanding flips, queueing unflip\n", __FUNCTION__, sna->mode.flip_active));
 		assert(sna->present.unflip == 0);
@@ -742,7 +753,6 @@ notify:
 		return;
 	}
 
-	assert(!sna->mode.shadow_enabled);
 	if (sna->flags & SNA_TEAR_FREE) {
 		DBG(("%s: %s TearFree after Present flips\n",
 		     __FUNCTION__, sna->mode.shadow_damage != NULL ? "enabling" : "disabling"));
