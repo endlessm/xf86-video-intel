@@ -681,9 +681,10 @@ cleanup:
 
 static bool has_shadow(struct sna *sna)
 {
-	if (!sna->mode.shadow_damage)
+	if (!sna->mode.shadow_enabled)
 		return false;
 
+	assert(sna->mode.shadow_damage);
 	if (RegionNil(DamageRegion(sna->mode.shadow_damage)))
 		return false;
 

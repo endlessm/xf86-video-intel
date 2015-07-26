@@ -1281,6 +1281,7 @@ static bool wait_for_shadow(struct sna *sna,
 	}
 
 	assert(sna->mode.shadow_active);
+	assert(sna->mode.shadow_enabled);
 	sna->mode.shadow_enabled = false;
 
 	flip_active = sna->mode.flip_active;

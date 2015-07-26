@@ -17405,10 +17405,13 @@ static bool has_offload_slaves(struct sna *sna)
 
 static bool has_shadow(struct sna *sna)
 {
-	DamagePtr damage = sna->mode.shadow_damage;
+	DamagePtr damage;
 
-	if (damage == NULL)
+	if (!sna->mode.shadow_enabled)
 		return false;
+
+	damage = sna->mode.shadow_damage;
+	assert(damage);
 
 	DBG(("%s: has pending damage? %d, outstanding flips: %d\n",
 	     __FUNCTION__,

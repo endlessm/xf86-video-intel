@@ -689,8 +689,11 @@ sna_present_flip(RRCrtcPtr crtc,
 
 	assert(sna->present.unflip == 0);
 
-	if (sna->flags & SNA_TEAR_FREE)
+	if (sna->flags & SNA_TEAR_FREE) {
+		DBG(("%s: disabling TearFree (was %s) in favour of Present flips\n",
+		     __FUNCTION__, sna->mode.shadow_enabled ? "enabled" : "disabled"));
 		sna->mode.shadow_enabled = false;
+	}
 	assert(!sna->mode.shadow_enabled);
 
 	if (sna->mode.flip_active) {
@@ -739,8 +742,12 @@ notify:
 		return;
 	}
 
-	if (sna->flags & SNA_TEAR_FREE)
+	assert(!sna->mode.shadow_enabled);
+	if (sna->flags & SNA_TEAR_FREE) {
+		DBG(("%s: %s TearFree after Present flips\n",
+		     __FUNCTION__, sna->mode.shadow_damage != NULL ? "enabling" : "disabling"));
 		sna->mode.shadow_enabled = sna->mode.shadow_damage != NULL;
+	}
 
 	bo = get_flip_bo(screen->GetScreenPixmap(screen));
 	if (bo == NULL) {
