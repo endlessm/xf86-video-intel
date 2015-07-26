@@ -184,8 +184,10 @@ static inline WindowPtr get_root_window(ScreenPtr screen)
 #if !NDEBUG
 static PixmapPtr check_pixmap(PixmapPtr pixmap)
 {
-	assert(pixmap->refcnt >= 1);
-	assert(pixmap->devKind != 0xdeadbeef);
+	if (pixmap != NULL) {
+		assert(pixmap->refcnt >= 1);
+		assert(pixmap->devKind != 0xdeadbeef);
+	}
 	return pixmap;
 }
 #else
