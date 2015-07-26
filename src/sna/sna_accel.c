@@ -878,6 +878,9 @@ __pop_freed_pixmap(struct sna *sna)
 	pixmap = sna->freed_pixmap;
 	sna->freed_pixmap = pixmap->devPrivate.ptr;
 
+	DBG(("%s: reusing freed pixmap=%ld header\n",
+	     __FUNCTION__, pixmap->drawable.serialNumber));
+
 	assert(pixmap->refcnt == 0);
 	assert(sna_pixmap(pixmap));
 	assert(sna_pixmap(pixmap)->header);
