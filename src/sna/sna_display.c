@@ -1334,6 +1334,7 @@ static bool wait_for_shadow(struct sna *sna,
 			bo = sna->mode.shadow;
 		}
 	}
+	assert(!sna->mode.shadow_enabled);
 	sna->mode.shadow_enabled = true;
 
 	if (bo->refcnt > 1) {
@@ -8047,12 +8048,19 @@ void sna_mode_redisplay(struct sna *sna)
 	     region->extents.x2, region->extents.y2));
 
 	if (sna->mode.flip_active) {
-		sna->mode.shadow_enabled = false;
+		DBG(("%s: checking for %d outstanding flip completions\n",
+		     __FUNCTION__, sna->mode.flip_active));
+
+		sna->mode.dirty = true;
 		while (sna->mode.flip_active && sna_mode_wakeup(sna))
 			;
-		sna->mode.shadow_enabled = true;
+		sna->mode.dirty = false;
 
-		if (sna->mode.flip_active)
+		DBG(("%s: now %d outstanding flip completions (enabled? %d)\n",
+		     __FUNCTION__,
+		     sna->mode.flip_active,
+		     sna->mode.shadow_enabled));
+		if (sna->mode.flip_active || !sna->mode.shadow_enabled)
 			return;
 	}
 
