@@ -181,18 +181,29 @@ static inline WindowPtr get_root_window(ScreenPtr screen)
 #endif
 }
 
+#if !NDEBUG
+static PixmapPtr check_pixmap(PixmapPtr pixmap)
+{
+	assert(pixmap->refcnt >= 1);
+	assert(pixmap->devKind != 0xdeadbeef);
+	return pixmap;
+}
+#else
+#define check_pixmap(p) p
+#endif
+
 static inline PixmapPtr get_window_pixmap(WindowPtr window)
 {
 	assert(window);
 	assert(window->drawable.type != DRAWABLE_PIXMAP);
-	return fbGetWindowPixmap(window);
+	return check_pixmap(fbGetWindowPixmap(window));
 }
 
 static inline PixmapPtr get_drawable_pixmap(DrawablePtr drawable)
 {
 	assert(drawable);
 	if (drawable->type == DRAWABLE_PIXMAP)
-		return (PixmapPtr)drawable;
+		return check_pixmap((PixmapPtr)drawable);
 	else
 		return get_window_pixmap((WindowPtr)drawable);
 }

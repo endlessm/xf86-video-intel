@@ -882,6 +882,7 @@ __pop_freed_pixmap(struct sna *sna)
 	     __FUNCTION__, pixmap->drawable.serialNumber));
 
 	assert(pixmap->refcnt == 0);
+	assert(pixmap->devKind = 0xdeadbeef);
 	assert(sna_pixmap(pixmap));
 	assert(sna_pixmap(pixmap)->header);
 
@@ -1430,6 +1431,9 @@ static void __sna_free_pixmap(struct sna *sna,
 	if (priv->flush)
 		sna_accel_watch_flush(sna, -1);
 
+#if !NDEBUG
+	pixmap->devKind = 0xdeadbeef;
+#endif
 	if (priv->header) {
 		assert(pixmap->drawable.pScreen == to_screen_from_sna(sna));
 		assert(!priv->shm);
