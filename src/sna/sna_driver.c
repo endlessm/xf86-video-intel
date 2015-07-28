@@ -743,37 +743,48 @@ static void
 sna_handle_uevents(int fd, void *closure)
 {
 	struct sna *sna = closure;
-	struct udev_device *dev;
-	const char *str;
 	struct stat s;
-	dev_t udev_devnum;
+	struct pollfd pfd;
+	bool hotplug = false;
 
 	DBG(("%s\n", __FUNCTION__));
 
-	dev = udev_monitor_receive_device(sna->uevent_monitor);
-	if (!dev)
-		return;
+	pfd.fd = udev_monitor_get_fd(sna->uevent_monitor);
+	pfd.events = POLLIN;
 
-	udev_devnum = udev_device_get_devnum(dev);
-	if (fstat(sna->kgem.fd, &s) || memcmp(&s.st_rdev, &udev_devnum, sizeof (dev_t))) {
+	if (fstat(sna->kgem.fd, &s))
+		memset(&s, 0, sizeof(s));
+
+	do {
+		struct udev_device *dev;
+		dev_t devnum;
+
+		dev = udev_monitor_receive_device(sna->uevent_monitor);
+		if (dev == NULL)
+			break;
+
+		devnum = udev_device_get_devnum(dev);
+		if (memcmp(&s.st_rdev, &devnum, sizeof(dev_t)) == 0) {
+			const char *str;
+
+			str = udev_device_get_property_value(dev, "HOTPLUG");
+			if (str && atoi(str) == 1)
+				hotplug = true;
+		}
+
 		udev_device_unref(dev);
-		return;
-	}
+	} while (poll(&pfd, 1, 0) > 0);
 
-	str = udev_device_get_property_value(dev, "HOTPLUG");
-	if (str && atoi(str) == 1) {
-		ScrnInfoPtr scrn = sna->scrn;
+	if (hotplug) {
+		DBG(("%s: hotplug event (vtSema?=%d)\n",
+		     __FUNCTION__, sna->scrn->vtSema));
 
-		DBG(("%s: hotplug event (vtSema?=%d)\n", __FUNCTION__, scrn->vtSema));
-
-		if (scrn->vtSema) {
+		if (sna->scrn->vtSema) {
 			sna_mode_discover(sna);
 			sna_mode_check(sna);
 		} else
 			sna->flags |= SNA_REPROBE;
 	}
-
-	udev_device_unref(dev);
 }
 
 static bool has_randr(void)
@@ -842,17 +853,10 @@ err_dev:
 
 static bool sna_uevent_poll(struct sna *sna)
 {
-	struct pollfd pfd;
-
 	if (sna->uevent_monitor == NULL)
 		return false;
 
-	pfd.fd = udev_monitor_get_fd(sna->uevent_monitor);
-	pfd.events = POLLIN;
-
-	while (poll(&pfd, 1, 0) > 0)
-		sna_handle_uevents(pfd.fd, sna);
-
+	sna_handle_uevents(udev_monitor_get_fd(sna->uevent_monitor), sna);
 	return true;
 }
 
