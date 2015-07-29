@@ -8349,6 +8349,8 @@ sna_copy_bitmap_blt(DrawablePtr _bitmap, DrawablePtr drawable, GCPtr gc,
 	}
 	br13 |= blt_depth(drawable->depth) << 24;
 	br13 |= copy_ROP[gc->alu] << 16;
+	DBG(("%s: target-depth=%d, alu=%d, bg=%08x, fg=%08x\n",
+	     __FUNCTION__, drawable->depth, gc->alu, gc->bgPixel, gc->fgPixel));
 
 	kgem_set_mode(&sna->kgem, KGEM_BLT, arg->bo);
 	assert(kgem_bo_can_blt(&sna->kgem, arg->bo));
@@ -8397,8 +8399,8 @@ sna_copy_bitmap_blt(DrawablePtr _bitmap, DrawablePtr drawable, GCPtr gc,
 							 I915_GEM_DOMAIN_RENDER |
 							 KGEM_RELOC_FENCED,
 							 0);
-				b[5] = gc->bgPixel;
-				b[6] = gc->fgPixel;
+				b[6] = gc->bgPixel;
+				b[7] = gc->fgPixel;
 
 				dst = (uint8_t *)&b[8];
 				sna->kgem.nbatch += 8 + src_stride;
