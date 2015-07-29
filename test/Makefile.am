@@ -5,6 +5,7 @@ stress_TESTS = \
 	basic-rectangle \
 	basic-string \
 	basic-copyarea \
+	basic-copyplane \
 	basic-copyarea-size \
 	basic-putimage \
 	basic-lines \
