@@ -52,8 +52,14 @@
 		__warn_once__ = 1; \
 	} \
 } while (0)
+
+#define dbg(EXPR) EXPR
+
 #else
+
 #define warn_unless(E)
+#define dbg(EXPR)
+
 #endif
 
 #endif /* __XASSERT_H__ */
