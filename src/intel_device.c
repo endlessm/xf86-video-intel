@@ -203,9 +203,15 @@ static inline struct intel_device *intel_device(ScrnInfoPtr scrn)
 	return xf86GetEntityPrivate(scrn->entityList[0], intel_device_key)->ptr;
 }
 
+static const char *kernel_module_names[] ={
+	"i915",
+	NULL,
+};
+
 static int is_i915_device(int fd)
 {
 	drm_version_t version;
+	const char **kn;
 	char name[5] = "";
 
 	memset(&version, 0, sizeof(version));
@@ -215,7 +221,22 @@ static int is_i915_device(int fd)
 	if (drmIoctl(fd, DRM_IOCTL_VERSION, &version))
 		return 0;
 
-	return strcmp("i915", name) == 0;
+	for (kn = kernel_module_names; *kn; kn++)
+		if (strcmp(*kn, name) == 0)
+			return 1;
+
+	return 0;
+}
+
+static int load_i915_kernel_module(void)
+{
+	const char **kn;
+
+	for (kn = kernel_module_names; *kn; kn++)
+		if (xf86LoadKernelModule(*kn) == 0)
+			return 0;
+
+	return -1;
 }
 
 static int is_i915_gem(int fd)
@@ -342,7 +363,7 @@ static int __intel_open_device__pci(const struct pci_device *pci)
 
 		sprintf(path + base, "driver");
 		if (stat(path, &st)) {
-			if (xf86LoadKernelModule("i915"))
+			if (load_i915_kernel_module())
 				return -1;
 			(void)xf86LoadKernelModule("fbcon");
 		}
@@ -405,7 +426,7 @@ static int __intel_open_device__legacy(const struct pci_device *pci)
 
 	ret = drmCheckModesettingSupported(id);
 	if (ret) {
-		if (xf86LoadKernelModule("i915"))
+		if (load_i915_kernel_module() == 0)
 			ret = drmCheckModesettingSupported(id);
 		if (ret)
 			return -1;
