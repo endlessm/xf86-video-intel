@@ -6235,7 +6235,7 @@ error:
 					"page flipping failed, on CRTC:%d (pipe=%d), disabling %s page flips\n",
 					__sna_crtc_id(crtc), __sna_crtc_pipe(crtc), data ? "synchronous": "asynchronous");
 
-			if (count)
+			if (count || crtc->bo == bo)
 				sna_mode_restore(sna);
 
 			sna->flags &= ~(data ? SNA_HAS_FLIP : SNA_HAS_ASYNC_FLIP);
