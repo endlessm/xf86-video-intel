@@ -1518,7 +1518,7 @@ static bool kgem_init_pinned_batches(struct kgem *kgem)
 	int ret = 0;
 	int n, i;
 
-	if (kgem->wedged)
+	if (unlikely(kgem->wedged))
 		return true;
 
 	for (n = 0; n < ARRAY_SIZE(count); n++) {
@@ -4127,7 +4127,7 @@ void _kgem_submit(struct kgem *kgem)
 		kgem_commit(kgem);
 	}
 
-	if (kgem->wedged)
+	if (unlikely(kgem->wedged))
 		kgem_cleanup(kgem);
 
 	kgem_reset(kgem);
@@ -4137,7 +4137,7 @@ void _kgem_submit(struct kgem *kgem)
 
 void kgem_throttle(struct kgem *kgem)
 {
-	if (kgem->wedged)
+	if (unlikely(kgem->wedged))
 		return;
 
 	if (__kgem_throttle(kgem, true)) {
@@ -4274,7 +4274,7 @@ bool kgem_expire_cache(struct kgem *kgem)
 #endif
 
 	kgem_retire(kgem);
-	if (kgem->wedged)
+	if (unlikely(kgem->wedged))
 		kgem_cleanup(kgem);
 
 	kgem->expire(kgem);
