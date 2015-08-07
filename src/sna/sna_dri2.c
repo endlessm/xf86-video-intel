@@ -2325,6 +2325,9 @@ static void chain_swap(struct sna_dri2_event *chain)
 	union drm_wait_vblank vbl;
 	struct copy tmp;
 
+	DBG(("%s: draw=%ld, queued?=%d, type=%d\n",
+	     __FUNCTION__, (long)chain->draw->id, chain->queued, chain->type));
+
 	if (chain->draw == NULL) {
 		sna_dri2_event_free(chain);
 		return;
@@ -2333,8 +2336,6 @@ static void chain_swap(struct sna_dri2_event *chain)
 	if (chain->queued) /* too early! */
 		return;
 
-	DBG(("%s: chaining draw=%ld, type=%d\n",
-	     __FUNCTION__, (long)chain->draw->id, chain->type));
 	assert(chain == dri2_chain(chain->draw));
 	chain->queued = true;
 
@@ -2583,6 +2584,7 @@ void sna_dri2_vblank_handler(struct drm_event_vblank *event)
 	}
 
 	if (info->chain) {
+		DBG(("%s: continuing chain\n", __FUNCTION__));
 		assert(info->chain != info);
 		assert(info->draw == draw);
 		sna_dri2_remove_event((WindowPtr)draw, info);
