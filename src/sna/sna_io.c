@@ -797,7 +797,7 @@ static bool __upload_inplace(struct kgem *kgem,
 		bytes += (box->x2 - box->x1) * (box->y2 - box->y1);
 		box++;
 	}
-	if (__kgem_bo_is_busy(kgem, bo))
+	if (!bo->flush && __kgem_bo_is_busy(kgem, bo))
 		return bytes * bpp >> 12 >= kgem->half_cpu_cache_pages;
 	else
 		return bytes * bpp >> 12;
