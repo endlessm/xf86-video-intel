@@ -788,6 +788,12 @@ static bool __upload_inplace(struct kgem *kgem,
 	if (FORCE_INPLACE)
 		return FORCE_INPLACE > 0;
 
+	if (bo->exec)
+		return false;
+
+	if (bo->flush)
+		return true;
+
 	/* If we are writing through the GTT, check first if we might be
 	 * able to almagamate a series of small writes into a single
 	 * operation.
@@ -797,7 +803,7 @@ static bool __upload_inplace(struct kgem *kgem,
 		bytes += (box->x2 - box->x1) * (box->y2 - box->y1);
 		box++;
 	}
-	if (!bo->flush && __kgem_bo_is_busy(kgem, bo))
+	if (__kgem_bo_is_busy(kgem, bo))
 		return bytes * bpp >> 12 >= kgem->half_cpu_cache_pages;
 	else
 		return bytes * bpp >> 12;
