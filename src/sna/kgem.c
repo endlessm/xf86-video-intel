@@ -1689,6 +1689,36 @@ static void kgem_fixup_relocs(struct kgem *kgem, struct kgem_bo *bo, int shrink)
 	}
 }
 
+static int kgem_bo_wait(struct kgem *kgem, struct kgem_bo *bo)
+{
+	struct drm_i915_gem_wait wait;
+	int ret;
+
+	if (bo->rq == NULL)
+		return 0;
+
+	VG_CLEAR(wait);
+	wait.bo_handle = bo->handle;
+	wait.timeout_ns = -1;
+	ret = do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_WAIT, &wait);
+	if (ret) {
+		struct drm_i915_gem_set_domain set_domain;
+
+		VG_CLEAR(set_domain);
+		set_domain.handle = bo->handle;
+		set_domain.read_domains = I915_GEM_DOMAIN_GTT;
+		set_domain.write_domain = I915_GEM_DOMAIN_GTT;
+		ret = do_ioctl(kgem->fd,
+			       DRM_IOCTL_I915_GEM_SET_DOMAIN,
+			       &set_domain);
+	}
+
+	if (ret == 0)
+		__kgem_retire_requests_upto(kgem, bo);
+
+	return ret;
+}
+
 static struct kgem_bo *kgem_new_batch(struct kgem *kgem)
 {
 	struct kgem_bo *last;
@@ -1709,6 +1739,7 @@ static struct kgem_bo *kgem_new_batch(struct kgem *kgem)
 	if (!kgem->has_llc)
 		flags |= CREATE_UNCACHED;
 
+restart:
 	kgem->batch_bo = kgem_create_linear(kgem,
 					    sizeof(uint32_t)*kgem->batch_size,
 					    flags);
@@ -1721,6 +1752,15 @@ static struct kgem_bo *kgem_new_batch(struct kgem *kgem)
 		if (kgem->batch_bo) {
 			kgem_bo_destroy(kgem, kgem->batch_bo);
 			kgem->batch_bo = NULL;
+		}
+
+		if (!list_is_empty(&kgem->requests[kgem->ring])) {
+			struct kgem_request *rq;
+
+			rq = list_first_entry(&kgem->requests[kgem->ring],
+					      struct kgem_request, list);
+			if (kgem_bo_wait(kgem, rq->bo) == 0)
+				goto restart;
 		}
 
 		if (posix_memalign((void **)&kgem->batch, PAGE_SIZE,
@@ -3777,24 +3817,14 @@ out_16384:
 		}
 
 		if (size < 16384) {
-			struct drm_i915_gem_set_domain set_domain;
-
 			bo = list_first_entry(&kgem->pinned_batches[size > 4096],
 					      struct kgem_bo,
 					      list);
 			list_move_tail(&bo->list, &kgem->pinned_batches[size > 4096]);
 
 			DBG(("%s: syncing due to busy batches\n", __FUNCTION__));
-
-			VG_CLEAR(set_domain);
-			set_domain.handle = bo->handle;
-			set_domain.read_domains = I915_GEM_DOMAIN_GTT;
-			set_domain.write_domain = I915_GEM_DOMAIN_GTT;
-			if (do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain)) {
-				DBG(("%s: sync: GPU hang detected\n", __FUNCTION__));
-				kgem_throttle(kgem);
+			if (kgem_bo_wait(kgem, bo))
 				return NULL;
-			}
 
 			kgem_retire(kgem);
 			assert(bo->rq == NULL);
