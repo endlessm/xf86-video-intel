@@ -3594,6 +3594,9 @@ static void kgem_cleanup(struct kgem *kgem)
 					kgem_bo_free(kgem, bo);
 			}
 
+			if (--rq->bo->refcnt == 0)
+				kgem_bo_free(kgem, rq->bo);
+
 			__kgem_request_free(rq);
 		}
 	}
