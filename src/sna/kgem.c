@@ -3716,12 +3716,10 @@ static int compact_batch_surface(struct kgem *kgem, int *shrink)
 static struct kgem_bo *
 kgem_create_batch(struct kgem *kgem)
 {
-#if !DBG_NO_SHRINK_BATCHES
-	struct drm_i915_gem_set_domain set_domain;
 	struct kgem_bo *bo;
-	int shrink = 0;
-	int size;
+	int size, shrink = 0;
 
+#if !DBG_NO_SHRINK_BATCHES
 	if (kgem->surface != kgem->batch_size)
 		size = compact_batch_surface(kgem, &shrink);
 	else
@@ -3779,6 +3777,8 @@ out_16384:
 		}
 
 		if (size < 16384) {
+			struct drm_i915_gem_set_domain set_domain;
+
 			bo = list_first_entry(&kgem->pinned_batches[size > 4096],
 					      struct kgem_bo,
 					      list);
@@ -3802,8 +3802,14 @@ out_16384:
 			goto write;
 		}
 	}
+#else
+	if (kgem->surface != kgem->batch_size)
+		size = kgem->batch_size * sizeof(uint32_t);
+	else
+		size = kgem->nbatch * sizeof(uint32_t);
+#endif
 
-	if (!kgem->has_llc) {
+	if (!kgem->batch_bo) {
 		bo = kgem_create_linear(kgem, size, CREATE_NO_THROTTLE);
 		if (bo) {
 write:
@@ -3815,7 +3821,7 @@ write:
 			return bo;
 		}
 	}
-#endif
+
 	return kgem_new_batch(kgem);
 }
 
