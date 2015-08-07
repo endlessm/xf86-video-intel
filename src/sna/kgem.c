@@ -4339,7 +4339,7 @@ bool kgem_expire_cache(struct kgem *kgem)
 				count++;
 				size += bytes(bo);
 				kgem_bo_free(kgem, bo);
-				DBG(("%s: expiring %d\n",
+				DBG(("%s: expiring handle=%d\n",
 				     __FUNCTION__, bo->handle));
 			}
 		}
