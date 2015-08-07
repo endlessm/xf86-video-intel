@@ -3012,7 +3012,7 @@ static bool kgem_retire__flushing(struct kgem *kgem)
 		int count = 0;
 		list_for_each_entry(bo, &kgem->flushing, request)
 			count++;
-		DBG(("%s: %d bo on flushing list\n", __FUNCTION__, count));
+		DBG(("%s: %d bo on flushing list, retired? %d\n", __FUNCTION__, count, retired));
 	}
 #endif
 
@@ -3111,6 +3111,8 @@ static bool kgem_retire__requests_ring(struct kgem *kgem, int ring)
 	while (!list_is_empty(&kgem->requests[ring])) {
 		struct kgem_request *rq;
 
+		DBG(("%s: retiring ring %d\n", __FUNCTION__, ring));
+
 		rq = list_first_entry(&kgem->requests[ring],
 				      struct kgem_request,
 				      list);
@@ -3135,8 +3137,8 @@ static bool kgem_retire__requests_ring(struct kgem *kgem, int ring)
 					      struct kgem_request,
 					      list)->bo;
 
-		DBG(("%s: ring=%d, %d outstanding requests, oldest=%d\n",
-		     __FUNCTION__, ring, count, bo ? bo->handle : 0));
+		DBG(("%s: ring=%d, %d outstanding requests, oldest=%d, retired? %d\n",
+		     __FUNCTION__, ring, count, bo ? bo->handle : 0, retired));
 	}
 #endif
 
