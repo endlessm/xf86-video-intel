@@ -3997,7 +3997,6 @@ void _kgem_submit(struct kgem *kgem)
 	assert(kgem->nreloc <= ARRAY_SIZE(kgem->reloc));
 	assert(kgem->nexec < ARRAY_SIZE(kgem->exec));
 	assert(kgem->nfence <= kgem->fence_max);
-	assert(kgem->ring < ARRAY_SIZE(kgem->requests));
 
 	kgem_finish_buffers(kgem);
 
