@@ -661,10 +661,11 @@ static void *__kgem_bo_map__cpu(struct kgem *kgem, struct kgem_bo *bo)
 	struct local_i915_gem_mmap arg;
 	int err;
 
-retry:
 	VG_CLEAR(arg);
-	arg.handle = bo->handle;
 	arg.offset = 0;
+
+retry:
+	arg.handle = bo->handle;
 	arg.size = bytes(bo);
 	if ((err = do_ioctl(kgem->fd, LOCAL_IOCTL_I915_GEM_MMAP, &arg))) {
 		DBG(("%s: failed %d, throttling/cleaning caches\n",
@@ -2518,6 +2519,8 @@ inline static void kgem_bo_move_to_inactive(struct kgem *kgem,
 
 	if (bucket(bo) >= NUM_CACHE_BUCKETS) {
 		if (bo->map__gtt) {
+			DBG(("%s: relinquishing large GTT mapping for handle=%d\n",
+			     __FUNCTION__, bo->handle));
 			munmap(bo->map__gtt, bytes(bo));
 			bo->map__gtt = NULL;
 		}
@@ -3381,8 +3384,10 @@ static void kgem_close_inactive(struct kgem *kgem)
 {
 	unsigned int i;
 
-	for (i = 0; i < ARRAY_SIZE(kgem->inactive); i++)
+	for (i = 0; i < ARRAY_SIZE(kgem->inactive); i++) {
 		kgem_close_list(kgem, &kgem->inactive[i]);
+		assert(list_is_empty(&kgem->inactive[i]));
+	}
 }
 
 static void kgem_finish_buffers(struct kgem *kgem)
