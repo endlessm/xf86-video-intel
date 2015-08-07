@@ -3858,7 +3858,7 @@ out_16384:
 		size = kgem->nbatch * sizeof(uint32_t);
 #endif
 
-	if (!kgem->batch_bo) {
+	if (!kgem->batch_bo || !kgem->has_llc) {
 		bo = kgem_create_linear(kgem, size, CREATE_NO_THROTTLE);
 		if (bo) {
 write:
