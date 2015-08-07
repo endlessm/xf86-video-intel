@@ -4369,13 +4369,14 @@ bool kgem_cleanup_cache(struct kgem *kgem)
 		if (!list_is_empty(&kgem->requests[n])) {
 			struct kgem_request *rq;
 
-			rq = list_first_entry(&kgem->requests[n],
-					      struct kgem_request,
-					      list);
+			rq = list_last_entry(&kgem->requests[n],
+					     struct kgem_request,
+					     list);
 
 			DBG(("%s: sync on cleanup\n", __FUNCTION__));
 			kgem_bo_wait(kgem, rq->bo);
 		}
+		assert(list_is_empty(&kgem->requests[n]));
 	}
 
 	kgem_retire(kgem);
