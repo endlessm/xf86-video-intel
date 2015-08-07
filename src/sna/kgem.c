@@ -3912,6 +3912,7 @@ void _kgem_submit(struct kgem *kgem)
 {
 	struct kgem_request *rq;
 	uint32_t batch_end;
+	int i, ret;
 
 	assert(!DBG_NO_HW);
 	assert(!kgem->wedged);
@@ -3946,7 +3947,6 @@ void _kgem_submit(struct kgem *kgem)
 	rq->bo = kgem_create_batch(kgem);
 	if (rq->bo) {
 		struct drm_i915_gem_execbuffer2 execbuf;
-		int i, ret;
 
 		assert(!rq->bo->needs_flush);
 
@@ -3984,7 +3984,79 @@ void _kgem_submit(struct kgem *kgem)
 		}
 
 		ret = do_execbuf(kgem, &execbuf);
-		if (DEBUG_SYNC && ret == 0) {
+	} else
+		ret = -ENOMEM;
+
+	if (ret < 0) {
+		kgem_throttle(kgem);
+		if (!kgem->wedged) {
+			xf86DrvMsg(kgem_get_screen_index(kgem), X_ERROR,
+				   "Failed to submit rendering commands (%s), disabling acceleration.\n",
+				   strerror(-ret));
+			__kgem_set_wedged(kgem);
+		}
+
+#if !NDEBUG
+		ErrorF("batch[%d/%d]: %d %d %d, nreloc=%d, nexec=%d, nfence=%d, aperture=%d, fenced=%d, high=%d,%d: errno=%d\n",
+		       kgem->mode, kgem->ring, batch_end, kgem->nbatch, kgem->surface,
+		       kgem->nreloc, kgem->nexec, kgem->nfence, kgem->aperture, kgem->aperture_fenced, kgem->aperture_high, kgem->aperture_total, -ret);
+
+		for (i = 0; i < kgem->nexec; i++) {
+			struct kgem_bo *bo, *found = NULL;
+
+			list_for_each_entry(bo, &kgem->next_request->buffers, request) {
+				if (bo->handle == kgem->exec[i].handle) {
+					found = bo;
+					break;
+				}
+			}
+			ErrorF("exec[%d] = handle:%d, presumed offset: %x, size: %d, tiling %d, fenced %d, snooped %d, deleted %d\n",
+			       i,
+			       kgem->exec[i].handle,
+			       (int)kgem->exec[i].offset,
+			       found ? kgem_bo_size(found) : -1,
+			       found ? found->tiling : -1,
+			       (int)(kgem->exec[i].flags & EXEC_OBJECT_NEEDS_FENCE),
+			       found ? found->snoop : -1,
+			       found ? found->purged : -1);
+		}
+		for (i = 0; i < kgem->nreloc; i++) {
+			ErrorF("reloc[%d] = pos:%d, target:%d, delta:%d, read:%x, write:%x, offset:%x\n",
+			       i,
+			       (int)kgem->reloc[i].offset,
+			       kgem->reloc[i].target_handle,
+			       kgem->reloc[i].delta,
+			       kgem->reloc[i].read_domains,
+			       kgem->reloc[i].write_domain,
+			       (int)kgem->reloc[i].presumed_offset);
+		}
+
+		{
+			struct drm_i915_gem_get_aperture aperture;
+			if (do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_GET_APERTURE, &aperture) == 0)
+				ErrorF("Aperture size %lld, available %lld\n",
+				       (long long)aperture.aper_size,
+				       (long long)aperture.aper_available_size);
+		}
+
+		if (ret == -ENOSPC)
+			dump_gtt_info(kgem);
+		if (ret == -EDEADLK)
+			dump_fence_regs(kgem);
+
+		if (DEBUG_SYNC) {
+			int fd = open("/tmp/batchbuffer", O_WRONLY | O_CREAT | O_APPEND, 0666);
+			if (fd != -1) {
+				int ignored = write(fd, kgem->batch, batch_end*sizeof(uint32_t));
+				assert(ignored == batch_end*sizeof(uint32_t));
+				close(fd);
+			}
+
+			FatalError("SNA: failed to submit batchbuffer, errno=%d\n", -ret);
+		}
+#endif
+	} else {
+		if (DEBUG_SYNC) {
 			struct drm_i915_gem_set_domain set_domain;
 
 			VG_CLEAR(set_domain);
@@ -3994,80 +4066,15 @@ void _kgem_submit(struct kgem *kgem)
 
 			ret = do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain);
 		}
-		if (ret < 0) {
-			kgem_throttle(kgem);
-			if (!kgem->wedged) {
-				xf86DrvMsg(kgem_get_screen_index(kgem), X_ERROR,
-					   "Failed to submit rendering commands, disabling acceleration.\n");
-				__kgem_set_wedged(kgem);
-			}
 
-#if !NDEBUG
-			ErrorF("batch[%d/%d]: %d %d %d, nreloc=%d, nexec=%d, nfence=%d, aperture=%d, fenced=%d, high=%d,%d: errno=%d\n",
-			       kgem->mode, kgem->ring, batch_end, kgem->nbatch, kgem->surface,
-			       kgem->nreloc, kgem->nexec, kgem->nfence, kgem->aperture, kgem->aperture_fenced, kgem->aperture_high, kgem->aperture_total, -ret);
-
-			for (i = 0; i < kgem->nexec; i++) {
-				struct kgem_bo *bo, *found = NULL;
-
-				list_for_each_entry(bo, &kgem->next_request->buffers, request) {
-					if (bo->handle == kgem->exec[i].handle) {
-						found = bo;
-						break;
-					}
-				}
-				ErrorF("exec[%d] = handle:%d, presumed offset: %x, size: %d, tiling %d, fenced %d, snooped %d, deleted %d\n",
-				       i,
-				       kgem->exec[i].handle,
-				       (int)kgem->exec[i].offset,
-				       found ? kgem_bo_size(found) : -1,
-				       found ? found->tiling : -1,
-				       (int)(kgem->exec[i].flags & EXEC_OBJECT_NEEDS_FENCE),
-				       found ? found->snoop : -1,
-				       found ? found->purged : -1);
-			}
-			for (i = 0; i < kgem->nreloc; i++) {
-				ErrorF("reloc[%d] = pos:%d, target:%d, delta:%d, read:%x, write:%x, offset:%x\n",
-				       i,
-				       (int)kgem->reloc[i].offset,
-				       kgem->reloc[i].target_handle,
-				       kgem->reloc[i].delta,
-				       kgem->reloc[i].read_domains,
-				       kgem->reloc[i].write_domain,
-				       (int)kgem->reloc[i].presumed_offset);
-			}
-
-			{
-				struct drm_i915_gem_get_aperture aperture;
-				if (do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_GET_APERTURE, &aperture) == 0)
-					ErrorF("Aperture size %lld, available %lld\n",
-					       (long long)aperture.aper_size,
-					       (long long)aperture.aper_available_size);
-			}
-
-			if (ret == -ENOSPC)
-				dump_gtt_info(kgem);
-			if (ret == -EDEADLK)
-				dump_fence_regs(kgem);
-
-			if (DEBUG_SYNC) {
-				int fd = open("/tmp/batchbuffer", O_WRONLY | O_CREAT | O_APPEND, 0666);
-				if (fd != -1) {
-					int ignored = write(fd, kgem->batch, batch_end*sizeof(uint32_t));
-					assert(ignored == batch_end*sizeof(uint32_t));
-					close(fd);
-				}
-
-				FatalError("SNA: failed to submit batchbuffer, errno=%d\n", -ret);
-			}
-#endif
-		}
-	}
 #if SHOW_BATCH_AFTER
-	if (gem_read(kgem->fd, rq->bo->handle, kgem->batch, 0, batch_end*sizeof(uint32_t)) == 0)
-		__kgem_batch_debug(kgem, batch_end);
+		if (gem_read(kgem->fd, rq->bo->handle, kgem->batch, 0, batch_end*sizeof(uint32_t)) == 0)
+			__kgem_batch_debug(kgem, batch_end);
 #endif
-	kgem_commit(kgem);
+
+		kgem_commit(kgem);
+	}
+
 	if (kgem->wedged)
 		kgem_cleanup(kgem);
 
