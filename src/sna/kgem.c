@@ -1704,6 +1704,7 @@ static int kgem_bo_wait(struct kgem *kgem, struct kgem_bo *bo)
 	struct drm_i915_gem_wait wait;
 	int ret;
 
+	DBG(("%s: waiting for handle=%d\n", __FUNCTION__, bo->handle));
 	if (bo->rq == NULL)
 		return 0;
 
@@ -1756,14 +1757,12 @@ restart:
 	if (kgem->batch_bo)
 		kgem->batch = kgem_bo_map__cpu(kgem, kgem->batch_bo);
 	if (kgem->batch == NULL) {
-		DBG(("%s: unable to map batch bo, mallocing(size=%d)\n",
-		     __FUNCTION__,
-		     sizeof(uint32_t)*kgem->batch_size));
 		if (kgem->batch_bo) {
 			kgem_bo_destroy(kgem, kgem->batch_bo);
 			kgem->batch_bo = NULL;
 		}
 
+		assert(kgem->ring < ARRAY_SIZE(kgem->requests));
 		if (!list_is_empty(&kgem->requests[kgem->ring])) {
 			struct kgem_request *rq;
 
@@ -1773,6 +1772,8 @@ restart:
 				goto restart;
 		}
 
+		DBG(("%s: unable to map batch bo, mallocing(size=%d)\n",
+		     __FUNCTION__, sizeof(uint32_t)*kgem->batch_size));
 		if (posix_memalign((void **)&kgem->batch, PAGE_SIZE,
 				   ALIGN(sizeof(uint32_t) * kgem->batch_size, PAGE_SIZE))) {
 			ERR(("%s: batch allocation failed, disabling acceleration\n", __FUNCTION__));
@@ -2666,7 +2667,6 @@ static void kgem_bo_move_to_scanout(struct kgem *kgem, struct kgem_bo *bo)
 		list_move(&bo->list, &kgem->scanout);
 
 	kgem->need_expire = true;
-
 }
 
 static void kgem_bo_move_to_snoop(struct kgem *kgem, struct kgem_bo *bo)
@@ -3101,6 +3101,7 @@ static bool kgem_retire__requests_ring(struct kgem *kgem, int ring)
 {
 	bool retired = false;
 
+	assert(ring < ARRAY_SIZE(kgem->requests));
 	while (!list_is_empty(&kgem->requests[ring])) {
 		struct kgem_request *rq;
 
@@ -3980,6 +3981,7 @@ void _kgem_submit(struct kgem *kgem)
 	assert(kgem->nreloc <= ARRAY_SIZE(kgem->reloc));
 	assert(kgem->nexec < ARRAY_SIZE(kgem->exec));
 	assert(kgem->nfence <= kgem->fence_max);
+	assert(kgem->ring < ARRAY_SIZE(kgem->requests));
 
 	kgem_finish_buffers(kgem);
 
@@ -6001,6 +6003,7 @@ inline static bool nearly_idle(struct kgem *kgem)
 {
 	int ring = kgem->ring == KGEM_BLT;
 
+	assert(ring < ARRAY_SIZE(kgem->requests));
 	if (list_is_singular(&kgem->requests[ring]))
 		return true;
 
