@@ -1005,13 +1005,17 @@ static struct kgem_request *__kgem_request_alloc(struct kgem *kgem)
 {
 	struct kgem_request *rq;
 
-	rq = __kgem_freed_request;
-	if (rq) {
-		__kgem_freed_request = *(struct kgem_request **)rq;
+	if (unlikely(kgem->wedged)) {
+		rq = &kgem->static_request;
 	} else {
-		rq = malloc(sizeof(*rq));
-		if (rq == NULL)
-			rq = &kgem->static_request;
+		rq = __kgem_freed_request;
+		if (rq) {
+			__kgem_freed_request = *(struct kgem_request **)rq;
+		} else {
+			rq = malloc(sizeof(*rq));
+			if (rq == NULL)
+				rq = &kgem->static_request;
+		}
 	}
 
 	list_init(&rq->buffers);
