@@ -574,6 +574,8 @@ static void *__kgem_bo_map__gtt(struct kgem *kgem, struct kgem_bo *bo)
 retry_gtt:
 	gtt.handle = bo->handle;
 	if ((err = do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_MMAP_GTT, &gtt))) {
+		DBG(("%s: failed %d, throttling/cleaning caches\n",
+		     __FUNCTION__, err));
 		assert(err != EINVAL);
 
 		(void)__kgem_throttle_retire(kgem, 0);
@@ -593,6 +595,8 @@ retry_mmap:
 		   kgem->fd, gtt.offset);
 	if (ptr == MAP_FAILED) {
 		err = errno;
+		DBG(("%s: failed %d, throttling/cleaning caches\n",
+		     __FUNCTION__, err));
 		assert(err != EINVAL);
 
 		if (__kgem_throttle_retire(kgem, 0))
@@ -631,6 +635,8 @@ retry_wc:
 	wc.size = bytes(bo);
 	wc.flags = I915_MMAP_WC;
 	if ((err = do_ioctl(kgem->fd, LOCAL_IOCTL_I915_GEM_MMAP_v2, &wc))) {
+		DBG(("%s: failed %d, throttling/cleaning caches\n",
+		     __FUNCTION__, err));
 		assert(err != EINVAL);
 
 		if (__kgem_throttle_retire(kgem, 0))
@@ -661,6 +667,8 @@ retry:
 	arg.offset = 0;
 	arg.size = bytes(bo);
 	if ((err = do_ioctl(kgem->fd, LOCAL_IOCTL_I915_GEM_MMAP, &arg))) {
+		DBG(("%s: failed %d, throttling/cleaning caches\n",
+		     __FUNCTION__, err));
 		assert(err != -EINVAL || bo->prime);
 
 		if (__kgem_throttle_retire(kgem, 0))
@@ -820,6 +828,8 @@ retry:
 	}
 
 	if ((err = gem_write(kgem->fd, bo->handle, 0, length, data))) {
+		DBG(("%s: failed %d, throttling/cleaning caches\n",
+		     __FUNCTION__, err));
 		assert(err != EINVAL);
 
 		(void)__kgem_throttle_retire(kgem, 0);
@@ -4344,31 +4354,26 @@ bool kgem_cleanup_cache(struct kgem *kgem)
 	unsigned int i;
 	int n;
 
+	DBG(("%s\n", __FUNCTION__));
+
 	/* sync to the most recent request */
 	for (n = 0; n < ARRAY_SIZE(kgem->requests); n++) {
 		if (!list_is_empty(&kgem->requests[n])) {
 			struct kgem_request *rq;
-			struct drm_i915_gem_set_domain set_domain;
 
 			rq = list_first_entry(&kgem->requests[n],
 					      struct kgem_request,
 					      list);
 
 			DBG(("%s: sync on cleanup\n", __FUNCTION__));
-
-			VG_CLEAR(set_domain);
-			set_domain.handle = rq->bo->handle;
-			set_domain.read_domains = I915_GEM_DOMAIN_GTT;
-			set_domain.write_domain = I915_GEM_DOMAIN_GTT;
-			(void)do_ioctl(kgem->fd,
-				       DRM_IOCTL_I915_GEM_SET_DOMAIN,
-				       &set_domain);
+			kgem_bo_wait(kgem, rq->bo);
 		}
 	}
 
 	kgem_retire(kgem);
 	kgem_cleanup(kgem);
 
+	DBG(("%s: need_expire?=%d\n", __FUNCTION__, kgem->need_expire));
 	if (!kgem->need_expire)
 		return false;
 
@@ -4395,6 +4400,8 @@ bool kgem_cleanup_cache(struct kgem *kgem)
 
 	kgem->need_purge = false;
 	kgem->need_expire = false;
+
+	DBG(("%s: complete\n", __FUNCTION__));
 	return true;
 }
 
