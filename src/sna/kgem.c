@@ -2528,6 +2528,8 @@ inline static void kgem_bo_move_to_inactive(struct kgem *kgem,
 		assert(list_is_empty(&bo->vma));
 		list_move(&bo->list, &kgem->inactive[bucket(bo)]);
 		if (bo->map__gtt && !kgem_bo_can_map(kgem, bo)) {
+			DBG(("%s: relinquishing old GTT mapping for handle=%d\n",
+			     __FUNCTION__, bo->handle));
 			munmap(bo->map__gtt, bytes(bo));
 			bo->map__gtt = NULL;
 		}
