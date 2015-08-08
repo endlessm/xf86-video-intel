@@ -360,7 +360,7 @@ sna_dri2_get_back(struct sna *sna,
 	}
 	assert(bo->active_scanout == 0);
 
-	if (reuse && get_private(back)->bo->refcnt == 1) {
+	if (reuse && get_private(back)->bo->refcnt == 1 + get_private(back)->bo->active_scanout) {
 		if (&c->link == &priv->cache)
 			c = malloc(sizeof(*c));
 		if (c != NULL) {
