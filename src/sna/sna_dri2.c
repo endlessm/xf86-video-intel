@@ -214,6 +214,8 @@ sna_dri2_cache_bo(struct sna *sna,
 {
 	struct dri_bo *c;
 
+	DBG(("%s(handle=%d, name=%d)\n", __FUNCTION__, bo->handle, name));
+
 	if (draw == NULL) {
 		DBG(("%s: no draw, releasing handle=%d\n",
 		     __FUNCTION__, bo->handle));
@@ -2405,10 +2407,13 @@ static void chain_swap(struct sna_dri2_event *chain)
 				chain->back->flags = tmp.flags;
 				chain->back->pitch = tmp.bo->pitch;
 
-				tmp.bo = get_private(chain->back)->copy.bo;
-			}
-
-			kgem_bo_destroy(&chain->sna->kgem, tmp.bo);
+				sna_dri2_cache_bo(chain->sna, chain->draw,
+						  get_private(chain->back)->copy.bo,
+						  get_private(chain->back)->copy.name,
+						  get_private(chain->back)->copy.size,
+						  get_private(chain->back)->copy.flags);
+			} else
+				kgem_bo_destroy(&chain->sna->kgem, tmp.bo);
 
 			get_private(chain->back)->copy.bo = ref(get_private(chain->back)->bo);
 			get_private(chain->back)->copy.name = chain->back->name;
@@ -2668,6 +2673,8 @@ sna_dri2_immediate_blit(struct sna *sna,
 		assert(chain->bo == NULL);
 		assert(chain->queued);
 
+		DBG(("%s: stealing placeholder\n", __FUNCTION__));
+
 		_sna_dri2_destroy_buffer(chain->sna, chain->draw, chain->front);
 		_sna_dri2_destroy_buffer(chain->sna, chain->draw, chain->back);
 
@@ -2710,6 +2717,8 @@ sna_dri2_immediate_blit(struct sna *sna,
 	    chain->chain != info &&
 	    chain->chain->type == SWAP_THROTTLE) {
 		struct sna_dri2_event *tmp = chain->chain;
+
+		DBG(("%s: replacing next swap\n", __FUNCTION__));
 
 		assert(!tmp->queued);
 
