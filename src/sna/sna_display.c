@@ -6244,6 +6244,7 @@ error:
 
 		if (data) {
 			assert(crtc->flip_bo == NULL);
+			assert(handler);
 			crtc->flip_handler = handler;
 			crtc->flip_data = data;
 			crtc->flip_bo = kgem_bo_reference(bo);
@@ -8564,6 +8565,7 @@ again:
 					crtc->swap.tv_usec = vbl->tv_usec;
 					crtc->swap.msc = msc;
 				}
+				assert(crtc->flip_pending);
 				crtc->flip_pending = false;
 
 				assert(crtc->flip_bo);
