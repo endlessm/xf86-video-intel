@@ -1510,10 +1510,10 @@ sna_dri2_remove_event(WindowPtr win, struct sna_dri2_event *info)
 
 	priv->chain = info->chain;
 	if (priv->chain == NULL) {
-		while (!list_is_empty(&priv->cache)) {
-			struct dri_bo *c;
+		struct dri_bo *c, *tmp;
 
-			c = list_first_entry(&priv->cache, struct dri_bo, link);
+		c = list_entry(priv->cache.next->next, struct dri_bo, link);
+		list_for_each_entry_safe_from(c, tmp, &priv->cache, link) {
 			list_del(&c->link);
 
 			DBG(("%s: releasing cached handle=%d\n", __FUNCTION__, c->bo ? c->bo->handle : 0));
