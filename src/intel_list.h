@@ -396,13 +396,13 @@ static inline void list_move_tail(struct list *list, struct list *head)
 #define list_last_entry(ptr, type, member) \
     list_entry((ptr)->prev, type, member)
 
-#define list_for_each_entry_reverse(pos, head, member)				\
+#define list_for_each_entry_reverse(pos, head, member)			\
     for (pos = __container_of((head)->prev, pos, member);		\
 	 &pos->member != (head);					\
 	 pos = __container_of(pos->member.prev, pos, member))
 
 #define list_for_each_entry_safe_from(pos, tmp, head, member)		\
-    for (tmp = __container_of(pos->member.next, pos, member)		\
+    for (tmp = __container_of(pos->member.next, pos, member);		\
 	 &pos->member != (head);					\
 	 pos = tmp)
 
