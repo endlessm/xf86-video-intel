@@ -1014,16 +1014,32 @@ rotation_reduce(struct plane *p, unsigned rotation)
 #define RR_Reflect_XY (RR_Reflect_X | RR_Reflect_Y)
 
 	if ((unsupported_rotations & RR_Reflect_XY) == RR_Reflect_XY &&
-	    p->rotation.supported& RR_Rotate_180) {
-		rotation &= ~RR_Reflect_XY;
-		rotation ^= RR_Rotate_180;
+	    p->rotation.supported & RR_Rotate_180) {
+		unsigned other_bits;
+
+		/* paranoia for future extensions */
+		other_bits = rotation & ~(RR_Rotate_All | RR_Reflect_XY);
+
+		/* Reflect the screen by rotating the rotation bit,
+		 * which has to have at least RR_Rotate_0 set. This allows
+		 * us to reflect any of the rotation bits, not just 0.
+		 */
+		rotation &= RR_Rotate_All;
+		assert(rotation);
+		rotation <<= 2; /* RR_Rotate_0 -> RR_Rotate_180 etc */
+		rotation |= rotation >> 4; /* RR_Rotate_270' to RR_Rotate_90 */
+
+		rotation |= other_bits;
 	}
 
 	if ((unsupported_rotations & RR_Rotate_180) &&
-	    (p->rotation.supported& RR_Reflect_XY) == RR_Reflect_XY) {
+	    (p->rotation.supported & RR_Reflect_XY) == RR_Reflect_XY) {
 		rotation ^= RR_Reflect_XY;
 		rotation &= ~RR_Rotate_180;
 	}
+
+	/* Only one rotation bit should be set */
+	assert(is_power_of_two(rotation & RR_Rotate_All));
 
 #undef RR_Reflect_XY
 
