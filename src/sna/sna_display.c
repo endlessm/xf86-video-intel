@@ -1013,8 +1013,7 @@ rotation_reduce(struct plane *p, unsigned rotation)
 
 #define RR_Reflect_XY (RR_Reflect_X | RR_Reflect_Y)
 
-	if ((unsupported_rotations & RR_Reflect_XY) == RR_Reflect_XY &&
-	    p->rotation.supported & RR_Rotate_180) {
+	if ((unsupported_rotations & RR_Reflect_XY) == RR_Reflect_XY) {
 		unsigned other_bits;
 
 		/* paranoia for future extensions */
@@ -1061,7 +1060,7 @@ rotation_set(struct sna *sna, struct plane *p, uint32_t desired)
 	if (desired == p->rotation.current)
 		return true;
 
-	if ((desired & p->rotation.supported) == 0) {
+	if ((desired & p->rotation.supported) != desired) {
 		errno = EINVAL;
 		return false;
 	}
@@ -1987,9 +1986,9 @@ static bool use_shadow(struct sna *sna, xf86CrtcPtr crtc)
 		bool needs_transform = true;
 		unsigned rotation = rotation_reduce(&to_sna_crtc(crtc)->primary, crtc->rotation);
 		DBG(("%s: natively supported rotation? rotation=%x & supported=%x == %d\n",
-		     __FUNCTION__, crtc->rotation, to_sna_crtc(crtc)->primary.rotation.supported,
-		     !!(crtc->rotation & to_sna_crtc(crtc)->primary.rotation.supported)));
-		if (to_sna_crtc(crtc)->primary.rotation.supported & rotation)
+		     __FUNCTION__, rotation, to_sna_crtc(crtc)->primary.rotation.supported,
+		     rotation == (rotation & to_sna_crtc(crtc)->primary.rotation.supported)));
+		if ((to_sna_crtc(crtc)->primary.rotation.supported & rotation) == rotation)
 			needs_transform = RRTransformCompute(crtc->x, crtc->y,
 							     crtc->mode.HDisplay, crtc->mode.VDisplay,
 							     RR_Rotate_0, transform,
