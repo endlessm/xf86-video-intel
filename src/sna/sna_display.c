@@ -1004,43 +1004,40 @@ sna_crtc_force_outputs_off(xf86CrtcPtr crtc)
 }
 
 static unsigned
+rotation_reflect(unsigned rotation)
+{
+	unsigned other_bits;
+
+	/* paranoia for future extensions */
+	other_bits = rotation & ~RR_Rotate_All;
+
+	/* flip the reflection to compensate for reflecting the rotation */
+	other_bits ^= RR_Reflect_X | RR_Reflect_Y;
+
+	/* Reflect the screen by rotating the rotation bit,
+	 * which has to have at least RR_Rotate_0 set. This allows
+	 * us to reflect any of the rotation bits, not just 0.
+	 */
+	rotation &= RR_Rotate_All;
+	assert(rotation);
+	rotation <<= 2; /* RR_Rotate_0 -> RR_Rotate_180 etc */
+	rotation |= rotation >> 4; /* RR_Rotate_270' to RR_Rotate_90 */
+
+	return rotation | other_bits;
+}
+
+static unsigned
 rotation_reduce(struct plane *p, unsigned rotation)
 {
-	unsigned unsupported_rotations = rotation & ~p->rotation.supported;
-
-	if (unsupported_rotations == 0)
-		return rotation;
-
-#define RR_Reflect_XY (RR_Reflect_X | RR_Reflect_Y)
-
-	if ((unsupported_rotations & RR_Reflect_XY) == RR_Reflect_XY) {
-		unsigned other_bits;
-
-		/* paranoia for future extensions */
-		other_bits = rotation & ~(RR_Rotate_All | RR_Reflect_XY);
-
-		/* Reflect the screen by rotating the rotation bit,
-		 * which has to have at least RR_Rotate_0 set. This allows
-		 * us to reflect any of the rotation bits, not just 0.
-		 */
-		rotation &= RR_Rotate_All;
-		assert(rotation);
-		rotation <<= 2; /* RR_Rotate_0 -> RR_Rotate_180 etc */
-		rotation |= rotation >> 4; /* RR_Rotate_270' to RR_Rotate_90 */
-
-		rotation |= other_bits;
-	}
-
-	if ((unsupported_rotations & RR_Rotate_180) &&
-	    (p->rotation.supported & RR_Reflect_XY) == RR_Reflect_XY) {
-		rotation ^= RR_Reflect_XY;
-		rotation &= ~RR_Rotate_180;
+	/* If unsupported try exchanging rotation for a reflection */
+	if (rotation & ~p->rotation.supported) {
+		unsigned new_rotation = rotation_reflect(rotation);
+		if ((new_rotation & p->rotation.supported) == new_rotation)
+			rotation = new_rotation;
 	}
 
 	/* Only one rotation bit should be set */
 	assert(is_power_of_two(rotation & RR_Rotate_All));
-
-#undef RR_Reflect_XY
 
 	return rotation;
 }
