@@ -3287,6 +3287,8 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 		bool sync = current_msc < *target_msc;
 		sna_dri2_immediate_blit(sna, info, sync);
 		*target_msc = current_msc + sync;
+		DBG(("%s: reported target_msc=%llu\n",
+		     __FUNCTION__, *target_msc));
 		return TRUE;
 	}
 
@@ -3321,8 +3323,6 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 
 blit:
 	DBG(("%s -- blit\n", __FUNCTION__));
-	if (info)
-		sna_dri2_event_free(info);
 	if (can_xchg(sna, draw, front, back)) {
 		sna_dri2_xchg(draw, front, back);
 	} else {
@@ -3334,8 +3334,38 @@ skip:
 	DBG(("%s: unable to show frame, unblocking client\n", __FUNCTION__));
 	if (crtc == NULL)
 		crtc = sna_primary_crtc(sna);
-	fake_swap_complete(sna, client, draw, crtc, type, func, data);
-	*target_msc = 0; /* offscreen, so zero out target vblank count */
+	if (crtc) {
+		if (!info)
+			info = sna_dri2_add_event(sna, draw, client, crtc);
+		if (!info)
+			goto fake;
+
+		info->type = SWAP_WAIT;
+		info->event_complete = func;
+		info->event_data = data;
+		info->queued = true;
+
+		VG_CLEAR(vbl);
+		vbl.request.type =
+			DRM_VBLANK_RELATIVE |
+			DRM_VBLANK_EVENT;
+		vbl.request.signal = (uintptr_t)info;
+		vbl.request.sequence = 1;
+
+		if (sna_wait_vblank(sna, &vbl, info->pipe))
+			goto fake;
+
+		*target_msc = current_msc + 1;
+	} else {
+fake:
+		/* XXX Use a Timer to throttle the client? */
+		fake_swap_complete(sna, client, draw, crtc, type, func, data);
+		*target_msc = 0; /* offscreen, so zero out target vblank */
+		if (info)
+			sna_dri2_event_free(info);
+	}
+	swap_limit(draw, 1);
+	DBG(("%s: reported target_msc=%llu\n", __FUNCTION__, *target_msc));
 	return TRUE;
 }
 
@@ -3399,6 +3429,8 @@ sna_dri2_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc
 	     (long long)remainder));
 
 	/* Drawable not visible, return immediately */
+	if (crtc == NULL)
+		crtc = sna_primary_crtc(sna);
 	if (crtc == NULL)
 		goto out_complete;
 
