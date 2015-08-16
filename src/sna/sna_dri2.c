@@ -1577,7 +1577,6 @@ sna_dri2_client_gone(CallbackListPtr *list, void *closure, void *data)
 						      event);
 			event->client = NULL;
 			event->draw = NULL;
-			event->flip_continue = 0;
 			list_del(&event->link);
 		} else
 			sna_dri2_event_free(event);
@@ -1699,7 +1698,6 @@ void sna_dri2_destroy_window(WindowPtr win)
 			assert(info->draw == &win->drawable);
 			info->draw = NULL;
 			info->client = NULL;
-			info->flip_continue = 0;
 			list_del(&info->link);
 
 			chain = info->chain;
@@ -2746,8 +2744,8 @@ sna_dri2_flip_continue(struct sna_dri2_event *info)
 
 	DBG(("%s(mode=%d)\n", __FUNCTION__, info->flip_continue));
 	assert(info->flip_continue > 0);
-
 	info->type = info->flip_continue;
+	info->flip_continue = 0;
 
 	if (info->sna->mode.front_active == 0)
 		return false;
@@ -2763,7 +2761,6 @@ sna_dri2_flip_continue(struct sna_dri2_event *info)
 	info->sna->dri2.flip_pending = info;
 	assert(info->queued);
 
-	info->flip_continue = 0;
 	return true;
 }
 
@@ -2778,6 +2775,7 @@ sna_dri2_flip_keepalive(struct sna_dri2_event *info)
 	if (info->draw == NULL)
 		return false;
 
+	DBG(("%s: marking next flip as complete\n", __FUNCTION__));
 	info->flip_continue = FLIP_COMPLETE;
 	return sna_dri2_flip_continue(info);
 }
@@ -3031,15 +3029,14 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 				_sna_dri2_destroy_buffer(sna, draw, info->back);
 				info->back = sna_dri2_reference_buffer(back);
 			}
-			DBG(("%s: executing xchg of pending flip: flip_continue=%d, keepalive=%d\n", __FUNCTION__, info->flip_continue, info->keepalive));
+			DBG(("%s: executing xchg of pending flip: flip_continue=%d, keepalive=%d, chain?=%d\n", __FUNCTION__, info->flip_continue, info->keepalive, current_msc < *target_msc));
 			sna_dri2_xchg(draw, front, back);
+			info->flip_continue = FLIP_COMPLETE;
 			info->keepalive++;
 			if (xorg_can_triple_buffer() &&
-			    !info->flip_continue &&
 			    current_msc < *target_msc) {
 				DBG(("%s: chaining flip\n", __FUNCTION__));
 				info->type = FLIP_THROTTLE;
-				info->flip_continue = FLIP_COMPLETE;
 				goto out;
 			} else
 				goto new_back;

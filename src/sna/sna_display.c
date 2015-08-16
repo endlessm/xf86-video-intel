@@ -8610,10 +8610,7 @@ again:
 				assert(sna->mode.flip_active);
 				if (--sna->mode.flip_active == 0) {
 					assert(crtc->flip_handler);
-					assert(crtc->flip_data);
 					crtc->flip_handler(vbl, crtc->flip_data);
-					dbg(crtc->flip_handler = NULL);
-					dbg(crtc->flip_data = NULL);
 				}
 			}
 			break;
