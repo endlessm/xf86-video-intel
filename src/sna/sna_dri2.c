@@ -205,61 +205,6 @@ static struct dri2_window *dri2_window(WindowPtr win)
 }
 
 static void
-sna_dri2_cache_bo(struct sna *sna,
-		  DrawablePtr draw,
-		  struct kgem_bo *bo,
-		  uint32_t name,
-		  uint32_t size,
-		  uint32_t flags)
-{
-	struct dri_bo *c;
-
-	DBG(("%s(handle=%d, name=%d)\n", __FUNCTION__, bo->handle, name));
-
-	if (draw == NULL) {
-		DBG(("%s: no draw, releasing handle=%d\n",
-		     __FUNCTION__, bo->handle));
-		goto err;
-	}
-
-	if (bo->refcnt > 1) {
-		DBG(("%s: multiple references [%d], releasing handle\n",
-		     __FUNCTION__, bo->refcnt, bo->handle));
-		goto err;
-	}
-
-	if ((draw->height << 16 | draw->width) != size) {
-		DBG(("%s: wrong size [%dx%d], releasing handle\n",
-		     __FUNCTION__,
-		     size & 0xffff, size >> 16,
-		     bo->handle));
-		goto err;
-	}
-
-	if (bo->scanout && front_pitch(draw) != bo->pitch) {
-		DBG(("%s: scanout with pitch change [%d %= %d], releasing handle\n",
-		     __FUNCTION__, bo->pitch, front_pitch(draw), bo->handle));
-		goto err;
-	}
-
-	c = malloc(sizeof(*c));
-	if (!c)
-		goto err;
-
-	DBG(("%s: caching handle=%d (name=%d, flags=%d, active_scanout=%d)\n", __FUNCTION__, bo->handle, name, flags, bo->active_scanout));
-
-	c->bo = bo;
-	c->name = name;
-	c->flags = flags;
-	list_add(&c->link, &dri2_window((WindowPtr)draw)->cache);
-	return;
-
-err:
-	assert(bo->active_scanout == 0 || bo->scanout);
-	kgem_bo_destroy(&sna->kgem, bo);
-}
-
-static void
 sna_dri2_get_back(struct sna *sna,
 		  DrawablePtr draw,
 		  DRI2BufferPtr back)
@@ -843,11 +788,7 @@ static void _sna_dri2_destroy_buffer(struct sna *sna,
 	if (private->copy.bo) {
 		assert(private->copy.bo->active_scanout);
 		private->copy.bo->active_scanout--;
-		sna_dri2_cache_bo(sna, draw,
-				  private->copy.bo,
-				  private->copy.name,
-				  private->copy.size,
-				  private->copy.flags);
+		kgem_bo_destroy(&sna->kgem, private->copy.bo);
 	}
 
 	if (private->pixmap) {
@@ -2405,13 +2346,9 @@ static void chain_swap(struct sna_dri2_event *chain)
 				chain->back->flags = tmp.flags;
 				chain->back->pitch = tmp.bo->pitch;
 
-				sna_dri2_cache_bo(chain->sna, chain->draw,
-						  get_private(chain->back)->copy.bo,
-						  get_private(chain->back)->copy.name,
-						  get_private(chain->back)->copy.size,
-						  get_private(chain->back)->copy.flags);
-			} else
-				kgem_bo_destroy(&chain->sna->kgem, tmp.bo);
+				tmp.bo = get_private(chain->back)->copy.bo;
+			}
+			kgem_bo_destroy(&chain->sna->kgem, tmp.bo);
 
 			get_private(chain->back)->copy.bo = ref(get_private(chain->back)->bo);
 			get_private(chain->back)->copy.name = chain->back->name;
@@ -2698,11 +2635,8 @@ sna_dri2_immediate_blit(struct sna *sna,
 		if (get_private(info->back)->copy.bo) {
 			assert(get_private(info->back)->copy.bo->active_scanout);
 			get_private(info->back)->copy.bo->active_scanout--;
-			sna_dri2_cache_bo(sna, info->draw,
-					  get_private(info->back)->copy.bo,
-					  get_private(info->back)->copy.name,
-					  get_private(info->back)->copy.size,
-					  get_private(info->back)->copy.flags);
+			kgem_bo_destroy(&sna->kgem,
+					  get_private(info->back)->copy.bo);
 		}
 		get_private(info->back)->copy.bo = ref(get_private(info->back)->bo);
 		get_private(info->back)->copy.name = info->back->name;
