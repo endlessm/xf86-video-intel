@@ -1327,7 +1327,7 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 
 	if (flags & (DRI2_SYNC | DRI2_BO)) { /* STAT! */
 		struct kgem_request *rq = RQ(dst_bo->rq);
-		if (rq != (void *)&sna->kgem) {
+		if (rq && rq != (void *)&sna->kgem) {
 			if (rq->bo == NULL)
 				kgem_submit(&sna->kgem);
 			if (rq->bo) { /* Becareful in case the gpu is wedged */
