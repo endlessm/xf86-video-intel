@@ -2325,6 +2325,15 @@ static void chain_swap(struct sna_dri2_event *chain)
 			get_private(chain->back)->size = get_private(chain->back)->copy.size;
 			chain->back->flags = get_private(chain->back)->copy.flags;
 			chain->back->pitch = get_private(chain->back)->copy.bo->pitch;
+			get_private(chain->back)->copy.bo = tmp.bo;
+			get_private(chain->back)->copy.name = tmp.name;
+			get_private(chain->back)->copy.size = tmp.size;
+			get_private(chain->back)->copy.flags = tmp.flags;
+
+			DBG(("%s: adding active marker [%d] to handle=%d\n",
+			     __FUNCTION__,
+			     tmp.bo->active_scanout, tmp.bo->handle));
+			tmp.bo->active_scanout++;
 		}
 
 		if (can_xchg(chain->sna, chain->draw, chain->front, chain->back)) {
@@ -2339,27 +2348,34 @@ static void chain_swap(struct sna_dri2_event *chain)
 		}
 
 		if (get_private(chain->back)->copy.bo) {
-			if (get_private(chain->back)->copy.bo == get_private(chain->back)->bo) {
-				get_private(chain->back)->bo = tmp.bo;
-				chain->back->name = tmp.name;
-				get_private(chain->back)->size = tmp.size;
-				chain->back->flags = tmp.flags;
-				chain->back->pitch = tmp.bo->pitch;
+			tmp.bo = get_private(chain->back)->copy.bo;
+			DBG(("%s: removing active marker [%d] from handle=%d\n",
+			     __FUNCTION__,
+			     tmp.bo->active_scanout, tmp.bo->handle));
+			assert(tmp.bo->active_scanout);
+			tmp.bo->active_scanout--;
 
-				tmp.bo = get_private(chain->back)->copy.bo;
-			}
-			kgem_bo_destroy(&chain->sna->kgem, tmp.bo);
+			tmp.bo = get_private(chain->back)->bo;
+			tmp.name = chain->back->name;
+			tmp.size = get_private(chain->back)->size;
+			tmp.flags = chain->back->flags;
 
-			get_private(chain->back)->copy.bo = ref(get_private(chain->back)->bo);
-			get_private(chain->back)->copy.name = chain->back->name;
-			get_private(chain->back)->copy.size = get_private(chain->back)->size;
-			get_private(chain->back)->copy.flags = chain->back->flags;
+			get_private(chain->back)->bo = get_private(chain->back)->copy.bo;
+			chain->back->name = get_private(chain->back)->copy.name;
+			get_private(chain->back)->size = get_private(chain->back)->copy.size;
+			chain->back->flags = get_private(chain->back)->copy.flags;
+			chain->back->pitch = get_private(chain->back)->copy.bo->pitch;
+			get_private(chain->back)->copy.bo = tmp.bo;
+			get_private(chain->back)->copy.name = tmp.name;
+			get_private(chain->back)->copy.size = tmp.size;
+			get_private(chain->back)->copy.flags = tmp.flags;
+
 			DBG(("%s: adding active marker [%d] to handle=%d\n",
 			     __FUNCTION__,
-			     get_private(chain->back)->bo->active_scanout,
-			     get_private(chain->back)->bo->handle));
-			get_private(chain->back)->bo->active_scanout++;
+			     tmp.bo->active_scanout, tmp.bo->handle));
+			tmp.bo->active_scanout++;
 		}
+
 		assert(get_private(chain->back)->bo != get_private(chain->front)->bo);
 	case SWAP:
 		break;
@@ -3287,6 +3303,7 @@ skip:
 			goto fake;
 
 		*target_msc = current_msc + 1;
+		swap_limit(draw, 1);
 	} else {
 fake:
 		/* XXX Use a Timer to throttle the client? */
@@ -3295,7 +3312,6 @@ fake:
 		if (info)
 			sna_dri2_event_free(info);
 	}
-	swap_limit(draw, 1);
 	DBG(("%s: reported target_msc=%llu\n", __FUNCTION__, *target_msc));
 	return TRUE;
 }
