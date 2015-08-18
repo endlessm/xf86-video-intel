@@ -2261,6 +2261,61 @@ static void fake_swap_complete(struct sna *sna, ClientPtr client,
 			 type, func, data);
 }
 
+static void
+sna_dri2_cache_bo(struct sna *sna,
+		  DrawablePtr draw,
+		  struct kgem_bo *bo,
+		  uint32_t name,
+		  uint32_t size,
+		  uint32_t flags)
+{
+	struct dri_bo *c;
+
+	DBG(("%s(handle=%d, name=%d)\n", __FUNCTION__, bo->handle, name));
+
+	if (draw == NULL) {
+		DBG(("%s: no draw, releasing handle=%d\n",
+		     __FUNCTION__, bo->handle));
+		goto err;
+	}
+
+	if (bo->refcnt > 1 + bo->active_scanout) {
+		DBG(("%s: multiple references [%d], releasing handle\n",
+		     __FUNCTION__, bo->refcnt, bo->handle));
+		goto err;
+	}
+
+	if ((draw->height << 16 | draw->width) != size) {
+		DBG(("%s: wrong size [%dx%d], releasing handle\n",
+		     __FUNCTION__,
+		     size & 0xffff, size >> 16,
+		     bo->handle));
+		goto err;
+	}
+
+	if (bo->scanout && front_pitch(draw) != bo->pitch) {
+		DBG(("%s: scanout with pitch change [%d %= %d], releasing handle\n",
+		     __FUNCTION__, bo->pitch, front_pitch(draw), bo->handle));
+		goto err;
+	}
+
+	c = malloc(sizeof(*c));
+	if (!c)
+		goto err;
+
+	DBG(("%s: caching handle=%d (name=%d, flags=%d, active_scanout=%d)\n", __FUNCTION__, bo->handle, name, flags, bo->active_scanout));
+
+	c->bo = bo;
+	c->name = name;
+	c->flags = flags;
+	list_add(&c->link, &dri2_window((WindowPtr)draw)->cache);
+	return;
+
+err:
+	assert(bo->active_scanout == 0 || bo->scanout);
+	kgem_bo_destroy(&sna->kgem, bo);
+}
+
 static void chain_swap(struct sna_dri2_event *chain)
 {
 	union drm_wait_vblank vbl;
@@ -2307,6 +2362,7 @@ static void chain_swap(struct sna_dri2_event *chain)
 		 * exchange back again so that we are consistent with the
 		 * client once more.
 		 */
+		tmp.bo = NULL;
 		if (get_private(chain->back)->copy.bo) {
 			tmp.bo = get_private(chain->back)->copy.bo;
 			DBG(("%s: removing active marker [%d] from handle=%d\n",
@@ -2325,15 +2381,7 @@ static void chain_swap(struct sna_dri2_event *chain)
 			get_private(chain->back)->size = get_private(chain->back)->copy.size;
 			chain->back->flags = get_private(chain->back)->copy.flags;
 			chain->back->pitch = get_private(chain->back)->copy.bo->pitch;
-			get_private(chain->back)->copy.bo = tmp.bo;
-			get_private(chain->back)->copy.name = tmp.name;
-			get_private(chain->back)->copy.size = tmp.size;
-			get_private(chain->back)->copy.flags = tmp.flags;
-
-			DBG(("%s: adding active marker [%d] to handle=%d\n",
-			     __FUNCTION__,
-			     tmp.bo->active_scanout, tmp.bo->handle));
-			tmp.bo->active_scanout++;
+			get_private(chain->back)->copy.bo = NULL;
 		}
 
 		if (can_xchg(chain->sna, chain->draw, chain->front, chain->back)) {
@@ -2347,33 +2395,19 @@ static void chain_swap(struct sna_dri2_event *chain)
 			__sna_dri2_copy_event(chain, DRI2_BO);
 		}
 
-		if (get_private(chain->back)->copy.bo) {
-			tmp.bo = get_private(chain->back)->copy.bo;
-			DBG(("%s: removing active marker [%d] from handle=%d\n",
-			     __FUNCTION__,
-			     tmp.bo->active_scanout, tmp.bo->handle));
-			assert(tmp.bo->active_scanout);
-			tmp.bo->active_scanout--;
+		if (tmp.bo) {
+			sna_dri2_cache_bo(chain->sna, chain->draw,
+					  get_private(chain->back)->bo,
+					  chain->back->name,
+					  get_private(chain->back)->size,
+					  chain->back->flags);
+			get_private(chain->back)->copy.bo = NULL;
 
-			tmp.bo = get_private(chain->back)->bo;
-			tmp.name = chain->back->name;
-			tmp.size = get_private(chain->back)->size;
-			tmp.flags = chain->back->flags;
-
-			get_private(chain->back)->bo = get_private(chain->back)->copy.bo;
-			chain->back->name = get_private(chain->back)->copy.name;
-			get_private(chain->back)->size = get_private(chain->back)->copy.size;
-			chain->back->flags = get_private(chain->back)->copy.flags;
-			chain->back->pitch = get_private(chain->back)->copy.bo->pitch;
-			get_private(chain->back)->copy.bo = tmp.bo;
-			get_private(chain->back)->copy.name = tmp.name;
-			get_private(chain->back)->copy.size = tmp.size;
-			get_private(chain->back)->copy.flags = tmp.flags;
-
-			DBG(("%s: adding active marker [%d] to handle=%d\n",
-			     __FUNCTION__,
-			     tmp.bo->active_scanout, tmp.bo->handle));
-			tmp.bo->active_scanout++;
+			get_private(chain->back)->bo = tmp.bo;
+			chain->back->name = tmp.name;
+			get_private(chain->back)->size = tmp.size;
+			chain->back->flags = tmp.flags;
+			chain->back->pitch = tmp.bo->pitch;
 		}
 
 		assert(get_private(chain->back)->bo != get_private(chain->front)->bo);
