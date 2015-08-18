@@ -3268,7 +3268,7 @@ skip:
 	if (crtc) {
 		if (!info)
 			info = sna_dri2_add_event(sna, draw, client, crtc);
-		if (!info)
+		if (info != dri2_chain(draw))
 			goto fake;
 
 		info->type = SWAP_WAIT;
