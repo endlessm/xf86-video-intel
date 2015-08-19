@@ -535,13 +535,18 @@ sna_dri2_pixmap_update_bo(struct sna *sna, PixmapPtr pixmap, struct kgem_bo *bo)
 	if (private->bo == bo)
 		return;
 
+	assert(private->bo->active_scanout > 0);
+	private->bo->active_scanout--;
+
 	DBG(("%s: dropping flush hint from handle=%d\n", __FUNCTION__, private->bo->handle));
 	private->bo->flush = false;
 	kgem_bo_destroy(&sna->kgem, private->bo);
 
+
 	buffer->name = kgem_bo_flink(&sna->kgem, bo);
 	buffer->pitch = bo->pitch;
 	private->bo = ref(bo);
+	bo->active_scanout++;
 
 	DBG(("%s: adding flush hint to handle=%d\n", __FUNCTION__, bo->handle));
 	bo->flush = true;
