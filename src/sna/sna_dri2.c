@@ -1578,9 +1578,7 @@ sna_dri2_remove_event(struct sna_dri2_event *info)
 static void
 sna_dri2_event_free(struct sna_dri2_event *info)
 {
-	DrawablePtr draw = info->draw;
-
-	DBG(("%s(draw?=%d)\n", __FUNCTION__, draw != NULL));
+	DBG(("%s(draw?=%d)\n", __FUNCTION__, info->draw != NULL));
 	assert(!info->queued);
 	assert(!info->signal);
 	assert(info->pending.bo == NULL);
