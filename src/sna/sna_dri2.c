@@ -821,7 +821,6 @@ sna_dri2_cache_bo(struct sna *sna,
 	return;
 
 err:
-	assert(bo->active_scanout == 0 || bo->scanout);
 	kgem_bo_destroy(&sna->kgem, bo);
 }
 
