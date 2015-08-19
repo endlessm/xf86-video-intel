@@ -903,8 +903,8 @@ static void sna_leave_vt(VT_FUNC_ARGS_DECL)
 
 	DBG(("%s\n", __FUNCTION__));
 
-	sna_accel_leave(sna);
 	sna_mode_reset(sna);
+	sna_accel_leave(sna);
 
 	if (intel_put_master(sna->dev))
 		xf86DrvMsg(scrn->scrnIndex, X_WARNING,
