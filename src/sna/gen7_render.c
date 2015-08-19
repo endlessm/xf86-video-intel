@@ -3002,8 +3002,7 @@ fallback_blt:
 		assert(src->depth == dst->depth);
 		assert(src->width == dst->width);
 		assert(src->height == dst->height);
-		return sna_render_copy_boxes__overlap(sna, alu,
-						      src, src_bo,
+		return sna_render_copy_boxes__overlap(sna, alu, dst, dst_bo,
 						      src_dx, src_dy,
 						      dst_dx, dst_dy,
 						      box, n, &extents);

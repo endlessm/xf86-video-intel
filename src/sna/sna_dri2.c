@@ -1186,6 +1186,7 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 	} else
 		flags &= ~DRI2_SYNC;
 
+	scratch.pScreen = draw->pScreen;
 	scratch.x = scratch.y = 0;
 	scratch.width = scratch.height = 0;
 	scratch.depth = draw->depth;

@@ -2169,11 +2169,11 @@ copy_overlap(struct sna *sna, uint8_t alu,
 	ret = (sna->render.copy_boxes(sna, GXcopy,
 				      draw, bo, src_dx, src_dy,
 				      &tmp->drawable, tmp_bo, -extents->x1, -extents->y1,
-				      box, n , 0) &&
+				      box, n, 0) &&
 	       sna->render.copy_boxes(sna, alu,
 				      &tmp->drawable, tmp_bo, -extents->x1, -extents->y1,
 				      draw, bo, dst_dx, dst_dy,
-				      box, n , 0));
+				      box, n, 0));
 
 	screen->DestroyPixmap(tmp);
 	return ret;
