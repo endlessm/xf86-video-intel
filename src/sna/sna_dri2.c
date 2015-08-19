@@ -197,12 +197,30 @@ struct dri2_window {
 	int64_t msc_delta;
 	struct list cache;
 	uint32_t cache_size;
+	int scanout;
 };
 
 static struct dri2_window *dri2_window(WindowPtr win)
 {
 	assert(win->drawable.type != DRAWABLE_PIXMAP);
 	return ((void **)__get_private(win, sna_window_key))[1];
+}
+
+static bool use_scanout(struct sna *sna,
+			DrawablePtr draw,
+			struct dri2_window *priv)
+{
+	if (priv->front)
+		return true;
+
+	if (priv->scanout < 0)
+		priv->scanout =
+			(sna->flags & (SNA_LINEAR_FB | SNA_NO_WAIT | SNA_NO_FLIP)) == 0 &&
+			draw->width  == sna->front->drawable.width &&
+			draw->height == sna->front->drawable.height &&
+			draw->bitsPerPixel == sna->front->drawable.bitsPerPixel;
+
+	return priv->scanout;
 }
 
 static void
@@ -218,11 +236,12 @@ sna_dri2_get_back(struct sna *sna,
 	int flags;
 	bool reuse;
 
-	DBG(("%s: draw size=%dx%d, back buffer handle=%d size=%dx%d, is-scanout? %d, pitch=%d, front pitch=%d\n",
+	DBG(("%s: draw size=%dx%d, back buffer handle=%d size=%dx%d, is-scanout? %d, active?=%d, pitch=%d, front pitch=%d\n",
 	     __FUNCTION__, draw->width, draw->height,
 	     get_private(back)->bo->handle,
 	     get_private(back)->size & 0xffff, get_private(back)->size >> 16,
 	     get_private(back)->bo->scanout,
+	     get_private(back)->bo->active_scanout,
 	     back->pitch, front_pitch(draw)));
 	assert(priv);
 
@@ -242,13 +261,15 @@ sna_dri2_get_back(struct sna *sna,
 	}
 
 	reuse = size == get_private(back)->size;
-	if (reuse && get_private(back)->bo->scanout)
+	if (reuse)
 		reuse = front_pitch(draw) == back->pitch;
+	if (reuse)
+		reuse = get_private(back)->bo->scanout == use_scanout(sna, draw, priv);
 	DBG(("%s: reuse backbuffer? %d\n", __FUNCTION__, reuse));
 	if (reuse) {
 		bo = get_private(back)->bo;
 		assert(bo->refcnt);
-		DBG(("%s: back buffer handle=%d, scanout?=%d, refcnt=%d\n",
+		DBG(("%s: back buffer handle=%d, active?=%d, refcnt=%d\n",
 		     __FUNCTION__, bo->handle, bo->active_scanout, get_private(back)->refcnt));
 		if (bo->active_scanout == 0) {
 			DBG(("%s: reuse unattached back\n", __FUNCTION__));
@@ -274,10 +295,17 @@ sna_dri2_get_back(struct sna *sna,
 	}
 	if (bo == NULL) {
 		DBG(("%s: allocating new backbuffer\n", __FUNCTION__));
+		flags = CREATE_EXACT;
+
+		if (use_scanout(sna, draw, priv)) {
+			DBG(("%s: requesting scanout compatible back\n", __FUNCTION__));
+			flags |= CREATE_SCANOUT;
+		}
+
 		bo = kgem_create_2d(&sna->kgem,
 				    draw->width, draw->height, draw->bitsPerPixel,
 				    get_private(back)->bo->tiling,
-				    get_private(back)->bo->scanout ? CREATE_SCANOUT | CREATE_EXACT : CREATE_EXACT);
+				    flags);
 		if (bo == NULL)
 			return;
 
@@ -1492,6 +1520,7 @@ draw_current_msc(DrawablePtr draw, xf86CrtcPtr crtc, uint64_t msc)
 			priv->crtc = crtc;
 			priv->msc_delta = 0;
 			priv->chain = NULL;
+			priv->scanout = -1;
 			list_init(&priv->cache);
 			dri2_window_attach((WindowPtr)draw, priv);
 		}
@@ -1781,6 +1810,8 @@ void sna_dri2_decouple_window(WindowPtr win)
 		_sna_dri2_destroy_buffer(sna, NULL, priv->front);
 		priv->front = NULL;
 	}
+
+	priv->scanout = -1;
 }
 
 void sna_dri2_destroy_window(WindowPtr win)
