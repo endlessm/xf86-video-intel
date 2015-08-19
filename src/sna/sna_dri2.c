@@ -508,6 +508,8 @@ static struct kgem_bo *sna_pixmap_set_dri(struct sna *sna,
 			sna_pixmap_change_tiling(pixmap, tiling);
 	}
 
+	priv->gpu_bo->active_scanout++;
+
 	return priv->gpu_bo;
 }
 
@@ -856,6 +858,9 @@ static void _sna_dri2_destroy_buffer(struct sna *sna,
 		assert(priv->gpu_bo->flush);
 		assert(priv->pinned & PIN_DRI2);
 		assert(priv->flush);
+
+		assert(priv->gpu_bo->active_scanout > 0);
+		priv->gpu_bo->active_scanout--;
 
 		/* Undo the DRI markings on this pixmap */
 		DBG(("%s: releasing last DRI pixmap=%ld, scanout?=%d\n",
@@ -1379,6 +1384,8 @@ sna_dri2_copy_region(DrawablePtr draw,
 	assert(get_private(src)->refcnt);
 	assert(get_private(dst)->refcnt);
 
+	assert(get_private(src)->bo != get_private(dst)->bo);
+
 	assert(get_private(src)->bo->refcnt);
 	assert(get_private(dst)->bo->refcnt);
 
@@ -1850,12 +1857,16 @@ sna_dri2_flip(struct sna_dri2_event *info)
 	tmp_pitch = info->front->pitch;
 	tmp_flags = info->front->flags;
 
+	assert(tmp_bo->active_scanout > 0);
+	tmp_bo->active_scanout--;
+
 	set_bo(info->sna->front, bo);
 
 	info->front->flags = info->back->flags;
 	info->front->name = info->back->name;
 	info->front->pitch = info->back->pitch;
 	get_private(info->front)->bo = bo;
+	bo->active_scanout++;
 
 	info->back->flags = tmp_flags;
 	info->back->name = tmp_name;
@@ -2244,6 +2255,10 @@ sna_dri2_xchg(DrawablePtr draw, DRI2BufferPtr front, DRI2BufferPtr back)
 	get_private(back)->bo = front_bo;
 	mark_stale(back);
 
+	assert(front_bo->active_scanout > 0);
+	front_bo->active_scanout--;
+	back_bo->active_scanout++;
+
 	tmp = front->name;
 	front->name = back->name;
 	back->name = tmp;
@@ -2576,6 +2591,8 @@ void sna_dri2_vblank_handler(struct drm_event_vblank *event)
 			info->back->flags = info->pending.flags;
 			info->pending.bo = NULL;
 
+			assert(get_private(info->back)->bo != get_private(info->front)->bo);
+
 			if (can_xchg(info->sna, info->draw, info->front, info->back))
 				sna_dri2_xchg(info->draw, info->front, info->back);
 			else if (can_xchg_crtc(info->sna, info->draw, info->crtc,
@@ -2715,7 +2732,10 @@ sna_dri2_immediate_blit(struct sna *sna,
 		}
 
 		if (chain->pending.bo == NULL) {
-			DBG(("%s: setting as pending blit\n", __FUNCTION__));
+			DBG(("%s: setting handle=%d as pending blit (current event front=%d, back=%d)\n", __FUNCTION__,
+			     get_private(info->back)->bo->handle,
+			     get_private(chain->front)->bo->handle,
+			     get_private(chain->back)->bo->handle));
 			chain->pending.bo = ref(get_private(info->back)->bo);
 			chain->pending.size = get_private(info->back)->size;
 			chain->pending.name = info->back->name;
