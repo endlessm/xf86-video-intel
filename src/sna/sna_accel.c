@@ -6446,8 +6446,9 @@ sna_copy_boxes(DrawablePtr src, DrawablePtr dst, GCPtr gc,
 	assert(region_num_rects(region));
 
 	if (src_priv &&
-	    src_priv->gpu_damage == NULL &&
-	    src_priv->cpu_damage == NULL) {
+	    src_priv->gpu_bo == NULL &&
+	    src_priv->cpu_bo == NULL &&
+	    src_priv->ptr == NULL) {
 		/* Rare but still happens, nothing to copy */
 		DBG(("%s: src pixmap=%ld is empty\n",
 		     __FUNCTION__, src_pixmap->drawable.serialNumber));
