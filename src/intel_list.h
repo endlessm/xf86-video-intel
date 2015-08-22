@@ -347,11 +347,6 @@ list_is_empty(const struct list *head)
 	 &pos->member != (head);					\
 	 pos = tmp, tmp = __container_of(pos->member.next, tmp, member))
 
-#define list_for_each_entry_safe_from(pos, tmp, head, member)		\
-    for (tmp = __container_of(pos->member.next, pos, member);		\
-	 &pos->member != (head);					\
-	 pos = tmp, tmp = __container_of(pos->member.next, tmp, member))
-
 #else
 
 #include <list.h>
@@ -401,12 +396,12 @@ static inline void list_move_tail(struct list *list, struct list *head)
 	 &pos->member != (head);					\
 	 pos = __container_of(pos->member.prev, pos, member))
 
+#endif
+
 #define list_for_each_entry_safe_from(pos, tmp, head, member)		\
     for (tmp = __container_of(pos->member.next, pos, member);		\
 	 &pos->member != (head);					\
-	 pos = tmp)
-
-#endif
+	 pos = tmp, tmp = __container_of(tmp->member.next, tmp, member))
 
 #undef container_of
 #define container_of(ptr, type, member) \
