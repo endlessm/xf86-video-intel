@@ -3389,6 +3389,9 @@ sna_dri2_get_msc(DrawablePtr draw, CARD64 *ust, CARD64 *msc)
 	/* Drawable not displayed, make up a *monotonic* value */
 	if (crtc == NULL)
 		crtc = sna_primary_crtc(sna);
+	if (crtc == NULL)
+		return FALSE;
+
 	if (sna_query_vblank(sna, crtc, &vbl) == 0)
 		sna_crtc_record_vblank(crtc, &vbl);
 
@@ -3427,7 +3430,7 @@ sna_dri2_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc
 	if (crtc == NULL)
 		crtc = sna_primary_crtc(sna);
 	if (crtc == NULL)
-		goto out_complete;
+		return FALSE;
 
 	current_msc = get_current_msc(sna, draw, crtc);
 
@@ -3473,8 +3476,6 @@ sna_dri2_schedule_wait_msc(ClientPtr client, DrawablePtr draw, CARD64 target_msc
 out_free_info:
 	sna_dri2_event_free(info);
 out_complete:
-	if (crtc == NULL)
-		crtc = sna_primary_crtc(sna);
 	swap = sna_crtc_last_swap(crtc);
 	DRI2WaitMSCComplete(client, draw,
 			    draw_current_msc(draw, crtc, swap->msc),
