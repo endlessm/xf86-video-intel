@@ -262,8 +262,6 @@ sna_dri2_get_back(struct sna *sna,
 
 	reuse = size == get_private(back)->size;
 	if (reuse)
-		reuse = front_pitch(draw) == back->pitch;
-	if (reuse)
 		reuse = get_private(back)->bo->scanout == use_scanout(sna, draw, priv);
 	DBG(("%s: reuse backbuffer? %d\n", __FUNCTION__, reuse));
 	if (reuse) {
