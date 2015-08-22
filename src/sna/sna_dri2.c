@@ -3334,6 +3334,8 @@ blit:
 		front->flags = back->flags;
 		type = DRI2_BLIT_COMPLETE;
 	}
+	if (draw->type == DRAWABLE_PIXMAP)
+		goto fake;
 skip:
 	DBG(("%s: unable to show frame, unblocking client\n", __FUNCTION__));
 	if (crtc == NULL && (sna->flags & SNA_NO_WAIT) == 0)
