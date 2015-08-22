@@ -1706,7 +1706,13 @@ static void kgem_fixup_relocs(struct kgem *kgem, struct kgem_bo *bo, int shrink)
 
 static int kgem_bo_wait(struct kgem *kgem, struct kgem_bo *bo)
 {
-	struct drm_i915_gem_wait wait;
+	struct local_i915_gem_wait {
+		uint32_t handle;
+		uint32_t flags;
+		int64_t timeout;
+	} wait;
+#define LOCAL_I915_GEM_WAIT       0x2c
+#define LOCAL_IOCTL_I915_GEM_WAIT         DRM_IOWR(DRM_COMMAND_BASE + LOCAL_I915_GEM_WAIT, struct local_i915_gem_wait)
 	int ret;
 
 	DBG(("%s: waiting for handle=%d\n", __FUNCTION__, bo->handle));
@@ -1714,9 +1720,10 @@ static int kgem_bo_wait(struct kgem *kgem, struct kgem_bo *bo)
 		return 0;
 
 	VG_CLEAR(wait);
-	wait.bo_handle = bo->handle;
-	wait.timeout_ns = -1;
-	ret = do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_WAIT, &wait);
+	wait.handle = bo->handle;
+	wait.flags = 0;
+	wait.timeout = -1;
+	ret = do_ioctl(kgem->fd, LOCAL_IOCTL_I915_GEM_WAIT, &wait);
 	if (ret) {
 		struct drm_i915_gem_set_domain set_domain;
 
