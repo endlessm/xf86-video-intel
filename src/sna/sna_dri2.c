@@ -3336,9 +3336,9 @@ blit:
 	}
 skip:
 	DBG(("%s: unable to show frame, unblocking client\n", __FUNCTION__));
-	if (crtc == NULL && draw->type != DRAWABLE_PIXMAP)
+	if (crtc == NULL && (sna->flags & SNA_NO_WAIT) == 0)
 		crtc = sna_primary_crtc(sna);
-	if (crtc && (sna->flags & SNA_NO_WAIT) == 0) {
+	if (crtc && sna_crtc_is_on(crtc)) {
 		if (info == NULL)
 			info = sna_dri2_add_event(sna, draw, client, crtc);
 		if (info != dri2_chain(draw))
