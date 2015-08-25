@@ -235,6 +235,15 @@ i.e. perform synchronous rendering.
 .IP
 Default: Disabled
 .TP
+.BI "Option \*qHWRotation\*q \*q" boolean \*q
+Override the use of native hardware rotation and force the use of software,
+but GPU accelerated where possible, rotation. On some platforms the hardware
+can scanout directly into a rotated output bypassing the intermediate rendering
+and extra allocations required for software implemented rotation (i.e. native
+rotation uses less resources, is quicker and uses less power). This allows you
+to disable the native rotation in case of errors.
+.IP
+Default: Enabled (use hardware rotation)
 .TP
 .BI "Option \*qVSync\*q \*q" boolean \*q
 This option controls the use of commands to synchronise rendering with the

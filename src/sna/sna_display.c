@@ -2878,6 +2878,8 @@ static int plane_details(struct sna *sna, struct plane *p)
 	}
 
 	p->rotation.supported &= DBG_NATIVE_ROTATION;
+	if (!xf86ReturnOptValBool(sna->Options, OPTION_ROTATION, TRUE))
+		p->rotation.supported = RR_Rotate_0;
 
 	if (props != (uint32_t *)stack_props)
 		free(props);
