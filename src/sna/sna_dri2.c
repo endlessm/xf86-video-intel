@@ -2716,7 +2716,7 @@ sna_dri2_immediate_blit(struct sna *sna,
 		assert(chain->event_data == info->event_data);
 		assert(chain->queued);
 
-		if (!sync && chain->pending.bo) {
+		if ((!sync || !chain->sync) && chain->pending.bo) {
 			bool signal = chain->signal;
 
 			DBG(("%s: swap elision, unblocking client\n", __FUNCTION__));
@@ -2735,7 +2735,7 @@ sna_dri2_immediate_blit(struct sna *sna,
 			chain->pending.bo = NULL;
 		}
 
-		if (chain->pending.bo == NULL) {
+		if (chain->pending.bo == NULL && swap_limit(draw, 2 + !sync)) {
 			DBG(("%s: setting handle=%d as pending blit (current event front=%d, back=%d)\n", __FUNCTION__,
 			     get_private(info->back)->bo->handle,
 			     get_private(chain->front)->bo->handle,
@@ -2744,6 +2744,7 @@ sna_dri2_immediate_blit(struct sna *sna,
 			chain->pending.size = get_private(info->back)->size;
 			chain->pending.name = info->back->name;
 			chain->pending.flags = info->back->flags;
+			chain->sync = sync;
 			info->signal = false; /* transfer signal to pending */
 
 			/* Prevent us from handing it back on next GetBuffers */
