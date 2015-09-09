@@ -4787,6 +4787,78 @@ static bool disable_unused_crtc(struct sna *sna)
 	return update;
 }
 
+static int modecmp(DisplayModePtr a, DisplayModePtr b)
+{
+	int diff;
+
+	diff = (b->type & M_T_PREFERRED)- (a->type & M_T_PREFERRED);
+	if (diff)
+		return diff;
+
+	diff = b->HDisplay * b->VDisplay - a->HDisplay * a->VDisplay;
+	if (diff)
+		return diff;
+
+	return b->Clock - a->Clock;
+}
+
+static DisplayModePtr sort_modes(DisplayModePtr in)
+{
+	DisplayModePtr out = NULL, i, o, *op, prev;
+
+	/* sort by preferred status and pixel area */
+	while (in) {
+		i = in;
+		in = in->next;
+		for (op = &out; (o = *op); op = &o->next) {
+			int ret = modecmp(o, i);
+			if (ret > 0)
+				break;
+			if (ret < 0)
+				continue;
+			if (!strcmp(o->name, i->name) && xf86ModesEqual(o, i)) {
+				free((void *)i->name);
+				free(i);
+				goto skip;
+			}
+		}
+		i->next = *op;
+		*op = i;
+skip: ;
+	}
+
+	/* hook up backward links */
+	prev = NULL;
+	for (o = out; o; o = o->next) {
+		o->prev = prev;
+		prev = o;
+	}
+	return out;
+}
+
+static void update_modes(xf86OutputPtr output)
+{
+	while (output->probed_modes)
+		xf86DeleteMode(&output->probed_modes, output->probed_modes);
+
+	if (output->status != XF86OutputStatusConnected)
+		return;
+
+	output->probed_modes = NULL;
+
+	if (output->conf_monitor)
+		output->probed_modes =
+			xf86ModesAdd(output->probed_modes,
+				     xf86GetMonitorModes(output->scrn,
+							 output->conf_monitor));
+
+	output->probed_modes =
+		xf86ModesAdd(output->probed_modes,
+			     output->funcs->get_modes(output));
+
+	output->probed_modes = sort_modes(output->probed_modes);
+}
+
 void sna_mode_discover(struct sna *sna)
 {
 	ScreenPtr screen = xf86ScrnToScreen(sna->scrn);
@@ -4870,6 +4942,7 @@ void sna_mode_discover(struct sna *sna)
 					break;
 				}
 				RROutputSetConnection(rr, value);
+				update_modes(output);
 			}
 			continue;
 		}
