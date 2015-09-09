@@ -4848,8 +4848,29 @@ void sna_mode_discover(struct sna *sna)
 
 		sna_output->last_detect = 0;
 		if (sna_output->serial == serial) {
-			if (sna_output_detect(output) != output->status)
-				RROutputChanged(output->randr_output, TRUE);
+			xf86OutputStatus status = sna_output_detect(output);
+			if (status != output->status) {
+				RROutputPtr rr = output->randr_output;
+				unsigned value;
+
+				DBG(("%s: output %s (id=%d), changed status %d -> %d\n",
+				     __FUNCTION__, output->name, sna_output->id, output->status, status));
+
+				output->status = status;
+				switch (status) {
+				case XF86OutputStatusConnected:
+					value = RR_Connected;
+					break;
+				case XF86OutputStatusDisconnected:
+					value = RR_Disconnected;
+					break;
+				default:
+				case XF86OutputStatusUnknown:
+					value = RR_UnknownConnection;
+					break;
+				}
+				RROutputSetConnection(rr, value);
+			}
 			continue;
 		}
 
