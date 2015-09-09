@@ -90,6 +90,8 @@ void *alloca(size_t);
 #include <memcheck.h>
 #endif
 
+#define COLDPLUG_DELAY_MS 2000
+
 /* Minor discrepancy between 32-bit/64-bit ABI in old kernels */
 union compat_mode_get_connector{
 	struct drm_mode_get_connector conn;
@@ -4836,8 +4838,13 @@ skip: ;
 	return out;
 }
 
-static void update_modes(xf86OutputPtr output)
+static void output_update_modes(xf86OutputPtr output)
 {
+	DBG(("%s: updating modes on output %s (id=%d): status=%d\n",
+	     __FUNCTION__, output->name, sna_output->id,
+	     sna_output->serial, serial, output->status));
+	RROutputChanged(output->randr_output, TRUE);
+
 	while (output->probed_modes)
 		xf86DeleteMode(&output->probed_modes, output->probed_modes);
 
@@ -4857,6 +4864,33 @@ static void update_modes(xf86OutputPtr output)
 			     output->funcs->get_modes(output));
 
 	output->probed_modes = sort_modes(output->probed_modes);
+}
+
+static bool output_set_status(xf86OutputPtr output, xf86OutputStatus status)
+{
+	unsigned value;
+
+	if (status == output->status)
+		return false;
+
+	DBG(("%s: output %s (id=%d), changed status %d -> %d\n",
+	     __FUNCTION__, output->name, sna_output->id, output->status, status));
+
+	output->status = status;
+	switch (status) {
+	case XF86OutputStatusConnected:
+		value = RR_Connected;
+		break;
+	case XF86OutputStatusDisconnected:
+		value = RR_Disconnected;
+		break;
+	default:
+	case XF86OutputStatusUnknown:
+		value = RR_UnknownConnection;
+		break;
+	}
+	RROutputSetConnection(output->randr_output, value);
+	return true;
 }
 
 void sna_mode_discover(struct sna *sna)
@@ -4920,30 +4954,9 @@ void sna_mode_discover(struct sna *sna)
 
 		sna_output->last_detect = 0;
 		if (sna_output->serial == serial) {
-			xf86OutputStatus status = sna_output_detect(output);
-			if (status != output->status) {
-				RROutputPtr rr = output->randr_output;
-				unsigned value;
-
-				DBG(("%s: output %s (id=%d), changed status %d -> %d\n",
-				     __FUNCTION__, output->name, sna_output->id, output->status, status));
-
-				output->status = status;
-				switch (status) {
-				case XF86OutputStatusConnected:
-					value = RR_Connected;
-					break;
-				case XF86OutputStatusDisconnected:
-					value = RR_Disconnected;
-					break;
-				default:
-				case XF86OutputStatusUnknown:
-					value = RR_UnknownConnection;
-					break;
-				}
-				RROutputSetConnection(rr, value);
-				update_modes(output);
-			}
+			if (output_set_status(output,
+					      sna_output_detect(output)))
+			    output_update_modes(output);
 			continue;
 		}
 
@@ -4976,6 +4989,39 @@ void sna_mode_discover(struct sna *sna)
 	}
 
 	RRTellChanged(screen);
+}
+
+/* Since we only probe the current mode on startup, we may not have the full
+ * list of modes available until the user explicitly requests them. Fake a
+ * hotplug event after a second after starting to fill in any missing modes.
+ */
+static CARD32 sna_mode_coldplug(OsTimerPtr timer, CARD32 now, void *data)
+{
+	struct sna *sna = data;
+	ScreenPtr screen = xf86ScrnToScreen(sna->scrn);
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	int i;
+
+	DBG(("%s()\n", __FUNCTION__));
+
+	for (i = 0; i < sna->mode.num_real_output; i++) {
+		xf86OutputPtr output = config->output[i];
+		struct sna_output *sna_output = to_sna_output(output);
+
+		if (sna_output->id == 0)
+			continue;
+		if (sna_output->last_detect)
+			continue;
+		if (output->status != XF86OutputStatusConnected)
+			continue;
+
+		output_set_status(output, sna_output_detect(output));
+		output_update_modes(output);
+	}
+
+	RRTellChanged(screen);
+	free(timer);
+	return 0;
 }
 
 static void copy_front(struct sna *sna, PixmapPtr old, PixmapPtr new)
@@ -6912,6 +6958,7 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 		}
 	}
 	sort_config_outputs(sna);
+	TimerSet(NULL, 0, COLDPLUG_DELAY_MS, sna_mode_coldplug, sna);
 
 	sna_setup_provider(scrn);
 	return scrn->modes != NULL;
