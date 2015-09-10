@@ -4789,108 +4789,35 @@ static bool disable_unused_crtc(struct sna *sna)
 	return update;
 }
 
-static int modecmp(DisplayModePtr a, DisplayModePtr b)
+static bool
+output_check_status(struct sna *sna, struct sna_output *output)
 {
-	int diff;
+	union compat_mode_get_connector compat_conn;
+	struct drm_mode_modeinfo dummy;
+	xf86OutputStatus status;
 
-	diff = (b->type & M_T_PREFERRED)- (a->type & M_T_PREFERRED);
-	if (diff)
-		return diff;
+	VG_CLEAR(compat_conn);
 
-	diff = b->HDisplay * b->VDisplay - a->HDisplay * a->VDisplay;
-	if (diff)
-		return diff;
+	compat_conn.conn.connector_id = output->id;
+	compat_conn.conn.count_modes = 1; /* skip detect */
+	compat_conn.conn.modes_ptr = (uintptr_t)&dummy;
+	compat_conn.conn.count_encoders = 0;
+	compat_conn.conn.count_props = 0;
 
-	return b->Clock - a->Clock;
-}
+	(void)drmIoctl(sna->kgem.fd,
+		       DRM_IOCTL_MODE_GETCONNECTOR,
+		       &compat_conn.conn);
 
-static DisplayModePtr sort_modes(DisplayModePtr in)
-{
-	DisplayModePtr out = NULL, i, o, *op, prev;
-
-	/* sort by preferred status and pixel area */
-	while (in) {
-		i = in;
-		in = in->next;
-		for (op = &out; (o = *op); op = &o->next) {
-			int ret = modecmp(o, i);
-			if (ret > 0)
-				break;
-			if (ret < 0)
-				continue;
-			if (!strcmp(o->name, i->name) && xf86ModesEqual(o, i)) {
-				free((void *)i->name);
-				free(i);
-				goto skip;
-			}
-		}
-		i->next = *op;
-		*op = i;
-skip: ;
-	}
-
-	/* hook up backward links */
-	prev = NULL;
-	for (o = out; o; o = o->next) {
-		o->prev = prev;
-		prev = o;
-	}
-	return out;
-}
-
-static void output_update_modes(xf86OutputPtr output)
-{
-	DBG(("%s: updating modes on output %s (id=%d): status=%d\n",
-	     __FUNCTION__, output->name, sna_output->id,
-	     sna_output->serial, serial, output->status));
-	RROutputChanged(output->randr_output, TRUE);
-
-	while (output->probed_modes)
-		xf86DeleteMode(&output->probed_modes, output->probed_modes);
-
-	if (output->status != XF86OutputStatusConnected)
-		return;
-
-	output->probed_modes = NULL;
-
-	if (output->conf_monitor)
-		output->probed_modes =
-			xf86ModesAdd(output->probed_modes,
-				     xf86GetMonitorModes(output->scrn,
-							 output->conf_monitor));
-
-	output->probed_modes =
-		xf86ModesAdd(output->probed_modes,
-			     output->funcs->get_modes(output));
-
-	output->probed_modes = sort_modes(output->probed_modes);
-}
-
-static bool output_set_status(xf86OutputPtr output, xf86OutputStatus status)
-{
-	unsigned value;
-
-	if (status == output->status)
-		return false;
-
-	DBG(("%s: output %s (id=%d), changed status %d -> %d\n",
-	     __FUNCTION__, output->name, sna_output->id, output->status, status));
-
-	output->status = status;
-	switch (status) {
-	case XF86OutputStatusConnected:
-		value = RR_Connected;
-		break;
-	case XF86OutputStatusDisconnected:
-		value = RR_Disconnected;
-		break;
+	switch (compat_conn.conn.connection) {
+	case DRM_MODE_CONNECTED:
+		status = XF86OutputStatusConnected;
+	case DRM_MODE_DISCONNECTED:
+		status = XF86OutputStatusDisconnected;
 	default:
-	case XF86OutputStatusUnknown:
-		value = RR_UnknownConnection;
-		break;
+	case DRM_MODE_UNKNOWNCONNECTION:
+		status = XF86OutputStatusUnknown;
 	}
-	RROutputSetConnection(output->randr_output, value);
-	return true;
+	return output->status == status;
 }
 
 void sna_mode_discover(struct sna *sna)
@@ -4952,11 +4879,13 @@ void sna_mode_discover(struct sna *sna)
 		if (sna_output->id == 0)
 			continue;
 
-		sna_output->last_detect = 0;
 		if (sna_output->serial == serial) {
-			if (output_set_status(output,
-					      sna_output_detect(output)))
-			    output_update_modes(output);
+			if (!output_check_status(sna, sna_output)) {
+				DBG(("%s: output %s (id=%d), changed state, reprobing]\n",
+				     __FUNCTION__, output->name, sna_output->id,
+				     sna_output->serial, serial));
+				sna_output->last_detect = 0;
+			}
 			continue;
 		}
 
@@ -4968,6 +4897,7 @@ void sna_mode_discover(struct sna *sna)
 			   "Disabled output %s\n",
 			   output->name);
 		sna_output->id = 0;
+		sna_output->last_detect = 0;
 		output->crtc = NULL;
 		RROutputChanged(output->randr_output, TRUE);
 		changed |= 2;
@@ -4988,6 +4918,7 @@ void sna_mode_discover(struct sna *sna)
 		xf86RandR12TellChanged(screen);
 	}
 
+	RRGetInfo(screen, TRUE);
 	RRTellChanged(screen);
 }
 
@@ -5000,6 +4931,7 @@ static CARD32 sna_mode_coldplug(OsTimerPtr timer, CARD32 now, void *data)
 	struct sna *sna = data;
 	ScreenPtr screen = xf86ScrnToScreen(sna->scrn);
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	bool reprobe = false;
 	int i;
 
 	DBG(("%s()\n", __FUNCTION__));
@@ -5015,11 +4947,13 @@ static CARD32 sna_mode_coldplug(OsTimerPtr timer, CARD32 now, void *data)
 		if (output->status != XF86OutputStatusConnected)
 			continue;
 
-		output_set_status(output, sna_output_detect(output));
-		output_update_modes(output);
+		reprobe = true;
 	}
 
-	RRTellChanged(screen);
+	if (reprobe) {
+		RRGetInfo(screen, TRUE);
+		RRTellChanged(screen);
+	}
 	free(timer);
 	return 0;
 }
