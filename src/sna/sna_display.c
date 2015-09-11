@@ -4944,7 +4944,7 @@ static CARD32 sna_mode_coldplug(OsTimerPtr timer, CARD32 now, void *data)
 			continue;
 		if (sna_output->last_detect)
 			continue;
-		if (output->status != XF86OutputStatusConnected)
+		if (output->status == XF86OutputStatusDisconnected)
 			continue;
 
 		reprobe = true;
