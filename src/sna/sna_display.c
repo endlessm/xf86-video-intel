@@ -1213,9 +1213,10 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 	     output_count, output_count ? output_ids[0] : 0));
 
 	ret = drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_SETCRTC, &arg) == 0;
-
-	sna_crtc->mode_serial++;
-	sna_crtc_force_outputs_on(crtc);
+	if (ret) {
+		sna_crtc->mode_serial++;
+		sna_crtc_force_outputs_on(crtc);
+	}
 unblock:
 	sigio_unblock(sigio);
 	return ret;
