@@ -953,6 +953,8 @@ static void
 sna_crtc_force_outputs_on(xf86CrtcPtr crtc)
 {
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(crtc->scrn);
+	/* All attached outputs are valid, so update our timestamps */
+	unsigned now = GetTimeInMillis();
 	int i;
 
 	assert(to_sna_crtc(crtc));
@@ -972,6 +974,7 @@ sna_crtc_force_outputs_on(xf86CrtcPtr crtc)
 			continue;
 
 		__sna_output_dpms(output, DPMSModeOn, false);
+		to_sna_output(output)->last_detect = now;
 	}
 
 #if XF86_CRTC_VERSION >= 3
