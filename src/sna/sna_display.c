@@ -4815,11 +4815,14 @@ output_check_status(struct sna *sna, struct sna_output *output)
 	switch (compat_conn.conn.connection) {
 	case DRM_MODE_CONNECTED:
 		status = XF86OutputStatusConnected;
+		break;
 	case DRM_MODE_DISCONNECTED:
 		status = XF86OutputStatusDisconnected;
+		break;
 	default:
 	case DRM_MODE_UNKNOWNCONNECTION:
 		status = XF86OutputStatusUnknown;
+		break;
 	}
 	return output->status == status;
 }
@@ -4829,7 +4832,7 @@ void sna_mode_discover(struct sna *sna)
 	ScreenPtr screen = xf86ScrnToScreen(sna->scrn);
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
 	struct drm_mode_card_res res;
-	uint32_t connectors[32];
+	uint32_t connectors[32], now;
 	unsigned changed = 0;
 	unsigned serial;
 	int i, j;
@@ -4859,6 +4862,7 @@ void sna_mode_discover(struct sna *sna)
 	if (serial == 0)
 		serial = ++sna->mode.serial;
 
+	now = GetTimeInMillis();
 	for (i = 0; i < res.count_connectors; i++) {
 		DBG(("%s: connector[%d] = %d\n", __FUNCTION__, i, connectors[i]));
 		for (j = 0; j < sna->mode.num_real_output; j++) {
@@ -4884,10 +4888,13 @@ void sna_mode_discover(struct sna *sna)
 			continue;
 
 		if (sna_output->serial == serial) {
-			if (!output_check_status(sna, sna_output)) {
-				DBG(("%s: output %s (id=%d), changed state, reprobing]\n",
-				     __FUNCTION__, output->name, sna_output->id,
-				     sna_output->serial, serial));
+			if (output_check_status(sna, sna_output)) {
+				DBG(("%s: output %s (id=%d), retained state\n",
+				     __FUNCTION__, output->name, sna_output->id));
+				sna_output->last_detect = now;
+			} else {
+				DBG(("%s: output %s (id=%d), changed state, reprobing\n",
+				     __FUNCTION__, output->name, sna_output->id));
 				sna_output->last_detect = 0;
 			}
 			continue;
