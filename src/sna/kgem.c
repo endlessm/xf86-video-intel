@@ -6858,8 +6858,26 @@ struct kgem_bo *kgem_create_map(struct kgem *kgem,
 			     (void *)first_page, last_page-first_page,
 			     read_only);
 	if (handle == 0) {
-		DBG(("%s: import failed, errno=%d\n", __FUNCTION__, errno));
-		return NULL;
+		if (read_only && kgem->has_wc_mmap) {
+			struct drm_i915_gem_set_domain set_domain;
+
+			handle = gem_userptr(kgem->fd,
+					     (void *)first_page, last_page-first_page,
+					     false);
+
+			VG_CLEAR(set_domain);
+			set_domain.handle = handle;
+			set_domain.read_domains = I915_GEM_DOMAIN_GTT;
+			set_domain.write_domain = 0;
+			if (do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain)) {
+				gem_close(kgem->fd, handle);
+				handle = 0;
+			}
+		}
+		if (handle == 0) {
+			DBG(("%s: import failed, errno=%d\n", __FUNCTION__, errno));
+			return NULL;
+		}
 	}
 
 	bo = __kgem_bo_alloc(handle, (last_page - first_page) / PAGE_SIZE);
