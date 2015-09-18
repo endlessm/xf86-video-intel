@@ -169,6 +169,8 @@ struct sna_crtc {
 	bool hwcursor;
 	bool flip_pending;
 
+	struct pict_f_transform cursor_to_fb, fb_to_cursor;
+
 	RegionRec client_damage; /* XXX overlap with shadow damage? */
 
 	uint16_t shadow_bo_width, shadow_bo_height;
@@ -5198,36 +5200,6 @@ rotate_coord(Rotation rotation, int size,
 	*y_src = y_dst;
 }
 
-static void
-rotate_coord_back(Rotation rotation, int size, int *x, int *y)
-{
-	int t;
-
-	if (rotation & RR_Reflect_X)
-		*x = size - *x - 1;
-	if (rotation & RR_Reflect_Y)
-		*y = size - *y - 1;
-
-	switch (rotation & 0xf) {
-	case RR_Rotate_0:
-		break;
-	case RR_Rotate_90:
-		t = *x;
-		*x = *y;
-		*y = size - t - 1;
-		break;
-	case RR_Rotate_180:
-		*x = size - *x - 1;
-		*y = size - *y - 1;
-		break;
-	case RR_Rotate_270:
-		t = *x;
-		*x = size - *y - 1;
-		*y = t;
-		break;
-	}
-}
-
 static struct sna_cursor *__sna_create_cursor(struct sna *sna, int size)
 {
 	struct sna_cursor *c;
@@ -5307,7 +5279,6 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 	uint32_t *image;
 	int width, height, pitch, size, x, y;
 	PictTransform cursor_to_fb;
-	struct pict_f_transform f_cursor_to_fb, f_fb_to_cursor;
 	bool transformed;
 	Rotation rotation;
 
@@ -5365,8 +5336,8 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 				   sna->cursor.ref->bits->height,
 				   crtc->rotation, &crtc->transform,
 				   &cursor_to_fb,
-				   &f_cursor_to_fb,
-				   &f_fb_to_cursor);
+				   &to_sna_crtc(crtc)->cursor_to_fb,
+				   &to_sna_crtc(crtc)->fb_to_cursor);
 	} else
 		size = sna->cursor.size;
 
@@ -5425,14 +5396,14 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 				affine_blt(image, cursor->image, 32,
 					   0, 0, width, height, size * 4,
 					   0, 0, width, height, size * 4,
-					   &f_cursor_to_fb);
+					   &to_sna_crtc(crtc)->cursor_to_fb);
 				image = cursor->image;
 			}
 		} else if (transformed) {
 			affine_blt(argb, cursor->image, 32,
 				   0, 0, width, height, width * 4,
 				   0, 0, width, height, size * 4,
-				   &f_cursor_to_fb);
+				   &to_sna_crtc(crtc)->cursor_to_fb);
 			image = cursor->image;
 		} else
 			memcpy_blt(argb, image, 32,
@@ -5743,18 +5714,20 @@ sna_set_cursor_position(ScrnInfoPtr scrn, int x, int y)
 		if (crtc->transform_in_use) {
 			int xhot = sna->cursor.ref->bits->xhot;
 			int yhot = sna->cursor.ref->bits->yhot;
-			struct pict_f_vector v;
+			struct pict_f_vector v, hot;
 
 			v.v[0] = (x + xhot) + 0.5;
 			v.v[1] = (y + yhot) + 0.5;
 			v.v[2] = 1;
 			pixman_f_transform_point(&crtc->f_framebuffer_to_crtc, &v);
 
-			rotate_coord_back(crtc->rotation, sna->cursor.size, &xhot, &yhot);
+			hot.v[0] = xhot + .5;
+			hot.v[1] = yhot + .5;
+			hot.v[2] = 1.;
+			pixman_f_transform_point(&sna_crtc->fb_to_cursor, &hot);
 
-			/* cursor will have 0.5 added to it already so floor is sufficient */
-			arg.x = floor(v.v[0]) - xhot;
-			arg.y = floor(v.v[1]) - yhot;
+			arg.x = floor(v.v[0]) - floor(hot.v[0]);
+			arg.y = floor(v.v[1]) - floor(hot.v[1]);
 		} else {
 			arg.x = x - crtc->x;
 			arg.y = y - crtc->y;
