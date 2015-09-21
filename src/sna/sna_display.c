@@ -3088,6 +3088,49 @@ sna_output_panel_edid(xf86OutputPtr output, DisplayModePtr modes)
 	return xf86ModesAdd(modes, m);
 }
 
+/* Endless UI doesn't support hiDPI modes very well. If we detect a
+ * hiDPI display, select a lower resolution by default. */
+static void
+prefer_non_hidpi(xf86OutputPtr output, DisplayModePtr Modes)
+{
+	DisplayModePtr preferred;
+	DisplayModePtr m;
+
+	/* Find current preferred mode */
+	for (m = Modes; m; m = m->next) {
+		if (m->type & M_T_PREFERRED) {
+			preferred = m;
+			break;
+		}
+	}
+
+	if (!preferred)
+		return;
+
+	/* Check if hiDPI */
+	if (preferred->HDisplay != 3840 || preferred->VDisplay != 2160)
+		return;
+
+	/* Find new preferred mode */
+	for (m = Modes; m; m = m->next) {
+		if (m->HDisplay == 1920 && m->VDisplay == 1080) {
+			preferred = m;
+			break;
+		}
+	}
+
+	/* Update preferred bits */
+	for (m = Modes; m; m = m->next)
+		if (m == preferred)
+			m->type |= M_T_PREFERRED;
+		else
+			m->type &= ~M_T_PREFERRED;
+
+	xf86DrvMsg(output->scrn->scrnIndex, X_INFO,
+		   "Selected resolution %dx%d on hiDPI display %s\n",
+		   preferred->HDisplay, preferred->VDisplay, output->name);
+}
+
 static DisplayModePtr
 sna_output_get_modes(xf86OutputPtr output)
 {
@@ -3176,6 +3219,8 @@ sna_output_get_modes(xf86OutputPtr output)
 
 	if (sna_output->add_default_modes)
 		Modes = sna_output_panel_edid(output, Modes);
+
+	prefer_non_hidpi(output, Modes);
 
 	return Modes;
 }
