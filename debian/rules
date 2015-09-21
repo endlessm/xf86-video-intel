@@ -8,9 +8,9 @@ export CPPFLAGS := $(shell dpkg-buildflags --get CPPFLAGS)
 export CFLAGS := $(shell dpkg-buildflags --get CFLAGS)
 export LDFLAGS := $(shell dpkg-buildflags --get LDFLAGS)
 
-DEB_HOST_ARCH ?= $(shell dpkg-architecture -qDEB_HOST_ARCH)
+DEB_HOST_ARCH_OS ?= $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
 
-ifeq ($(DEB_HOST_ARCH), linux)
+ifeq ($(DEB_HOST_ARCH_OS), linux)
 valgrind = --enable-valgrind
 else
 valgrind = --disable-valgrind
