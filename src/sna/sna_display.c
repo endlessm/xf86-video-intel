@@ -4840,6 +4840,8 @@ void sna_mode_discover(struct sna *sna)
 	int i, j;
 
 	DBG(("%s()\n", __FUNCTION__));
+	sna->flags &= ~SNA_REPROBE;
+
 	VG_CLEAR(connectors);
 
 	memset(&res, 0, sizeof(res));
@@ -4960,6 +4962,8 @@ static CARD32 sna_mode_coldplug(OsTimerPtr timer, CARD32 now, void *data)
 		if (output->status == XF86OutputStatusDisconnected)
 			continue;
 
+		DBG(("%s: output %s connected, needs reprobe\n",
+		     __FUNCTION__, output->name));
 		reprobe = true;
 	}
 
