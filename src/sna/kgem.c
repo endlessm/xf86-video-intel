@@ -3091,7 +3091,6 @@ static bool __kgem_retire_rq(struct kgem *kgem, struct kgem_request *rq)
 		}
 
 		bo->domain = DOMAIN_NONE;
-		bo->gtt_dirty = false;
 		bo->rq = NULL;
 		if (bo->refcnt)
 			continue;
@@ -3335,6 +3334,7 @@ static void kgem_commit(struct kgem *kgem)
 		bo->binding.offset = 0;
 		bo->domain = DOMAIN_GPU;
 		bo->gpu_dirty = false;
+		bo->gtt_dirty = false;
 
 		if (bo->proxy) {
 			/* proxies are not used for domain tracking */
@@ -3356,6 +3356,23 @@ static void kgem_commit(struct kgem *kgem)
 		if (do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain)) {
 			DBG(("%s: sync: GPU hang detected\n", __FUNCTION__));
 			kgem_throttle(kgem);
+		}
+
+		while (!list_is_empty(&rq->buffers)) {
+			bo = list_first_entry(&rq->buffers,
+					      struct kgem_bo,
+					      request);
+
+			assert(RQ(bo->rq) == rq);
+			assert(bo->exec == NULL);
+			assert(bo->domain == DOMAIN_GPU);
+
+			list_del(&bo->request);
+			bo->domain = DOMAIN_NONE;
+			bo->rq = NULL;
+
+			if (bo->refcnt == 0)
+				_kgem_bo_destroy(kgem, bo);
 		}
 
 		kgem_retire(kgem);
