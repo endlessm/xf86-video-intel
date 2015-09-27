@@ -4900,6 +4900,7 @@ void sna_mode_discover(struct sna *sna)
 				DBG(("%s: output %s (id=%d), changed state, reprobing\n",
 				     __FUNCTION__, output->name, sna_output->id));
 				sna_output->last_detect = 0;
+				changed |= 4;
 			}
 			continue;
 		}
@@ -4918,7 +4919,8 @@ void sna_mode_discover(struct sna *sna)
 		changed |= 2;
 	}
 
-	if (changed) {
+	/* Have the list of available outputs been updated? */
+	if (changed & 3) {
 		DBG(("%s: outputs changed, broadcasting\n", __FUNCTION__));
 
 		sna_mode_set_primary(sna);
@@ -4933,8 +4935,12 @@ void sna_mode_discover(struct sna *sna)
 		xf86RandR12TellChanged(screen);
 	}
 
-	RRGetInfo(screen, TRUE);
-	RRTellChanged(screen);
+	/* If anything has changed, refresh the RandR information.
+	 * Note this could recurse once from udevless RRGetInfo() probes,
+	 * but only once.
+	 */
+	if (changed)
+		RRGetInfo(screen, TRUE);
 }
 
 /* Since we only probe the current mode on startup, we may not have the full
