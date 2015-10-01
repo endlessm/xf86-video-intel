@@ -2641,7 +2641,7 @@ error:
 	sna_crtc->cursor_transform = saved_cursor_transform;
 	sna_crtc->hwcursor = saved_hwcursor;
 	sna_crtc->bo = saved_bo;
-	sna_mode_discover(sna);
+	sna_mode_discover(sna, true);
 	return FALSE;
 }
 
@@ -4829,7 +4829,7 @@ output_check_status(struct sna *sna, struct sna_output *output)
 	return output->status == status;
 }
 
-void sna_mode_discover(struct sna *sna)
+void sna_mode_discover(struct sna *sna, bool tell)
 {
 	ScreenPtr screen = xf86ScrnToScreen(sna->scrn);
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
@@ -4939,7 +4939,7 @@ void sna_mode_discover(struct sna *sna)
 	 * Note this could recurse once from udevless RRGetInfo() probes,
 	 * but only once.
 	 */
-	if (changed)
+	if (changed && tell)
 		RRGetInfo(screen, TRUE);
 }
 

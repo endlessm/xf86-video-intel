@@ -780,7 +780,7 @@ sna_handle_uevents(int fd, void *closure)
 		     __FUNCTION__, sna->scrn->vtSema));
 
 		if (sna->scrn->vtSema) {
-			sna_mode_discover(sna);
+			sna_mode_discover(sna, true);
 			sna_mode_check(sna);
 		} else
 			sna->flags |= SNA_REPROBE;
@@ -893,7 +893,7 @@ sna_randr_getinfo(ScreenPtr screen, Rotation *rotations)
 	DBG(("%s()\n", __FUNCTION__));
 
 	if (!sna_uevent_poll(sna))
-		sna_mode_discover(sna);
+		sna_mode_discover(sna, false);
 
 	return sna->mode.rrGetInfo(screen, rotations);
 }
@@ -1222,7 +1222,7 @@ static Bool sna_enter_vt(VT_FUNC_ARGS_DECL)
 
 	if (sna->flags & SNA_REPROBE) {
 		DBG(("%s: reporting deferred hotplug event\n", __FUNCTION__));
-		sna_mode_discover(sna);
+		sna_mode_discover(sna, true);
 	}
 
 	sna_set_desired_mode(sna);
