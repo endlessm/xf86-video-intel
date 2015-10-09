@@ -5405,14 +5405,14 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 			if (transformed) {
 				affine_blt(image, cursor->image, 32,
 					   0, 0, width, height, size * 4,
-					   0, 0, width, height, size * 4,
+					   0, 0, size, size, size * 4,
 					   &to_sna_crtc(crtc)->cursor_to_fb);
 				image = cursor->image;
 			}
 		} else if (transformed) {
 			affine_blt(argb, cursor->image, 32,
 				   0, 0, width, height, width * 4,
-				   0, 0, width, height, size * 4,
+				   0, 0, size, size, size * 4,
 				   &to_sna_crtc(crtc)->cursor_to_fb);
 			image = cursor->image;
 		} else
