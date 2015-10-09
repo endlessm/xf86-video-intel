@@ -5340,16 +5340,16 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 
 		pixman_f_transform_bounds(&crtc->f_crtc_to_framebuffer, &box);
 		size = __cursor_size(box.x2 - box.x1, box.y2 - box.y1);
-
-		RRTransformCompute(0, 0,
-				   sna->cursor.ref->bits->width,
-				   sna->cursor.ref->bits->height,
-				   crtc->rotation, &crtc->transform,
-				   &cursor_to_fb,
-				   &to_sna_crtc(crtc)->cursor_to_fb,
-				   &to_sna_crtc(crtc)->fb_to_cursor);
 	} else
 		size = sna->cursor.size;
+
+	if (crtc->transform_in_use)
+                RRTransformCompute(0, 0, size, size,
+                                   crtc->rotation,
+                                   crtc->transformPresent ? &crtc->transform : NULL,
+                                   &cursor_to_fb,
+                                   &to_sna_crtc(crtc)->cursor_to_fb,
+                                   &to_sna_crtc(crtc)->fb_to_cursor);
 
 	cursor = to_sna_crtc(crtc)->cursor;
 	if (cursor && cursor->alloc < 4*size*size)
@@ -5726,18 +5726,18 @@ sna_set_cursor_position(ScrnInfoPtr scrn, int x, int y)
 			int yhot = sna->cursor.ref->bits->yhot;
 			struct pict_f_vector v, hot;
 
-			v.v[0] = (x + xhot) + 0.5;
-			v.v[1] = (y + yhot) + 0.5;
-			v.v[2] = 1;
+			v.v[0] = x + xhot + .5;
+			v.v[1] = y + yhot + .5;
+			v.v[2] = 1.;
 			pixman_f_transform_point(&crtc->f_framebuffer_to_crtc, &v);
 
-			hot.v[0] = xhot + .5;
-			hot.v[1] = yhot + .5;
+			hot.v[0] = xhot;
+			hot.v[1] = yhot;
 			hot.v[2] = 1.;
 			pixman_f_transform_point(&sna_crtc->fb_to_cursor, &hot);
 
-			arg.x = floor(v.v[0]) - floor(hot.v[0]);
-			arg.y = floor(v.v[1]) - floor(hot.v[1]);
+			arg.x = floor(v.v[0] - hot.v[0]);
+			arg.y = floor(v.v[1] - hot.v[1]);
 		} else {
 			arg.x = x - crtc->x;
 			arg.y = y - crtc->y;
