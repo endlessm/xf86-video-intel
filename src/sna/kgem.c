@@ -2807,7 +2807,7 @@ void kgem_bo_undo(struct kgem *kgem, struct kgem_bo *bo)
 	DBG(("%s: only handle in batch, discarding last operations for handle=%d\n",
 	     __FUNCTION__, bo->handle));
 
-	assert(bo->exec == &kgem->exec[0]);
+	assert(bo->exec == &_kgem_dummy_exec || bo->exec == &kgem->exec[0]);
 	assert(kgem->exec[0].handle == bo->handle);
 	assert(RQ(bo->rq) == kgem->next_request);
 
@@ -2835,16 +2835,23 @@ void kgem_bo_pair_undo(struct kgem *kgem, struct kgem_bo *a, struct kgem_bo *b)
 
 	if (a == NULL || b == NULL)
 		return;
+	assert(a != b);
 	if (a->exec == NULL || b->exec == NULL)
 		return;
 
-	DBG(("%s: only handles in batch, discarding last operations for handle=%d and handle=%d\n",
-	     __FUNCTION__, a->handle, b->handle));
+	DBG(("%s: only handles in batch, discarding last operations for handle=%d (index=%d) and handle=%d (index=%d)\n",
+	     __FUNCTION__,
+	     a->handle, a->proxy ? -1 : a->exec - kgem->exec,
+	     b->handle, b->proxy ? -1 : b->exec - kgem->exec));
 
-	assert(a->exec == &kgem->exec[0] || a->exec == &kgem->exec[1]);
+	assert(a->exec == &_kgem_dummy_exec ||
+	       a->exec == &kgem->exec[0] ||
+	       a->exec == &kgem->exec[1]);
 	assert(a->handle == kgem->exec[0].handle || a->handle == kgem->exec[1].handle);
 	assert(RQ(a->rq) == kgem->next_request);
-	assert(b->exec == &kgem->exec[0] || b->exec == &kgem->exec[1]);
+	assert(b->exec == &_kgem_dummy_exec ||
+	       b->exec == &kgem->exec[0] ||
+	       b->exec == &kgem->exec[1]);
 	assert(b->handle == kgem->exec[0].handle || b->handle == kgem->exec[1].handle);
 	assert(RQ(b->rq) == kgem->next_request);
 
