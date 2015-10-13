@@ -553,6 +553,7 @@ static struct kgem_bo *upload(struct sna *sna,
 			assert(priv->gpu_damage == NULL);
 			assert(priv->gpu_bo == NULL);
 			assert(bo->proxy != NULL);
+			sna_damage_all(&priv->cpu_damage, pixmap);
 			kgem_proxy_bo_attach(bo, &priv->gpu_bo);
 		}
 	}
@@ -1261,6 +1262,7 @@ sna_render_picture_extract(struct sna *sna,
 			assert(priv->gpu_damage == NULL);
 			assert(priv->gpu_bo == NULL);
 			assert(bo->proxy != NULL);
+			sna_damage_all(&priv->cpu_damage, pixmap);
 			kgem_proxy_bo_attach(bo, &priv->gpu_bo);
 		}
 	}
