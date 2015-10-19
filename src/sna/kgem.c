@@ -1822,12 +1822,50 @@ no_context_switch(struct kgem *kgem, int new_mode)
 	(void)new_mode;
 }
 
-void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
+static uint64_t get_gtt_size(int fd)
 {
 	struct drm_i915_gem_get_aperture aperture;
+	struct local_i915_gem_context_param {
+		uint32_t context;
+		uint32_t size;
+		uint64_t param;
+#define LOCAL_CONTEXT_PARAM_BAN_PERIOD	0x1
+#define LOCAL_CONTEXT_PARAM_NO_ZEROMAP	0x2
+#define LOCAL_CONTEXT_PARAM_GTT_SIZE	0x3
+		uint64_t value;
+	} p;
+#define LOCAL_I915_GEM_CONTEXT_GETPARAM       0x34
+#define LOCAL_IOCTL_I915_GEM_CONTEXT_GETPARAM DRM_IOWR (DRM_COMMAND_BASE + LOCAL_I915_GEM_CONTEXT_GETPARAM, struct local_i915_gem_context_param)
+
+	memset(&aperture, 0, sizeof(aperture));
+
+	memset(&p, 0, sizeof(p));
+	p.param = LOCAL_CONTEXT_PARAM_GTT_SIZE;
+	if (drmIoctl(fd, LOCAL_IOCTL_I915_GEM_CONTEXT_GETPARAM, &p) == 0)
+		aperture.aper_size = p.value;
+	if (aperture.aper_size == 0)
+		(void)drmIoctl(fd, DRM_IOCTL_I915_GEM_GET_APERTURE, &aperture);
+	if (aperture.aper_size == 0)
+		aperture.aper_size = 64*1024*1024;
+
+	DBG(("%s: aperture size %lld, available now %lld\n",
+	     __FUNCTION__,
+	     (long long)aperture.aper_size,
+	     (long long)aperture.aper_available_size));
+
+	/* clamp aperture to uint32_t for simplicity */
+	if (aperture.aper_size > 0xc0000000)
+		aperture.aper_size = 0xc0000000;
+
+	return aperture.aper_size;
+}
+
+void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
+{
 	size_t totalram;
 	unsigned half_gpu_max;
 	unsigned int i, j;
+	uint64_t gtt_size;
 
 	DBG(("%s: fd=%d, gen=%d\n", __FUNCTION__, fd, gen));
 
@@ -1979,23 +2017,10 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 	     !DBG_NO_CPU && (kgem->has_llc | kgem->has_userptr | kgem->has_caching),
 	     kgem->has_llc, kgem->has_caching, kgem->has_userptr));
 
-	VG_CLEAR(aperture);
-	aperture.aper_size = 0;
-	(void)do_ioctl(fd, DRM_IOCTL_I915_GEM_GET_APERTURE, &aperture);
-	if (aperture.aper_size == 0)
-		aperture.aper_size = 64*1024*1024;
-
-	DBG(("%s: aperture size %lld, available now %lld\n",
-	     __FUNCTION__,
-	     (long long)aperture.aper_size,
-	     (long long)aperture.aper_available_size));
-
-	/* clamp aperture to uint32_t for simplicity */
-	if (aperture.aper_size > 0xc0000000)
-		aperture.aper_size = 0xc0000000;
-	kgem->aperture_total = aperture.aper_size;
-	kgem->aperture_high = aperture.aper_size * 3/4;
-	kgem->aperture_low = aperture.aper_size * 1/3;
+	gtt_size = get_gtt_size(fd);
+	kgem->aperture_total = gtt_size;
+	kgem->aperture_high = gtt_size * 3/4;
+	kgem->aperture_low = gtt_size * 1/3;
 	if (gen < 033) {
 		/* Severe alignment penalties */
 		kgem->aperture_high /= 2;
@@ -2008,9 +2033,8 @@ void kgem_init(struct kgem *kgem, int fd, struct pci_device *dev, unsigned gen)
 	kgem->aperture_mappable = 256 * 1024 * 1024;
 	if (dev != NULL)
 		kgem->aperture_mappable = agp_aperture_size(dev, gen);
-	if (kgem->aperture_mappable == 0 ||
-	    kgem->aperture_mappable > aperture.aper_size)
-		kgem->aperture_mappable = aperture.aper_size;
+	if (kgem->aperture_mappable == 0 || kgem->aperture_mappable > gtt_size)
+		kgem->aperture_mappable = gtt_size;
 	DBG(("%s: aperture mappable=%d [%d MiB]\n", __FUNCTION__,
 	     kgem->aperture_mappable, kgem->aperture_mappable / (1024*1024)));
 
