@@ -6752,6 +6752,7 @@ void *kgem_bo_map(struct kgem *kgem, struct kgem_bo *bo)
 			DBG(("%s: sync: GPU hang detected\n", __FUNCTION__));
 			kgem_throttle(kgem);
 		}
+		bo->needs_flush = false;
 		kgem_bo_retire(kgem, bo);
 		bo->domain = DOMAIN_GTT;
 		bo->gtt_dirty = true;
@@ -6964,6 +6965,7 @@ void kgem_bo_sync__cpu(struct kgem *kgem, struct kgem_bo *bo)
 			DBG(("%s: sync: GPU hang detected\n", __FUNCTION__));
 			kgem_throttle(kgem);
 		}
+		bo->needs_flush = false;
 		kgem_bo_retire(kgem, bo);
 		bo->domain = DOMAIN_CPU;
 	}
@@ -7004,6 +7006,7 @@ void kgem_bo_sync__cpu_full(struct kgem *kgem, struct kgem_bo *bo, bool write)
 			kgem_throttle(kgem);
 		}
 		if (write) {
+			bo->needs_flush = false;
 			kgem_bo_retire(kgem, bo);
 			bo->domain = DOMAIN_CPU;
 		} else {
@@ -7040,6 +7043,7 @@ void kgem_bo_sync__gtt(struct kgem *kgem, struct kgem_bo *bo)
 			DBG(("%s: sync: GPU hang detected\n", __FUNCTION__));
 			kgem_throttle(kgem);
 		}
+		bo->needs_flush = false;
 		kgem_bo_retire(kgem, bo);
 		bo->domain = DOMAIN_GTT;
 		bo->gtt_dirty = true;
