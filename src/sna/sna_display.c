@@ -2286,26 +2286,26 @@ out_shadow:
 		}
 
 		if (sna->flags & SNA_TEAR_FREE) {
+			RegionRec region;
+
 			assert(sna_crtc->slave_pixmap == NULL);
 
 			DBG(("%s: enabling TearFree shadow\n", __FUNCTION__));
+			region.extents.x1 = 0;
+			region.extents.y1 = 0;
+			region.extents.x2 = sna->scrn->virtualX;
+			region.extents.y2 = sna->scrn->virtualY;
+			region.data = NULL;
+
 			if (!sna_crtc_enable_shadow(sna, sna_crtc)) {
 				DBG(("%s: failed to enable crtc shadow\n", __FUNCTION__));
 				return NULL;
 			}
 
 			if (sna->mode.shadow == NULL && !wedged(sna)) {
-				RegionRec region;
 				struct kgem_bo *shadow;
 
 				DBG(("%s: creating TearFree shadow bo\n", __FUNCTION__));
-
-				region.extents.x1 = 0;
-				region.extents.y1 = 0;
-				region.extents.x2 = sna->scrn->virtualX;
-				region.extents.y2 = sna->scrn->virtualY;
-				region.data = NULL;
-
 				shadow = kgem_create_2d(&sna->kgem,
 							region.extents.x2,
 							region.extents.y2,
@@ -2334,8 +2334,8 @@ out_shadow:
 				assert(__sna_pixmap_get_bo(sna->front) == NULL ||
 				       __sna_pixmap_get_bo(sna->front)->pitch == shadow->pitch);
 				sna->mode.shadow = shadow;
-				set_shadow(sna, &region);
 			}
+			set_shadow(sna, &region);
 
 			sna_crtc_disable_override(sna, sna_crtc);
 		} else
@@ -8449,7 +8449,7 @@ disable1:
 
 			assert(crtc != NULL);
 			DBG(("%s: crtc %d [%d, pipe=%d] active? %d, transformed? %d\n",
-			     __FUNCTION__, i, __sna_crtc_id(crtc), crtc->bo ? crtc->bo->handle : 0, crtc->transform));
+			     __FUNCTION__, i, __sna_crtc_id(crtc), __sna_crtc_pipe(crtc), crtc->bo ? crtc->bo->handle : 0, crtc->transform));
 			if (crtc->bo == NULL || crtc->transform)
 				continue;
 
@@ -8500,6 +8500,8 @@ fixup_shadow:
 
 			if (crtc->bo == flip_bo) {
 				assert(crtc->bo->refcnt >= crtc->bo->active_scanout);
+				DBG(("%s: flip handle=%d is already on the CRTC\n",
+				     __FUNCTION__, flip_bo->handle));
 				continue;
 			}
 
