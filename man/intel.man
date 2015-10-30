@@ -344,12 +344,28 @@ Default: 0
 .IP
 Specify the randr output(s) to use with zaphod mode for a particular driver
 instance.  If you set this option you must use it with all instances of the
-driver
+driver. By default, each head is assigned only one CRTC (which limits
+using multiple outputs with that head to cloned mode). CRTC can be manually
+assigned to individual heads by preceding the output names with a comma
+delimited list of pipe numbers followed by a colon. Note that different pipes
+may be limited in their functionality and some outputs may only work with
+different pipes.
 .br
 For example:
+
+.RS
 .B
 Option \*qZaphodHeads\*q \*qLVDS1,VGA1\*q
+
 will assign xrandr outputs LVDS1 and VGA1 to this instance of the driver.
+.RE
+
+.RS
+.B
+Option \*qZaphodHeads\*q \*q0,2:HDMI1,DP2\*q
+
+will assign xrandr outputs HDMI1 and DP2 and CRTCs 0 and 2 to this instance of the driver.
+.RE
 
 .SH OUTPUT CONFIGURATION
 On 830M and better chipsets, the driver supports runtime configuration of

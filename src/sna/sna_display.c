@@ -272,6 +272,81 @@ static bool is_zaphod(ScrnInfoPtr scrn)
 	return xf86IsEntityShared(scrn->entityList[0]);
 }
 
+static bool
+sna_zaphod_match(struct sna *sna, const char *output)
+{
+	const char *s, *colon;
+	char t[20];
+	unsigned int i = 0;
+
+	s = xf86GetOptValString(sna->Options, OPTION_ZAPHOD);
+	if (s == NULL)
+		return false;
+
+	colon = strchr(s, ':');
+	if (colon) /* Skip over the ZaphodPipes */
+		s = colon + 1;
+
+	do {
+		/* match any outputs in a comma list, stopping at whitespace */
+		switch (*s) {
+		case '\0':
+			t[i] = '\0';
+			return strcmp(t, output) == 0;
+
+		case ',':
+			t[i] ='\0';
+			if (strcmp(t, output) == 0)
+				return TRUE;
+			i = 0;
+			break;
+
+		case ' ':
+		case '\t':
+		case '\n':
+		case '\r':
+			break;
+
+		default:
+			t[i++] = *s;
+			break;
+		}
+
+		s++;
+	} while (i < sizeof(t));
+
+	return false;
+}
+
+static unsigned
+get_zaphod_crtcs(struct sna *sna)
+{
+	const char *str, *colon;
+	unsigned crtcs = 0;
+
+	str = xf86GetOptValString(sna->Options, OPTION_ZAPHOD);
+	if (str == NULL || (colon = strchr(str, ':')) == NULL) {
+		DBG(("%s: no zaphod pipes, using screen number: %x\n",
+		     __FUNCTION__,
+		     sna->scrn->confScreen->device->screen));
+		return 1 << sna->scrn->confScreen->device->screen;
+	}
+
+	DBG(("%s: ZaphodHeads='%s'\n", __FUNCTION__, str));
+	while (str < colon) {
+		char *end;
+		unsigned crtc = strtoul(str, &end, 0);
+		if (end == str)
+			break;
+		DBG(("%s: adding CRTC %d to zaphod pipes\n",
+		     __FUNCTION__, crtc));
+		crtcs |= 1 << crtc;
+		str = end + 1;
+	}
+	DBG(("%s: ZaphodPipes=%x\n", __FUNCTION__, crtcs));
+	return crtcs;
+}
+
 inline static unsigned count_to_mask(int x)
 {
 	return (1 << x) - 1;
@@ -3027,7 +3102,7 @@ sna_crtc_add(ScrnInfoPtr scrn, unsigned id)
 	struct sna_crtc *sna_crtc;
 	struct drm_i915_get_pipe_from_crtc_id get_pipe;
 
-	DBG(("%s(%d)\n", __FUNCTION__, id));
+	DBG(("%s(%d): is-zaphod? %d\n", __FUNCTION__, id, is_zaphod(scrn)));
 
 	sna_crtc = calloc(sizeof(struct sna_crtc), 1);
 	if (sna_crtc == NULL)
@@ -3049,7 +3124,7 @@ sna_crtc_add(ScrnInfoPtr scrn, unsigned id)
 	sna_crtc->flags |= get_pipe.pipe << 8;
 
 	if (is_zaphod(scrn) &&
-	    scrn->confScreen->device->screen != get_pipe.pipe) {
+	    (get_zaphod_crtcs(sna) & (1 << get_pipe.pipe)) == 0) {
 		free(sna_crtc);
 		return true;
 	}
@@ -4112,43 +4187,6 @@ static const char * const output_names[] = {
 };
 
 static bool
-sna_zaphod_match(const char *s, const char *output)
-{
-	char t[20];
-	unsigned int i = 0;
-
-	do {
-		/* match any outputs in a comma list, stopping at whitespace */
-		switch (*s) {
-		case '\0':
-			t[i] = '\0';
-			return strcmp(t, output) == 0;
-
-		case ',':
-			t[i] ='\0';
-			if (strcmp(t, output) == 0)
-				return TRUE;
-			i = 0;
-			break;
-
-		case ' ':
-		case '\t':
-		case '\n':
-		case '\r':
-			break;
-
-		default:
-			t[i++] = *s;
-			break;
-		}
-
-		s++;
-	} while (i < sizeof(t));
-
-	return false;
-}
-
-static bool
 output_ignored(ScrnInfoPtr scrn, const char *name)
 {
 	char monitor_name[64];
@@ -4541,25 +4579,26 @@ sna_output_add(struct sna *sna, unsigned id, unsigned serial)
 	}
 
 	if (is_zaphod(scrn)) {
-		const char *str;
+		unsigned zaphod_crtcs;
 
-		str = xf86GetOptValString(sna->Options, OPTION_ZAPHOD);
-		if (str && !sna_zaphod_match(str, name)) {
-			DBG(("%s: zaphod mismatch, want %s, have %s\n", __FUNCTION__, str, name));
+		if (!sna_zaphod_match(sna, name)) {
+			DBG(("%s: zaphod mismatch, want %s, have %s\n",
+			     __FUNCTION__,
+			     xf86GetOptValString(sna->Options, OPTION_ZAPHOD),
+			     name));
 			return 0;
 		}
 
-		if ((possible_crtcs & (1 << scrn->confScreen->device->screen)) == 0) {
-			if (str) {
-				xf86DrvMsg(scrn->scrnIndex, X_ERROR,
-					   "%s is an invalid output for screen (pipe) %d\n",
-					   name, scrn->confScreen->device->screen);
-				return -1;
-			} else
-				return 0;
+		zaphod_crtcs = get_zaphod_crtcs(sna);
+		possible_crtcs &= zaphod_crtcs;
+		if (possible_crtcs == 0) {
+			xf86DrvMsg(scrn->scrnIndex, X_ERROR,
+				   "%s is an invalid output for screen %d\n",
+				   name, scrn->confScreen->device->screen);
+			return -1;
 		}
 
-		possible_crtcs = 1;
+		possible_crtcs >>= ffs(zaphod_crtcs) - 1;
 	}
 
 	sna_output = calloc(sizeof(struct sna_output), 1);
@@ -4599,16 +4638,16 @@ sna_output_add(struct sna *sna, unsigned id, unsigned serial)
 	/* Construct name from topology, and recheck if output is acceptable */
 	path = name_from_path(sna, sna_output, name);
 	if (path) {
-		const char *str;
-
 		if (output_ignored(scrn, name)) {
 			len = 0;
 			goto skip;
 		}
 
-		str = xf86GetOptValString(sna->Options, OPTION_ZAPHOD);
-		if (str && !sna_zaphod_match(str, name)) {
-			DBG(("%s: zaphod mismatch, want %s, have %s\n", __FUNCTION__, str, name));
+		if (!sna_zaphod_match(sna, name)) {
+			DBG(("%s: zaphod mismatch, want %s, have %s\n",
+			     __FUNCTION__,
+			     xf86GetOptValString(sna->Options, OPTION_ZAPHOD),
+			     name));
 			len = 0;
 			goto skip;
 		}
