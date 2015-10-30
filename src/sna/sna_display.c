@@ -3113,6 +3113,29 @@ find_property(struct sna *sna, struct sna_output *output, const char *name)
 	return -1;
 }
 
+static void update_properties(struct sna *sna, struct sna_output *output)
+{
+	union compat_mode_get_connector compat_conn;
+	struct drm_mode_modeinfo dummy;
+
+	VG_CLEAR(compat_conn);
+
+	compat_conn.conn.connector_id = output->id;
+	compat_conn.conn.count_props = output->num_props;
+	compat_conn.conn.props_ptr = (uintptr_t)output->prop_ids;
+	compat_conn.conn.prop_values_ptr = (uintptr_t)output->prop_values;
+	compat_conn.conn.count_modes = 1; /* skip detect */
+	compat_conn.conn.modes_ptr = (uintptr_t)&dummy;
+	compat_conn.conn.count_encoders = 0;
+
+	(void)drmIoctl(sna->kgem.fd,
+		       DRM_IOCTL_MODE_GETCONNECTOR,
+		       &compat_conn.conn);
+
+	assert(compat_conn.conn.count_props == output->num_props);
+	output->update_properties = false;
+}
+
 static xf86OutputStatus
 sna_output_detect(xf86OutputPtr output)
 {
@@ -3240,6 +3263,13 @@ sna_output_attach_edid(xf86OutputPtr output)
 	if (sna_output->edid_idx == -1)
 		return;
 
+	/* Always refresh the blob as the kernel may randomly update the
+	 * id even if the contents of the blob doesn't change, and a
+	 * request for the stale id will return nothing.
+	 */
+	if (sna_output->update_properties)
+		update_properties(sna, sna_output);
+
 	raw = sna_output->edid_raw;
 	blob.length = sna_output->edid_len;
 
@@ -3351,6 +3381,9 @@ sna_output_attach_tile(xf86OutputPtr output)
 	DBG(("%s: found? TILE=%d\n", __FUNCTION__, id));
 	if (id == -1)
 		goto out;
+
+	if (sna_output->update_properties)
+		update_properties(sna, sna_output);
 
 	VG_CLEAR(blob);
 	blob.blob_id = sna_output->prop_values[id];
@@ -3960,29 +3993,6 @@ sna_output_set_property(xf86OutputPtr output, Atom property,
 	 * common properties like EDID.
 	 */
 	return TRUE;
-}
-
-static void update_properties(struct sna *sna, struct sna_output *output)
-{
-	union compat_mode_get_connector compat_conn;
-	struct drm_mode_modeinfo dummy;
-
-	VG_CLEAR(compat_conn);
-
-	compat_conn.conn.connector_id = output->id;
-	compat_conn.conn.count_props = output->num_props;
-	compat_conn.conn.props_ptr = (uintptr_t)output->prop_ids;
-	compat_conn.conn.prop_values_ptr = (uintptr_t)output->prop_values;
-	compat_conn.conn.count_modes = 1; /* skip detect */
-	compat_conn.conn.modes_ptr = (uintptr_t)&dummy;
-	compat_conn.conn.count_encoders = 0;
-
-	(void)drmIoctl(sna->kgem.fd,
-		       DRM_IOCTL_MODE_GETCONNECTOR,
-		       &compat_conn.conn);
-
-	assert(compat_conn.conn.count_props == output->num_props);
-	output->update_properties = false;
 }
 
 static Bool
