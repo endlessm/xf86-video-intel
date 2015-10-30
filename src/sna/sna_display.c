@@ -3250,8 +3250,12 @@ sna_output_attach_edid(xf86OutputPtr output)
 		old = NULL;
 
 	blob.blob_id = sna_output->prop_values[sna_output->edid_idx];
-	DBG(("%s: attaching EDID id=%d, current=%d\n",
-	     __FUNCTION__, blob.blob_id, sna_output->edid_blob_id));
+	if (!blob.blob_id)
+		goto done;
+
+	DBG(("%s(%s): attaching EDID id=%d, current=%d\n",
+	     __FUNCTION__, output->name,
+	     blob.blob_id, sna_output->edid_blob_id));
 	if (blob.blob_id == sna_output->edid_blob_id && 0) { /* sigh */
 		if (output->MonInfo) {
 			/* XXX the property keeps on disappearing... */
@@ -3269,11 +3273,14 @@ sna_output_attach_edid(xf86OutputPtr output)
 	}
 
 	blob.data = (uintptr_t)raw;
-	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPBLOB, &blob))
-		goto done;
+	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPBLOB, &blob)) {
+		DBG(("%s(%s): failed to read blob, reusing previous\n",
+		     __FUNCTION__, output->name));
+		goto skip_read;
+	}
 
-	DBG(("%s: retrieving blob id=%d, length=%d\n",
-	     __FUNCTION__, blob.blob_id, blob.length));
+	DBG(("%s(%s): retrieving blob id=%d, length=%d\n",
+	     __FUNCTION__, output->name, blob.blob_id, blob.length));
 
 	if (blob.length > sna_output->edid_len) {
 		raw = realloc(raw, blob.length);
@@ -3300,6 +3307,8 @@ sna_output_attach_edid(xf86OutputPtr output)
 	if (old &&
 	    blob.length == sna_output->edid_len &&
 	    memcmp(old, raw, blob.length) == 0) {
+		DBG(("%s(%s): EDID + MonInfo is unchanged\n",
+		     __FUNCTION__, output->name));
 		assert(sna_output->edid_raw == raw);
 		sna_output->edid_blob_id = blob.blob_id;
 		RRChangeOutputProperty(output->randr_output,
