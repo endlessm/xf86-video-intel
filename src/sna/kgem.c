@@ -3097,6 +3097,8 @@ static bool __kgem_retire_rq(struct kgem *kgem, struct kgem_request *rq)
 	DBG(("%s: request %d complete\n",
 	     __FUNCTION__, rq->bo->handle));
 	assert(RQ(rq->bo->rq) == rq);
+	assert(rq != (struct kgem_request *)kgem);
+	assert(rq != &kgem->static_request);
 
 	if (rq == kgem->fence[rq->ring])
 		kgem->fence[rq->ring] = NULL;
@@ -3415,6 +3417,7 @@ static void kgem_commit(struct kgem *kgem)
 		gem_close(kgem->fd, rq->bo->handle);
 		kgem_cleanup_cache(kgem);
 	} else {
+		assert(rq != (struct kgem_request *)kgem);
 		assert(rq->ring < ARRAY_SIZE(kgem->requests));
 		list_add_tail(&rq->list, &kgem->requests[rq->ring]);
 		kgem->need_throttle = kgem->need_retire = 1;
