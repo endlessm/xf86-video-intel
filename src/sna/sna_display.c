@@ -1051,7 +1051,8 @@ sna_crtc_force_outputs_on(xf86CrtcPtr crtc)
 			continue;
 
 		__sna_output_dpms(output, DPMSModeOn, false);
-		to_sna_output(output)->last_detect = now;
+		if (to_sna_output(output)->last_detect)
+			to_sna_output(output)->last_detect = now;
 	}
 
 #if XF86_CRTC_VERSION >= 3
