@@ -4070,7 +4070,6 @@ void _kgem_submit(struct kgem *kgem)
 	if (rq->bo) {
 		struct drm_i915_gem_execbuffer2 execbuf;
 
-		assert(rq->bo->refcnt == 1);
 		assert(!rq->bo->needs_flush);
 
 		i = kgem->nexec++;
