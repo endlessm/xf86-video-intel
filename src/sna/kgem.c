@@ -3838,6 +3838,32 @@ static int compact_batch_surface(struct kgem *kgem, int *shrink)
 	return size * sizeof(uint32_t);
 }
 
+static struct kgem_bo *first_available(struct kgem *kgem, struct list *list)
+{
+	struct kgem_bo *bo;
+
+	list_for_each_entry(bo, list, list) {
+		assert(bo->refcnt > 0);
+
+		if (bo->rq) {
+			assert(RQ(bo->rq)->bo == bo);
+			if (__kgem_busy(kgem, bo->handle))
+				break;
+
+			__kgem_retire_rq(kgem, RQ(bo->rq));
+			assert(bo->rq == NULL);
+		}
+
+		if (bo->refcnt > 1)
+			continue;
+
+		list_move_tail(&bo->list, list);
+		return kgem_bo_reference(bo);
+	}
+
+	return NULL;
+}
+
 static struct kgem_bo *
 kgem_create_batch(struct kgem *kgem)
 {
@@ -3851,40 +3877,15 @@ kgem_create_batch(struct kgem *kgem)
 		size = kgem->nbatch * sizeof(uint32_t);
 
 	if (size <= 4096) {
-		bo = list_first_entry(&kgem->pinned_batches[0],
-				      struct kgem_bo,
-				      list);
-		if (!bo->rq) {
-out_4096:
-			assert(bo->refcnt > 0);
-			list_move_tail(&bo->list, &kgem->pinned_batches[0]);
-			bo = kgem_bo_reference(bo);
+		bo = first_available(kgem, &kgem->pinned_batches[0]);
+		if (bo)
 			goto write;
-		}
-
-		if (!__kgem_busy(kgem, bo->handle)) {
-			assert(RQ(bo->rq)->bo == bo);
-			__kgem_retire_rq(kgem, RQ(bo->rq));
-			goto out_4096;
-		}
 	}
 
 	if (size <= 16384) {
-		bo = list_first_entry(&kgem->pinned_batches[1],
-				      struct kgem_bo,
-				      list);
-		if (!bo->rq) {
-out_16384:
-			assert(bo->refcnt > 0);
-			list_move_tail(&bo->list, &kgem->pinned_batches[1]);
-			bo = kgem_bo_reference(bo);
+		bo = first_available(kgem, &kgem->pinned_batches[1]);
+		if (bo)
 			goto write;
-		}
-
-		if (!__kgem_busy(kgem, bo->handle)) {
-			__kgem_retire_rq(kgem, RQ(bo->rq));
-			goto out_16384;
-		}
 	}
 
 	if (kgem->gen == 020) {
@@ -4069,6 +4070,7 @@ void _kgem_submit(struct kgem *kgem)
 	if (rq->bo) {
 		struct drm_i915_gem_execbuffer2 execbuf;
 
+		assert(rq->bo->refcnt == 1);
 		assert(!rq->bo->needs_flush);
 
 		i = kgem->nexec++;
