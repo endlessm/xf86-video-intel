@@ -2600,6 +2600,13 @@ void sna_dri2_vblank_handler(struct drm_event_vblank *event)
 		}
 
 		if (info->pending.bo) {
+			if (sna->mode.shadow && !sna->mode.shadow_enabled) {
+				/* recursed from wait_for_shadow(), simply requeue */
+				DBG(("%s -- recursed from wait_for_shadow(), requeuing\n", __FUNCTION__));
+				if (sna_next_vblank(info))
+					return;
+			}
+
 			assert(info->pending.bo->active_scanout > 0);
 			info->pending.bo->active_scanout--;
 
