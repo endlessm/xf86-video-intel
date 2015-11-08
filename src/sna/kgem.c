@@ -3275,18 +3275,18 @@ bool __kgem_ring_is_idle(struct kgem *kgem, int ring)
 
 bool __kgem_retire_requests_upto(struct kgem *kgem, struct kgem_bo *bo)
 {
-	struct kgem_request *rq = bo->rq, *tmp;
-	struct list *requests = &kgem->requests[RQ_RING(rq) == KGEM_BLT];
+	struct kgem_request * const rq = RQ(bo->rq), *tmp;
+	struct list *requests = &kgem->requests[rq->ring];
 
-	DBG(("%s(handle=%d)\n", __FUNCTION__, bo->handle));
+	DBG(("%s(handle=%d, ring=%d)\n", __FUNCTION__, bo->handle, rq->ring));
 
-	rq = RQ(rq);
 	assert(rq != &kgem->static_request);
 	if (rq == (struct kgem_request *)kgem) {
 		__kgem_bo_clear_busy(bo);
 		return false;
 	}
 
+	assert(rq->ring < ARRAY_SIZE(kgem->requests));
 	do {
 		tmp = list_first_entry(requests, struct kgem_request, list);
 		assert(tmp->ring == rq->ring);

@@ -104,7 +104,7 @@ struct kgem_request {
 	struct list list;
 	struct kgem_bo *bo;
 	struct list buffers;
-	int ring;
+	unsigned ring;
 };
 
 enum {
