@@ -5495,17 +5495,7 @@ gen3_render_video(struct sna *sna,
 		pix_yoff = -dstRegion->extents.y1;
 		copy = 1;
 	} else {
-		/* Set up the offset for translating from the given region
-		 * (in screen coordinates) to the backing pixmap.
-		 */
-#ifdef COMPOSITE
-		pix_xoff = -pixmap->screen_x + pixmap->drawable.x;
-		pix_yoff = -pixmap->screen_y + pixmap->drawable.y;
-#else
-		pix_xoff = 0;
-		pix_yoff = 0;
-#endif
-
+		pix_xoff = pix_yoff = 0;
 		dst_width  = pixmap->drawable.width;
 		dst_height = pixmap->drawable.height;
 	}
@@ -5561,16 +5551,9 @@ gen3_render_video(struct sna *sna,
 	} while (nbox);
 
 	if (copy) {
-#ifdef COMPOSITE
-		pix_xoff = -pixmap->screen_x + pixmap->drawable.x;
-		pix_yoff = -pixmap->screen_y + pixmap->drawable.y;
-#else
-		pix_xoff = 0;
-		pix_yoff = 0;
-#endif
 		sna_blt_copy_boxes(sna, GXcopy,
 				   dst_bo, -dstRegion->extents.x1, -dstRegion->extents.y1,
-				   priv->gpu_bo, pix_xoff, pix_yoff,
+				   priv->gpu_bo, 0, 0,
 				   pixmap->drawable.bitsPerPixel,
 				   region_rects(dstRegion),
 				   region_num_rects(dstRegion));
@@ -5578,21 +5561,7 @@ gen3_render_video(struct sna *sna,
 		kgem_bo_destroy(&sna->kgem, dst_bo);
 	}
 
-	if (!DAMAGE_IS_ALL(priv->gpu_damage)) {
-		if ((pix_xoff | pix_yoff) == 0) {
-			sna_damage_add(&priv->gpu_damage, dstRegion);
-			sna_damage_subtract(&priv->cpu_damage, dstRegion);
-		} else {
-			sna_damage_add_boxes(&priv->gpu_damage,
-					     region_rects(dstRegion),
-					     region_num_rects(dstRegion),
-					     pix_xoff, pix_yoff);
-			sna_damage_subtract_boxes(&priv->cpu_damage,
-						  region_rects(dstRegion),
-						  region_num_rects(dstRegion),
-						  pix_xoff, pix_yoff);
-		}
-	}
+	sna_damage_add(&priv->gpu_damage, dstRegion);
 
 	return true;
 }

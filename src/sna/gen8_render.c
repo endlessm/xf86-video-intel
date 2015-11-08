@@ -3780,9 +3780,9 @@ gen8_render_video(struct sna *sna,
 	int src_height = frame->src.y2 - frame->src.y1;
 	float src_offset_x, src_offset_y;
 	float src_scale_x, src_scale_y;
-	int nbox, pix_xoff, pix_yoff;
 	unsigned filter;
 	const BoxRec *box;
+	int nbox;
 
 	DBG(("%s: src=(%d, %d), dst=(%d, %d), %dx[(%d, %d), (%d, %d)...]\n",
 	     __FUNCTION__,
@@ -3838,17 +3838,6 @@ gen8_render_video(struct sna *sna,
 	gen8_align_vertex(sna, &tmp);
 	gen8_emit_video_state(sna, &tmp);
 
-	/* Set up the offset for translating from the given region (in screen
-	 * coordinates) to the backing pixmap.
-	 */
-#ifdef COMPOSITE
-	pix_xoff = -pixmap->screen_x + pixmap->drawable.x;
-	pix_yoff = -pixmap->screen_y + pixmap->drawable.y;
-#else
-	pix_xoff = 0;
-	pix_yoff = 0;
-#endif
-
 	DBG(("%s: src=(%d, %d)x(%d, %d); frame=(%dx%d), dst=(%dx%d)\n",
 	     __FUNCTION__,
 	     frame->src.x1, frame->src.y1,
@@ -3870,45 +3859,35 @@ gen8_render_video(struct sna *sna,
 	box = region_rects(dstRegion);
 	nbox = region_num_rects(dstRegion);
 	while (nbox--) {
-		BoxRec r;
-
 		DBG(("%s: dst=(%d, %d), (%d, %d) + (%d, %d); src=(%f, %f), (%f, %f)\n",
 		     __FUNCTION__,
 		     box->x1, box->y1,
 		     box->x2, box->y2,
-		     pix_xoff, pix_yoff,
 		     box->x1 * src_scale_x + src_offset_x,
 		     box->y1 * src_scale_y + src_offset_y,
 		     box->x2 * src_scale_x + src_offset_x,
 		     box->y2 * src_scale_y + src_offset_y));
 
-		r.x1 = box->x1 + pix_xoff;
-		r.x2 = box->x2 + pix_xoff;
-		r.y1 = box->y1 + pix_yoff;
-		r.y2 = box->y2 + pix_yoff;
-
 		gen8_get_rectangles(sna, &tmp, 1, gen8_emit_video_state);
 
-		OUT_VERTEX(r.x2, r.y2);
+		OUT_VERTEX(box->x2, box->y2);
 		OUT_VERTEX_F(box->x2 * src_scale_x + src_offset_x);
 		OUT_VERTEX_F(box->y2 * src_scale_y + src_offset_y);
 
-		OUT_VERTEX(r.x1, r.y2);
+		OUT_VERTEX(box->x1, box->y2);
 		OUT_VERTEX_F(box->x1 * src_scale_x + src_offset_x);
 		OUT_VERTEX_F(box->y2 * src_scale_y + src_offset_y);
 
-		OUT_VERTEX(r.x1, r.y1);
+		OUT_VERTEX(box->x1, box->y1);
 		OUT_VERTEX_F(box->x1 * src_scale_x + src_offset_x);
 		OUT_VERTEX_F(box->y1 * src_scale_y + src_offset_y);
 
-		if (!DAMAGE_IS_ALL(priv->gpu_damage)) {
-			sna_damage_add_box(&priv->gpu_damage, &r);
-			sna_damage_subtract_box(&priv->cpu_damage, &r);
-		}
 		box++;
 	}
-
 	gen8_vertex_flush(sna);
+
+	sna_damage_add(&priv->gpu_damage, dstRegion);
+
 	return true;
 }
 #endif

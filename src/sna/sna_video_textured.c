@@ -149,6 +149,7 @@ sna_video_textured_put_image(ddPutImage_ARGS)
 	BoxRec dstBox;
 	RegionRec clip;
 	xf86CrtcPtr crtc;
+	int16_t dx, dy;
 	bool flush = false;
 	bool ret;
 
@@ -183,6 +184,9 @@ sna_video_textured_put_image(ddPutImage_ARGS)
 				   src_w, src_h, drw_w, drw_h,
 				   &clip))
 		return Success;
+
+	if (get_drawable_deltas(draw, pixmap, &dx, &dy))
+		RegionTranslate(&clip, dx, dy);
 
 	flags = MOVE_WRITE | __MOVE_FORCE;
 	if (clip.data)
@@ -237,7 +241,7 @@ sna_video_textured_put_image(ddPutImage_ARGS)
 		DBG(("%s: failed to render video\n", __FUNCTION__));
 		ret = BadAlloc;
 	} else
-		DamageDamageRegion(draw, &clip);
+		DamageDamageRegion(&pixmap->drawable, &clip);
 
 	kgem_bo_destroy(&sna->kgem, frame.bo);
 
