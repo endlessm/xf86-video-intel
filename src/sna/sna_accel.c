@@ -1544,7 +1544,7 @@ static inline bool has_coherent_ptr(struct sna *sna, struct sna_pixmap *priv, un
 		if (!priv->cpu_bo)
 			return true;
 
-		assert(!priv->cpu_bo->needs_flush);
+		assert(!priv->cpu_bo->needs_flush || (flags & MOVE_WRITE) == 0);
 		assert(priv->pixmap->devKind == priv->cpu_bo->pitch);
 		return priv->pixmap->devPrivate.ptr == MAP(priv->cpu_bo->map__cpu);
 	}
