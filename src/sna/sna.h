@@ -304,6 +304,7 @@ struct sna {
 		unsigned flip_active;
 		unsigned hidden;
 		bool shadow_enabled;
+		bool shadow_wait;
 		bool dirty;
 
 		int max_crtc_width, max_crtc_height;

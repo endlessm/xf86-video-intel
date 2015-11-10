@@ -1379,6 +1379,7 @@ static bool wait_for_shadow(struct sna *sna,
 	}
 
 	assert(sna->mode.shadow_active);
+	sna->mode.shadow_wait = true;
 	sna->mode.shadow_enabled = false;
 
 	flip_active = sna->mode.flip_active;
@@ -1432,6 +1433,8 @@ static bool wait_for_shadow(struct sna *sna,
 		}
 	}
 	assert(!sna->mode.shadow_enabled);
+	assert(sna->mode.shadow_wait);
+	sna->mode.shadow_wait = false;
 	sna->mode.shadow_enabled = true;
 
 	if (bo->refcnt > 1) {
