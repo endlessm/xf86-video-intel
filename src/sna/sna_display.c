@@ -1537,6 +1537,8 @@ done:
 	priv->move_to_gpu_data = NULL;
 	priv->move_to_gpu = NULL;
 
+	assert(!sna->mode.shadow_wait);
+
 	return ret;
 }
 
