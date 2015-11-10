@@ -1334,8 +1334,10 @@ static bool wait_for_shadow(struct sna *sna,
 	assert(priv->move_to_gpu_data == sna);
 	assert(sna->mode.shadow != priv->gpu_bo);
 
-	if (flags == 0 || pixmap != sna->front || !sna->mode.shadow_damage)
+	if (flags == 0 || pixmap != sna->front || !sna->mode.shadow_enabled)
 		goto done;
+
+	assert(sna->mode.shadow_damage);
 
 	if ((flags & MOVE_WRITE) == 0) {
 		if ((flags & __MOVE_SCANOUT) == 0) {
@@ -1377,7 +1379,6 @@ static bool wait_for_shadow(struct sna *sna,
 	}
 
 	assert(sna->mode.shadow_active);
-	assert(sna->mode.shadow_enabled);
 	sna->mode.shadow_enabled = false;
 
 	flip_active = sna->mode.flip_active;
