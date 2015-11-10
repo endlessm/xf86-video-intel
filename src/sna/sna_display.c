@@ -4591,7 +4591,7 @@ sna_output_add(struct sna *sna, unsigned id, unsigned serial)
 		if (!sna_zaphod_match(sna, name)) {
 			DBG(("%s: zaphod mismatch, want %s, have %s\n",
 			     __FUNCTION__,
-			     xf86GetOptValString(sna->Options, OPTION_ZAPHOD),
+			     xf86GetOptValString(sna->Options, OPTION_ZAPHOD) ?: "???",
 			     name));
 			return 0;
 		}
@@ -4650,10 +4650,10 @@ sna_output_add(struct sna *sna, unsigned id, unsigned serial)
 			goto skip;
 		}
 
-		if (!sna_zaphod_match(sna, name)) {
+		if (is_zaphod(scrn) && !sna_zaphod_match(sna, name)) {
 			DBG(("%s: zaphod mismatch, want %s, have %s\n",
 			     __FUNCTION__,
-			     xf86GetOptValString(sna->Options, OPTION_ZAPHOD),
+			     xf86GetOptValString(sna->Options, OPTION_ZAPHOD) ?: "???",
 			     name));
 			len = 0;
 			goto skip;
