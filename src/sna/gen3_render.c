@@ -5561,7 +5561,8 @@ gen3_render_video(struct sna *sna,
 		kgem_bo_destroy(&sna->kgem, dst_bo);
 	}
 
-	sna_damage_add(&priv->gpu_damage, dstRegion);
+	if (!DAMAGE_IS_ALL(priv->gpu_damage))
+		sna_damage_add(&priv->gpu_damage, dstRegion);
 
 	return true;
 }

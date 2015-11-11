@@ -3886,7 +3886,8 @@ gen8_render_video(struct sna *sna,
 	}
 	gen8_vertex_flush(sna);
 
-	sna_damage_add(&priv->gpu_damage, dstRegion);
+	if (!DAMAGE_IS_ALL(priv->gpu_damage))
+		sna_damage_add(&priv->gpu_damage, dstRegion);
 
 	return true;
 }
