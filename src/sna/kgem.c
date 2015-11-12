@@ -1769,20 +1769,28 @@ restart:
 	if (kgem->batch_bo)
 		kgem->batch = kgem_bo_map__cpu(kgem, kgem->batch_bo);
 	if (kgem->batch == NULL) {
+		int ring = kgem->ring = KGEM_BLT;
+		assert(ring < ARRAY_SIZE(kgem->requests));
+
 		if (kgem->batch_bo) {
 			kgem_bo_destroy(kgem, kgem->batch_bo);
 			kgem->batch_bo = NULL;
 		}
 
-		assert(kgem->ring < ARRAY_SIZE(kgem->requests));
-		if (!list_is_empty(&kgem->requests[kgem->ring])) {
+		if (!list_is_empty(&kgem->requests[ring])) {
 			struct kgem_request *rq;
 
-			rq = list_first_entry(&kgem->requests[kgem->ring],
+			rq = list_first_entry(&kgem->requests[ring],
 					      struct kgem_request, list);
+			assert(rq->ring == ring);
+			assert(rq->bo);
+			assert(RQ(rq->bo->rq) == rq);
 			if (kgem_bo_wait(kgem, rq->bo) == 0)
 				goto restart;
 		}
+
+		if (kgem_cleanup_cache(kgem))
+			goto restart;
 
 		DBG(("%s: unable to map batch bo, mallocing(size=%d)\n",
 		     __FUNCTION__, sizeof(uint32_t)*kgem->batch_size));
@@ -3159,6 +3167,8 @@ static bool kgem_retire__requests_ring(struct kgem *kgem, int ring)
 				      struct kgem_request,
 				      list);
 		assert(rq->ring == ring);
+		assert(rq->bo);
+		assert(RQ(rq->bo->rq) == rq);
 		if (__kgem_busy(kgem, rq->bo->handle))
 			break;
 
@@ -3252,6 +3262,8 @@ bool __kgem_ring_is_idle(struct kgem *kgem, int ring)
 	rq = list_last_entry(&kgem->requests[ring],
 			     struct kgem_request, list);
 	assert(rq->ring == ring);
+	assert(rq->bo);
+	assert(RQ(rq->bo->rq) == rq);
 	if (__kgem_busy(kgem, rq->bo->handle)) {
 		DBG(("%s: last requests handle=%d still busy\n",
 		     __FUNCTION__, rq->bo->handle));
@@ -3419,6 +3431,7 @@ static void kgem_commit(struct kgem *kgem)
 	} else {
 		assert(rq != (struct kgem_request *)kgem);
 		assert(rq->ring < ARRAY_SIZE(kgem->requests));
+		assert(rq->bo);
 		list_add_tail(&rq->list, &kgem->requests[rq->ring]);
 		kgem->need_throttle = kgem->need_retire = 1;
 
@@ -4442,6 +4455,9 @@ bool kgem_cleanup_cache(struct kgem *kgem)
 					     list);
 
 			DBG(("%s: sync on cleanup\n", __FUNCTION__));
+			assert(rq->ring == n);
+			assert(rq->bo);
+			assert(RQ(rq->bo->rq) == rq);
 			kgem_bo_wait(kgem, rq->bo);
 		}
 		assert(list_is_empty(&kgem->requests[n]));
