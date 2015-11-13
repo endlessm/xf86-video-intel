@@ -1789,8 +1789,11 @@ restart:
 				goto restart;
 		}
 
-		if (kgem_cleanup_cache(kgem))
-			goto restart;
+		if (flags & CREATE_NO_THROTTLE) {
+			flags &= ~CREATE_NO_THROTTLE;
+			if (kgem_cleanup_cache(kgem))
+				goto restart;
+		}
 
 		DBG(("%s: unable to map batch bo, mallocing(size=%d)\n",
 		     __FUNCTION__, sizeof(uint32_t)*kgem->batch_size));
