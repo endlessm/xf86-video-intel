@@ -1769,7 +1769,7 @@ restart:
 	if (kgem->batch_bo)
 		kgem->batch = kgem_bo_map__cpu(kgem, kgem->batch_bo);
 	if (kgem->batch == NULL) {
-		int ring = kgem->ring = KGEM_BLT;
+		int ring = kgem->ring == KGEM_BLT;
 		assert(ring < ARRAY_SIZE(kgem->requests));
 
 		if (kgem->batch_bo) {
