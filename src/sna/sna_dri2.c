@@ -2527,6 +2527,7 @@ static bool sna_dri2_blit_complete(struct sna_dri2_event *info)
 	}
 
 	DBG(("%s: blit finished\n", __FUNCTION__));
+	kgem_bo_destroy(&info->sna->kgem, info->bo);
 	info->bo = NULL;
 	return true;
 }
