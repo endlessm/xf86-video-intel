@@ -5257,11 +5257,20 @@ static void __kgem_bo_make_scanout(struct kgem *kgem,
 	}
 }
 
-static void set_gpu_tiling(struct kgem_bo *bo, int tiling, int pitch)
+static void set_gpu_tiling(struct kgem *kgem,
+			   struct kgem_bo *bo,
+			   int tiling, int pitch)
 {
+	assert(!kgem->can_fence);
+
 	bo->tiling = tiling;
 	bo->pitch = pitch;
+
 	if (tiling && bo->map__gtt) {
+		if (!list_is_empty(&bo->vma)) {
+			list_del(&bo->vma);
+			kgem->vma[0].count--;
+		}
 		munmap(bo->map__gtt, bytes(bo));
 		bo->map__gtt = NULL;
 	}
@@ -5446,10 +5455,8 @@ struct kgem_bo *kgem_create_2d(struct kgem *kgem,
 					continue;
 
 				if (!kgem_set_tiling(kgem, bo, tiling, pitch) &&
-				    !exact) {
-					assert(!kgem->can_fence);
-					set_gpu_tiling(bo, tiling, pitch);
-				}
+				    !exact)
+					set_gpu_tiling(kgem, bo, tiling, pitch);
 			}
 
 			kgem_bo_remove_from_active(kgem, bo);
@@ -5476,10 +5483,9 @@ large_inactive:
 				continue;
 
 			if (!kgem_set_tiling(kgem, bo, tiling, pitch)) {
-				if (kgem->gen >= 040 && !exact) {
-					assert(!kgem->can_fence);
-					set_gpu_tiling(bo, tiling, pitch);
-				} else
+				if (kgem->gen >= 040 && !exact)
+					set_gpu_tiling(kgem, bo, tiling, pitch);
+				else
 					continue;
 			}
 
@@ -5625,10 +5631,8 @@ search_active:
 					continue;
 
 				if (!kgem_set_tiling(kgem, bo, tiling, pitch) &&
-				    !exact) {
-					assert(!kgem->can_fence);
-					set_gpu_tiling(bo, tiling, pitch);
-				}
+				    !exact)
+					set_gpu_tiling(kgem, bo, tiling, pitch);
 			}
 			assert(bo->tiling == tiling);
 			assert(bo->pitch >= pitch);
@@ -5688,8 +5692,8 @@ search_active:
 
 				if (!kgem_set_tiling(kgem, bo, tiling, pitch)) {
 					if (kgem->gen >= 040 && !exact) {
-						assert(!kgem->can_fence);
-						set_gpu_tiling(bo, tiling, pitch);
+						set_gpu_tiling(kgem, bo,
+							       tiling, pitch);
 					} else {
 						kgem_bo_free(kgem, bo);
 						break;
@@ -5780,8 +5784,7 @@ search_inactive:
 
 		if (!kgem_set_tiling(kgem, bo, tiling, pitch)) {
 			if (kgem->gen >= 040 && !exact) {
-				assert(!kgem->can_fence);
-				set_gpu_tiling(bo, tiling, pitch);
+				set_gpu_tiling(kgem, bo, tiling, pitch);
 			} else {
 				kgem_bo_free(kgem, bo);
 				break;
@@ -5847,8 +5850,7 @@ search_inactive:
 
 			if (!kgem_set_tiling(kgem, bo, tiling, pitch)) {
 				if (kgem->gen >= 040 && !exact) {
-					assert(!kgem->can_fence);
-					set_gpu_tiling(bo, tiling, pitch);
+					set_gpu_tiling(kgem, bo, tiling, pitch);
 				} else {
 					kgem_bo_free(kgem, bo);
 					goto no_retire;
