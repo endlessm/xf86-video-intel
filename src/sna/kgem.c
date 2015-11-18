@@ -5262,6 +5262,14 @@ static void __kgem_bo_make_scanout(struct kgem *kgem,
 	}
 }
 
+static bool tiling_changed(struct kgem_bo *bo, int tiling, int pitch)
+{
+	if (tiling != bo->tiling)
+		return true;
+
+	return tiling != I915_TILING_NONE && pitch != bo->pitch;
+}
+
 static void set_gpu_tiling(struct kgem *kgem,
 			   struct kgem_bo *bo,
 			   int tiling, int pitch)
@@ -5271,10 +5279,7 @@ static void set_gpu_tiling(struct kgem *kgem,
 
 	assert(!kgem->can_fence);
 
-	bo->tiling = tiling;
-	bo->pitch = pitch;
-
-	if (tiling && bo->map__gtt) {
+	if (tiling_changed(bo, tiling, pitch) && bo->map__gtt) {
 		if (!list_is_empty(&bo->vma)) {
 			list_del(&bo->vma);
 			kgem->vma[0].count--;
@@ -5282,6 +5287,9 @@ static void set_gpu_tiling(struct kgem *kgem,
 		munmap(bo->map__gtt, bytes(bo));
 		bo->map__gtt = NULL;
 	}
+
+	bo->tiling = tiling;
+	bo->pitch = pitch;
 }
 
 struct kgem_bo *kgem_create_2d(struct kgem *kgem,
