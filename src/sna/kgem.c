@@ -469,6 +469,11 @@ restart:
 	if (ioctl(kgem->fd, DRM_IOCTL_I915_GEM_SET_TILING, &set_tiling) == 0) {
 		bo->tiling = set_tiling.tiling_mode;
 		bo->pitch = set_tiling.tiling_mode ? set_tiling.stride : stride;
+		DBG(("%s: handle=%d, tiling=%d [%d], pitch=%d [%d]: %d\n",
+		     __FUNCTION__, bo->handle,
+		     bo->tiling, tiling,
+		     bo->pitch, stride,
+		     set_tiling.tiling_mode == tiling));
 		return set_tiling.tiling_mode == tiling;
 	}
 
@@ -5261,6 +5266,9 @@ static void set_gpu_tiling(struct kgem *kgem,
 			   struct kgem_bo *bo,
 			   int tiling, int pitch)
 {
+	DBG(("%s: handle=%d, tiling=%d, pitch=%d\n",
+	     __FUNCTION__, bo->handle, tiling, pitch));
+
 	assert(!kgem->can_fence);
 
 	bo->tiling = tiling;
