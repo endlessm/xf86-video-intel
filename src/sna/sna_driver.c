@@ -779,10 +779,9 @@ sna_handle_uevents(int fd, void *closure)
 		DBG(("%s: hotplug event (vtSema?=%d)\n",
 		     __FUNCTION__, sna->scrn->vtSema));
 
-		if (sna->scrn->vtSema) {
+		if (sna->scrn->vtSema)
 			sna_mode_discover(sna, true);
-			sna_mode_check(sna);
-		} else
+		else
 			sna->flags |= SNA_REPROBE;
 	}
 }

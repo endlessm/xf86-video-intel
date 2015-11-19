@@ -128,6 +128,42 @@ struct local_mode_obj_get_properties {
 };
 #define LOCAL_MODE_OBJECT_PLANE 0xeeeeeeee
 
+struct local_mode_set_plane {
+	uint32_t plane_id;
+	uint32_t crtc_id;
+	uint32_t fb_id; /* fb object contains surface format type */
+	uint32_t flags;
+
+	/* Signed dest location allows it to be partially off screen */
+	int32_t crtc_x, crtc_y;
+	uint32_t crtc_w, crtc_h;
+
+	/* Source values are 16.16 fixed point */
+	uint32_t src_x, src_y;
+	uint32_t src_h, src_w;
+};
+#define LOCAL_IOCTL_MODE_SETPLANE DRM_IOWR(0xB7, struct local_mode_set_plane)
+
+struct local_mode_get_plane {
+	uint32_t plane_id;
+
+	uint32_t crtc_id;
+	uint32_t fb_id;
+
+	uint32_t possible_crtcs;
+	uint32_t gamma_size;
+
+	uint32_t count_format_types;
+	uint64_t format_type_ptr;
+};
+#define LOCAL_IOCTL_MODE_GETPLANE DRM_IOWR(0xb6, struct local_mode_get_plane)
+
+struct local_mode_get_plane_res {
+	uint64_t plane_id_ptr;
+	uint64_t count_planes;
+};
+#define LOCAL_IOCTL_MODE_GETPLANERESOURCES DRM_IOWR(0xb5, struct local_mode_get_plane_res)
+
 #if 0
 #define __DBG DBG
 #else
@@ -2982,16 +3018,11 @@ static void
 sna_crtc_find_planes(struct sna *sna, struct sna_crtc *crtc)
 {
 #define LOCAL_IOCTL_SET_CAP	DRM_IOWR(0x0d, struct local_set_cap)
-#define LOCAL_IOCTL_MODE_GETPLANERESOURCES DRM_IOWR(0xb5, struct local_mode_get_plane_res)
-#define LOCAL_IOCTL_MODE_GETPLANE DRM_IOWR(0xb6, struct local_mode_get_plane)
 	struct local_set_cap {
 		uint64_t name;
 		uint64_t value;
 	} cap;
-	struct local_mode_get_plane_res {
-		uint64_t plane_id_ptr;
-		uint64_t count_planes;
-	} r;
+	struct local_mode_get_plane_res r;
 	uint32_t stack_planes[32];
 	uint32_t *planes = stack_planes;
 	int i;
@@ -3024,18 +3055,7 @@ sna_crtc_find_planes(struct sna *sna, struct sna_crtc *crtc)
 	VG(VALGRIND_MAKE_MEM_DEFINED(planes, sizeof(uint32_t)*r.count_planes));
 
 	for (i = 0; i < r.count_planes; i++) {
-		struct local_mode_get_plane {
-			uint32_t plane_id;
-
-			uint32_t crtc_id;
-			uint32_t fb_id;
-
-			uint32_t possible_crtcs;
-			uint32_t gamma_size;
-
-			uint32_t count_format_types;
-			uint64_t format_type_ptr;
-		} p;
+		struct local_mode_get_plane p;
 		struct plane details;
 
 		VG_CLEAR(p);
@@ -7538,10 +7558,184 @@ sna_wait_for_scanline(struct sna *sna,
 	return ret;
 }
 
+static bool sna_mode_shutdown_crtc(xf86CrtcPtr crtc)
+{
+	struct sna *sna = to_sna(crtc->scrn);
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(crtc->scrn);
+	bool disabled = false;
+	int o;
+
+	xf86DrvMsg(crtc->scrn->scrnIndex, X_ERROR,
+		   "%s: invalid state found on pipe %d, disabling CRTC:%d\n",
+		   __FUNCTION__,
+		   __sna_crtc_pipe(to_sna_crtc(crtc)),
+		   __sna_crtc_id(to_sna_crtc(crtc)));
+	sna_crtc_disable(crtc, true);
+#if XF86_CRTC_VERSION >= 3
+	crtc->active = FALSE;
+#endif
+	if (crtc->enabled) {
+		crtc->enabled = FALSE;
+		disabled = true;
+	}
+
+	for (o = 0; o < sna->mode.num_real_output; o++) {
+		xf86OutputPtr output = config->output[o];
+
+		if (output->crtc != crtc)
+			continue;
+
+		output->funcs->dpms(output, DPMSModeOff);
+		output->crtc = NULL;
+	}
+
+	return disabled;
+}
+
+static xf86CrtcPtr
+lookup_crtc_by_id(struct sna *sna, int id)
+{
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	int c;
+
+	for (c = 0; c < sna->mode.num_real_crtc; c++) {
+		xf86CrtcPtr crtc = config->crtc[c];
+		if (__sna_crtc_id(to_sna_crtc(crtc)) == id)
+			return crtc;
+	}
+
+	return NULL;
+}
+
+static int plane_type(struct sna *sna, int id)
+{
+	struct local_mode_obj_get_properties arg;
+	uint64_t stack_props[24];
+	uint32_t *props = (uint32_t *)stack_props;
+	uint64_t *values = stack_props + 8;
+	int i, type = -1;
+
+	memset(&arg, 0, sizeof(struct local_mode_obj_get_properties));
+	arg.obj_id = id;
+	arg.obj_type = LOCAL_MODE_OBJECT_PLANE;
+
+	arg.props_ptr = (uintptr_t)props;
+	arg.prop_values_ptr = (uintptr_t)values;
+	arg.count_props = 16;
+
+	if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_MODE_OBJ_GETPROPERTIES, &arg))
+		return -1;
+
+	DBG(("%s: object %d (type %x) has %d props\n", __FUNCTION__,
+	     id, LOCAL_MODE_OBJECT_PLANE, arg.count_props));
+
+	if (arg.count_props > 16) {
+		props = malloc(2*sizeof(uint64_t)*arg.count_props);
+		if (props == NULL)
+			return -1;
+
+		values = (uint64_t *)props + arg.count_props;
+
+		arg.props_ptr = (uintptr_t)props;
+		arg.prop_values_ptr = (uintptr_t)values;
+
+		if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_MODE_OBJ_GETPROPERTIES, &arg))
+			arg.count_props = 0;
+	}
+	VG(VALGRIND_MAKE_MEM_DEFINED(arg.props_ptr, sizeof(uint32_t)*arg.count_props));
+	VG(VALGRIND_MAKE_MEM_DEFINED(arg.prop_values_ptr, sizeof(uint64_t)*arg.count_props));
+
+	for (i = 0; i < arg.count_props; i++) {
+		struct drm_mode_get_property prop;
+
+		memset(&prop, 0, sizeof(prop));
+		prop.prop_id = props[i];
+		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPERTY, &prop)) {
+			ERR(("%s: prop[%d].id=%d GETPROPERTY failed with errno=%d\n",
+			     __FUNCTION__, i, props[i], errno));
+			continue;
+		}
+
+		DBG(("%s: prop[%d] .id=%ld, .name=%s, .flags=%x, .value=%ld\n", __FUNCTION__, i,
+		     (long)props[i], prop.name, (unsigned)prop.flags, (long)values[i]));
+
+		if (strcmp(prop.name, "type") == 0) {
+			type = values[i];
+			break;
+		}
+	}
+
+	if (props != (uint32_t *)stack_props)
+		free(props);
+
+	return type;
+}
+
+static bool
+sna_mode_disable_secondary_planes(struct sna *sna)
+{
+	struct local_mode_get_plane_res r;
+	uint32_t stack_planes[64];
+	uint32_t *planes = stack_planes;
+	bool disabled = false;
+	int i;
+
+	VG_CLEAR(r);
+	r.plane_id_ptr = (uintptr_t)planes;
+	r.count_planes = ARRAY_SIZE(stack_planes);
+	if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_MODE_GETPLANERESOURCES, &r))
+		return false;
+
+	DBG(("%s: %d planes\n", __FUNCTION__, (int)r.count_planes));
+
+	if (r.count_planes > ARRAY_SIZE(stack_planes)) {
+		planes = malloc(sizeof(uint32_t)*r.count_planes);
+		if (planes == NULL)
+			return false;
+
+		r.plane_id_ptr = (uintptr_t)planes;
+		if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_MODE_GETPLANERESOURCES, &r))
+			r.count_planes = 0;
+	}
+
+	VG(VALGRIND_MAKE_MEM_DEFINED(planes, sizeof(uint32_t)*r.count_planes));
+
+	for (i = 0; i < r.count_planes; i++) {
+		struct local_mode_get_plane p;
+		struct local_mode_set_plane s;
+
+		VG_CLEAR(p);
+		p.plane_id = planes[i];
+		p.count_format_types = 0;
+		if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_MODE_GETPLANE, &p))
+			continue;
+
+		if (p.fb_id == 0 || p.crtc_id == 0)
+			continue;
+
+		if (plane_type(sna, p.plane_id) == DRM_PLANE_TYPE_PRIMARY)
+			continue;
+
+		memset(&s, 0, sizeof(s));
+		s.plane_id = p.plane_id;
+		s.crtc_id = p.crtc_id;
+		if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_MODE_SETPLANE, &s)) {
+			xf86CrtcPtr crtc = lookup_crtc_by_id(sna, p.crtc_id);
+			if (crtc)
+				disabled |= sna_mode_shutdown_crtc(crtc);
+		}
+	}
+
+	if (planes != stack_planes)
+		free(planes);
+
+	return disabled;
+}
+
 void sna_mode_check(struct sna *sna)
 {
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
-	bool disabled = false;
+	bool disabled;
 	int c, o;
 
 	if (sna->flags & SNA_IS_HOSTED)
@@ -7550,6 +7744,8 @@ void sna_mode_check(struct sna *sna)
 	DBG(("%s: hidden?=%d\n", __FUNCTION__, sna->mode.hidden));
 	if (sna->mode.hidden)
 		return;
+
+	disabled = sna_mode_disable_secondary_planes(sna);
 
 	/* Validate CRTC attachments and force consistency upon the kernel */
 	for (c = 0; c < sna->mode.num_real_crtc; c++) {
@@ -7576,29 +7772,8 @@ void sna_mode_check(struct sna *sna)
 		     mode.crtc_id, mode.mode_valid,
 		     mode.fb_id, expected[0], expected[1]));
 
-		if (mode.fb_id != expected[0] && mode.fb_id != expected[1]) {
-			xf86DrvMsg(crtc->scrn->scrnIndex, X_ERROR,
-				   "%s: invalid state found on pipe %d, disabling CRTC:%d\n",
-				   __FUNCTION__, __sna_crtc_pipe(sna_crtc), __sna_crtc_id(sna_crtc));
-			sna_crtc_disable(crtc, true);
-#if XF86_CRTC_VERSION >= 3
-			crtc->active = FALSE;
-#endif
-			if (crtc->enabled) {
-				crtc->enabled = FALSE;
-				disabled = true;
-			}
-
-			for (o = 0; o < sna->mode.num_real_output; o++) {
-				xf86OutputPtr output = config->output[o];
-
-				if (output->crtc != crtc)
-					continue;
-
-				output->funcs->dpms(output, DPMSModeOff);
-				output->crtc = NULL;
-			}
-		}
+		if (mode.fb_id != expected[0] && mode.fb_id != expected[1])
+			disabled |= sna_mode_shutdown_crtc(crtc);
 	}
 
 	for (o = 0; o < config->num_output; o++) {
@@ -7624,21 +7799,7 @@ void sna_mode_check(struct sna *sna)
 static bool
 sna_crtc_hide_planes(struct sna *sna, struct sna_crtc *crtc)
 {
-#define LOCAL_IOCTL_MODE_SETPLANE DRM_IOWR(0xB7, struct local_mode_set_plane)
-	struct local_mode_set_plane {
-		uint32_t plane_id;
-		uint32_t crtc_id;
-		uint32_t fb_id; /* fb object contains surface format type */
-		uint32_t flags;
-
-		/* Signed dest location allows it to be partially off screen */
-		int32_t crtc_x, crtc_y;
-		uint32_t crtc_w, crtc_h;
-
-		/* Source values are 16.16 fixed point */
-		uint32_t src_x, src_y;
-		uint32_t src_h, src_w;
-	} s;
+	struct local_mode_set_plane s;
 
 	if (crtc->primary.id == 0)
 		return false;
