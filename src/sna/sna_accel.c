@@ -17985,7 +17985,7 @@ static bool sna_option_accel_none(struct sna *sna)
 	if (wedged(sna))
 		return true;
 
-	if (xf86ReturnOptValBool(sna->Options, OPTION_ACCEL_DISABLE, FALSE))
+	if (xf86ReturnOptValBool(sna->Options, OPTION_ACCEL_ENABLE, TRUE))
 		return true;
 
 	if (sna->kgem.gen >= 0120)

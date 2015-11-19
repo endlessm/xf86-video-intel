@@ -9,7 +9,7 @@
 #include "intel_options.h"
 
 const OptionInfoRec intel_options[] = {
-	{OPTION_ACCEL_DISABLE,	"NoAccel",	OPTV_BOOLEAN,	{0},	0},
+	{OPTION_ACCEL_ENABLE,	"Accel",	OPTV_BOOLEAN,	{0},	0},
 	{OPTION_ACCEL_METHOD,	"AccelMethod",	OPTV_STRING,	{0},	0},
 	{OPTION_BACKLIGHT,	"Backlight",	OPTV_STRING,	{0},	0},
 	{OPTION_EDID,		"CustomEDID",	OPTV_STRING,	{0},	0},

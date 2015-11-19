@@ -112,8 +112,8 @@ The default is 8192 if AGP allocable memory is < 128 MB, 16384 if < 192 MB,
 24576 if higher. DRI require at least a value of 16384. Higher values may give
 better 3D performance, at expense of available system memory.
 .TP
-.BI "Option \*qNoAccel\*q \*q" boolean \*q
-Disable or enable acceleration.
+.BI "Option \*qAccel\*q \*q" boolean \*q
+Enable or disable acceleration.
 .IP
 Default: acceleration is enabled.
 
@@ -122,8 +122,8 @@ The following driver
 .B Options
 are supported for the 830M and later chipsets:
 .TP
-.BI "Option \*qNoAccel\*q \*q" boolean \*q
-Disable or enable acceleration.
+.BI "Option \*qAccel\*q \*q" boolean \*q
+Enable or disable acceleration.
 .IP
 Default: acceleration is enabled.
 .TP
