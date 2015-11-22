@@ -870,27 +870,21 @@ static uint32_t gem_create(int fd, int num_pages)
 	return create.handle;
 }
 
-static bool
+static void
 kgem_bo_set_purgeable(struct kgem *kgem, struct kgem_bo *bo)
 {
-#if DBG_NO_MADV
-	return true;
-#else
+#if !DBG_NO_MADV
 	struct drm_i915_gem_madvise madv;
 
 	assert(bo->exec == NULL);
-	assert(!bo->purged);
 
 	VG_CLEAR(madv);
 	madv.handle = bo->handle;
 	madv.madv = I915_MADV_DONTNEED;
 	if (do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_MADVISE, &madv) == 0) {
-		bo->purged = 1;
+		bo->purged = true;
 		kgem->need_purge |= !madv.retained && bo->domain != DOMAIN_CPU;
-		return madv.retained;
 	}
-
-	return true;
 #endif
 }
 
