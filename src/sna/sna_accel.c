@@ -1087,8 +1087,12 @@ sna_pixmap_create_scratch(ScreenPtr screen,
 
 static unsigned small_copy(const RegionRec *region)
 {
-	if ((region->extents.x2 - region->extents.x1)*(region->extents.y2 - region->extents.y1) < 1024)
+	if ((region->extents.x2 - region->extents.x1)*(region->extents.y2 - region->extents.y1) < 1024) {
+		DBG(("%s: region:%dx%d\n", __FUNCTION__,
+		     (region->extents.x2 - region->extents.x1),
+		     (region->extents.y2 - region->extents.y1)));
 		return COPY_SMALL;
+	}
 
 	return 0;
 }
