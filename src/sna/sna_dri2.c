@@ -2791,6 +2791,7 @@ sna_dri2_flip_continue(struct sna_dri2_event *info)
 	       info->sna->dri2.flip_pending == info);
 	info->sna->dri2.flip_pending = info;
 	info->queued = true;
+	info->signal = info->type == FLIP_THROTTLE;
 
 	return true;
 }
@@ -3062,17 +3063,18 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 			}
 			DBG(("%s: executing xchg of pending flip: flip_continue=%d, keepalive=%d, chain?=%d\n", __FUNCTION__, info->flip_continue, info->keepalive, current_msc < *target_msc));
 			sna_dri2_xchg(draw, front, back);
-			info->flip_continue = FLIP_COMPLETE;
 			info->keepalive = KEEPALIVE;
-			signal = info->signal;
-			info->signal = true;
 			if (xorg_can_triple_buffer() &&
 			    current_msc < *target_msc) {
 				DBG(("%s: chaining flip\n", __FUNCTION__));
-				info->type = FLIP_THROTTLE;
+				info->flip_continue = FLIP_THROTTLE;
 				goto out;
-			} else
+			} else {
+				info->flip_continue = FLIP_COMPLETE;
+				signal = info->signal;
+				info->signal = true;
 				goto new_back;
+			}
 		}
 
 		info = sna_dri2_add_event(sna, draw, client, crtc);
