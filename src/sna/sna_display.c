@@ -849,9 +849,22 @@ sna_output_backlight_set(struct sna_output *sna_output, int level)
 	return ret;
 }
 
+static bool
+has_native_backlight(struct sna_output *sna_output)
+{
+	return sna_output->backlight.type == BL_RAW;
+}
+
 static void
 sna_output_backlight_off(struct sna_output *sna_output)
 {
+	/* Trust the kernel to turn the native backlight off. However, we
+	 * do explicitly turn the backlight back on (when we wake the output)
+	 * just in case a third party turns it off!
+	 */
+	if (has_native_backlight(sna_output))
+		return;
+
 	DBG(("%s(%s)\n", __FUNCTION__, sna_output->base->name));
 	backlight_off(&sna_output->backlight);
 	sna_output_backlight_set(sna_output, 0);
