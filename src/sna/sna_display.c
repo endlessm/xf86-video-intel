@@ -1306,8 +1306,8 @@ static void kmsg_close(struct kmsg *k, int dump)
 }
 #else
 struct kmsg { int unused; };
-static void kmsg_open(struct kmsg *k);
-static void kmsg_close(struct kmsg *k, int dump);
+static void kmsg_open(struct kmsg *k) {}
+static void kmsg_close(struct kmsg *k, int dump) {}
 #endif
 
 static bool
