@@ -1235,6 +1235,81 @@ bool sna_crtc_set_sprite_rotation(xf86CrtcPtr crtc, uint32_t rotation)
 			    rotation_reduce(&to_sna_crtc(crtc)->sprite, rotation));
 }
 
+#if HAS_DEBUG_FULL
+struct kmsg {
+	int fd;
+	int saved_loglevel;
+};
+
+static int kmsg_get_debug(void)
+{
+	FILE *file;
+	int v = -1;
+
+	file = fopen("/sys/module/drm/parameters/debug", "r");
+	if (file) {
+		fscanf(file, "%d", &v);
+		fclose(file);
+	}
+
+	return v;
+}
+
+static void kmsg_set_debug(int v)
+{
+	FILE *file;
+
+	file = fopen("/sys/module/drm/parameters/debug", "w");
+	if (file) {
+		fprintf(file, "%d\n", v);
+		fclose(file);
+	}
+}
+
+static void kmsg_open(struct kmsg *k)
+{
+	k->saved_loglevel = kmsg_get_debug();
+	if (k->saved_loglevel != -1)
+		kmsg_set_debug(0xff);
+
+	k->fd = open("/dev/kmsg", O_RDONLY | O_NONBLOCK);
+	if (k->fd != -1)
+		lseek(k->fd, 0, SEEK_END);
+}
+
+static void kmsg_close(struct kmsg *k, int dump)
+{
+	FILE *file;
+
+	file = NULL;
+	if (k->fd != -1 && dump)
+		file = fdopen(k->fd, "r");
+	if (file) {
+		size_t len = 0;
+		char *line = NULL;
+
+		while (getline(&line, &len, file) != -1) {
+			char *start = strchr(line, ';');
+			if (start)
+				LogF("KMSG: %s", start + 1);
+		}
+
+		free(line);
+		fclose(file);
+	}
+
+	if (k->fd != -1)
+		close(k->fd);
+
+	if (k->saved_loglevel != -1)
+		kmsg_set_debug(k->saved_loglevel);
+}
+#else
+struct kmsg { int unused; };
+static void kmsg_open(struct kmsg *k);
+static void kmsg_close(struct kmsg *k, int dump);
+#endif
+
 static bool
 sna_crtc_apply(xf86CrtcPtr crtc)
 {
@@ -1245,6 +1320,7 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 	uint32_t output_ids[32];
 	int output_count = 0;
 	int sigio, i;
+	struct kmsg kmsg;
 	bool ret = false;
 
 	DBG(("%s CRTC:%d [pipe=%d], handle=%d\n", __FUNCTION__,
@@ -1257,6 +1333,7 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 	}
 
 	sigio = sigio_block();
+	kmsg_open(&kmsg);
 
 	assert(sna->mode.num_real_output < ARRAY_SIZE(output_ids));
 	sna_crtc_disable_cursor(sna, sna_crtc);
@@ -1348,6 +1425,7 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 		sna_crtc_force_outputs_on(crtc);
 	}
 unblock:
+	kmsg_close(&kmsg, !ret);
 	sigio_unblock(sigio);
 	return ret;
 }
