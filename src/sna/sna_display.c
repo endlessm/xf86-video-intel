@@ -90,6 +90,8 @@ void *alloca(size_t);
 #include <memcheck.h>
 #endif
 
+#define FAIL_CURSOR_IOCTL 0
+
 #define COLDPLUG_DELAY_MS 2000
 
 /* Minor discrepancy between 32-bit/64-bit ABI in old kernels */
@@ -5729,7 +5731,8 @@ sna_show_cursors(ScrnInfoPtr scrn)
 		arg.width = arg.height = cursor->size;
 		arg.handle = cursor->handle;
 
-		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg) == 0) {
+		if (!FAIL_CURSOR_IOCTL &&
+		    drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg) == 0) {
 			if (sna_crtc->cursor) {
 				assert(sna_crtc->cursor->ref > 0);
 				sna_crtc->cursor->ref--;
@@ -5955,7 +5958,8 @@ disable:
 		if (arg.flags == 0)
 			continue;
 
-		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg) == 0) {
+		if (!FAIL_CURSOR_IOCTL &&
+		    drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_CURSOR, &arg) == 0) {
 			if (arg.flags & DRM_MODE_CURSOR_BO) {
 				if (sna_crtc->cursor) {
 					assert(sna_crtc->cursor->ref > 0);
