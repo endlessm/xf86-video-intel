@@ -1290,6 +1290,10 @@ static bool test_has_wc_mmap(struct kgem *kgem)
 	if (DBG_NO_WC_MMAP)
 		return false;
 
+	/* XXX See https://bugs.freedesktop.org/show_bug.cgi?id=90841 */
+	if (kgem->gen < 033)
+		return false;
+
 	if (gem_param(kgem, LOCAL_I915_PARAM_MMAP_VERSION) < 1)
 		return false;
 
