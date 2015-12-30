@@ -6999,6 +6999,9 @@ void kgem_bo_sync__cpu(struct kgem *kgem, struct kgem_bo *bo)
 	assert(!bo->scanout);
 	assert_tiling(kgem, bo);
 
+	if (bo->rq == NULL && (kgem->has_llc || bo->snoop))
+		return;
+
 	kgem_bo_submit(kgem, bo);
 
 	/* SHM pixmaps use proxies for subpage offsets */
@@ -7035,6 +7038,9 @@ void kgem_bo_sync__cpu_full(struct kgem *kgem, struct kgem_bo *bo, bool write)
 	DBG(("%s: handle=%d\n", __FUNCTION__, bo->handle));
 	assert(!bo->scanout || !write);
 	assert_tiling(kgem, bo);
+
+	if (bo->rq == NULL && (kgem->has_llc || bo->snoop))
+		return;
 
 	if (write || bo->needs_flush)
 		kgem_bo_submit(kgem, bo);
@@ -7082,6 +7088,9 @@ void kgem_bo_sync__gtt(struct kgem *kgem, struct kgem_bo *bo)
 	assert(bo->refcnt);
 	assert(bo->proxy == NULL);
 	assert_tiling(kgem, bo);
+
+	if (bo->rq == NULL)
+		return;
 
 	kgem_bo_submit(kgem, bo);
 
