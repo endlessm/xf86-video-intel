@@ -2037,8 +2037,9 @@ static void clone_damage(struct clone *c, const XRectangle *rec)
 	if ((v = (int)rec->y + rec->height) > c->damaged.y2)
 		c->damaged.y2 = v;
 
-	DBG(DAMAGE, ("%s-%s damaged: (%d, %d), (%d, %d)\n",
+	DBG(DAMAGE, ("%s-%s damaged: +(%d,%d)x(%d, %d) -> (%d, %d), (%d, %d)\n",
 	     DisplayString(c->dst.display->dpy), c->dst.name,
+	     rec->x, rec->y, rec->width, rec->height,
 	     c->damaged.x1, c->damaged.y1,
 	     c->damaged.x2, c->damaged.y2));
 }
@@ -2381,6 +2382,8 @@ static int add_display(struct context *ctx, Display *dpy)
 	display->root = DefaultRootWindow(dpy);
 	display->depth = DefaultDepth(dpy, DefaultScreen(dpy));
 	display->visual = DefaultVisual(dpy, DefaultScreen(dpy));
+
+	XSelectInput(dpy, display->root, ExposureMask);
 
 	display->has_shm = can_use_shm(dpy, display->root,
 				       &display->shm_event,
@@ -3526,7 +3529,32 @@ int main(int argc, char **argv)
 				XNextEvent(ctx.display[i].dpy, &e);
 
 				DBG(POLL, ("%s received event %d\n", DisplayString(ctx.display[i].dpy), e.type));
-				if (ctx.display[i].rr_active && e.type == ctx.display[i].rr_event + RRNotify) {
+				if (e.type == Expose) {
+					XExposeEvent *xe = (XExposeEvent *)&e;
+					struct clone *clone;
+					int damaged = 0;
+
+					DBG(DAMAGE, ("%s exposed: (%d, %d)x(%d, %d)\n",
+					     DisplayString(ctx.display[i].dpy),
+					     xe->x, xe->y, xe->width, xe->height));
+
+					for (clone = ctx.active; clone; clone = clone->active) {
+						XRectangle r;
+
+						if (clone->dst.display != &ctx.display[i])
+							continue;
+
+						r.x = clone->src.x + xe->x;
+						r.y = clone->src.y + xe->y;
+						r.width  = xe->width;
+						r.height = xe->height;
+						clone_damage(clone, &r);
+						damaged++;
+					}
+
+					if (damaged)
+						context_enable_timer(&ctx);
+				} else if (ctx.display[i].rr_active && e.type == ctx.display[i].rr_event + RRNotify) {
 					XRRNotifyEvent *re = (XRRNotifyEvent *)&e;
 
 					DBG(XRR, ("%s received RRNotify, type %d\n", DisplayString(ctx.display[i].dpy), re->subtype));
