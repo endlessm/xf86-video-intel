@@ -31,6 +31,7 @@
 
 #include <X11/Xlibint.h>
 #include <X11/extensions/record.h>
+#include <X11/extensions/scrnsaver.h>
 #include <X11/extensions/XShm.h>
 #if HAVE_X11_EXTENSIONS_SHMPROTO_H
 #include <X11/extensions/shmproto.h>
@@ -79,13 +80,15 @@ static int verbose;
 #define DRAW 0x8
 #define DAMAGE 0x10
 #define CURSOR 0x20
-#define POLL 0x40
+#define SCREEN 0x40
+#define POLL 0x80
 
 struct display {
 	Display *dpy;
 	struct clone *clone;
 	struct context *ctx;
 
+	int saver_event, saver_error, saver_active;
 	int damage_event, damage_error;
 	int xfixes_event, xfixes_error;
 	int rr_event, rr_error, rr_active;
@@ -98,6 +101,7 @@ struct display {
 	int width;
 	int height;
 	int depth;
+	int active;
 
 	XRenderPictFormat *root_format;
 	XRenderPictFormat *rgb16_format;
@@ -123,6 +127,13 @@ struct display {
 	int send;
 	int skip_clone;
 	int skip_frame;
+
+	struct {
+		int timeout;
+		int interval;
+		int prefer_blank;
+		int allow_exp;
+	} saver;
 };
 
 struct output {
@@ -1249,6 +1260,56 @@ static void clone_update(struct clone *clone)
 	clone->rr_update = 0;
 }
 
+static void screensaver_save(struct display *display)
+{
+	display->saver_active =
+		XScreenSaverQueryExtension(display->dpy,
+					   &display->saver_event,
+					   &display->saver_error);
+	DBG(SCREEN,
+	    ("%s screen saver active? %d [event=%d, error=%d]\n",
+	     DisplayString(display->dpy),
+	     display->saver_active,
+	     display->saver_event,
+	     display->saver_error));
+
+	XGetScreenSaver(display->dpy,
+			&display->saver.timeout,
+			&display->saver.interval,
+			&display->saver.prefer_blank,
+			&display->saver.allow_exp);
+
+	DBG(SCREEN,
+	    ("%s saving screen saver defaults: timeout=%d interval=%d prefer_blank=%d allow_exp=%d\n",
+	     DisplayString(display->dpy),
+	     display->saver.timeout,
+	     display->saver.interval,
+	     display->saver.prefer_blank,
+	     display->saver.allow_exp));
+}
+
+static void screensaver_disable(struct display *display)
+{
+	DBG(SCREEN,
+	    ("%s disabling screen saver\n", DisplayString(display->dpy)));
+
+	XSetScreenSaver(display->dpy, 0, 0, DefaultBlanking, DefaultExposures);
+	display_mark_flush(display);
+}
+
+static void screensaver_restore(struct display *display)
+{
+	DBG(SCREEN,
+	    ("%s restoring screen saver\n", DisplayString(display->dpy)));
+
+	XSetScreenSaver(display->dpy,
+			display->saver.timeout,
+			display->saver.interval,
+			display->saver.prefer_blank,
+			display->saver.allow_exp);
+	display_mark_flush(display);
+}
+
 static int context_update(struct context *ctx)
 {
 	Display *dpy = ctx->display->dpy;
@@ -1605,6 +1666,13 @@ ungrab:
 		XUngrabServer(display->dpy);
 	}
 
+	for (n = 1; n < ctx->ndisplay; n++) {
+		struct display *display = &ctx->display[n];
+
+		display->active = 0;
+		screensaver_restore(display);
+	}
+
 	ctx->active = NULL;
 	for (n = 0; n < ctx->nclone; n++) {
 		struct clone *clone = &ctx->clones[n];
@@ -1615,7 +1683,10 @@ ungrab:
 			continue;
 
 		DBG(XRR, ("%s-%s: added to active list\n",
-		     DisplayString(clone->dst.display->dpy), clone->dst.name));
+			  DisplayString(clone->dst.display->dpy), clone->dst.name));
+
+		if (clone->dst.display->active++ == 0)
+			screensaver_disable(clone->dst.display);
 
 		clone->active = ctx->active;
 		ctx->active = clone;
@@ -2395,6 +2466,8 @@ static int add_display(struct context *ctx, Display *dpy)
 	     display->shm_event,
 	     display->shm_opcode,
 	     display->has_shm_pixmap));
+
+	screensaver_save(display);
 
 	display->rr_active = XRRQueryExtension(dpy, &display->rr_event, &display->rr_error);
 	DBG(X11, ("%s: randr_active?=%d, event=%d, error=%d\n",
@@ -3400,6 +3473,11 @@ int main(int argc, char **argv)
 	if (ret)
 		goto out;
 
+	if (ctx.display->saver_active)
+		XScreenSaverSelectInput(ctx.display->dpy,
+					ctx.display->root,
+					ScreenSaverNotifyMask);
+
 	if ((ctx.display->rr_event | ctx.display->rr_error) == 0) {
 		fprintf(stderr, "RandR extension not supported by %s\n", DisplayString(ctx.display->dpy));
 		ret = EINVAL;
@@ -3476,7 +3554,32 @@ int main(int argc, char **argv)
 			do {
 				XNextEvent(ctx.display->dpy, &e);
 
-				if (e.type == ctx.display->damage_event + XDamageNotify ) {
+				DBG(POLL, ("%s received event %d\n", DisplayString(ctx.display[0].dpy), e.type));
+
+				if (e.type == ctx.display->saver_event + ScreenSaverNotify) {
+					const XScreenSaverNotifyEvent *se = (const XScreenSaverNotifyEvent *)&e;
+					DBG(SCREEN,
+					    ("%s screen saver: state=%d, kind=%d, forced=%d\n",
+					     DisplayString(ctx.display->dpy),
+					     se->state, se->kind, se->forced));
+					for (i = 1; i < ctx.ndisplay; i++) {
+						struct display *display = &ctx.display[i];
+
+						if (!display->active)
+							continue;
+
+						DBG(SCREEN,
+						    ("%s %s screen saver\n",
+						     DisplayString(display->dpy),
+						     se->state == ScreenSaverOn ? "activating" : "resetting\n"));
+
+						if (se->state == ScreenSaverOn)
+							XActivateScreenSaver(display->dpy);
+						else
+							XResetScreenSaver(display->dpy);
+						XFlush(display->dpy);
+					}
+				} else if (e.type == ctx.display->damage_event + XDamageNotify) {
 					const XDamageNotifyEvent *de = (const XDamageNotifyEvent *)&e;
 					struct clone *clone;
 
@@ -3530,7 +3633,7 @@ int main(int argc, char **argv)
 
 				DBG(POLL, ("%s received event %d\n", DisplayString(ctx.display[i].dpy), e.type));
 				if (e.type == Expose) {
-					XExposeEvent *xe = (XExposeEvent *)&e;
+					const XExposeEvent *xe = (XExposeEvent *)&e;
 					struct clone *clone;
 					int damaged = 0;
 
@@ -3555,7 +3658,7 @@ int main(int argc, char **argv)
 					if (damaged)
 						context_enable_timer(&ctx);
 				} else if (ctx.display[i].rr_active && e.type == ctx.display[i].rr_event + RRNotify) {
-					XRRNotifyEvent *re = (XRRNotifyEvent *)&e;
+					const XRRNotifyEvent *re = (XRRNotifyEvent *)&e;
 
 					DBG(XRR, ("%s received RRNotify, type %d\n", DisplayString(ctx.display[i].dpy), re->subtype));
 					if (re->subtype == RRNotify_OutputChange) {

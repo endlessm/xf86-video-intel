@@ -291,7 +291,7 @@ if test "x$shm" != "xyes"; then
 	tools="no"
 fi
 if test "x$tools" != "xno"; then
-	ivo_requires="xrandr xdamage xfixes xcursor xtst xrender xext x11 pixman-1"
+	ivo_requires="xrandr xdamage xfixes xcursor xtst xrender xscrnsaver xext x11 pixman-1"
 	extra_cflags=""
 
 	ignore="xinerama"
