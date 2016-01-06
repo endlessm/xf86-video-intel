@@ -977,6 +977,35 @@ out:
 	return rr_output;
 }
 
+static int check_virtual(struct display *display)
+{
+	XRRScreenResources *res;
+	int found = -ENOENT;
+	int i;
+
+	res = _XRRGetScreenResourcesCurrent(display->dpy, display->root);
+	if (res == NULL)
+		return -ENOMEM;
+
+	for (i = 0; found == -ENOENT && i < res->noutput; i++) {
+		XRROutputInfo *output;
+
+		output = XRRGetOutputInfo(display->dpy, res, res->outputs[i]);
+		if (output == NULL)
+			continue;
+
+		if (strcmp(output->name, "VIRTUAL0") == 0)
+			found = 0;
+
+		XRRFreeOutputInfo(output);
+	}
+	XRRFreeScreenResources(res);
+
+	DBG(XRR, ("%s(%s): has VIRTUAL0? %d\n",
+		  __func__, DisplayString(display->dpy), found));
+	return found;
+}
+
 static int stride_for_depth(int width, int depth)
 {
 	if (depth == 24)
@@ -3416,6 +3445,13 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Unable to connect to \"%s\".\n", src_name ?: getenv("DISPLAY") ?:
 			"<unspecified>, set either the DISPLAY environment variable or pass -d <display name> on the commandline");
 		ret = -ret;
+		goto out;
+	}
+
+	ret = check_virtual(ctx.display);
+	if (ret) {
+		fprintf(stderr, "No VIRTUAL outputs on \"%s\".\n",
+			DisplayString(ctx.display->dpy));
 		goto out;
 	}
 
