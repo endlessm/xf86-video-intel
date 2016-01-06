@@ -1837,20 +1837,20 @@ void sna_dri2_destroy_window(WindowPtr win)
 
 		chain = priv->chain;
 		while ((info = chain)) {
+			DBG(("%s: freeing event, pending signal? %d, pending swap? handle=%d\n",
+			     __FUNCTION__, info->signal,
+			     info->pending.bo ? info->pending.bo->handle : 0));
 			assert(info->draw == &win->drawable);
-			if (info->signal)
-				frame_swap_complete(info, DRI2_EXCHANGE_COMPLETE);
+
 			if (info->pending.bo) {
 				assert(info->pending.bo->active_scanout > 0);
 				info->pending.bo->active_scanout--;
-
-				info->signal = true;
-				frame_swap_complete(info, DRI2_EXCHANGE_COMPLETE);
 
 				kgem_bo_destroy(&sna->kgem, info->pending.bo);
 				info->pending.bo = NULL;
 			}
 
+			info->signal = false;
 			info->draw = NULL;
 			list_del(&info->link);
 
