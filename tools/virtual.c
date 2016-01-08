@@ -994,14 +994,14 @@ static int check_virtual(struct display *display)
 		if (output == NULL)
 			continue;
 
-		if (strcmp(output->name, "VIRTUAL0") == 0)
+		if (strcmp(output->name, "VIRTUAL1") == 0)
 			found = 0;
 
 		XRRFreeOutputInfo(output);
 	}
 	XRRFreeScreenResources(res);
 
-	DBG(XRR, ("%s(%s): has VIRTUAL0? %d\n",
+	DBG(XRR, ("%s(%s): has VIRTUAL1? %d\n",
 		  __func__, DisplayString(display->dpy), found));
 	return found;
 }
