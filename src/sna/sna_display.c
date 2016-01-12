@@ -657,6 +657,7 @@ static uint32_t gem_create(int fd, int size)
 static void *gem_mmap(int fd, int handle, int size)
 {
 	struct drm_i915_gem_mmap_gtt mmap_arg;
+	struct drm_i915_gem_set_domain set_domain;
 	void *ptr;
 
 	VG_CLEAR(mmap_arg);
@@ -667,6 +668,15 @@ static void *gem_mmap(int fd, int handle, int size)
 	ptr = mmap(0, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, mmap_arg.offset);
 	if (ptr == MAP_FAILED)
 		return NULL;
+
+	VG_CLEAR(set_domain);
+	set_domain.handle = handle;
+	set_domain.read_domains = I915_GEM_DOMAIN_GTT;
+	set_domain.write_domain = I915_GEM_DOMAIN_GTT;
+	if (drmIoctl(fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain)) {
+		munmap(ptr, size);
+		return NULL;
+	}
 
 	return ptr;
 }
