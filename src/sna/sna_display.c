@@ -2394,6 +2394,10 @@ force_shadow:
 		}
 
 		tiling = I915_TILING_X;
+		if (crtc->rotation & (RR_Rotate_90 | RR_Rotate_270) &&
+		    sna->kgem.can_scanout_y)
+			tiling = I915_TILING_Y;
+
 		if (sna->kgem.gen == 071)
 			tiled_limit = 16 * 1024 * 8;
 		else if ((sna->kgem.gen >> 3) > 4)
