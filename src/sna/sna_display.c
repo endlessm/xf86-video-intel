@@ -1351,6 +1351,12 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 	sna_crtc_disable_cursor(sna, sna_crtc);
 
 	if (!rotation_set(sna, &sna_crtc->primary, sna_crtc->rotation)) {
+		memset(&arg, 0, sizeof(arg));
+		arg.crtc_id = __sna_crtc_id(sna_crtc);
+		(void)drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_SETCRTC, &arg);
+	}
+
+	if (!rotation_set(sna, &sna_crtc->primary, sna_crtc->rotation)) {
 		ERR(("%s: set-primary-rotation failed (rotation-id=%d, rotation=%d) on CRTC:%d [pipe=%d], errno=%d\n",
 		     __FUNCTION__, sna_crtc->primary.rotation.prop, sna_crtc->rotation, __sna_crtc_id(sna_crtc), __sna_crtc_pipe(sna_crtc), errno));
 		sna_crtc->primary.rotation.supported &= ~sna_crtc->rotation;
