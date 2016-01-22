@@ -1110,13 +1110,12 @@ static void sna_dri2_select_mode(struct sna *sna, struct kgem_bo *dst, struct kg
 	 * The ultimate question is whether preserving the ring outweighs
 	 * the cost of the query.
 	 */
-	if (popcount(busy.busy >> 16) > 1)
-		mode = busy.busy & 0xffff ? KGEM_BLT : KGEM_RENDER;
-	else if (busy.busy & (0xfffe << 16))
+	mode = KGEM_RENDER;
+	if ((busy.busy & 0xffff) == KGEM_BLT)
 		mode = KGEM_BLT;
-	else
-		mode = KGEM_RENDER;
-	kgem_bo_mark_busy(&sna->kgem, busy.handle == src->handle ? src : dst, mode);
+	kgem_bo_mark_busy(&sna->kgem,
+			  busy.handle == src->handle ? src : dst,
+			  mode);
 	_kgem_set_mode(&sna->kgem, mode);
 }
 
