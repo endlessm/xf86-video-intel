@@ -319,10 +319,11 @@ static inline void sna_damage_reduce_all(struct sna_damage **_damage,
 void __sna_damage_destroy(struct sna_damage *damage);
 static inline void sna_damage_destroy(struct sna_damage **damage)
 {
-	if (DAMAGE_PTR(*damage) == NULL)
+	if (*damage == NULL)
 		return;
 
-	__sna_damage_destroy(DAMAGE_PTR(*damage));
+	if (DAMAGE_PTR(*damage))
+		__sna_damage_destroy(DAMAGE_PTR(*damage));
 	*damage = NULL;
 }
 
