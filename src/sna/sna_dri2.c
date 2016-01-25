@@ -2873,8 +2873,10 @@ static void sna_dri2_flip_event(struct sna_dri2_event *flip)
 	/* We assume our flips arrive in order, so we don't check the frame */
 	switch (flip->type) {
 	case FLIP:
-		DBG(("%s: swap complete, unblocking client\n", __FUNCTION__));
-		frame_swap_complete(flip, DRI2_FLIP_COMPLETE);
+		if (flip->signal) {
+			DBG(("%s: swap complete, unblocking client\n", __FUNCTION__));
+			frame_swap_complete(flip, DRI2_FLIP_COMPLETE);
+		}
 		sna_dri2_event_free(flip);
 
 		if (sna->dri2.flip_pending)
