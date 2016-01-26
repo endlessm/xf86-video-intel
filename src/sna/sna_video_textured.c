@@ -156,12 +156,9 @@ sna_video_textured_put_image(ddPutImage_ARGS)
 	if (wedged(sna))
 		return BadAlloc;
 
-	clip.extents.x1 = draw->x + drw_x;
-	clip.extents.y1 = draw->y + drw_y;
-	clip.extents.x2 = clip.extents.x1 + drw_w;
-	clip.extents.y2 = clip.extents.y1 + drw_h;
-	clip.data = NULL;
+	init_video_region(&clip, draw, drw_x, drw_y, drw_w, drw_h);
 
+	ValidateGC(draw, gc);
 	RegionIntersect(&clip, &clip, gc->pCompositeClip);
 	if (!RegionNotEmpty(&clip))
 		return Success;

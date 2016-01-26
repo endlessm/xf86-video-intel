@@ -373,15 +373,13 @@ static int sna_video_sprite_put_image(ddPutImage_ARGS)
 	RegionRec clip;
 	int ret, i;
 
-	clip.extents.x1 = draw->x + drw_x;
-	clip.extents.y1 = draw->y + drw_y;
-	clip.extents.x2 = clip.extents.x1 + drw_w;
-	clip.extents.y2 = clip.extents.y1 + drw_h;
-	clip.data = NULL;
+	init_video_region(&clip, draw, drw_x, drw_y, drw_w, drw_h);
 
 	DBG(("%s: always_on_top=%d\n", __FUNCTION__, video->AlwaysOnTop));
-	if (!video->AlwaysOnTop)
+	if (!video->AlwaysOnTop) {
+		ValidateGC(draw, gc);
 		RegionIntersect(&clip, &clip, gc->pCompositeClip);
+	}
 
 	DBG(("%s: src=(%d, %d),(%d, %d), dst=(%d, %d),(%d, %d), id=%d, sizep=%dx%d, sync?=%d\n",
 	     __FUNCTION__,
