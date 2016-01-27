@@ -2787,6 +2787,9 @@ sna_dri2_flip_continue(struct sna_dri2_event *info)
 	info->type = info->flip_continue;
 	info->flip_continue = 0;
 
+	if (info->draw == NULL)
+		return false;
+
 	if (info->sna->mode.front_active == 0)
 		return false;
 
@@ -2801,6 +2804,7 @@ sna_dri2_flip_continue(struct sna_dri2_event *info)
 	       info->sna->dri2.flip_pending == info);
 	info->sna->dri2.flip_pending = info;
 	info->queued = true;
+	assert(info->draw);
 	info->signal = info->type == FLIP_THROTTLE;
 
 	return true;
@@ -3097,6 +3101,7 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 		assert(info->crtc == crtc);
 		info->event_complete = func;
 		info->event_data = data;
+		assert(info->draw);
 		info->signal = true;
 
 		info->front = sna_dri2_reference_buffer(front);
@@ -3133,6 +3138,7 @@ new_back:
 				sna_dri2_get_back(sna, draw, back);
 			DBG(("%s: fake triple buffering, unblocking client\n", __FUNCTION__));
 			frame_swap_complete(info, DRI2_EXCHANGE_COMPLETE);
+			assert(info->draw);
 			info->signal = signal;
 			if (info->type == FLIP_ASYNC)
 				sna_dri2_event_free(info);
@@ -3156,6 +3162,7 @@ queue:
 	assert(info->crtc == crtc);
 	info->event_complete = func;
 	info->event_data = data;
+	assert(info->draw);
 	info->signal = true;
 	info->type = FLIP;
 
@@ -3312,6 +3319,7 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 	assert(info->crtc == crtc);
 	info->event_complete = func;
 	info->event_data = data;
+	assert(info->draw);
 	info->signal = true;
 
 	info->front = sna_dri2_reference_buffer(front);
@@ -3391,6 +3399,7 @@ fake:
 		/* XXX Use a Timer to throttle the client? */
 		fake_swap_complete(sna, client, draw, crtc, type, func, data);
 		if (info) {
+			assert(info->draw);
 			info->signal = false;
 			sna_dri2_event_free(info);
 		}
