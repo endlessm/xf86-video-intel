@@ -1733,6 +1733,11 @@ bool sna_pixmap_discard_shadow_damage(struct sna_pixmap *priv,
 
 static void sna_mode_damage(DamagePtr damage, RegionPtr region, void *closure)
 {
+	struct sna *sna = closure;
+
+	if (sna->mode.rr_active)
+		return;
+
 	/* Throw away the rectangles if the region grows too big */
 	region = DamageRegion(damage);
 	if (region->data) {
