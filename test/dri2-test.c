@@ -186,6 +186,7 @@ static void run(Display *dpy, int width, int height,
 	       name, width, height, elapsed(&start, &end));
 
 	DRI2SwapInterval(dpy, win, 0);
+	wait_next_vblank(dpy, win);
 
 	swap_buffers(c, win, attachments, nattachments);
 	start_msc = check_msc(dpy, win, end_msc);

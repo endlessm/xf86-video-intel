@@ -221,6 +221,221 @@ static void race_window(Display *dpy, int width, int height,
 	XSync(dpy, 1);
 }
 
+static void race_manager(Display *dpy, int width, int height,
+			 unsigned int *attachments, int nattachments,
+			 const char *name)
+{
+	Display *mgr = XOpenDisplay(NULL);
+	Window win;
+	XSetWindowAttributes attr;
+	int count, loop;
+	DRI2Buffer *buffers;
+
+	printf("%s(%s)\n", __func__, name);
+
+	/* Be nasty and install a fullscreen window on top so that we
+	 * can guarantee we do not get clipped by children.
+	 */
+	attr.override_redirect = 1;
+	loop = 100;
+	do {
+		win = XCreateWindow(dpy, DefaultRootWindow(dpy),
+				    0, 0, width, height, 0,
+				    DefaultDepth(dpy, DefaultScreen(dpy)),
+				    InputOutput,
+				    DefaultVisual(dpy, DefaultScreen(dpy)),
+				    CWOverrideRedirect, &attr);
+		XMapWindow(dpy, win);
+
+		DRI2CreateDrawable(dpy, win);
+
+		buffers = DRI2GetBuffers(dpy, win, &width, &height,
+					 attachments, nattachments, &count);
+		if (count != nattachments)
+			return;
+
+		free(buffers);
+		for (count = 0; count < loop; count++)
+			DRI2SwapBuffers(dpy, win, 0, 0, 0);
+		XFlush(dpy);
+		XDestroyWindow(mgr, win);
+		XFlush(mgr);
+		printf("."); fflush(stdout);
+	} while (--loop);
+	printf("*\n");
+
+	loop = 100;
+	do {
+		win = XCreateWindow(dpy, DefaultRootWindow(dpy),
+				    0, 0, width, height, 0,
+				    DefaultDepth(dpy, DefaultScreen(dpy)),
+				    InputOutput,
+				    DefaultVisual(dpy, DefaultScreen(dpy)),
+				    CWOverrideRedirect, &attr);
+		XMapWindow(dpy, win);
+
+		DRI2CreateDrawable(dpy, win);
+
+		buffers = DRI2GetBuffers(dpy, win, &width, &height,
+					 attachments, nattachments, &count);
+		if (count != nattachments)
+			return;
+
+		free(buffers);
+		for (count = 0; count < loop; count++)
+			DRI2SwapBuffers(dpy, win, 0, 1, 0);
+		XFlush(dpy);
+		XDestroyWindow(mgr, win);
+		XFlush(mgr);
+		printf("."); fflush(stdout);
+	} while (--loop);
+	printf("*\n");
+
+	loop = 100;
+	do {
+		win = XCreateWindow(dpy, DefaultRootWindow(dpy),
+				    0, 0, width, height, 0,
+				    DefaultDepth(dpy, DefaultScreen(dpy)),
+				    InputOutput,
+				    DefaultVisual(dpy, DefaultScreen(dpy)),
+				    CWOverrideRedirect, &attr);
+		XMapWindow(dpy, win);
+
+		DRI2CreateDrawable(dpy, win);
+
+		buffers = DRI2GetBuffers(dpy, win, &width, &height,
+					 attachments, nattachments, &count);
+		if (count != nattachments)
+			return;
+
+		free(buffers);
+		for (count = 0; count < loop; count++)
+			DRI2SwapBuffers(dpy, win, 0, 16, count & 15);
+		XFlush(dpy);
+		XDestroyWindow(mgr, win);
+		XFlush(mgr);
+		printf("."); fflush(stdout);
+	} while (--loop);
+	printf("*\n");
+
+	loop = 100;
+	do {
+		win = XCreateWindow(dpy, DefaultRootWindow(dpy),
+				    0, 0, width, height, 0,
+				    DefaultDepth(dpy, DefaultScreen(dpy)),
+				    InputOutput,
+				    DefaultVisual(dpy, DefaultScreen(dpy)),
+				    CWOverrideRedirect, &attr);
+		XMapWindow(dpy, win);
+
+		DRI2CreateDrawable(dpy, win);
+
+		buffers = DRI2GetBuffers(dpy, win, &width, &height,
+					 attachments, nattachments, &count);
+		if (count != nattachments)
+			return;
+
+		free(buffers);
+		for (count = 0; count < loop; count++)
+			swap_buffers(dpy, win, 0, attachments, nattachments);
+		XFlush(dpy);
+		XDestroyWindow(mgr, win);
+		XFlush(mgr);
+		printf("."); fflush(stdout);
+	} while (--loop);
+	printf("*\n");
+
+	loop = 100;
+	do {
+		win = XCreateWindow(dpy, DefaultRootWindow(dpy),
+				    0, 0, width, height, 0,
+				    DefaultDepth(dpy, DefaultScreen(dpy)),
+				    InputOutput,
+				    DefaultVisual(dpy, DefaultScreen(dpy)),
+				    CWOverrideRedirect, &attr);
+		XMapWindow(dpy, win);
+
+		DRI2CreateDrawable(dpy, win);
+
+		buffers = DRI2GetBuffers(dpy, win, &width, &height,
+					 attachments, nattachments, &count);
+		if (count != nattachments)
+			return;
+
+		free(buffers);
+		for (count = 0; count < loop; count++)
+			swap_buffers(dpy, win, 1, attachments, nattachments);
+		XFlush(dpy);
+		XDestroyWindow(mgr, win);
+		XFlush(mgr);
+		printf("."); fflush(stdout);
+	} while (--loop);
+	printf("*\n");
+
+	loop = 100;
+	do {
+		win = XCreateWindow(dpy, DefaultRootWindow(dpy),
+				    0, 0, width, height, 0,
+				    DefaultDepth(dpy, DefaultScreen(dpy)),
+				    InputOutput,
+				    DefaultVisual(dpy, DefaultScreen(dpy)),
+				    CWOverrideRedirect, &attr);
+		XMapWindow(dpy, win);
+
+		DRI2CreateDrawable(dpy, win);
+
+		buffers = DRI2GetBuffers(dpy, win, &width, &height,
+					 attachments, nattachments, &count);
+		if (count != nattachments)
+			return;
+
+		free(buffers);
+		for (count = 0; count < loop; count++)
+			swap_buffers(dpy, win, 16, attachments, nattachments);
+		XFlush(dpy);
+		XDestroyWindow(mgr, win);
+		XFlush(mgr);
+		printf("."); fflush(stdout);
+	} while (--loop);
+	printf("*\n");
+
+	loop = 100;
+	do {
+		uint64_t ignore, msc;
+		xcb_connection_t *c = XGetXCBConnection(dpy);
+
+		win = XCreateWindow(dpy, DefaultRootWindow(dpy),
+				    0, 0, width, height, 0,
+				    DefaultDepth(dpy, DefaultScreen(dpy)),
+				    InputOutput,
+				    DefaultVisual(dpy, DefaultScreen(dpy)),
+				    CWOverrideRedirect, &attr);
+		XMapWindow(dpy, win);
+
+		DRI2CreateDrawable(dpy, win);
+		DRI2GetMSC(dpy, win, &ignore, &msc, &ignore);
+		for (count = 0; count < loop; count++)
+			xcb_discard_reply(c,
+					  xcb_dri2_wait_msc(c, win,
+							    upper_32_bits(msc + count + 1),
+							    lower_32_bits(msc + count + 1),
+							    0, 1, 0, 0).sequence);
+		XFlush(dpy);
+		XDestroyWindow(mgr, win);
+		XFlush(mgr);
+		printf("."); fflush(stdout);
+	} while (--loop);
+	printf("*\n");
+
+	XSync(dpy, 1);
+	XSync(mgr, 1);
+	sleep(2);
+	XSync(dpy, 1);
+	XSync(mgr, 1);
+
+	XCloseDisplay(mgr);
+}
+
 static void race_client(int width, int height,
 			unsigned int *attachments, int nattachments,
 			const char *name)
@@ -359,6 +574,10 @@ int main(void)
 	height = HeightOfScreen(DefaultScreenOfDisplay(dpy));
 	race_window(dpy, width, height, attachments, 1, "fullscreen");
 	race_window(dpy, width, height, attachments, 2, "fullscreen (with front)");
+
+	race_manager(dpy, width, height, attachments, 1, "fullscreen");
+	race_manager(dpy, width, height, attachments, 2, "fullscreen (with front)");
+
 	race_client(width, height, attachments, 1, "fullscreen");
 	race_client(width, height, attachments, 2, "fullscreen (with front)");
 
@@ -366,6 +585,10 @@ int main(void)
 	height /= 2;
 	race_window(dpy, width, height, attachments, 1, "windowed");
 	race_window(dpy, width, height, attachments, 2, "windowed (with front)");
+
+	race_manager(dpy, width, height, attachments, 1, "windowed");
+	race_manager(dpy, width, height, attachments, 2, "windowed (with front)");
+
 	race_client(width, height, attachments, 1, "windowed");
 	race_client(width, height, attachments, 2, "windowed (with front)");
 
