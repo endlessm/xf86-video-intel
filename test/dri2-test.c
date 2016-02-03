@@ -22,6 +22,8 @@
 
 #define COUNT 60
 
+static int prime[] = { 0, 1, 2, 3, 5, 7, 11, 13, 17, 19, 23, 27, 29, 31, 37, 41, 43, 47, 51, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131 };
+
 static inline XRRScreenResources *_XRRGetScreenResourcesCurrent(Display *dpy, Window window)
 {
 	XRRScreenResources *res;
@@ -136,10 +138,10 @@ static void run(Display *dpy, int width, int height,
 	xcb_connection_t *c = XGetXCBConnection(dpy);
 	Window win;
 	XSetWindowAttributes attr;
-	int count;
 	DRI2Buffer *buffers;
 	struct timespec start, end;
 	uint64_t start_msc, end_msc;
+	int modulus, remainder, count;
 
 	/* Be nasty and install a fullscreen window on top so that we
 	 * can guarantee we do not get clipped by children.
@@ -208,6 +210,45 @@ static void run(Display *dpy, int width, int height,
 	printf("%d [%ld] %s waits in %fs.\n",
 	       count, (long)(end_msc - start_msc),
 	       name, elapsed(&start, &end));
+
+	printf("Testing past & future waits\n");
+	for (modulus = 1; modulus <= 128; modulus <<= 1) {
+		for (count = 0;  prime[count] < modulus; count++) {
+			uint64_t msc, ust, sbc;
+			uint64_t target;
+
+			remainder = prime[count];
+
+			DRI2WaitMSC(dpy, win, 0, 1, 0, &ust, &msc, &sbc);
+
+			target = msc + modulus + 1;
+			target &= -modulus;
+			target += remainder;
+
+			DRI2WaitMSC(dpy, win, target, modulus, remainder,
+				    &ust, &msc, &sbc);
+			if (msc != target) {
+				printf("Missed future MSC (%d, %d): expected=%lld, found=%lld\n",
+				       modulus, remainder,
+				       (long long)target, (long long)msc);
+			}
+
+			target = msc;
+			target &= -modulus;
+			target += remainder;
+			if (target <= msc)
+				target += modulus;
+
+			DRI2WaitMSC(dpy, win, msc, modulus, remainder,
+				    &ust, &msc, &sbc);
+
+			if (msc != target) {
+				printf("Missed past MSC (%d, %d): expected=%lld, found=%lld\n",
+				       modulus, remainder,
+				       (long long)target, (long long)msc);
+			}
+		}
+	}
 
 	XDestroyWindow(dpy, win);
 	free(buffers);
