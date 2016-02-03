@@ -448,14 +448,14 @@ gen3_emit_composite_boxes_constant(const struct sna_composite_op *op,
 				   float *v)
 {
 	do {
-		v[0] = box->x2;
-		v[1] = box->y2;
+		v[0] = box->x2 + op->dst.x;
+		v[1] = box->y2 + op->dst.y;
 
-		v[2] = box->x1;
-		v[3] = box->y2;
+		v[2] = box->x1 + op->dst.x;
+		v[3] = box->y2 + op->dst.y;
 
-		v[4] = box->x1;
-		v[5] = box->y1;
+		v[4] = box->x1 + op->dst.x;
+		v[5] = box->y1 + op->dst.y;
 
 		box++;
 		v += 6;
@@ -494,18 +494,18 @@ gen3_emit_composite_boxes_identity_gradient(const struct sna_composite_op *op,
 					    float *v)
 {
 	do {
-		v[0] = box->x2;
-		v[1] = box->y2;
+		v[0] = box->x2 + op->dst.x;
+		v[1] = box->y2 + op->dst.y;
 		v[2] = box->x2 + op->src.offset[0];
 		v[3] = box->y2 + op->src.offset[1];
 
-		v[4] = box->x1;
-		v[5] = box->y2;
+		v[4] = box->x1 + op->dst.x;
+		v[5] = box->y2 + op->dst.y;
 		v[6] = box->x1 + op->src.offset[0];
 		v[7] = box->y2 + op->src.offset[1];
 
-		v[8] = box->x1;
-		v[9] = box->y1;
+		v[8] = box->x1 + op->dst.x;
+		v[9] = box->y1 + op->dst.y;
 		v[10] = box->x1 + op->src.offset[0];
 		v[11] = box->y1 + op->src.offset[1];
 
@@ -560,22 +560,22 @@ gen3_emit_composite_boxes_affine_gradient(const struct sna_composite_op *op,
 	const PictTransform *transform = op->src.transform;
 
 	do {
-		v[0] = box->x2;
-		v[1] = box->y2;
+		v[0] = box->x2 + op->dst.x;
+		v[1] = box->y2 + op->dst.y;
 		_sna_get_transformed_scaled(box->x2 + op->src.offset[0],
 					    box->y2 + op->src.offset[1],
 					    transform, op->src.scale,
 					    &v[2], &v[3]);
 
-		v[4] = box->x1;
-		v[5] = box->y2;
+		v[4] = box->x1 + op->dst.x;
+		v[5] = box->y2 + op->dst.y;
 		_sna_get_transformed_scaled(box->x1 + op->src.offset[0],
 					    box->y2 + op->src.offset[1],
 					    transform, op->src.scale,
 					    &v[6], &v[7]);
 
-		v[8] = box->x1;
-		v[9] = box->y1;
+		v[8] = box->x1 + op->dst.x;
+		v[9] = box->y1 + op->dst.y;
 		_sna_get_transformed_scaled(box->x1 + op->src.offset[0],
 					    box->y1 + op->src.offset[1],
 					    transform, op->src.scale,
@@ -724,10 +724,10 @@ gen3_emit_composite_boxes_affine_source(const struct sna_composite_op *op,
 	const PictTransform *transform = op->src.transform;
 
 	do {
-		v[0] = box->x2;
-		v[5] = v[1] = box->y2;
-		v[8] = v[4] = box->x1;
-		v[9] = box->y1;
+		v[0] = box->x2 + op->dst.x;
+		v[5] = v[1] = box->y2 + op->dst.y;
+		v[8] = v[4] = box->x1 + op->dst.x;
+		v[9] = box->y1 + op->dst.y;
 
 		_sna_get_transformed_scaled(box->x2 + op->src.offset[0],
 					    box->y2 + op->src.offset[1],
@@ -1002,10 +1002,10 @@ gen3_emit_composite_boxes_constant__sse2(const struct sna_composite_op *op,
 					 float *v)
 {
 	do {
-		v[0] = box->x2;
-		v[3] = v[1] = box->y2;
-		v[4] = v[2] = box->x1;
-		v[5] = box->y1;
+		v[0] = box->x2 + op->dst.x;
+		v[3] = v[1] = box->y2 + op->dst.y;
+		v[4] = v[2] = box->x1 + op->dst.x;
+		v[5] = box->y1 + op->dst.y;
 
 		box++;
 		v += 6;
@@ -1045,10 +1045,10 @@ gen3_emit_composite_boxes_identity_gradient__sse2(const struct sna_composite_op 
 						  float *v)
 {
 	do {
-		v[0] = box->x2;
-		v[5] = v[1] = box->y2;
-		v[8] = v[4] = box->x1;
-		v[9] = box->y1;
+		v[0] = box->x2 + op->dst.x;
+		v[5] = v[1] = box->y2 + op->dst.y;
+		v[8] = v[4] = box->x1 + op->dst.x;
+		v[9] = box->y1 + op->dst.y;
 
 		v[2] = box->x2 + op->src.offset[0];
 		v[7] = v[3] = box->y2 + op->src.offset[1];
@@ -1106,22 +1106,22 @@ gen3_emit_composite_boxes_affine_gradient__sse2(const struct sna_composite_op *o
 	const PictTransform *transform = op->src.transform;
 
 	do {
-		v[0] = box->x2;
-		v[1] = box->y2;
+		v[0] = box->x2 + op->dst.x;
+		v[1] = box->y2 + op->dst.y;
 		_sna_get_transformed_scaled(box->x2 + op->src.offset[0],
 					    box->y2 + op->src.offset[1],
 					    transform, op->src.scale,
 					    &v[2], &v[3]);
 
-		v[4] = box->x1;
-		v[5] = box->y2;
+		v[4] = box->x1 + op->dst.x;
+		v[5] = box->y2 + op->dst.y;
 		_sna_get_transformed_scaled(box->x1 + op->src.offset[0],
 					    box->y2 + op->src.offset[1],
 					    transform, op->src.scale,
 					    &v[6], &v[7]);
 
-		v[8] = box->x1;
-		v[9] = box->y1;
+		v[8] = box->x1 + op->dst.x;
+		v[9] = box->y1 + op->dst.y;
 		_sna_get_transformed_scaled(box->x1 + op->src.offset[0],
 					    box->y1 + op->src.offset[1],
 					    transform, op->src.scale,
@@ -1240,6 +1240,9 @@ gen3_emit_composite_primitive_affine_source__sse2(struct sna *sna,
 	int src_y = r->src.y + (int)op->src.offset[1];
 	float *v;
 
+	DBG(("%s: src=(%d, %d), dst=(%d, %d), size=%dx%d\n",
+	     __FUNCTION__, src_x, src_y, dst_x, dst_y, r->width, r->height));
+
 	v = sna->render.vertices + sna->render.vertex_used;
 	sna->render.vertex_used += 12;
 	assert(sna->render.vertex_used <= sna->render.vertex_size);
@@ -1270,10 +1273,13 @@ gen3_emit_composite_boxes_affine_source__sse2(const struct sna_composite_op *op,
 	const PictTransform *transform = op->src.transform;
 
 	do {
-		v[0] = box->x2;
-		v[5] = v[1] = box->y2;
-		v[8] = v[4] = box->x1;
-		v[9] = box->y1;
+		DBG(("%s: box=(%d, %d), (%d, %d), src.offset=(%d, %d)\n",
+		     __FUNCTION__, box->x1, box->y1, box->x2, box->y2, op->src.offset[0], op->src.offset[1]));
+
+		v[0] = box->x2 + op->dst.x;
+		v[5] = v[1] = box->y2 + op->dst.y;
+		v[8] = v[4] = box->x1 + op->dst.x;
+		v[9] = box->y1 + op->dst.y;
 
 		_sna_get_transformed_scaled(box->x2 + op->src.offset[0],
 					    box->y2 + op->src.offset[1],
@@ -3685,8 +3691,11 @@ gen3_render_composite(struct sna *sna,
 			}
 		}
 	}
-	DBG(("%s: final src/mask type=%d/%d, affine=%d/%d\n", __FUNCTION__,
+	DBG(("%s: final src/mask type=%d/%d [constant? %d/%d], transform? %d/%d, affine=%d/%d\n", __FUNCTION__,
 	     tmp->src.u.gen3.type, tmp->mask.u.gen3.type,
+	     is_constant_ps(tmp->src.u.gen3.type),
+	     is_constant_ps(tmp->mask.u.gen3.type),
+	     !!tmp->src.transform, !!tmp->mask.transform,
 	     tmp->src.is_affine, tmp->mask.is_affine));
 
 	tmp->prim_emit = gen3_emit_composite_primitive;
