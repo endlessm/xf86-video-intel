@@ -40,8 +40,9 @@ endif
 if X11_DRI3
 stress_TESTS += \
 	dri3-test \
-	present-test \
+	present-race \
 	present-speed \
+	present-test \
 	$(NULL)
 endif
 check_PROGRAMS = $(stress_TESTS)

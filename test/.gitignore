@@ -29,6 +29,7 @@ dri2-speed
 dri2-swap
 dri2-test
 dri3-test
+present-race
 present-speed
 present-test
 shm-test
