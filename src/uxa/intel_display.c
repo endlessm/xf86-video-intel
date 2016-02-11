@@ -688,9 +688,11 @@ intel_set_scanout_pixmap(xf86CrtcPtr crtc, PixmapPtr ppix)
 	}
 
 	bo = intel_get_pixmap_bo(ppix);
-	if (intel->front_buffer) {
-		ErrorF("have front buffer\n");
-	}
+	if (!bo)
+		return FALSE;
+
+	if (intel->front_buffer)
+		return FALSE;
 
 	drm_intel_bo_disable_reuse(bo);
 
