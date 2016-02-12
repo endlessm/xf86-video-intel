@@ -86,6 +86,7 @@ static int sna_video_sprite_stop(ddStopVideo_ARGS)
 		int pipe;
 
 		pipe = sna_crtc_pipe(crtc);
+		assert(pipe < ARRAY_SIZE(video->bo));
 		if (video->bo[pipe] == NULL)
 			continue;
 
@@ -260,6 +261,7 @@ sna_video_sprite_show(struct sna *sna,
 		video->color_key_changed &= ~(1 << pipe);
 	}
 
+	assert(pipe < ARRAY_SIZE(video->bo));
 	if (video->bo[pipe] == frame->bo)
 		return true;
 
@@ -415,6 +417,7 @@ static int sna_video_sprite_put_image(ddPutImage_ARGS)
 		RegionIntersect(&reg, &reg, &clip);
 		if (RegionNil(&reg)) {
 off:
+			assert(pipe < ARRAY_SIZE(video->bo));
 			if (video->bo[pipe]) {
 				struct local_mode_set_plane s;
 				memset(&s, 0, sizeof(s));
