@@ -2910,6 +2910,7 @@ static void __kgem_bo_destroy(struct kgem *kgem, struct kgem_bo *bo)
 	DBG(("%s: handle=%d, size=%d\n", __FUNCTION__, bo->handle, bytes(bo)));
 
 	assert(list_is_empty(&bo->list));
+	assert(list_is_empty(&bo->vma));
 	assert(bo->refcnt == 0);
 	assert(bo->proxy == NULL);
 	assert(bo->active_scanout == 0);

@@ -1519,6 +1519,7 @@ draw_current_msc(DrawablePtr draw, xf86CrtcPtr crtc, uint64_t msc)
 			priv->msc_delta = 0;
 			priv->chain = NULL;
 			priv->scanout = -1;
+			priv->cache_size = 0;
 			list_init(&priv->cache);
 			dri2_window_attach((WindowPtr)draw, priv);
 		}
