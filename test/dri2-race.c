@@ -118,8 +118,8 @@ static void race_window(Display *dpy, int width, int height,
 	 */
 	attr.override_redirect = 1;
 	for (n = 0; n < N_DIVISORS; n++) {
-		printf("DRI2SwapBuffers(divisor=%d)", divisors[n]);
-		loop = 100;
+		loop = 256 >> ffs(divisors[n]);
+		printf("DRI2SwapBuffers(divisor=%d), loop=%d", divisors[n], loop);
 		do {
 			win = XCreateWindow(dpy, DefaultRootWindow(dpy),
 					0, 0, width, height, 0,
@@ -146,8 +146,8 @@ static void race_window(Display *dpy, int width, int height,
 	}
 
 	for (n = 0; n < N_DIVISORS; n++) {
-		printf("xcb_dri2_swap_buffers(divisor=%d)", divisors[n]);
-		loop = 100;
+		loop = 256 >> ffs(divisors[n]);
+		printf("xcb_dri2_swap_buffers(divisor=%d), loops=%d", divisors[n], loop);
 		do {
 			win = XCreateWindow(dpy, DefaultRootWindow(dpy),
 					0, 0, width, height, 0,
@@ -174,8 +174,8 @@ static void race_window(Display *dpy, int width, int height,
 	}
 
 	for (n = 0; n < N_DIVISORS; n++) {
-		printf("DRI2WaitMsc(divisor=%d)", divisors[n]);
-		loop = 100;
+		loop = 256 >> ffs(divisors[n]);
+		printf("DRI2WaitMsc(divisor=%d), loop=%d", divisors[n], loop);
 		do {
 			uint64_t ignore, msc;
 			xcb_connection_t *c = XGetXCBConnection(dpy);
@@ -196,7 +196,7 @@ static void race_window(Display *dpy, int width, int height,
 						xcb_dri2_wait_msc(c, win,
 							upper_32_bits(msc),
 							lower_32_bits(msc),
-							0, 1, 0, 0).sequence);
+							0, 0, 0, 0).sequence);
 				msc += divisors[n];
 			}
 			XFlush(dpy);
@@ -229,7 +229,7 @@ static void race_manager(Display *dpy, int width, int height,
 	attr.override_redirect = 1;
 	for (n = 0; n < N_DIVISORS; n++) {
 		printf("DRI2SwapBuffers(divisor=%d)", divisors[n]);
-		loop = 100;
+		loop = 256 >> ffs(divisors[n]);
 		do {
 			win = XCreateWindow(dpy, DefaultRootWindow(dpy),
 					0, 0, width, height, 0,
@@ -259,7 +259,7 @@ static void race_manager(Display *dpy, int width, int height,
 
 	for (n = 0; n < N_DIVISORS; n++) {
 		printf("xcb_dri2_swap_buffers(divisor=%d)", divisors[n]);
-		loop = 100;
+		loop = 256 >> ffs(divisors[n]);
 		do {
 			win = XCreateWindow(dpy, DefaultRootWindow(dpy),
 					0, 0, width, height, 0,
@@ -289,7 +289,7 @@ static void race_manager(Display *dpy, int width, int height,
 
 	for (n = 0; n < N_DIVISORS; n++) {
 		printf("DRI2WaitMsc(divisor=%d)", divisors[n]);
-		loop = 100;
+		loop = 256 >> ffs(divisors[n]);
 		do {
 			uint64_t ignore, msc;
 			xcb_connection_t *c = XGetXCBConnection(dpy);
@@ -310,7 +310,7 @@ static void race_manager(Display *dpy, int width, int height,
 						xcb_dri2_wait_msc(c, win,
 							upper_32_bits(msc),
 							lower_32_bits(msc),
-							0, 1, 0, 0).sequence);
+							0, 0, 0, 0).sequence);
 				msc += divisors[n];
 			}
 			XFlush(dpy);
@@ -345,7 +345,7 @@ static void race_close(int width, int height,
 	attr.override_redirect = 1;
 	for (n = 0; n < N_DIVISORS; n++) {
 		printf("DRI2SwapBuffers(divisor=%d)", divisors[n]);
-		loop = 100;
+		loop = 256 >> ffs(divisors[n]);
 		do {
 			Display *dpy = XOpenDisplay(NULL);
 			Window win = XCreateWindow(dpy, DefaultRootWindow(dpy),
@@ -373,7 +373,7 @@ static void race_close(int width, int height,
 
 	for (n = 0; n < N_DIVISORS; n++) {
 		printf("xcb_dri2_swap_buffers(divisor=%d)", divisors[n]);
-		loop = 100;
+		loop = 256 >> ffs(divisors[n]);
 		do {
 			Display *dpy = XOpenDisplay(NULL);
 			Window win = XCreateWindow(dpy, DefaultRootWindow(dpy),
@@ -401,7 +401,7 @@ static void race_close(int width, int height,
 
 	for (n = 0; n < N_DIVISORS; n++) {
 		printf("DRI2WaitMsc(divisor=%d)", divisors[n]);
-		loop = 100;
+		loop = 256 >> ffs(divisors[n]);
 		do {
 			uint64_t ignore, msc;
 			Display *dpy = XOpenDisplay(NULL);
@@ -423,7 +423,7 @@ static void race_close(int width, int height,
 						xcb_dri2_wait_msc(c, win,
 							upper_32_bits(msc),
 							lower_32_bits(msc),
-							0, 1, 0, 0).sequence);
+							0, 0, 0, 0).sequence);
 				msc += divisors[n];
 			}
 			XFlush(dpy);
@@ -450,7 +450,7 @@ static void race_client(int width, int height,
 	attr.override_redirect = 1;
 	for (n = 0; n < N_DIVISORS; n++) {
 		printf("DRI2SwapBuffers(divisor=%d)", divisors[n]);
-		loop = 100;
+		loop = 256 >> ffs(divisors[n]);
 		do {
 			Display *dpy;
 			Window win;
@@ -492,7 +492,7 @@ static void race_client(int width, int height,
 
 	for (n = 0; n < N_DIVISORS; n++) {
 		printf("xcb_dri2_swap_buffers(divisor=%d)", divisors[n]);
-		loop = 100;
+		loop = 256 >> ffs(divisors[n]);
 		do {
 			Display *dpy;
 			Window win;
@@ -534,7 +534,7 @@ static void race_client(int width, int height,
 
 	for (n = 0; n < N_DIVISORS; n++) {
 		printf("DRI2WaitMsc(divisor=%d)", divisors[n]);
-		loop = 100;
+		loop = 256 >> ffs(divisors[n]);
 		do {
 			uint64_t ignore, msc;
 			Display *dpy;
@@ -564,7 +564,7 @@ static void race_client(int width, int height,
 						  xcb_dri2_wait_msc(c, win,
 								    upper_32_bits(msc),
 								    lower_32_bits(msc),
-								    0, 1, 0, 0).sequence);
+								    0, 0, 0, 0).sequence);
 				msc += divisors[n];
 			}
 
