@@ -4792,8 +4792,9 @@ struct kgem_bo *kgem_create_for_name(struct kgem *kgem, uint32_t name)
 
 	bo->unique_id = kgem_get_unique_id(kgem);
 	bo->tiling = tiling.tiling_mode;
-	bo->reusable = false;
 	bo->prime = true;
+	bo->reusable = false;
+	kgem_bo_unclean(kgem, bo);
 
 	debug_alloc__bo(kgem, bo);
 	return bo;
@@ -6915,7 +6916,6 @@ uint32_t kgem_bo_flink(struct kgem *kgem, struct kgem_bo *bo)
 	 * party, we track the lifetime accurately.
 	 */
 	bo->reusable = false;
-
 	kgem_bo_unclean(kgem, bo);
 
 	return flink.name;
