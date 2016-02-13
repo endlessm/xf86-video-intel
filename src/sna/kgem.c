@@ -7003,9 +7003,6 @@ void kgem_bo_sync__cpu(struct kgem *kgem, struct kgem_bo *bo)
 	assert(!bo->scanout);
 	assert_tiling(kgem, bo);
 
-	if (bo->rq == NULL && (kgem->has_llc || bo->snoop))
-		return;
-
 	kgem_bo_submit(kgem, bo);
 
 	/* SHM pixmaps use proxies for subpage offsets */
@@ -7013,6 +7010,9 @@ void kgem_bo_sync__cpu(struct kgem *kgem, struct kgem_bo *bo)
 	while (bo->proxy)
 		bo = bo->proxy;
 	assert(!bo->purged);
+
+	if (bo->rq == NULL && (kgem->has_llc || bo->snoop))
+		return;
 
 	if (bo->domain != DOMAIN_CPU || FORCE_MMAP_SYNC & (1 << DOMAIN_CPU)) {
 		struct drm_i915_gem_set_domain set_domain;
@@ -7043,9 +7043,6 @@ void kgem_bo_sync__cpu_full(struct kgem *kgem, struct kgem_bo *bo, bool write)
 	assert(!bo->scanout || !write);
 	assert_tiling(kgem, bo);
 
-	if (bo->rq == NULL && (kgem->has_llc || bo->snoop))
-		return;
-
 	if (write || bo->needs_flush)
 		kgem_bo_submit(kgem, bo);
 
@@ -7056,6 +7053,9 @@ void kgem_bo_sync__cpu_full(struct kgem *kgem, struct kgem_bo *bo, bool write)
 		bo = bo->proxy;
 	assert(bo->refcnt);
 	assert(!bo->purged);
+
+	if (bo->rq == NULL && (kgem->has_llc || bo->snoop))
+		return;
 
 	if (bo->domain != DOMAIN_CPU || FORCE_MMAP_SYNC & (1 << DOMAIN_CPU)) {
 		struct drm_i915_gem_set_domain set_domain;
