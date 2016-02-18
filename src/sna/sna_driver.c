@@ -461,13 +461,13 @@ static bool enable_tear_free(struct sna *sna)
 	return ENABLE_TEAR_FREE;
 }
 
-static void setup_tear_free(struct sna *sna)
+static bool setup_tear_free(struct sna *sna)
 {
 	MessageType from;
 	Bool enable;
 
 	if (sna->flags & SNA_LINEAR_FB)
-		return;
+		return false;
 
 	if ((sna->flags & SNA_HAS_FLIP) == 0) {
 		from = X_PROBED;
@@ -486,6 +486,7 @@ static void setup_tear_free(struct sna *sna)
 done:
 	xf86DrvMsg(sna->scrn->scrnIndex, from, "TearFree %sabled\n",
 		   sna->flags & SNA_TEAR_FREE ? "en" : "dis");
+	return sna->flags & SNA_TEAR_FREE;
 }
 
 /**
@@ -653,7 +654,8 @@ static Bool sna_pre_init(ScrnInfoPtr scrn, int probe)
 	}
 	scrn->currentMode = scrn->modes;
 
-	setup_tear_free(sna);
+	if (!setup_tear_free(sna) && sna_mode_wants_tear_free(sna))
+		sna->kgem.needs_dirtyfb = sna->kgem.has_dirtyfb;
 
 	xf86SetGamma(scrn, zeros);
 	xf86SetDpi(scrn, 0, 0);

@@ -189,12 +189,15 @@ struct kgem {
 	uint32_t has_no_reloc :1;
 	uint32_t has_handle_lut :1;
 	uint32_t has_wc_mmap :1;
+	uint32_t has_dirtyfb :1;
 
 	uint32_t can_fence :1;
 	uint32_t can_blt_cpu :1;
 	uint32_t can_blt_y :1;
 	uint32_t can_render_y :1;
 	uint32_t can_scanout_y :1;
+
+	uint32_t needs_dirtyfb :1;
 
 	uint16_t fence_max;
 	uint16_t half_cpu_cache_pages;
