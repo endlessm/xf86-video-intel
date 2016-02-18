@@ -7101,15 +7101,39 @@ bool
 sna_mode_wants_tear_free(struct sna *sna)
 {
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	bool found = false;
+	FILE *file;
 	int i;
 
 	for (i = 0; i < sna->mode.num_real_output; i++) {
 		struct sna_output *output = to_sna_output(config->output[i]);
 		int id = find_property(sna, output, "Panel Self-Refresh");
-		if (id !=-1 && output->prop_values[id] != -1) {
+		if (id == -1)
+			continue;
+
+		found = true;
+		if (output->prop_values[id] != -1) {
 			DBG(("%s: Panel Self-Refresh detected on %s\n",
 			     __FUNCTION__, config->output[i]->name));
 			return true;
+		}
+	}
+
+	if (!found) {
+		file = fopen("/sys/module/i915/parameters/enable_psr", "r");
+		if (file) {
+			int psr_enabled = 0;
+			int value;
+
+			if (fscanf(file, "%d", &value) == 1)
+				psr_enabled = value > 0;
+			fclose(file);
+
+			DBG(("%s: module parameter 'enable_psr' enabled? %d\n",
+			     __FUNCTION__, psr_enabled));
+
+			if (psr_enabled)
+				return true;
 		}
 	}
 
