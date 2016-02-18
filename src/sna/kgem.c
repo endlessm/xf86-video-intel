@@ -7012,9 +7012,6 @@ void kgem_bo_sync__cpu(struct kgem *kgem, struct kgem_bo *bo)
 		bo = bo->proxy;
 	assert(!bo->purged);
 
-	if (bo->rq == NULL && (kgem->has_llc || bo->snoop))
-		return;
-
 	if (bo->domain != DOMAIN_CPU || FORCE_MMAP_SYNC & (1 << DOMAIN_CPU)) {
 		struct drm_i915_gem_set_domain set_domain;
 
@@ -7055,7 +7052,7 @@ void kgem_bo_sync__cpu_full(struct kgem *kgem, struct kgem_bo *bo, bool write)
 	assert(bo->refcnt);
 	assert(!bo->purged);
 
-	if (bo->rq == NULL && (kgem->has_llc || bo->snoop))
+	if (bo->rq == NULL && (kgem->has_llc || bo->snoop) && !write)
 		return;
 
 	if (bo->domain != DOMAIN_CPU || FORCE_MMAP_SYNC & (1 << DOMAIN_CPU)) {
@@ -7093,9 +7090,7 @@ void kgem_bo_sync__gtt(struct kgem *kgem, struct kgem_bo *bo)
 	assert(bo->refcnt);
 	assert(bo->proxy == NULL);
 	assert_tiling(kgem, bo);
-
-	if (bo->rq == NULL)
-		return;
+	assert(!bo->snoop);
 
 	kgem_bo_submit(kgem, bo);
 
