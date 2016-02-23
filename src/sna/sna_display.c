@@ -6988,6 +6988,9 @@ sna_crtc_config_notify(ScreenPtr screen)
 		return;
 	}
 
+	/* Flush any events completed by the modeset */
+	sna_mode_wakeup(sna);
+
 	update_flush_interval(sna);
 	sna->cursor.disable = false; /* Reset HW cursor until the next fail */
 	sna_cursors_reload(sna);
