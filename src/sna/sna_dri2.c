@@ -3075,8 +3075,11 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 
 		if (info && info->draw == draw) {
 			assert(info->type != FLIP);
-			assert(info->front == front);
 			assert(info->queued);
+			if (info->front != front) {
+				assert(info->front == NULL);
+				info->front = sna_dri2_reference_buffer(front);
+			}
 			if (info->back != back) {
 				_sna_dri2_destroy_buffer(sna, draw, info->back);
 				info->back = sna_dri2_reference_buffer(back);
@@ -3129,6 +3132,7 @@ sna_dri2_schedule_flip(ClientPtr client, DrawablePtr draw, xf86CrtcPtr crtc,
 			info->type = use_triple_buffer(sna, client, *target_msc == 0);
 			if (!sna_dri2_flip(info)) {
 				DBG(("%s: flip failed, falling back\n", __FUNCTION__));
+				info->signal = false;
 				sna_dri2_event_free(info);
 				return false;
 			}
@@ -3179,6 +3183,7 @@ queue:
 		/* Account for 1 frame extra pageflip delay */
 		if (!sna_wait_vblank(info,
 				     draw_target_seq(draw, *target_msc - 1))) {
+			info->signal = false;
 			sna_dri2_event_free(info);
 			return false;
 		}
