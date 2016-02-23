@@ -1914,6 +1914,7 @@ sna_dri2_flip(struct sna_dri2_event *info)
 		return false;
 	}
 
+	assert(!info->queued);
 	if (!sna_page_flip(info->sna, bo, sna_dri2_flip_handler,
 			   info->type == FLIP_ASYNC ? NULL : info))
 		return false;
@@ -2797,6 +2798,7 @@ sna_dri2_flip_continue(struct sna_dri2_event *info)
 	if (bo != sna_pixmap(info->sna->front)->gpu_bo)
 		return false;
 
+	assert(!info->queued);
 	if (!sna_page_flip(info->sna, bo, sna_dri2_flip_handler, info))
 		return false;
 
@@ -2868,8 +2870,9 @@ static void sna_dri2_flip_event(struct sna_dri2_event *flip)
 {
 	struct sna *sna = flip->sna;
 
-	DBG(("%s flip=%p (pipe=%d, event=%d)\n", __FUNCTION__, flip, flip->pipe, flip->type));
-	assert(flip->queued);
+	DBG(("%s flip=%p (pipe=%d, event=%d, queued?=%d)\n", __FUNCTION__, flip, flip->pipe, flip->type, flip->queued));
+	if (!flip->queued) /* pageflip died whilst being queued */
+		return;
 	flip->queued = false;
 
 	if (sna->dri2.flip_pending == flip)

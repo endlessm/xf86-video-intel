@@ -6374,6 +6374,8 @@ static void sna_mode_restore(struct sna *sna)
 		}
 	}
 	sna_mode_wakeup(sna);
+	while (sna->mode.flip_active && sna_mode_wakeup(sna))
+		;
 	update_flush_interval(sna);
 	sna_cursors_reload(sna);
 	sna->mode.dirty = false;
