@@ -404,6 +404,7 @@ void _kgem_bo_destroy(struct kgem *kgem, struct kgem_bo *bo);
 static inline void kgem_bo_destroy(struct kgem *kgem, struct kgem_bo *bo)
 {
 	assert(bo->refcnt);
+	assert(bo->refcnt > bo->active_scanout);
 	if (--bo->refcnt == 0)
 		_kgem_bo_destroy(kgem, bo);
 }

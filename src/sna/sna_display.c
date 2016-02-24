@@ -1640,6 +1640,7 @@ static bool wait_for_shadow(struct sna *sna,
 			RegionSubtract(&sna->mode.shadow_region, &sna->mode.shadow_region, &region);
 		}
 
+		crtc->client_bo->active_scanout--;
 		kgem_bo_destroy(&sna->kgem, crtc->client_bo);
 		crtc->client_bo = NULL;
 		list_del(&crtc->shadow_link);
@@ -1865,7 +1866,8 @@ static void sna_crtc_disable_override(struct sna *sna, struct sna_crtc *crtc)
 	if (crtc->client_bo == NULL)
 		return;
 
-	assert(crtc->client_bo->refcnt > crtc->client_bo->active_scanout);
+	assert(crtc->client_bo->refcnt >= crtc->client_bo->active_scanout);
+	crtc->client_bo->active_scanout--;
 
 	if (!crtc->transform) {
 		DrawableRec tmp;
@@ -4366,6 +4368,7 @@ gather_encoders(struct sna *sna, uint32_t id, int count,
 	DBG(("%s(%d): expected count=%d\n", __FUNCTION__, id, count));
 
 	VG_CLEAR(compat_conn);
+	VG_CLEAR(enc);
 	memset(out, 0, sizeof(*out));
 
 	do {
@@ -4390,6 +4393,7 @@ gather_encoders(struct sna *sna, uint32_t id, int count,
 			compat_conn.conn.count_encoders = count = 0;
 		}
 
+		VG(VALGRIND_MAKE_MEM_DEFINED(ids, sizeof(uint32_t)*compat_conn.conn.count_encoders));
 		if (count == compat_conn.conn.count_encoders)
 			break;
 
@@ -8391,12 +8395,14 @@ void sna_shadow_set_crtc(struct sna *sna,
 
 	if (sna_crtc->client_bo != bo) {
 		if (sna_crtc->client_bo) {
-			assert(sna_crtc->client_bo->refcnt > sna_crtc->client_bo->active_scanout);
+			assert(sna_crtc->client_bo->refcnt >= sna_crtc->client_bo->active_scanout);
+			sna_crtc->client_bo->active_scanout--;
 			kgem_bo_destroy(&sna->kgem, sna_crtc->client_bo);
 		}
 
 		sna_crtc->client_bo = kgem_bo_reference(bo);
-		assert(sna_crtc->client_bo->refcnt > sna_crtc->client_bo->active_scanout);
+		sna_crtc->client_bo->active_scanout++;
+		assert(sna_crtc->client_bo->refcnt >= sna_crtc->client_bo->active_scanout);
 		sna_crtc_damage(crtc);
 	}
 
@@ -8451,7 +8457,8 @@ void sna_shadow_unset_crtc(struct sna *sna,
 	if (sna_crtc->client_bo == NULL)
 		return;
 
-	assert(sna_crtc->client_bo->refcnt > sna_crtc->client_bo->active_scanout);
+	assert(sna_crtc->client_bo->refcnt >= sna_crtc->client_bo->active_scanout);
+	sna_crtc->client_bo->active_scanout--;
 	kgem_bo_destroy(&sna->kgem, sna_crtc->client_bo);
 	sna_crtc->client_bo = NULL;
 	list_del(&sna_crtc->shadow_link);
