@@ -1166,6 +1166,8 @@ rotation_reflect(unsigned rotation)
 	assert(rotation);
 	rotation <<= 2; /* RR_Rotate_0 -> RR_Rotate_180 etc */
 	rotation |= rotation >> 4; /* RR_Rotate_270' to RR_Rotate_90 */
+	rotation &= RR_Rotate_All;
+	assert(rotation);
 
 	return rotation | other_bits;
 }
