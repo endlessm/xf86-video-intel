@@ -309,11 +309,11 @@ sna_present_queue_vblank(RRCrtcPtr crtc, uint64_t event_id, uint64_t msc)
 	const struct ust_msc *swap;
 	union drm_wait_vblank vbl;
 
-	DBG(("%s(pipe=%d, event=%lld, msc=%lld)\n",
-	     __FUNCTION__, sna_crtc_pipe(crtc->devPrivate),
-	     (long long)event_id, (long long)msc));
-
 	swap = sna_crtc_last_swap(crtc->devPrivate);
+	DBG(("%s(pipe=%d, event=%lld, msc=%lld, last swap=%lld)\n",
+	     __FUNCTION__, sna_crtc_pipe(crtc->devPrivate),
+	     (long long)event_id, (long long)msc, (long long)swap->msc));
+
 	warn_unless((int64_t)(msc - swap->msc) >= 0);
 	if ((int64_t)(msc - swap->msc) <= 0) {
 		DBG(("%s: pipe=%d tv=%d.%06d msc=%lld (target=%lld), event=%lld complete\n", __FUNCTION__,
@@ -324,6 +324,7 @@ sna_present_queue_vblank(RRCrtcPtr crtc, uint64_t event_id, uint64_t msc)
 		present_event_notify(event_id, swap_ust(swap), swap->msc);
 		return Success;
 	}
+	warn_unless(msc < swap->msc + 1ull<<32);
 
 	list_for_each_entry(tmp, &sna->present.vblank_queue, link) {
 		if (tmp->target_msc == msc &&
