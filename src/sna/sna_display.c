@@ -6661,6 +6661,7 @@ static void crtc_init_gamma(xf86CrtcPtr crtc)
 			crtc->gamma_red = gamma;
 			crtc->gamma_green = gamma + 256;
 			crtc->gamma_blue = gamma + 2*256;
+			crtc->gamma_size = 256;
 		}
 	}
 }
