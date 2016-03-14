@@ -314,13 +314,16 @@ err:
 			continue;
 
 		xf86OutputDestroy(output);
+		i--;
 	}
 
 	for (i = 0; i < xf86_config->num_crtc; i++) {
 		crtc = xf86_config->crtc[i];
 		if (crtc->driver_private)
 			continue;
+
 		xf86CrtcDestroy(crtc);
+		i--;
 	}
 	sna->mode.num_fake = -1;
 	return false;
