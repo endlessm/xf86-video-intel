@@ -298,6 +298,7 @@ static bool add_fake_output(struct sna *sna, bool late)
 
 		RRCrtcSetRotations(crtc->randr_crtc,
 				   RR_Rotate_All | RR_Reflect_All);
+		RRCrtcGammaGet(crtc->randr_crtc);
 	}
 
 	sna->mode.num_fake++;
