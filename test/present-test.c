@@ -248,6 +248,12 @@ static uint64_t msc_interval(Display *dpy, Window win, void *q)
 		free(ev);
 	} while (complete != 2);
 
+	printf("10 frame interval: msc=%lld, ust=%lld\n",
+	       (long long)msc, (long long)ust);
+	XSync(dpy, True);
+	if (msc == 0)
+		return 0;
+
 	return (ust + msc/2) / msc;
 }
 
@@ -466,6 +472,10 @@ static int test_future(Display *dpy, Window win, const char *phase, void *Q)
 	_x_error_occurred = 0;
 
 	interval = msc_interval(dpy, win, Q);
+	if (interval == 0) {
+		printf("Zero delay between frames\n");
+		return 1;
+	}
 
 	pixmap = XCreatePixmap(dpy, win, width, height, depth);
 	msc = flush_flips(dpy, win, pixmap, Q, &ust);
@@ -918,6 +928,10 @@ static int test_future_msc(Display *dpy, void *Q)
 	_x_error_occurred = 0;
 
 	interval = msc_interval(dpy, root, Q);
+	if (interval == 0) {
+		printf("Zero delay between frames\n");
+		return 1;
+	}
 	msc = check_msc(dpy, root, Q, 0, &ust);
 
 	for (n = 1; n <= 10; n++)
