@@ -192,11 +192,10 @@ static CARD32 sna_fake_vblank_handler(OsTimerPtr timer, CARD32 now, void *data)
 			(void)sna_wait_vblank(info->sna, &vbl, sna_crtc_pipe(info->crtc));
 		}
 	} else {
-		const struct ust_msc *swap = sna_crtc_last_swap(info->crtc);
-		ust = swap_ust(swap);
-		msc = swap->msc;
-		DBG(("%s: event=%lld, CRTC OFF, target msc=%lld, was %lld\n",
-		     __FUNCTION__, (long long)info->event_id[0], (long long)info->target_msc, (long long)msc));
+		ust = gettime_ust64();
+		msc = info->target_msc;
+		DBG(("%s: event=%lld, CRTC OFF, target msc=%lld, was %lld (off)\n",
+		     __FUNCTION__, (long long)info->event_id[0], (long long)info->target_msc, (long long)sna_crtc_last_swap(info->crtc)->msc));
 	}
 
 	vblank_complete(info, ust, msc);
