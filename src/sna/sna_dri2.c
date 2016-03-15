@@ -874,8 +874,9 @@ static void _sna_dri2_destroy_buffer(struct sna *sna,
 	if (buffer == NULL)
 		return;
 
-	DBG(("%s: %p [handle=%d] -- refcnt=%d, pixmap=%ld, proxy?=%d\n",
+	DBG(("%s: %p [handle=%d] -- refcnt=%d, draw=%ld, pixmap=%ld, proxy?=%d\n",
 	     __FUNCTION__, buffer, private->bo->handle, private->refcnt,
+	     draw ? draw->id : 0,
 	     private->pixmap ? private->pixmap->drawable.serialNumber : 0,
 	     private->proxy != NULL));
 	assert(private->refcnt > 0);
@@ -2329,10 +2330,10 @@ sna_dri2_xchg(DrawablePtr draw, DRI2BufferPtr front, DRI2BufferPtr back)
 	back_bo = get_private(back)->bo;
 	front_bo = get_private(front)->bo;
 
-	DBG(("%s: win=%ld, exchange front=%d/%d and back=%d/%d, pixmap=%ld %dx%d\n",
+	DBG(("%s: win=%ld, exchange front=%d/%d,ref=%d and back=%d/%d,ref=%d, pixmap=%ld %dx%d\n",
 	     __FUNCTION__, win->drawable.id,
-	     front_bo->handle, front->name,
-	     back_bo->handle, back->name,
+	     front_bo->handle, front->name, get_private(front)->refcnt,
+	     back_bo->handle, back->name, get_private(back)->refcnt,
 	     pixmap->drawable.serialNumber,
 	     pixmap->drawable.width,
 	     pixmap->drawable.height));
@@ -3304,6 +3305,14 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 	assert(get_private(front)->bo->refcnt);
 	assert(get_private(back)->bo->refcnt);
 
+	if (get_private(front)->pixmap != get_drawable_pixmap(draw)) {
+		DBG(("%s: decoupled DRI2 front pixmap=%ld, actual pixmap=%ld\n",
+		     __FUNCTION__,
+		     get_private(front)->pixmap->drawable.serialNumber,
+		     get_drawable_pixmap(draw)->drawable.serialNumber));
+		goto fake;
+	}
+
 	if (get_private(back)->stale) {
 		DBG(("%s: stale back buffer\n", __FUNCTION__));
 		goto skip;
@@ -3317,6 +3326,7 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 			front = priv->front;
 			assert(front->attachment == DRI2BufferFrontLeft);
 			assert(get_private(front)->refcnt);
+			assert(get_private(front)->pixmap == get_drawable_pixmap(draw));
 		}
 
 		if (win->clipList.extents.x2 <= win->clipList.extents.x1 ||
@@ -3331,16 +3341,8 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 		}
 	}
 
-	DBG(("%s: using front handle=%d, active_scanout?=%d\n", __FUNCTION__, get_private(front)->bo->handle, get_private(front)->bo->active_scanout));
+	DBG(("%s: using front handle=%d, active_scanout?=%d, flush?=%d\n", __FUNCTION__, get_private(front)->bo->handle, get_private(front)->bo->active_scanout, sna_pixmap_from_drawable(draw)->flush));
 	assert(get_private(front)->bo->active_scanout);
-	if (get_private(front)->pixmap != get_drawable_pixmap(draw)) {
-		DBG(("%s: decoupled DRI2 front pixmap=%ld, actual pixmap=%ld\n",
-		     __FUNCTION__,
-		     get_private(front)->pixmap->drawable.serialNumber,
-		     get_drawable_pixmap(draw)->drawable.serialNumber));
-		goto skip;
-	}
-
 	assert(sna_pixmap_from_drawable(draw)->flush);
 
 	/* Drawable not displayed... just complete the swap */

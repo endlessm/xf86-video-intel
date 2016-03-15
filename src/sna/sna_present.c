@@ -323,7 +323,7 @@ sna_present_queue_vblank(RRCrtcPtr crtc, uint64_t event_id, uint64_t msc)
 		present_event_notify(event_id, swap_ust(swap), swap->msc);
 		return Success;
 	}
-	warn_unless(msc < swap->msc + 1ull<<32);
+	warn_unless(msc < swap->msc + (1ull<<32));
 
 	list_for_each_entry(tmp, &sna->present.vblank_queue, link) {
 		if (tmp->target_msc == msc &&
