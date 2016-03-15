@@ -1816,46 +1816,17 @@ sna_dri2_add_event(struct sna *sna,
 	return info;
 }
 
-void sna_dri2_decouple_window(WindowPtr win)
+static void decouple_window(WindowPtr win,
+			    struct dri2_window *priv,
+			    struct sna *sna)
 {
-	struct dri2_window *priv;
-
-	priv = dri2_window(win);
-	if (priv == NULL)
-		return;
-
-	DBG(("%s: window=%ld\n", __FUNCTION__, win->drawable.id));
-
 	if (priv->front) {
-		struct sna *sna = to_sna_from_drawable(&win->drawable);
-
+		DBG(("%s: decouple private front\n", __FUNCTION__));
 		assert(priv->crtc);
 		sna_shadow_unset_crtc(sna, priv->crtc);
 
 		_sna_dri2_destroy_buffer(sna, NULL, priv->front);
 		priv->front = NULL;
-	}
-
-	priv->scanout = -1;
-}
-
-void sna_dri2_destroy_window(WindowPtr win)
-{
-	struct dri2_window *priv;
-	struct sna *sna;
-
-	priv = dri2_window(win);
-	if (priv == NULL)
-		return;
-
-	DBG(("%s: window=%ld\n", __FUNCTION__, win->drawable.id));
-	sna = to_sna_from_drawable(&win->drawable);
-
-	if (priv->front) {
-		assert(priv->crtc);
-		sna_shadow_unset_crtc(sna, priv->crtc);
-
-		_sna_dri2_destroy_buffer(sna, NULL, priv->front);
 	}
 
 	if (priv->chain) {
@@ -1892,6 +1863,34 @@ void sna_dri2_destroy_window(WindowPtr win)
 				sna_dri2_event_free(info);
 		}
 	}
+}
+
+void sna_dri2_decouple_window(WindowPtr win)
+{
+	struct dri2_window *priv;
+
+	priv = dri2_window(win);
+	if (priv == NULL)
+		return;
+
+	DBG(("%s: window=%ld\n", __FUNCTION__, win->drawable.id));
+	decouple_window(win, priv, to_sna_from_drawable(&win->drawable));
+
+	priv->scanout = -1;
+}
+
+void sna_dri2_destroy_window(WindowPtr win)
+{
+	struct dri2_window *priv;
+	struct sna *sna;
+
+	priv = dri2_window(win);
+	if (priv == NULL)
+		return;
+
+	DBG(("%s: window=%ld\n", __FUNCTION__, win->drawable.id));
+	sna = to_sna_from_drawable(&win->drawable);
+	decouple_window(win, priv, sna);
 
 	while (!list_is_empty(&priv->cache)) {
 		struct dri_bo *c;
@@ -2677,10 +2676,9 @@ void sna_dri2_vblank_handler(struct drm_event_vblank *event)
 			else
 				__sna_dri2_copy_event(info, info->sync | DRI2_BO);
 
-			if (info->draw) {
-				info->keepalive++;
-				info->signal = true;
-			}
+			assert(info->draw);
+			info->keepalive++;
+			info->signal = true;
 		}
 
 		if (--info->keepalive) {
@@ -2768,7 +2766,7 @@ sna_dri2_immediate_blit(struct sna *sna,
 
 	if (chain->type == SWAP_COMPLETE) {
 		assert(chain->draw == info->draw);
-		assert(chain->front = info->front);
+		assert(chain->front == info->front);
 		assert(chain->client == info->client);
 		assert(chain->event_complete == info->event_complete);
 		assert(chain->event_data == info->event_data);
