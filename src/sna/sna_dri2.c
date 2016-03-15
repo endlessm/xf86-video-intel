@@ -2484,13 +2484,13 @@ static void chain_swap(struct sna_dri2_event *chain)
 	DBG(("%s: draw=%ld, queued?=%d, type=%d\n",
 	     __FUNCTION__, (long)chain->draw->id, chain->queued, chain->type));
 
+	if (chain->queued) /* too early! */
+		return;
+
 	if (chain->draw == NULL) {
 		sna_dri2_event_free(chain);
 		return;
 	}
-
-	if (chain->queued) /* too early! */
-		return;
 
 	assert(chain == dri2_chain(chain->draw));
 	assert(chain->signal);
