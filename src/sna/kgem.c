@@ -4945,6 +4945,8 @@ int kgem_bo_export_to_prime(struct kgem *kgem, struct kgem_bo *bo)
 #if defined(DRM_IOCTL_PRIME_HANDLE_TO_FD) && defined(O_CLOEXEC)
 	struct drm_prime_handle args;
 
+	assert(kgem_bo_is_fenced(kgem, bo));
+
 	VG_CLEAR(args);
 	args.handle = bo->handle;
 	args.flags = O_CLOEXEC;
@@ -5322,8 +5324,6 @@ static void set_gpu_tiling(struct kgem *kgem,
 	DBG(("%s: handle=%d, tiling=%d, pitch=%d\n",
 	     __FUNCTION__, bo->handle, tiling, pitch));
 
-	assert(!kgem->can_fence);
-
 	if (tiling_changed(bo, tiling, pitch) && bo->map__gtt) {
 		if (!list_is_empty(&bo->vma)) {
 			list_del(&bo->vma);
@@ -5335,6 +5335,20 @@ static void set_gpu_tiling(struct kgem *kgem,
 
 	bo->tiling = tiling;
 	bo->pitch = pitch;
+}
+
+bool kgem_bo_is_fenced(struct kgem *kgem, struct kgem_bo *bo)
+{
+	struct drm_i915_gem_get_tiling tiling;
+
+	assert(kgem);
+	assert(bo);
+
+	VG_CLEAR(tiling);
+	tiling.handle = bo->handle;
+	tiling.tiling_mode = 0;
+	(void)do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_GET_TILING, &tiling);
+	return tiling.tiling_mode == bo->tiling; /* assume pitch is fine! */
 }
 
 struct kgem_bo *kgem_create_2d(struct kgem *kgem,
@@ -6953,6 +6967,8 @@ void *kgem_bo_map__debug(struct kgem *kgem, struct kgem_bo *bo)
 uint32_t kgem_bo_flink(struct kgem *kgem, struct kgem_bo *bo)
 {
 	struct drm_gem_flink flink;
+
+	assert(kgem_bo_is_fenced(kgem, bo));
 
 	VG_CLEAR(flink);
 	flink.handle = bo->handle;

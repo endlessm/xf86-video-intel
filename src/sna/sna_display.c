@@ -534,6 +534,9 @@ static unsigned get_fb(struct sna *sna, struct kgem_bo *bo,
 	ScrnInfoPtr scrn = sna->scrn;
 	struct drm_mode_fb_cmd arg;
 
+	if (!kgem_bo_is_fenced(&sna->kgem, bo))
+		return 0;
+
 	assert(bo->refcnt);
 	assert(bo->proxy == NULL);
 	assert(!bo->snoop);

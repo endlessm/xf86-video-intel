@@ -326,6 +326,7 @@ bool kgem_bo_convert_to_gpu(struct kgem *kgem,
 			    struct kgem_bo *bo,
 			    unsigned flags);
 
+bool kgem_bo_is_fenced(struct kgem *kgem, struct kgem_bo *bo);
 uint32_t kgem_bo_get_binding(struct kgem_bo *bo, uint32_t format);
 void kgem_bo_set_binding(struct kgem_bo *bo, uint32_t format, uint16_t offset);
 
