@@ -1819,7 +1819,8 @@ sna_dri2_add_event(struct sna *sna,
 
 static void decouple_window(WindowPtr win,
 			    struct dri2_window *priv,
-			    struct sna *sna)
+			    struct sna *sna,
+			    bool signal)
 {
 	if (priv->front) {
 		DBG(("%s: decouple private front\n", __FUNCTION__));
@@ -1843,6 +1844,12 @@ static void decouple_window(WindowPtr win,
 			assert(info->draw == &win->drawable);
 
 			if (info->pending.bo) {
+				if (signal) {
+					bool was_signalling = info->signal;
+					info->signal = true;
+					frame_swap_complete(info, DRI2_EXCHANGE_COMPLETE);
+					info->signal = was_signalling;
+				}
 				assert(info->pending.bo->active_scanout > 0);
 				info->pending.bo->active_scanout--;
 
@@ -1850,6 +1857,8 @@ static void decouple_window(WindowPtr win,
 				info->pending.bo = NULL;
 			}
 
+			if (info->signal && signal)
+				frame_swap_complete(info, DRI2_EXCHANGE_COMPLETE);
 			info->signal = false;
 			info->draw = NULL;
 			info->keepalive = 1;
@@ -1877,7 +1886,7 @@ void sna_dri2_decouple_window(WindowPtr win)
 		return;
 
 	DBG(("%s: window=%ld\n", __FUNCTION__, win->drawable.id));
-	decouple_window(win, priv, to_sna_from_drawable(&win->drawable));
+	decouple_window(win, priv, to_sna_from_drawable(&win->drawable), true);
 
 	priv->scanout = -1;
 }
@@ -1893,7 +1902,7 @@ void sna_dri2_destroy_window(WindowPtr win)
 
 	DBG(("%s: window=%ld\n", __FUNCTION__, win->drawable.id));
 	sna = to_sna_from_drawable(&win->drawable);
-	decouple_window(win, priv, sna);
+	decouple_window(win, priv, sna, false);
 
 	while (!list_is_empty(&priv->cache)) {
 		struct dri_bo *c;
