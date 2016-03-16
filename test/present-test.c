@@ -457,7 +457,7 @@ static int test_future(Display *dpy, Window win, const char *phase, void *Q)
 	unsigned border, depth;
 	int x, y, ret = 0, n;
 	uint64_t msc, ust;
-	int complete;
+	int complete, count;
 	int early = 0, late = 0;
 	int earliest = 0, latest = 0;
 	uint64_t interval;
@@ -511,6 +511,7 @@ static int test_future(Display *dpy, Window win, const char *phase, void *Q)
 	xcb_flush(c);
 
 	complete = 0;
+	count = 0;
 	do {
 		xcb_present_complete_notify_event_t *ce;
 		xcb_generic_event_t *ev;
@@ -553,6 +554,7 @@ static int test_future(Display *dpy, Window win, const char *phase, void *Q)
 				late++;
 				ret++;
 			}
+			count++;
 		}
 		free(ev);
 	} while (!complete);
@@ -561,6 +563,24 @@ static int test_future(Display *dpy, Window win, const char *phase, void *Q)
 		printf("\t%d frames shown too early (worst %d)!\n", early, earliest);
 	if (late)
 		printf("\t%d frames shown too late (worst %d)!\n", late, latest);
+
+	if (count != 10) {
+		fprintf(stderr, "Sentinel frame received too early! %d frames outstanding\n", 10 - count);
+		ret++;
+
+		do {
+			xcb_present_complete_notify_event_t *ce;
+			xcb_generic_event_t *ev;
+
+			ev = xcb_wait_for_special_event(c, Q);
+			if (ev == NULL)
+				break;
+
+			ce = (xcb_present_complete_notify_event_t *)ev;
+			assert(ce->kind == XCB_PRESENT_COMPLETE_KIND_PIXMAP);
+			free(ev);
+		} while (++count != 10);
+	}
 
 	ret += !!_x_error_occurred;
 
@@ -703,7 +723,7 @@ static int test_accuracy(Display *dpy, Window win, const char *phase, void *Q)
 	uint64_t target;
 	int early = 0, late = 0;
 	int earliest = 0, latest = 0;
-	int complete;
+	int complete, count;
 
 	XGetGeometry(dpy, win,
 		     &root, &x, &y, &width, &height, &border, &depth);
@@ -745,6 +765,7 @@ static int test_accuracy(Display *dpy, Window win, const char *phase, void *Q)
 	xcb_flush(c);
 
 	complete = 0;
+	count = 0;
 	do {
 		xcb_present_complete_notify_event_t *ce;
 		xcb_generic_event_t *ev;
@@ -773,6 +794,7 @@ static int test_accuracy(Display *dpy, Window win, const char *phase, void *Q)
 				late++;
 				ret++;
 			}
+			count++;
 		} else
 			complete = 1;
 		free(ev);
@@ -782,6 +804,23 @@ static int test_accuracy(Display *dpy, Window win, const char *phase, void *Q)
 		printf("\t%d frames shown too early (worst %d)!\n", early, earliest);
 	if (late)
 		printf("\t%d frames shown too late (worst %d)!\n", late, latest);
+
+	if (count != N_VBLANKS+1) {
+		fprintf(stderr, "Sentinel frame received too early! %d frames outstanding\n", N_VBLANKS+1 - count);
+		ret++;
+		do {
+			xcb_present_complete_notify_event_t *ce;
+			xcb_generic_event_t *ev;
+
+			ev = xcb_wait_for_special_event(c, Q);
+			if (ev == NULL)
+				break;
+
+			ce = (xcb_present_complete_notify_event_t *)ev;
+			assert(ce->kind == XCB_PRESENT_COMPLETE_KIND_PIXMAP);
+			free(ev);
+		} while (++count != N_VBLANKS+1);
+	}
 
 	XFreePixmap(dpy, pixmap);
 
@@ -804,7 +843,7 @@ static int test_modulus(Display *dpy, Window win, const char *phase, void *Q)
 	uint64_t target;
 	int early = 0, late = 0;
 	int earliest = 0, latest = 0;
-	int complete;
+	int complete, expect, count;
 
 	XGetGeometry(dpy, win,
 		     &root, &x, &y, &width, &height, &border, &depth);
@@ -817,6 +856,7 @@ static int test_modulus(Display *dpy, Window win, const char *phase, void *Q)
 
 	pixmap = XCreatePixmap(dpy, win, width, height, depth);
 	target = flush_flips(dpy, win, pixmap, Q, NULL);
+	expect = 0;
 	for (x = 1; x <= 7; x++) {
 		for (y = 0; y < x; y++) {
 			xcb_present_pixmap(c, win, pixmap,
@@ -833,6 +873,7 @@ static int test_modulus(Display *dpy, Window win, const char *phase, void *Q)
 					   x, /* divisor */
 					   y, /* remainder */
 					   0, NULL);
+			expect++;
 		}
 	}
 	xcb_present_pixmap(c, win, pixmap,
@@ -852,6 +893,7 @@ static int test_modulus(Display *dpy, Window win, const char *phase, void *Q)
 	xcb_flush(c);
 
 	complete = 0;
+	count = 0;
 	do {
 		xcb_present_complete_notify_event_t *ce;
 		xcb_generic_event_t *ev;
@@ -894,6 +936,7 @@ static int test_modulus(Display *dpy, Window win, const char *phase, void *Q)
 				late++;
 				ret++;
 			}
+			count++;
 		} else
 			complete = 1;
 		free(ev);
@@ -903,6 +946,23 @@ static int test_modulus(Display *dpy, Window win, const char *phase, void *Q)
 		printf("\t%d frames shown too early (worst %d)!\n", early, earliest);
 	if (late)
 		printf("\t%d frames shown too late (worst %d)!\n", late, latest);
+
+	if (count != expect) {
+		fprintf(stderr, "Sentinel frame received too early! %d frames outstanding\n", expect - count);
+		ret++;
+		do {
+			xcb_present_complete_notify_event_t *ce;
+			xcb_generic_event_t *ev;
+
+			ev = xcb_wait_for_special_event(c, Q);
+			if (ev == NULL)
+				break;
+
+			ce = (xcb_present_complete_notify_event_t *)ev;
+			assert(ce->kind == XCB_PRESENT_COMPLETE_KIND_NOTIFY_MSC);
+			free(ev);
+		} while (++count != expect);
+	}
 
 	XFreePixmap(dpy, pixmap);
 	xcb_xfixes_destroy_region(c, region);
@@ -919,7 +979,7 @@ static int test_future_msc(Display *dpy, void *Q)
 	Window root = DefaultRootWindow(dpy);
 	int ret = 0, n;
 	uint64_t msc, ust;
-	int complete;
+	int complete, count;
 	int early = 0, late = 0;
 	int earliest = 0, latest = 0;
 	uint64_t interval;
@@ -933,6 +993,8 @@ static int test_future_msc(Display *dpy, void *Q)
 		return 1;
 	}
 	msc = check_msc(dpy, root, Q, 0, &ust);
+	printf("Initial msc=%llx, interval between frames %lldus\n",
+	       (long long)msc, (long long)interval);
 
 	for (n = 1; n <= 10; n++)
 		xcb_present_notify_msc(c, root, n, msc + 60 + n*15*60, 0, 0);
@@ -940,6 +1002,7 @@ static int test_future_msc(Display *dpy, void *Q)
 	xcb_flush(c);
 
 	complete = 0;
+	count = 0;
 	do {
 		xcb_present_complete_notify_event_t *ce;
 		xcb_generic_event_t *ev;
@@ -952,21 +1015,33 @@ static int test_future_msc(Display *dpy, void *Q)
 		assert(ce->kind == XCB_PRESENT_COMPLETE_KIND_NOTIFY_MSC);
 
 		if (ce->serial == 0xdeadbeef) {
-			int64_t time;
+			int64_t time, tolerance;
+
+			tolerance = 60 + 15*60*n/10;
+			if (tolerance < interval)
+				tolerance = interval;
 
 			time = ce->ust - (ust + (60 + 15*60*n) * interval);
-			if (time < -(int64_t)interval) {
+			if (time < -(int64_t)tolerance) {
 				fprintf(stderr,
-					"\tnotifies completed too early by %lldms\n",
-					(long long)(-time / 1000));
-			} else if (time > (int64_t)interval) {
+					"\tnotifies completed too early by %lldms, tolerance %lldus\n",
+					(long long)(-time / 1000), (long long)tolerance);
+			} else if (time > (int64_t)tolerance) {
 				fprintf(stderr,
-					"\tnotifies completed too late by %lldms\n",
-					(long long)(time / 1000));
+					"\tnotifies completed too late by %lldms, tolerance %lldus\n",
+					(long long)(time / 1000), (long long)tolerance);
 			}
 			complete = 1;
 		} else {
 			int diff = (int64_t)(ce->msc - (15*60*ce->serial + msc + 60));
+
+			if (ce->serial != count + 1) {
+				fprintf(stderr, "vblank received out of order! expected %d, received %d\n",
+					count + 1, (int)ce->serial);
+				ret++;
+			}
+			count++;
+
 			if (diff < 0) {
 				if (-diff > earliest) {
 					fprintf(stderr, "\tnotify %d early by %d msc\n", ce->serial, -diff);
@@ -990,6 +1065,23 @@ static int test_future_msc(Display *dpy, void *Q)
 		printf("\t%d notifies too early (worst %d)!\n", early, earliest);
 	if (late)
 		printf("\t%d notifies too late (worst %d)!\n", late, latest);
+
+	if (count != 10) {
+		fprintf(stderr, "Sentinel vblank received too early! %d waits outstanding\n", 10 - count);
+		ret++;
+		do {
+			xcb_present_complete_notify_event_t *ce;
+			xcb_generic_event_t *ev;
+
+			ev = xcb_wait_for_special_event(c, Q);
+			if (ev == NULL)
+				break;
+
+			ce = (xcb_present_complete_notify_event_t *)ev;
+			assert(ce->kind == XCB_PRESENT_COMPLETE_KIND_NOTIFY_MSC);
+			free(ev);
+		} while (++count != 10);
+	}
 
 	XSync(dpy, True);
 	ret += !!_x_error_occurred;
@@ -1070,7 +1162,7 @@ static int test_accuracy_msc(Display *dpy, void *Q)
 	uint64_t msc;
 	int early = 0, late = 0;
 	int earliest = 0, latest = 0;
-	int complete;
+	int complete, count;
 
 	printf("Testing notify accuracy\n");
 	_x_error_occurred = 0;
@@ -1082,6 +1174,7 @@ static int test_accuracy_msc(Display *dpy, void *Q)
 	xcb_flush(c);
 
 	complete = 0;
+	count = 0;
 	do {
 		xcb_present_complete_notify_event_t *ce;
 		xcb_generic_event_t *ev;
@@ -1110,6 +1203,7 @@ static int test_accuracy_msc(Display *dpy, void *Q)
 				late++;
 				ret++;
 			}
+			count++;
 		} else
 			complete = 1;
 		free(ev);
@@ -1119,6 +1213,23 @@ static int test_accuracy_msc(Display *dpy, void *Q)
 		printf("\t%d notifies too early (worst %d)!\n", early, earliest);
 	if (late)
 		printf("\t%d notifies too late (worst %d)!\n", late, latest);
+
+	if (count != N_VBLANKS+1) {
+		fprintf(stderr, "Sentinel vblank received too early! %d waits outstanding\n", N_VBLANKS+1 - count);
+		ret++;
+		do {
+			xcb_present_complete_notify_event_t *ce;
+			xcb_generic_event_t *ev;
+
+			ev = xcb_wait_for_special_event(c, Q);
+			if (ev == NULL)
+				break;
+
+			ce = (xcb_present_complete_notify_event_t *)ev;
+			assert(ce->kind == XCB_PRESENT_COMPLETE_KIND_NOTIFY_MSC);
+			free(ev);
+		} while (++count != N_VBLANKS+1);
+	}
 
 	XSync(dpy, True);
 	ret += !!_x_error_occurred;
@@ -1137,17 +1248,20 @@ static int test_modulus_msc(Display *dpy, void *Q)
 	uint64_t target;
 	int early = 0, late = 0;
 	int earliest = 0, latest = 0;
-	int complete;
+	int complete, count, expect;
 
 	printf("Testing notify modulus\n");
 	_x_error_occurred = 0;
 
 	target = wait_vblank(dpy, root, Q);
 
+	expect = 0;
 	xcb_present_notify_msc(c, root, 0, 0, 0, 0);
 	for (x = 1; x <= 19; x++) {
-		for (y = 0; y < x; y++)
+		for (y = 0; y < x; y++) {
 			xcb_present_notify_msc(c, root, y << 16 | x, 0, x, y);
+			expect++;
+		}
 	}
 	xcb_present_notify_msc(c, root, 0xdeadbeef, target + 2*x, 0, 0);
 	xcb_flush(c);
@@ -1162,6 +1276,7 @@ static int test_modulus_msc(Display *dpy, void *Q)
 	}
 
 	complete = 0;
+	count = 0;
 	do {
 		ev = xcb_wait_for_special_event(c, Q);
 		if (ev == NULL)
@@ -1200,6 +1315,7 @@ static int test_modulus_msc(Display *dpy, void *Q)
 				late++;
 				ret++;
 			}
+			count++;
 		} else
 			complete = 1;
 		free(ev);
@@ -1209,6 +1325,20 @@ static int test_modulus_msc(Display *dpy, void *Q)
 		printf("\t%d notifies too early (worst %d)!\n", early, earliest);
 	if (late)
 		printf("\t%d notifies too late (worst %d)!\n", late, latest);
+
+	if (count != expect) {
+		fprintf(stderr, "Sentinel vblank received too early! %d waits outstanding\n", expect - count);
+		ret++;
+		do {
+			ev = xcb_wait_for_special_event(c, Q);
+			if (ev == NULL)
+				break;
+
+			ce = (xcb_present_complete_notify_event_t *)ev;
+			assert(ce->kind == XCB_PRESENT_COMPLETE_KIND_NOTIFY_MSC);
+			free(ev);
+		} while (++count != expect);
+	}
 
 	XSync(dpy, True);
 	ret += !!_x_error_occurred;
