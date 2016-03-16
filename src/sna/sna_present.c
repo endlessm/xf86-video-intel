@@ -494,6 +494,12 @@ sna_present_check_flip(RRCrtcPtr crtc,
 				return FALSE;
 			}
 		}
+
+		if (flip->gpu_bo->pitch & 63) {
+			DBG(("%s: pined bo, bad pitch=%d\n",
+			     __FUNCTION__, flip->gpu_bo->pitch));
+			return FALSE;
+		}
 	}
 
 	return TRUE;
@@ -660,6 +666,11 @@ get_flip_bo(PixmapPtr pixmap)
 	    !sna->kgem.can_scanout_y &&
 	    !sna_pixmap_change_tiling(pixmap, I915_TILING_X)) {
 		DBG(("%s: invalid Y-tiling, cannot convert\n", __FUNCTION__));
+		return NULL;
+	}
+
+	if (priv->gpu_bo->pitch & 63) {
+		DBG(("%s: invalid pitch, no conversion\n", __FUNCTION__));
 		return NULL;
 	}
 
