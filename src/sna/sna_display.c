@@ -3108,7 +3108,7 @@ prefer_non_hidpi(xf86OutputPtr output, DisplayModePtr Modes)
 		return;
 
 	/* Check if hiDPI */
-	if (preferred->HDisplay != 3840 || preferred->VDisplay != 2160)
+	if (preferred->HDisplay < 2560 || preferred->VDisplay < 1440)
 		return;
 
 	/* Find new preferred mode */
