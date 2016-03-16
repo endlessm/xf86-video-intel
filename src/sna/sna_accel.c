@@ -18178,6 +18178,7 @@ void sna_accel_watch_flush(struct sna *sna, int enable)
 void sna_accel_leave(struct sna *sna)
 {
 	DBG(("%s\n", __FUNCTION__));
+	sna_scanout_flush(sna);
 
 	/* as root we always have permission to render */
 	if (geteuid() == 0)
