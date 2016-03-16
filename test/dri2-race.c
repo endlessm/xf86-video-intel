@@ -5,6 +5,7 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/extensions/Xfixes.h>
+#include <X11/extensions/Xcomposite.h>
 #include <X11/Xlib-xcb.h>
 #include <xcb/xcb.h>
 #include <xcb/xcbext.h>
@@ -102,14 +103,37 @@ static void swap_buffers(Display *dpy, Window win, int divisor,
 	xcb_discard_reply(c, seq[1]);
 }
 
+#define COMPOSITE 1
+
+static int has_composite(Display *dpy)
+{
+	Display *dummy = NULL;
+	int event, error;
+	int major = -1, minor = -1;
+
+	if (dpy == NULL)
+		dummy = dpy = XOpenDisplay(NULL);
+
+	if (XCompositeQueryExtension(dpy, &event, &error))
+		XCompositeQueryVersion(dpy, &major, &minor);
+
+	if (dummy)
+		XCloseDisplay(dummy);
+
+	return major > 0 || minor >= 4;
+}
+
 static void race_window(Display *dpy, int width, int height,
 			unsigned int *attachments, int nattachments,
-			const char *name)
+			unsigned flags, const char *name)
 {
 	Window win;
 	XSetWindowAttributes attr;
 	int count, loop, n;
 	DRI2Buffer *buffers;
+
+	if (flags & COMPOSITE && !has_composite(dpy))
+		return;
 
 	printf("%s(%s)\n", __func__, name);
 
@@ -127,6 +151,8 @@ static void race_window(Display *dpy, int width, int height,
 					InputOutput,
 					DefaultVisual(dpy, DefaultScreen(dpy)),
 					CWOverrideRedirect, &attr);
+			if (flags & COMPOSITE)
+				XCompositeRedirectWindow(dpy, win, CompositeRedirectManual);
 			XMapWindow(dpy, win);
 
 			DRI2CreateDrawable(dpy, win);
@@ -155,6 +181,8 @@ static void race_window(Display *dpy, int width, int height,
 					InputOutput,
 					DefaultVisual(dpy, DefaultScreen(dpy)),
 					CWOverrideRedirect, &attr);
+			if (flags & COMPOSITE)
+				XCompositeRedirectWindow(dpy, win, CompositeRedirectManual);
 			XMapWindow(dpy, win);
 
 			DRI2CreateDrawable(dpy, win);
@@ -186,6 +214,8 @@ static void race_window(Display *dpy, int width, int height,
 					InputOutput,
 					DefaultVisual(dpy, DefaultScreen(dpy)),
 					CWOverrideRedirect, &attr);
+			if (flags & COMPOSITE)
+				XCompositeRedirectWindow(dpy, win, CompositeRedirectManual);
 			XMapWindow(dpy, win);
 
 			DRI2CreateDrawable(dpy, win);
@@ -211,15 +241,149 @@ static void race_window(Display *dpy, int width, int height,
 	XSync(dpy, 1);
 }
 
+static int rand_size(int max)
+{
+	return 1 + (rand() % (max - 1));
+}
+
+static void race_resize(Display *dpy, int width, int height,
+			unsigned int *attachments, int nattachments,
+			unsigned flags, const char *name)
+{
+	Window win;
+	XSetWindowAttributes attr;
+	int count, loop, n;
+	DRI2Buffer *buffers;
+
+	if (flags & COMPOSITE && !has_composite(dpy))
+		return;
+
+	printf("%s(%s)\n", __func__, name);
+
+	attr.override_redirect = 1;
+	for (n = 0; n < N_DIVISORS; n++) {
+		win = XCreateWindow(dpy, DefaultRootWindow(dpy),
+				    0, 0, width, height, 0,
+				    DefaultDepth(dpy, DefaultScreen(dpy)),
+				    InputOutput,
+				    DefaultVisual(dpy, DefaultScreen(dpy)),
+				    CWOverrideRedirect, &attr);
+		if (flags & COMPOSITE)
+			XCompositeRedirectWindow(dpy, win, CompositeRedirectManual);
+		XMapWindow(dpy, win);
+
+		DRI2CreateDrawable(dpy, win);
+
+		loop = 256 >> ffs(divisors[n]);
+		printf("DRI2SwapBuffers(divisor=%d), loop=%d", divisors[n], loop);
+		do {
+			int w, h;
+
+			buffers = DRI2GetBuffers(dpy, win, &w, &h,
+					attachments, nattachments, &count);
+			if (count != nattachments)
+				return;
+
+			free(buffers);
+			for (count = 0; count < loop; count++)
+				DRI2SwapBuffers(dpy, win, 0, divisors[n], count & (divisors[n]-1));
+			XResizeWindow(dpy, win, rand_size(width), rand_size(height));
+			printf("."); fflush(stdout);
+		} while (--loop);
+		XDestroyWindow(dpy, win);
+		XSync(dpy, True);
+		printf("*\n");
+	}
+
+	for (n = 0; n < N_DIVISORS; n++) {
+		win = XCreateWindow(dpy, DefaultRootWindow(dpy),
+				    0, 0, width, height, 0,
+				    DefaultDepth(dpy, DefaultScreen(dpy)),
+				    InputOutput,
+				    DefaultVisual(dpy, DefaultScreen(dpy)),
+				    CWOverrideRedirect, &attr);
+		if (flags & COMPOSITE)
+			XCompositeRedirectWindow(dpy, win, CompositeRedirectManual);
+		XMapWindow(dpy, win);
+
+		DRI2CreateDrawable(dpy, win);
+
+		loop = 256 >> ffs(divisors[n]);
+		printf("xcb_dri2_swap_buffers(divisor=%d), loops=%d", divisors[n], loop);
+		do {
+			int w, h;
+
+			buffers = DRI2GetBuffers(dpy, win, &w, &h,
+					attachments, nattachments, &count);
+			if (count != nattachments)
+				return;
+
+			free(buffers);
+			for (count = 0; count < loop; count++)
+				swap_buffers(dpy, win, divisors[n], attachments, nattachments);
+			XResizeWindow(dpy, win, rand_size(width), rand_size(height));
+			printf("."); fflush(stdout);
+		} while (--loop);
+		XDestroyWindow(dpy, win);
+		XSync(dpy, True);
+		printf("*\n");
+	}
+
+	for (n = 0; n < N_DIVISORS; n++) {
+		win = XCreateWindow(dpy, DefaultRootWindow(dpy),
+				    0, 0, width, height, 0,
+				    DefaultDepth(dpy, DefaultScreen(dpy)),
+				    InputOutput,
+				    DefaultVisual(dpy, DefaultScreen(dpy)),
+				    CWOverrideRedirect, &attr);
+		if (flags & COMPOSITE)
+			XCompositeRedirectWindow(dpy, win, CompositeRedirectManual);
+		XMapWindow(dpy, win);
+
+		DRI2CreateDrawable(dpy, win);
+
+		loop = 256 >> ffs(divisors[n]);
+		printf("DRI2WaitMsc(divisor=%d), loop=%d", divisors[n], loop);
+		do {
+			uint64_t ignore, msc;
+			xcb_connection_t *c = XGetXCBConnection(dpy);
+
+			DRI2GetMSC(dpy, win, &ignore, &msc, &ignore);
+			msc++;
+			for (count = 0; count < loop; count++) {
+				xcb_discard_reply(c,
+						xcb_dri2_wait_msc(c, win,
+							upper_32_bits(msc),
+							lower_32_bits(msc),
+							0, 0, 0, 0).sequence);
+				msc += divisors[n];
+			}
+			XFlush(dpy);
+			XResizeWindow(dpy, win, rand_size(width), rand_size(height));
+			printf("."); fflush(stdout);
+		} while (--loop);
+		XDestroyWindow(dpy, win);
+		XSync(dpy, True);
+		printf("*\n");
+	}
+
+	XSync(dpy, 1);
+	sleep(2);
+	XSync(dpy, 1);
+}
+
 static void race_manager(Display *dpy, int width, int height,
 			 unsigned int *attachments, int nattachments,
-			 const char *name)
+			 unsigned flags, const char *name)
 {
 	Display *mgr = XOpenDisplay(NULL);
 	Window win;
 	XSetWindowAttributes attr;
 	int count, loop, n;
 	DRI2Buffer *buffers;
+
+	if (flags & COMPOSITE && !has_composite(dpy))
+		return;
 
 	printf("%s(%s)\n", __func__, name);
 
@@ -237,6 +401,8 @@ static void race_manager(Display *dpy, int width, int height,
 					InputOutput,
 					DefaultVisual(dpy, DefaultScreen(dpy)),
 					CWOverrideRedirect, &attr);
+			if (flags & COMPOSITE)
+				XCompositeRedirectWindow(dpy, win, CompositeRedirectManual);
 			XMapWindow(dpy, win);
 
 			DRI2CreateDrawable(dpy, win);
@@ -267,6 +433,8 @@ static void race_manager(Display *dpy, int width, int height,
 					InputOutput,
 					DefaultVisual(dpy, DefaultScreen(dpy)),
 					CWOverrideRedirect, &attr);
+			if (flags & COMPOSITE)
+				XCompositeRedirectWindow(dpy, win, CompositeRedirectManual);
 			XMapWindow(dpy, win);
 
 			DRI2CreateDrawable(dpy, win);
@@ -300,6 +468,8 @@ static void race_manager(Display *dpy, int width, int height,
 					InputOutput,
 					DefaultVisual(dpy, DefaultScreen(dpy)),
 					CWOverrideRedirect, &attr);
+			if (flags & COMPOSITE)
+				XCompositeRedirectWindow(dpy, win, CompositeRedirectManual);
 			XMapWindow(dpy, win);
 
 			DRI2CreateDrawable(dpy, win);
@@ -332,10 +502,13 @@ static void race_manager(Display *dpy, int width, int height,
 
 static void race_close(int width, int height,
 		       unsigned int *attachments, int nattachments,
-		       const char *name)
+		       unsigned flags, const char *name)
 {
 	XSetWindowAttributes attr;
 	int count, loop, n;
+
+	if (flags & COMPOSITE && !has_composite(NULL))
+		return;
 
 	printf("%s(%s)\n", __func__, name);
 
@@ -354,7 +527,8 @@ static void race_close(int width, int height,
 					InputOutput,
 					DefaultVisual(dpy, DefaultScreen(dpy)),
 					CWOverrideRedirect, &attr);
-
+			if (flags & COMPOSITE)
+				XCompositeRedirectWindow(dpy, win, CompositeRedirectManual);
 			XMapWindow(dpy, win);
 
 			DRI2CreateDrawable(dpy, win);
@@ -382,7 +556,8 @@ static void race_close(int width, int height,
 					InputOutput,
 					DefaultVisual(dpy, DefaultScreen(dpy)),
 					CWOverrideRedirect, &attr);
-
+			if (flags & COMPOSITE)
+				XCompositeRedirectWindow(dpy, win, CompositeRedirectManual);
 			XMapWindow(dpy, win);
 
 			DRI2CreateDrawable(dpy, win);
@@ -412,7 +587,8 @@ static void race_close(int width, int height,
 					InputOutput,
 					DefaultVisual(dpy, DefaultScreen(dpy)),
 					CWOverrideRedirect, &attr);
-
+			if (flags & COMPOSITE)
+				XCompositeRedirectWindow(dpy, win, CompositeRedirectManual);
 			XMapWindow(dpy, win);
 
 			DRI2CreateDrawable(dpy, win);
@@ -436,11 +612,14 @@ static void race_close(int width, int height,
 
 static void race_client(int width, int height,
 			unsigned int *attachments, int nattachments,
-			const char *name)
+			unsigned flags, const char *name)
 {
 	Display *mgr = XOpenDisplay(NULL);
 	XSetWindowAttributes attr;
 	int count, loop, n;
+
+	if (flags & COMPOSITE && !has_composite(NULL))
+		return;
 
 	printf("%s(%s)\n", __func__, name);
 
@@ -467,6 +646,8 @@ static void race_client(int width, int height,
 					    InputOutput,
 					    DefaultVisual(dpy, DefaultScreen(dpy)),
 					    CWOverrideRedirect, &attr);
+			if (flags & COMPOSITE)
+				XCompositeRedirectWindow(dpy, win, CompositeRedirectManual);
 			XMapWindow(dpy, win);
 
 			DRI2CreateDrawable(dpy, win);
@@ -509,6 +690,8 @@ static void race_client(int width, int height,
 					    InputOutput,
 					    DefaultVisual(dpy, DefaultScreen(dpy)),
 					    CWOverrideRedirect, &attr);
+			if (flags & COMPOSITE)
+				XCompositeRedirectWindow(dpy, win, CompositeRedirectManual);
 			XMapWindow(dpy, win);
 
 			DRI2CreateDrawable(dpy, win);
@@ -553,6 +736,8 @@ static void race_client(int width, int height,
 					    InputOutput,
 					    DefaultVisual(dpy, DefaultScreen(dpy)),
 					    CWOverrideRedirect, &attr);
+			if (flags & COMPOSITE)
+				XCompositeRedirectWindow(dpy, win, CompositeRedirectManual);
 			XMapWindow(dpy, win);
 
 			DRI2CreateDrawable(dpy, win);
@@ -605,31 +790,52 @@ int main(void)
 
 	width = WidthOfScreen(DefaultScreenOfDisplay(dpy));
 	height = HeightOfScreen(DefaultScreenOfDisplay(dpy));
-	race_window(dpy, width, height, attachments, 1, "fullscreen");
-	race_window(dpy, width, height, attachments, 2, "fullscreen (with front)");
+	race_window(dpy, width, height, attachments, 1, 0, "fullscreen");
+	race_window(dpy, width, height, attachments, 1, COMPOSITE, "composite fullscreen");
+	race_window(dpy, width, height, attachments, 2, 0, "fullscreen (with front)");
+	race_window(dpy, width, height, attachments, 2, COMPOSITE, "composite fullscreen (with front)");
 
-	race_manager(dpy, width, height, attachments, 1, "fullscreen");
-	race_manager(dpy, width, height, attachments, 2, "fullscreen (with front)");
+	race_resize(dpy, width, height, attachments, 1, 0, "");
+	race_resize(dpy, width, height, attachments, 1, COMPOSITE, "composite");
+	race_resize(dpy, width, height, attachments, 2, 0, "with front");
+	race_resize(dpy, width, height, attachments, 2, COMPOSITE, "composite with front");
 
-	race_close(width, height, attachments, 1, "fullscreen");
-	race_close(width, height, attachments, 2, "fullscreen (with front)");
+	race_manager(dpy, width, height, attachments, 1, 0, "fullscreen");
+	race_manager(dpy, width, height, attachments, 1, COMPOSITE, "composite fullscreen");
+	race_manager(dpy, width, height, attachments, 2, 0, "fullscreen (with front)");
+	race_manager(dpy, width, height, attachments, 2, COMPOSITE, "composite fullscreen (with front)");
 
-	race_client(width, height, attachments, 1, "fullscreen");
-	race_client(width, height, attachments, 2, "fullscreen (with front)");
+	race_close(width, height, attachments, 1, 0, "fullscreen");
+	race_close(width, height, attachments, 1, COMPOSITE, "composite fullscreen");
+	race_close(width, height, attachments, 2, 0, "fullscreen (with front)");
+	race_close(width, height, attachments, 2, COMPOSITE, "composite fullscreen (with front)");
+
+	race_client(width, height, attachments, 1, 0, "fullscreen");
+	race_client(width, height, attachments, 1, COMPOSITE, "composite fullscreen");
+	race_client(width, height, attachments, 2, 0, "fullscreen (with front)");
+	race_client(width, height, attachments, 2, COMPOSITE, "composite fullscreen (with front)");
 
 	width /= 2;
 	height /= 2;
-	race_window(dpy, width, height, attachments, 1, "windowed");
-	race_window(dpy, width, height, attachments, 2, "windowed (with front)");
+	race_window(dpy, width, height, attachments, 1, 0, "windowed");
+	race_window(dpy, width, height, attachments, 1, COMPOSITE, "composite windowed");
+	race_window(dpy, width, height, attachments, 2, 0, "windowed (with front)");
+	race_window(dpy, width, height, attachments, 2, COMPOSITE, "composite windowed (with front)");
 
-	race_manager(dpy, width, height, attachments, 1, "windowed");
-	race_manager(dpy, width, height, attachments, 2, "windowed (with front)");
+	race_manager(dpy, width, height, attachments, 1, 0, "windowed");
+	race_manager(dpy, width, height, attachments, 1, COMPOSITE, "composite windowed");
+	race_manager(dpy, width, height, attachments, 2, 0, "windowed (with front)");
+	race_manager(dpy, width, height, attachments, 2, COMPOSITE, "composite windowed (with front)");
 
-	race_close(width, height, attachments, 1, "windowed");
-	race_close(width, height, attachments, 2, "windowed (with front)");
+	race_close(width, height, attachments, 1, 0, "windowed");
+	race_close(width, height, attachments, 1, COMPOSITE, "composite windowed");
+	race_close(width, height, attachments, 2, 0, "windowed (with front)");
+	race_close(width, height, attachments, 2, COMPOSITE, "composite windowed (with front)");
 
-	race_client(width, height, attachments, 1, "windowed");
-	race_client(width, height, attachments, 2, "windowed (with front)");
+	race_client(width, height, attachments, 1, 0, "windowed");
+	race_client(width, height, attachments, 1, COMPOSITE, "composite windowed");
+	race_client(width, height, attachments, 2, 0, "windowed (with front)");
+	race_client(width, height, attachments, 2, COMPOSITE, "composite windowed (with front)");
 
 	return 0;
 }
