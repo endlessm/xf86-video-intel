@@ -52,6 +52,7 @@
 #include <errno.h>
 #include <setjmp.h>
 #include <signal.h>
+#include <sys/wait.h>
 
 #include "dri3.h"
 
@@ -119,6 +120,9 @@ static int
 _check_error_handler(Display     *display,
 		     XErrorEvent *event)
 {
+	if (_x_error_occurred < 0)
+		return True;
+
 	printf("X11 error from display %s, serial=%ld, error=%d, req=%d.%d\n",
 	       DisplayString(display),
 	       event->serial,
@@ -312,6 +316,7 @@ static void run(Display *dpy, Window win, const char *name, unsigned options)
 	if (_x_error_occurred)
 		abort();
 
+	_x_error_occurred = -1;
 	xcb_present_select_input(c, eid, win, 0);
 	XSync(dpy, True);
 	xcb_unregister_for_special_event(c, Q);
@@ -327,6 +332,51 @@ static void run(Display *dpy, Window win, const char *name, unsigned options)
 	       completed, elapsed(&start, &end) / 1000000,
 	       elapsed(&start, &end) / completed,
 	       completed / (elapsed(&start, &end) / 1000000));
+}
+
+static int isqrt(int x)
+{
+	int i;
+
+	for (i = 2; i*i < x; i++)
+		;
+	return i;
+}
+
+static void siblings(int max_width, int max_height, int ncpus, unsigned options)
+{
+	int sq_ncpus = isqrt(ncpus);
+	int width = max_width / sq_ncpus;
+	int height = max_height/ sq_ncpus;
+	int child;
+
+	if (ncpus <= 1)
+		return;
+
+	for (child = 0; child < ncpus; child++) {
+		for (; fork() == 0; exit(0)) {
+			int x = (child % sq_ncpus) * width;
+			int y = (child / sq_ncpus) * height;
+			XSetWindowAttributes attr = { .override_redirect = 1 };
+			Display *dpy = XOpenDisplay(NULL);
+			Window win = XCreateWindow(dpy, DefaultRootWindow(dpy),
+						   x, y, width, height, 0,
+						   DefaultDepth(dpy, DefaultScreen(dpy)),
+						   InputOutput,
+						   DefaultVisual(dpy, DefaultScreen(dpy)),
+						   CWOverrideRedirect, &attr);
+			XMapWindow(dpy, win);
+			run(dpy, win, "sibling", options);
+		}
+	}
+
+	while (child) {
+		int status = -1;
+		pid_t pid = wait(&status);
+		if (pid == -1)
+			continue;
+		child--;
+	}
 }
 
 static int has_present(Display *dpy)
@@ -550,6 +600,10 @@ static void loop(Display *dpy, XRRScreenResources *res, unsigned options)
 			run(dpy, win, "half", options);
 			XDestroyWindow(dpy, win);
 			XSync(dpy, True);
+
+			siblings(mode->width, mode->height,
+				 sysconf(_SC_NPROCESSORS_ONLN),
+				 options);
 
 			XRRSetCrtcConfig(dpy, res, output->crtcs[c], CurrentTime,
 					 0, 0, None, RR_Rotate_0, NULL, 0);
