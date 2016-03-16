@@ -1863,6 +1863,8 @@ static void decouple_window(WindowPtr win,
 			if (!info->queued)
 				sna_dri2_event_free(info);
 		}
+
+		priv->chain = NULL;
 	}
 }
 
