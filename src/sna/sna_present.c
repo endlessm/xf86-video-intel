@@ -279,10 +279,10 @@ last:
 		*msc = swap->msc;
 	}
 
-	DBG(("%s: pipe=%d, tv=%d.%06d msc=%lld\n", __FUNCTION__,
+	DBG(("%s: pipe=%d, tv=%d.%06d seq=%d msc=%lld\n", __FUNCTION__,
 	     sna_crtc_pipe(crtc->devPrivate),
 	     (int)(*ust / 1000000), (int)(*ust % 1000000),
-	     (long long)*msc));
+	     vbl.reply.sequence, (long long)*msc));
 
 	return Success;
 }
@@ -313,8 +313,7 @@ sna_present_queue_vblank(RRCrtcPtr crtc, uint64_t event_id, uint64_t msc)
 	     __FUNCTION__, sna_crtc_pipe(crtc->devPrivate),
 	     (long long)event_id, (long long)msc, (long long)swap->msc));
 
-	warn_unless((int64_t)(msc - swap->msc) >= 0);
-	if ((int64_t)(msc - swap->msc) <= 0) {
+	if (warn_unless((int64_t)(msc - swap->msc) >= 0)) {
 		DBG(("%s: pipe=%d tv=%d.%06d msc=%lld (target=%lld), event=%lld complete\n", __FUNCTION__,
 		     sna_crtc_pipe(crtc->devPrivate),
 		     swap->tv_sec, swap->tv_usec,
@@ -323,7 +322,8 @@ sna_present_queue_vblank(RRCrtcPtr crtc, uint64_t event_id, uint64_t msc)
 		present_event_notify(event_id, swap_ust(swap), swap->msc);
 		return Success;
 	}
-	warn_unless(msc < swap->msc + (1ull<<32));
+	if (warn_unless(msc - swap->msc < 1ull<<32))
+		return BadValue;
 
 	list_for_each_entry(tmp, &sna->present.vblank_queue, link) {
 		if (tmp->target_msc == msc &&
@@ -372,7 +372,7 @@ sna_present_queue_vblank(RRCrtcPtr crtc, uint64_t event_id, uint64_t msc)
 	vbl.request.sequence = msc;
 	vbl.request.signal = (uintptr_t)MARK_PRESENT(info);
 	if (sna_wait_vblank(sna, &vbl, sna_crtc_pipe(info->crtc))) {
-		DBG(("%s: vblank enqueue failed\n", __FUNCTION__));
+		DBG(("%s: vblank enqueue failed, faking\n", __FUNCTION__));
 		if (!sna_fake_vblank(info)) {
 			list_del(&info->link);
 			free(info);

@@ -479,14 +479,14 @@ uint64_t sna_crtc_record_swap(xf86CrtcPtr crtc,
 	assert(sna_crtc);
 
 	if (msc64(sna_crtc, seq, &msc)) {
-		DBG(("%s: recording last swap on pipe=%d, frame %d [%08llx], time %d.%06d\n",
+		DBG(("%s: recording last swap on pipe=%d, frame %d [msc=%08lld], time %d.%06d\n",
 		     __FUNCTION__, __sna_crtc_pipe(sna_crtc), seq, (long long)msc,
 		     tv_sec, tv_usec));
 		sna_crtc->swap.tv_sec = tv_sec;
 		sna_crtc->swap.tv_usec = tv_usec;
 		sna_crtc->swap.msc = msc;
 	} else {
-		DBG(("%s: swap event on pipe=%d, frame %d [%08llx], time %d.%06d\n",
+		DBG(("%s: swap event on pipe=%d, frame %d [msc=%08lld], time %d.%06d\n",
 		     __FUNCTION__, __sna_crtc_pipe(sna_crtc), seq, (long long)msc,
 		     tv_sec, tv_usec));
 	}
