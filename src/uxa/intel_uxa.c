@@ -1068,7 +1068,7 @@ Bool intel_uxa_create_screen_resources(ScreenPtr screen)
 	ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
 	PixmapPtr pixmap;
 	intel_screen_private *intel = intel_get_screen_private(scrn);
-	dri_bo *bo = intel->front_buffer;
+	dri_bo *bo = intel->front_buffer, *old_bo;
 	int old_width, old_height, old_pitch;
 
 	if (!uxa_resources_init(screen))
@@ -1081,6 +1081,7 @@ Bool intel_uxa_create_screen_resources(ScreenPtr screen)
 	old_width = pixmap->drawable.width;
 	old_height = pixmap->drawable.height;
 	old_pitch = pixmap->devKind;
+	old_bo = intel_uxa_get_pixmap_bo(pixmap);
 
 	if (!screen->ModifyPixmapHeader(pixmap,
 					scrn->virtualX,
@@ -1102,6 +1103,9 @@ Bool intel_uxa_create_screen_resources(ScreenPtr screen)
 err:
 	screen->ModifyPixmapHeader(pixmap,
 				   old_width, old_height, -1, -1, old_pitch, NULL);
+	if (old_bo)
+		intel_uxa_set_pixmap_bo(pixmap, old_bo);
+
 	return FALSE;
 }
 
