@@ -60,6 +60,7 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <sys/ioctl.h>
 #include <sys/fcntl.h>
 #include <sys/poll.h>
+#include <sys/stat.h>
 #include "i915_drm.h"
 
 #ifdef HAVE_VALGRIND
