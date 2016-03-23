@@ -44,6 +44,7 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
+#include <sys/stat.h>
 
 #include "xorg-server.h"
 #include "xf86.h"
