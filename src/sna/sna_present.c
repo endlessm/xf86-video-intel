@@ -790,6 +790,19 @@ reset_mode:
 		goto reset_mode;
 }
 
+void sna_present_cancel_flip(struct sna *sna)
+{
+	if (sna->present.unflip) {
+		const struct ust_msc *swap;
+
+		swap = sna_crtc_last_swap(sna_primary_crtc(sna));
+		present_event_notify(sna->present.unflip,
+				     swap_ust(swap), swap->msc);
+
+		sna->present.unflip = 0;
+	}
+}
+
 static present_screen_info_rec present_info = {
 	.version = PRESENT_SCREEN_INFO_VERSION,
 

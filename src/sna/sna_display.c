@@ -5346,6 +5346,8 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 	assert(sna->mode.shadow_damage == NULL);
 	assert(sna->mode.shadow == NULL);
 
+	/* Cancel a pending [un]flip (as the pixmaps no longer match) */
+	sna_present_cancel_flip(sna);
 	copy_front(sna, sna->front, new_front);
 
 	screen->SetScreenPixmap(new_front);
