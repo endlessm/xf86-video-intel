@@ -114,8 +114,10 @@ static void vblank_complete(struct sna_present_event *info,
 	int n;
 
 	if (msc < info->target_msc) {
-		DBG(("%s: %d too early, now %lld, expected %lld\n",
-		     __FUNCTION__, (long long)msc, (long long)info->target_msc));
+		DBG(("%s: event=%d too early, now %lld, expected %lld\n",
+		     __FUNCTION__,
+		     info->event_id[0],
+		     (long long)msc, (long long)info->target_msc));
 		if (sna_present_queue(info, msc))
 			return;
 	}
@@ -247,7 +249,7 @@ static bool sna_present_queue(struct sna_present_event *info,
 	     (long long)info->target_msc,
 	     (unsigned)info->target_msc,
 	     (long long)last_msc));
-	assert(info->target_msc - last_msc < 1ull<<32);
+	assert(info->target_msc - last_msc < 1ull<<31);
 
 	VG_CLEAR(vbl);
 	vbl.request.type = DRM_VBLANK_ABSOLUTE | DRM_VBLANK_EVENT;
@@ -360,7 +362,7 @@ sna_present_queue_vblank(RRCrtcPtr crtc, uint64_t event_id, uint64_t msc)
 		present_event_notify(event_id, swap_ust(swap), swap->msc);
 		return Success;
 	}
-	if (warn_unless(msc - swap->msc < 1ull<<32))
+	if (warn_unless(msc - swap->msc < 1ull<<31))
 		return BadValue;
 
 	list_for_each_entry(tmp, &sna->present.vblank_queue, link) {

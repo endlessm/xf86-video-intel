@@ -1089,6 +1089,86 @@ static int test_future_msc(Display *dpy, void *Q)
 	return ret;
 }
 
+static int test_wrap_msc(Display *dpy)
+{
+	xcb_connection_t *c = XGetXCBConnection(dpy);
+	Window root, win;
+	int x, y;
+	unsigned int width, height;
+	unsigned border, depth;
+	XSetWindowAttributes attr;
+	int ret = 0, n;
+	uint64_t msc, ust;
+	int complete;
+	uint64_t interval;
+	void *Q;
+
+	XGetGeometry(dpy, DefaultRootWindow(dpy),
+		     &root, &x, &y, &width, &height, &border, &depth);
+
+	attr.override_redirect = 1;
+	win = XCreateWindow(dpy, root,
+			    0, 0, width, height, 0, depth,
+			    InputOutput, DefaultVisual(dpy, DefaultScreen(dpy)),
+			    CWOverrideRedirect, &attr);
+	XMapWindow(dpy, win);
+	XSync(dpy, True);
+	if (_x_error_occurred)
+		return 1;
+
+	printf("Testing wraparound notifies\n");
+	_x_error_occurred = 0;
+
+	Q = setup_msc(dpy, win);
+	interval = msc_interval(dpy, win, Q);
+	if (interval == 0) {
+		printf("Zero delay between frames\n");
+		return 1;
+	}
+	msc = check_msc(dpy, win, Q, 0, &ust);
+	printf("Initial msc=%llx, interval between frames %lldus\n",
+	       (long long)msc, (long long)interval);
+
+	for (n = 1; n <= 10; n++)
+		xcb_present_notify_msc(c, win, n,
+				       msc + ((long long)n<<32) + n,
+				       0, 0);
+	for (n = 1; n <= 10; n++)
+		xcb_present_notify_msc(c, win, -n,
+				       0, (long long)n << 32, 0);
+	xcb_present_notify_msc(c, win, 0xdeadbeef, msc + 60*10, 0, 0);
+	xcb_flush(c);
+
+	complete = 0;
+	do {
+		xcb_present_complete_notify_event_t *ce;
+		xcb_generic_event_t *ev;
+
+		ev = xcb_wait_for_special_event(c, Q);
+		if (ev == NULL)
+			break;
+
+		ce = (xcb_present_complete_notify_event_t *)ev;
+		assert(ce->kind == XCB_PRESENT_COMPLETE_KIND_NOTIFY_MSC);
+
+		if (ce->serial == 0xdeadbeef) {
+			complete = 1;
+		} else {
+			fprintf(stderr,
+				"\tnotify %d recieved at +%llu\n",
+				ce->serial, ce->msc - msc);
+			ret++;
+		}
+		free(ev);
+	} while (!complete);
+
+	teardown_msc(dpy, Q);
+	XDestroyWindow(dpy, win);
+	XSync(dpy, True);
+
+	return ret;
+}
+
 static int test_exhaustion_msc(Display *dpy, void *Q)
 {
 #define N_VBLANKS 256 /* kernel event queue length: 128 vblanks */
@@ -2017,6 +2097,9 @@ int main(void)
 	last_msc = check_msc(dpy, root, queue, 0, NULL);
 
 	error += test_future_msc(dpy, queue);
+	last_msc = check_msc(dpy, root, queue, last_msc, NULL);
+
+	error += test_wrap_msc(dpy);
 	last_msc = check_msc(dpy, root, queue, last_msc, NULL);
 
 	error += test_accuracy_msc(dpy, queue);
