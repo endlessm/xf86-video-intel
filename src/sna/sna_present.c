@@ -48,6 +48,8 @@ struct sna_present_event {
 };
 
 static void sna_present_unflip(ScreenPtr screen, uint64_t event_id);
+static bool sna_present_queue(struct sna_present_event *info,
+			      uint64_t last_msc);
 
 static inline struct sna_present_event *
 to_present_event(uintptr_t  data)
@@ -110,6 +112,13 @@ static void vblank_complete(struct sna_present_event *info,
 			    uint64_t ust, uint64_t msc)
 {
 	int n;
+
+	if (msc < info->target_msc) {
+		DBG(("%s: %d too early, now %lld, expected %lld\n",
+		     __FUNCTION__, (long long)msc, (long long)info->target_msc));
+		if (sna_present_queue(info, msc))
+			return;
+	}
 
 	DBG(("%s: %d events complete\n", __FUNCTION__, info->n_event_id));
 	for (n = 0; n < info->n_event_id; n++) {
@@ -228,6 +237,36 @@ static bool sna_fake_vblank(struct sna_present_event *info)
 	return TimerSet(NULL, 0, delay, sna_fake_vblank_handler, info);
 }
 
+static bool sna_present_queue(struct sna_present_event *info,
+			      uint64_t last_msc)
+{
+	union drm_wait_vblank vbl;
+
+	DBG(("%s: target msc=%llu, seq=%u (last_msc=%llu)\n",
+	     __FUNCTION__,
+	     (long long)info->target_msc,
+	     (unsigned)info->target_msc,
+	     (long long)last_msc));
+	assert(info->target_msc - last_msc < 1ull<<32);
+
+	VG_CLEAR(vbl);
+	vbl.request.type = DRM_VBLANK_ABSOLUTE | DRM_VBLANK_EVENT;
+	vbl.request.sequence = info->target_msc;
+	vbl.request.signal = (uintptr_t)MARK_PRESENT(info);
+	if (sna_wait_vblank(info->sna, &vbl, sna_crtc_pipe(info->crtc))) {
+		DBG(("%s: vblank enqueue failed, faking\n", __FUNCTION__));
+		if (!sna_fake_vblank(info))
+			return false;
+	} else {
+		if (info->target_msc - last_msc == 1) {
+			sna_crtc_set_vblank(info->crtc);
+			info->crtc = mark_crtc(info->crtc);
+		}
+	}
+
+	return true;
+}
+
 static RRCrtcPtr
 sna_present_get_crtc(WindowPtr window)
 {
@@ -306,7 +345,6 @@ sna_present_queue_vblank(RRCrtcPtr crtc, uint64_t event_id, uint64_t msc)
 	struct sna *sna = to_sna_from_screen(crtc->pScreen);
 	struct sna_present_event *info, *tmp;
 	const struct ust_msc *swap;
-	union drm_wait_vblank vbl;
 
 	swap = sna_crtc_last_swap(crtc->devPrivate);
 	DBG(("%s(pipe=%d, event=%lld, msc=%lld, last swap=%lld)\n",
@@ -367,22 +405,10 @@ sna_present_queue_vblank(RRCrtcPtr crtc, uint64_t event_id, uint64_t msc)
 	info->n_event_id = 1;
 	list_add_tail(&info->link, &tmp->link);
 
-	VG_CLEAR(vbl);
-	vbl.request.type = DRM_VBLANK_ABSOLUTE | DRM_VBLANK_EVENT;
-	vbl.request.sequence = msc;
-	vbl.request.signal = (uintptr_t)MARK_PRESENT(info);
-	if (sna_wait_vblank(sna, &vbl, sna_crtc_pipe(info->crtc))) {
-		DBG(("%s: vblank enqueue failed, faking\n", __FUNCTION__));
-		if (!sna_fake_vblank(info)) {
-			list_del(&info->link);
-			free(info);
-			return BadAlloc;
-		}
-	} else {
-		if (msc - swap->msc == 1) {
-			sna_crtc_set_vblank(info->crtc);
-			info->crtc = mark_crtc(info->crtc);
-		}
+	if (!sna_present_queue(info, swap->msc)) {
+		list_del(&info->link);
+		free(info);
+		return BadAlloc;
 	}
 
 	return Success;
