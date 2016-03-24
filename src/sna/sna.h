@@ -605,7 +605,7 @@ static inline bool sna_present_open(struct sna *sna, ScreenPtr pScreen) { return
 static inline void sna_present_update(struct sna *sna) { }
 static inline void sna_present_close(struct sna *sna, ScreenPtr pScreen) { }
 static inline void sna_present_vblank_handler(struct drm_event_vblank *event) { }
-void sna_present_cancel_flip(struct sna *sna) { }
+static inline void sna_present_cancel_flip(struct sna *sna) { }
 #endif
 
 extern bool sna_crtc_set_sprite_rotation(xf86CrtcPtr crtc, uint32_t rotation);
