@@ -631,15 +631,15 @@ static void race_client(int width, int height,
 		printf("DRI2SwapBuffers(divisor=%d)", divisors[n]);
 		loop = 256 >> ffs(divisors[n]);
 		do {
-			Display *dpy;
+			Display *dpy = XOpenDisplay(NULL);
 			Window win;
 
 			if (error_get()) {
+				XCloseDisplay(dpy);
 				printf("+"); fflush(stdout);
 				continue;
 			}
 
-			dpy = XOpenDisplay(NULL);
 			win = XCreateWindow(dpy, DefaultRootWindow(dpy),
 					    0, 0, width, height, 0,
 					    DefaultDepth(dpy, DefaultScreen(dpy)),
@@ -653,11 +653,10 @@ static void race_client(int width, int height,
 			DRI2CreateDrawable(dpy, win);
 			free(DRI2GetBuffers(dpy, win, &width, &height,
 					    attachments, nattachments, &count));
-			if (count != nattachments)
-				return;
-
-			for (count = 0; count < loop; count++)
-				DRI2SwapBuffers(dpy, win, 0, divisors[n], count & (divisors[n]-1));
+			if (count == nattachments) {
+				for (count = 0; count < loop; count++)
+					DRI2SwapBuffers(dpy, win, 0, divisors[n], count & (divisors[n]-1));
+			}
 
 			XFlush(dpy);
 			XKillClient(mgr, win);
@@ -675,15 +674,15 @@ static void race_client(int width, int height,
 		printf("xcb_dri2_swap_buffers(divisor=%d)", divisors[n]);
 		loop = 256 >> ffs(divisors[n]);
 		do {
-			Display *dpy;
+			Display *dpy = XOpenDisplay(NULL);
 			Window win;
 
 			if (error_get()) {
+				XCloseDisplay(dpy);
 				printf("+"); fflush(stdout);
 				continue;
 			}
 
-			dpy = XOpenDisplay(NULL);
 			win = XCreateWindow(dpy, DefaultRootWindow(dpy),
 					    0, 0, width, height, 0,
 					    DefaultDepth(dpy, DefaultScreen(dpy)),
@@ -697,11 +696,10 @@ static void race_client(int width, int height,
 			DRI2CreateDrawable(dpy, win);
 			free(DRI2GetBuffers(dpy, win, &width, &height,
 					    attachments, nattachments, &count));
-			if (count != nattachments)
-				return;
-
-			for (count = 0; count < loop; count++)
-				swap_buffers(dpy, win, divisors[n], attachments, nattachments);
+			if (count == nattachments) {
+				for (count = 0; count < loop; count++)
+					swap_buffers(dpy, win, divisors[n], attachments, nattachments);
+			}
 
 			XFlush(dpy);
 			XKillClient(mgr, win);
@@ -719,17 +717,17 @@ static void race_client(int width, int height,
 		printf("DRI2WaitMsc(divisor=%d)", divisors[n]);
 		loop = 256 >> ffs(divisors[n]);
 		do {
+			Display *dpy = XOpenDisplay(NULL);
 			uint64_t ignore, msc;
-			Display *dpy;
 			xcb_connection_t *c;
 			Window win;
 
 			if (error_get()) {
+				XCloseDisplay(dpy);
 				printf("+"); fflush(stdout);
 				continue;
 			}
 
-			dpy = XOpenDisplay(NULL);
 			win = XCreateWindow(dpy, DefaultRootWindow(dpy),
 					    0, 0, width, height, 0,
 					    DefaultDepth(dpy, DefaultScreen(dpy)),
