@@ -151,7 +151,7 @@ static int sna_video_sprite_best_size(ddQueryBestSize_ARGS)
 	struct sna_video *video = port->devPriv.ptr;
 	struct sna *sna = video->sna;
 
-	if (sna->kgem.gen >= 075) {
+	if (sna->kgem.gen >= 075 && !sna->render.video) {
 		*p_w = vid_w;
 		*p_h = vid_h;
 	} else {
@@ -407,6 +407,7 @@ static int sna_video_sprite_put_image(ddPutImage_ARGS)
 		BoxRec dst;
 		RegionRec reg;
 		Rotation rotation;
+		bool cache_bo;
 
 		pipe = sna_crtc_pipe(crtc);
 
@@ -491,6 +492,8 @@ off:
 			frame.image.y1 = 0;
 			frame.image.x2 = frame.width;
 			frame.image.y2 = frame.height;
+
+			cache_bo = false;
 		} else {
 			frame.bo = sna_video_buffer(video, &frame);
 			if (frame.bo == NULL) {
@@ -504,6 +507,60 @@ off:
 				ret = BadAlloc;
 				goto err;
 			}
+
+			cache_bo = true;
+		}
+
+		if (sna->kgem.gen >= 075 && sna->render.video &&
+		    !((frame.src.x2 - frame.src.x1) == (dst.x2 - dst.x1) &&
+		      (frame.src.y2 - frame.src.y1) == (dst.y2 - dst.y1))) {
+			ScreenPtr screen = to_screen_from_sna(sna);
+			PixmapPtr scaled;
+			RegionRec r;
+
+			r.extents.x1 = r.extents.y1 = 0;
+			r.extents.x2 = dst.x2 - dst.x1;
+			r.extents.y2 = dst.y2 - dst.y1;
+			r.data = NULL;
+
+			DBG(("%s: scaling from (%d, %d) to (%d, %d)\n",
+			     __FUNCTION__,
+			     frame.src.x2 - frame.src.x1,
+			     frame.src.y2 - frame.src.y1,
+			     r.extents.x2, r.extents.y2));
+
+			scaled = screen->CreatePixmap(screen,
+						      r.extents.x2,
+						      r.extents.y2,
+						      24,
+						      CREATE_PIXMAP_USAGE_SCRATCH);
+			if (scaled == NULL) {
+				ret = BadAlloc;
+				goto err;
+			}
+
+			if (!sna->render.video(sna, video, &frame, &r, scaled)) {
+				screen->DestroyPixmap(scaled);
+				ret = BadAlloc;
+				goto err;
+			}
+
+			if (cache_bo)
+				sna_video_buffer_fini(video);
+			else
+				kgem_bo_destroy(&sna->kgem, frame.bo);
+
+			frame.bo = kgem_bo_reference(__sna_pixmap_get_bo(scaled));
+			kgem_bo_submit(&sna->kgem, frame.bo);
+
+			frame.id = FOURCC_RGB888;
+			frame.src = frame.image = r.extents;
+			frame.width = frame.image.x2;
+			frame.height = frame.image.y2;
+			frame.pitch[0] = frame.bo->pitch;
+
+			screen->DestroyPixmap(scaled);
+			cache_bo = false;
 		}
 
 		ret = Success;
@@ -513,10 +570,10 @@ off:
 		}
 
 		frame.bo->domain = DOMAIN_NONE;
-		if (xvmc_passthrough(format->id))
-			kgem_bo_destroy(&sna->kgem, frame.bo);
-		else
+		if (cache_bo)
 			sna_video_buffer_fini(video);
+		else
+			kgem_bo_destroy(&sna->kgem, frame.bo);
 
 		if (ret != Success)
 			goto err;

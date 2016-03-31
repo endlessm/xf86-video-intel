@@ -106,6 +106,12 @@ static const uint32_t ps_kernel_planar[][4] = {
 #include "exa_wm_yuv_rgb.g8b"
 #include "exa_wm_write.g8b"
 };
+
+static const uint32_t ps_kernel_rgb[][4] = {
+#include "exa_wm_src_affine.g8b"
+#include "exa_wm_src_sample_argb.g8b"
+#include "exa_wm_write.g8b"
+};
 #endif
 
 #define SURFACE_DW (64 / sizeof(uint32_t));
@@ -119,7 +125,7 @@ static const struct wm_kernel_info {
 	const void *data;
 	unsigned int size;
 	int num_surfaces;
-} wm_kernels[] = {
+} wm_kernels[GEN8_WM_KERNEL_COUNT] = {
 	NOKERNEL(NOMASK, gen8_wm_kernel__affine, 2),
 	NOKERNEL(NOMASK_P, gen8_wm_kernel__projective, 2),
 
@@ -138,6 +144,7 @@ static const struct wm_kernel_info {
 #if !NO_VIDEO
 	KERNEL(VIDEO_PLANAR, ps_kernel_planar, 7),
 	KERNEL(VIDEO_PACKED, ps_kernel_packed, 2),
+	KERNEL(VIDEO_RGB, ps_kernel_rgb, 2),
 #endif
 };
 #undef KERNEL
@@ -3733,7 +3740,9 @@ static void gen8_emit_video_state(struct sna *sna,
 			frame->pitch[0];
 		n_src = 6;
 	} else {
-		if (frame->id == FOURCC_UYVY)
+		if (frame->id == FOURCC_RGB888)
+			src_surf_format = SURFACEFORMAT_B8G8R8X8_UNORM;
+		else if (frame->id == FOURCC_UYVY)
 			src_surf_format = SURFACEFORMAT_YCRCB_SWAPY;
 		else
 			src_surf_format = SURFACEFORMAT_YCRCB_NORMAL;
@@ -3763,6 +3772,23 @@ static void gen8_emit_video_state(struct sna *sna,
 	}
 
 	gen8_emit_state(sna, op, offset);
+}
+
+static unsigned select_video_kernel(const struct sna_video_frame *frame)
+{
+	switch (frame->id) {
+	case FOURCC_YV12:
+	case FOURCC_I420:
+	case FOURCC_XVMC:
+		return GEN8_WM_KERNEL_VIDEO_PLANAR;
+
+	case FOURCC_RGB888:
+	case FOURCC_RGB565:
+		return GEN8_WM_KERNEL_VIDEO_RGB;
+
+	default:
+		return GEN8_WM_KERNEL_VIDEO_PACKED;
+	}
 }
 
 static bool
@@ -3811,6 +3837,11 @@ gen8_render_video(struct sna *sna,
 	tmp.floats_per_vertex = 3;
 	tmp.floats_per_rect = 9;
 
+	DBG(("%s: scaling?=%d, planar?=%d [%x]\n",
+	     __FUNCTION__,
+	     src_width != dst_width || src_height != dst_height,
+	     is_planar_fourcc(frame->id), frame->id));
+
 	if (src_width == dst_width && src_height == dst_height)
 		filter = SAMPLER_FILTER_NEAREST;
 	else
@@ -3820,9 +3851,7 @@ gen8_render_video(struct sna *sna,
 		GEN8_SET_FLAGS(SAMPLER_OFFSET(filter, SAMPLER_EXTEND_PAD,
 					      SAMPLER_FILTER_NEAREST, SAMPLER_EXTEND_NONE),
 			       NO_BLEND,
-			       is_planar_fourcc(frame->id) ?
-			       GEN8_WM_KERNEL_VIDEO_PLANAR :
-			       GEN8_WM_KERNEL_VIDEO_PACKED,
+			       select_video_kernel(frame),
 			       2);
 	tmp.priv = frame;
 

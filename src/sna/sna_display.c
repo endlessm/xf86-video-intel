@@ -166,7 +166,7 @@ struct local_mode_get_plane_res {
 };
 #define LOCAL_IOCTL_MODE_GETPLANERESOURCES DRM_IOWR(0xb5, struct local_mode_get_plane_res)
 
-#if 0
+#if 1
 #define __DBG DBG
 #else
 #define __DBG(x)

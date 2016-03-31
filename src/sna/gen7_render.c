@@ -207,6 +207,12 @@ static const uint32_t ps_kernel_planar[][4] = {
 #include "exa_wm_write.g7b"
 };
 
+static const uint32_t ps_kernel_rgb[][4] = {
+#include "exa_wm_src_affine.g7b"
+#include "exa_wm_src_sample_argb.g7b"
+#include "exa_wm_write.g7b"
+};
+
 #define KERNEL(kernel_enum, kernel, num_surfaces) \
     [GEN7_WM_KERNEL_##kernel_enum] = {#kernel_enum, kernel, sizeof(kernel), num_surfaces}
 #define NOKERNEL(kernel_enum, func, num_surfaces) \
@@ -216,7 +222,7 @@ static const struct wm_kernel_info {
 	const void *data;
 	unsigned int size;
 	int num_surfaces;
-} wm_kernels[] = {
+} wm_kernels[GEN7_WM_KERNEL_COUNT] = {
 	NOKERNEL(NOMASK, brw_wm_kernel__affine, 2),
 	NOKERNEL(NOMASK_P, brw_wm_kernel__projective, 2),
 
@@ -234,6 +240,7 @@ static const struct wm_kernel_info {
 
 	KERNEL(VIDEO_PLANAR, ps_kernel_planar, 7),
 	KERNEL(VIDEO_PACKED, ps_kernel_packed, 2),
+	KERNEL(VIDEO_RGB, ps_kernel_rgb, 2),
 };
 #undef KERNEL
 
@@ -1790,7 +1797,9 @@ static void gen7_emit_video_state(struct sna *sna,
 			frame->pitch[0];
 		n_src = 6;
 	} else {
-		if (frame->id == FOURCC_UYVY)
+		if (frame->id == FOURCC_RGB888)
+			src_surf_format = GEN7_SURFACEFORMAT_B8G8R8X8_UNORM;
+		else if (frame->id == FOURCC_UYVY)
 			src_surf_format = GEN7_SURFACEFORMAT_YCRCB_SWAPY;
 		else
 			src_surf_format = GEN7_SURFACEFORMAT_YCRCB_NORMAL;
@@ -1822,6 +1831,23 @@ static void gen7_emit_video_state(struct sna *sna,
 	}
 
 	gen7_emit_state(sna, op, offset | dirty);
+}
+
+static unsigned select_video_kernel(const struct sna_video_frame *frame)
+{
+	switch (frame->id) {
+	case FOURCC_YV12:
+	case FOURCC_I420:
+	case FOURCC_XVMC:
+		return GEN7_WM_KERNEL_VIDEO_PLANAR;
+
+	case FOURCC_RGB888:
+	case FOURCC_RGB565:
+		return GEN7_WM_KERNEL_VIDEO_RGB;
+
+	default:
+		return GEN7_WM_KERNEL_VIDEO_PACKED;
+	}
 }
 
 static bool
@@ -1876,9 +1902,7 @@ gen7_render_video(struct sna *sna,
 		GEN7_SET_FLAGS(SAMPLER_OFFSET(filter, SAMPLER_EXTEND_PAD,
 					      SAMPLER_FILTER_NEAREST, SAMPLER_EXTEND_NONE),
 			       NO_BLEND,
-			       is_planar_fourcc(frame->id) ?
-			       GEN7_WM_KERNEL_VIDEO_PLANAR :
-			       GEN7_WM_KERNEL_VIDEO_PACKED,
+			       select_video_kernel(frame),
 			       2);
 	tmp.priv = frame;
 
