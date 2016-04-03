@@ -8937,9 +8937,11 @@ fixup_flip:
 					crtc->bo = kgem_bo_reference(flip_bo);
 					crtc->bo->active_scanout++;
 				} else {
-					xf86DrvMsg(sna->scrn->scrnIndex, X_ERROR,
-						   "Failed to prepare CRTC for page flipping, disabling TearFree\n");
-					sna->flags &= ~SNA_TEAR_FREE;
+					if (sna->flags & SNA_TEAR_FREE) {
+						xf86DrvMsg(sna->scrn->scrnIndex, X_ERROR,
+								"Failed to prepare CRTC for page flipping, disabling TearFree\n");
+						sna->flags &= ~SNA_TEAR_FREE;
+					}
 
 					if (sna->mode.flip_active == 0) {
 						DBG(("%s: abandoning flip attempt\n", __FUNCTION__));
