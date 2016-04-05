@@ -202,9 +202,14 @@ static CARD32 sna_fake_vblank_handler(OsTimerPtr timer, CARD32 now, void *data)
 			DBG(("%s: blocking wait!\n", __FUNCTION__));
 			vbl.request.type = DRM_VBLANK_ABSOLUTE;
 			vbl.request.sequence = info->target_msc;
-			(void)sna_wait_vblank(info->sna, &vbl, sna_crtc_pipe(info->crtc));
+			if (sna_wait_vblank(info->sna, &vbl, sna_crtc_pipe(info->crtc)) == 0) {
+				ust = ust64(vbl.reply.tval_sec, vbl.reply.tval_usec);
+				msc = sna_crtc_record_vblank(info->crtc, &vbl);
+			} else
+				goto fixup;
 		}
 	} else {
+fixup:
 		ust = gettime_ust64();
 		msc = info->target_msc;
 		DBG(("%s: event=%lld, CRTC OFF, target msc=%lld, was %lld (off)\n",
