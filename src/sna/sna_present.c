@@ -422,7 +422,6 @@ sna_present_queue_vblank(RRCrtcPtr crtc, uint64_t event_id, uint64_t msc)
 		return BadAlloc;
 	}
 
-	assert(info->queued);
 	return Success;
 }
 
