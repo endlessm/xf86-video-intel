@@ -145,8 +145,12 @@ static uint32_t msc_to_delay(xf86CrtcPtr crtc, uint64_t target)
 	const struct ust_msc *swap = sna_crtc_last_swap(crtc);
 	int64_t delay, subframe;
 
-	delay = (target - swap->msc) * mode->VTotal * mode->HTotal / mode->Clock;
+	delay = target - swap->msc;
+	if (delay > 1) /* try to use the hw vblank for the last frame */
+		delay--;
+	delay *= mode->VTotal * mode->HTotal / mode->Clock;
 	subframe = gettime_ust64() - swap_ust(swap);
+	subframe += 500;
 	subframe /= 1000;
 	if (subframe < delay)
 		delay -= subframe;
