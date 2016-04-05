@@ -45,6 +45,7 @@ struct sna_present_event {
 	uint64_t *event_id;
 	uint64_t target_msc;
 	int n_event_id;
+	bool queued;
 };
 
 static void sna_present_unflip(ScreenPtr screen, uint64_t event_id);
@@ -260,6 +261,7 @@ static bool sna_present_queue(struct sna_present_event *info,
 		if (!sna_fake_vblank(info))
 			return false;
 	} else {
+		info->queued = true;
 		if (info->target_msc - last_msc == 1) {
 			sna_crtc_set_vblank(info->crtc);
 			info->crtc = mark_crtc(info->crtc);
@@ -334,6 +336,11 @@ sna_present_vblank_handler(struct drm_event_vblank *event)
 	struct sna_present_event *info = to_present_event(event->user_data);
 	xf86CrtcPtr crtc = info->crtc;
 
+	if (!info->queued) {
+		DBG(("%s: arrived unexpectedly early (not queued)\n", __FUNCTION__));
+		return;
+	}
+
 	vblank_complete(info,
 			ust64(event->tv_sec, event->tv_usec),
 			sna_crtc_record_event(unmask_crtc(crtc), event));
@@ -406,6 +413,7 @@ sna_present_queue_vblank(RRCrtcPtr crtc, uint64_t event_id, uint64_t msc)
 	info->event_id[0] = event_id;
 	info->n_event_id = 1;
 	list_add_tail(&info->link, &tmp->link);
+	info->queued = false;
 
 	if (!sna_present_queue(info, swap->msc)) {
 		list_del(&info->link);
@@ -569,6 +577,10 @@ present_flip_handler(struct drm_event_vblank *event, void *data)
 
 	DBG(("%s(sequence=%d): event=%lld\n", __FUNCTION__, event->sequence, (long long)info->event_id[0]));
 	assert(info->n_event_id == 1);
+	if (!info->queued) {
+		DBG(("%s: arrived unexpectedly early (not queued)\n", __FUNCTION__));
+		return;
+	}
 
 	if (info->crtc == NULL) {
 		swap.tv_sec = event->tv_sec;
@@ -621,6 +633,7 @@ flip(struct sna *sna,
 	info->event_id[0] = event_id;
 	info->n_event_id = 1;
 	info->target_msc = target_msc;
+	info->queued = false;
 
 	if (!sna_page_flip(sna, bo, present_flip_handler, info)) {
 		DBG(("%s: pageflip failed\n", __FUNCTION__));
@@ -628,6 +641,7 @@ flip(struct sna *sna,
 		return FALSE;
 	}
 
+	info->queued = true;
 	if (info->crtc)
 		sna_crtc_set_vblank(info->crtc);
 	return TRUE;
