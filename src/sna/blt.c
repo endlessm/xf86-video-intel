@@ -258,7 +258,8 @@ memcpy_to_tiled_x__swizzle_0(const void *src, void *dst, int bpp,
 			if (dst_x & tile_mask) {
 				const unsigned x = (dst_x & tile_mask) * cpp;
 				const unsigned len = min(tile_width - x, w);
-				memcpy(tile_row + x, src, len);
+				memcpy(assume_misaligned(tile_row + x, tile_width, x),
+				       src, len);
 
 				tile_row += tile_size;
 				src = (const uint8_t *)src + len;
@@ -266,13 +267,14 @@ memcpy_to_tiled_x__swizzle_0(const void *src, void *dst, int bpp,
 			}
 		}
 		while (w >= tile_width) {
-			memcpy(tile_row, src, tile_width);
+			memcpy(assume_aligned(tile_row, tile_width),
+			       src, tile_width);
 
 			tile_row += tile_size;
 			src = (const uint8_t *)src + tile_width;
 			w -= tile_width;
 		}
-		memcpy(tile_row, src, w);
+		memcpy(assume_aligned(tile_row, tile_width), src, w);
 		src = (const uint8_t *)src + src_stride + w;
 		dst_y++;
 	}
@@ -314,7 +316,9 @@ memcpy_from_tiled_x__swizzle_0(const void *src, void *dst, int bpp,
 			if (src_x & tile_mask) {
 				const unsigned x = (src_x & tile_mask) * cpp;
 				const unsigned len = min(tile_width - x, w);
-				memcpy(dst, tile_row + x, len);
+				memcpy(dst,
+				       assume_misaligned(tile_row, tile_width, x),
+				       len);
 
 				tile_row += tile_size;
 				dst = (uint8_t *)dst + len;
@@ -322,13 +326,15 @@ memcpy_from_tiled_x__swizzle_0(const void *src, void *dst, int bpp,
 			}
 		}
 		while (w >= tile_width) {
-			memcpy(dst, tile_row, tile_width);
+			memcpy(dst,
+			       assume_aligned(tile_row, tile_width),
+			       tile_width);
 
 			tile_row += tile_size;
 			dst = (uint8_t *)dst + tile_width;
 			w -= tile_width;
 		}
-		memcpy(dst, tile_row, w);
+		memcpy(dst, assume_aligned(tile_row, tile_width), w);
 		dst = (uint8_t *)dst + dst_stride + w;
 		src_y++;
 	}
@@ -379,7 +385,8 @@ memcpy_to_tiled_x__##swizzle (const void *src, void *dst, int bpp, \
 				tile_row + \
 				(dx >> tile_pixels) * tile_size + \
 				(dx & tile_mask) * cpp; \
-			memcpy((char *)dst + swizzle(offset), src_row, 64); \
+			memcpy(assume_aligned((char *)dst+swizzle(offset),64), \
+			       src_row, 64); \
 			src_row += 64; \
 			x -= 64; \
 			dx += swizzle_pixels; \
@@ -389,7 +396,7 @@ memcpy_to_tiled_x__##swizzle (const void *src, void *dst, int bpp, \
 				tile_row + \
 				(dx >> tile_pixels) * tile_size + \
 				(dx & tile_mask) * cpp; \
-			memcpy((char *)dst + swizzle(offset), src_row, x); \
+			memcpy(assume_aligned((char *)dst + swizzle(offset), 64), src_row, x); \
 		} \
 	} \
 }
@@ -439,7 +446,7 @@ memcpy_from_tiled_x__##swizzle (const void *src, void *dst, int bpp, \
 				tile_row + \
 				(sx >> tile_pixels) * tile_size + \
 				(sx & tile_mask) * cpp; \
-			memcpy(dst_row, (const char *)src + swizzle(offset), 64); \
+			memcpy(dst_row, assume_aligned((const char *)src + swizzle(offset), 64), 64); \
 			dst_row += 64; \
 			x -= 64; \
 			sx += swizzle_pixels; \
@@ -449,7 +456,7 @@ memcpy_from_tiled_x__##swizzle (const void *src, void *dst, int bpp, \
 				tile_row + \
 				(sx >> tile_pixels) * tile_size + \
 				(sx & tile_mask) * cpp; \
-			memcpy(dst_row, (const char *)src + swizzle(offset), x); \
+			memcpy(dst_row, assume_aligned((const char *)src + swizzle(offset), 64), x); \
 		} \
 	} \
 }
@@ -510,7 +517,7 @@ memcpy_to_tiled_x__gen2(const void *src, void *dst, int bpp,
 			if (dst_x & tile_mask) {
 				const unsigned x = (dst_x & tile_mask) * cpp;
 				const unsigned len = min(tile_width - x, w);
-				memcpy(tile_row + x, src, len);
+				memcpy(assume_misaligned(tile_row + x, tile_width, x), src, len);
 
 				tile_row += tile_size;
 				src = (const uint8_t *)src + len;
@@ -518,13 +525,14 @@ memcpy_to_tiled_x__gen2(const void *src, void *dst, int bpp,
 			}
 		}
 		while (w >= tile_width) {
-			memcpy(tile_row, src, tile_width);
+			memcpy(assume_aligned(tile_row, tile_width),
+			       src, tile_width);
 
 			tile_row += tile_size;
 			src = (const uint8_t *)src + tile_width;
 			w -= tile_width;
 		}
-		memcpy(tile_row, src, w);
+		memcpy(assume_aligned(tile_row, tile_width), src, w);
 		src = (const uint8_t *)src + src_stride + w;
 		dst_y++;
 	}
@@ -566,7 +574,7 @@ memcpy_from_tiled_x__gen2(const void *src, void *dst, int bpp,
 			if (src_x & tile_mask) {
 				const unsigned x = (src_x & tile_mask) * cpp;
 				const unsigned len = min(tile_width - x, w);
-				memcpy(dst, tile_row + x, len);
+				memcpy(dst, assume_misaligned(tile_row + x, tile_width, x), len);
 
 				tile_row += tile_size;
 				dst = (uint8_t *)dst + len;
@@ -574,13 +582,15 @@ memcpy_from_tiled_x__gen2(const void *src, void *dst, int bpp,
 			}
 		}
 		while (w >= tile_width) {
-			memcpy(dst, tile_row, tile_width);
+			memcpy(dst,
+			       assume_aligned(tile_row, tile_width),
+			       tile_width);
 
 			tile_row += tile_size;
 			dst = (uint8_t *)dst + tile_width;
 			w -= tile_width;
 		}
-		memcpy(dst, tile_row, w);
+		memcpy(dst, assume_aligned(tile_row, tile_width), w);
 		dst = (uint8_t *)dst + dst_stride + w;
 		src_y++;
 	}
