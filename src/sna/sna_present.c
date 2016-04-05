@@ -226,8 +226,6 @@ static bool sna_fake_vblank(struct sna_present_event *info)
 	uint64_t msc = sna_crtc_last_swap(info->crtc)->msc;
 	uint32_t delay;
 
-	assert(info->n_event_id == 1);
-
 	if (msc < info->target_msc)
 		delay = msc_to_delay(info->crtc, info->target_msc);
 	else
