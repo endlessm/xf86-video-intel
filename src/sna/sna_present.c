@@ -830,6 +830,10 @@ reset_mode:
 
 	assert(sna_pixmap(screen->GetScreenPixmap(screen))->pinned & PIN_SCANOUT);
 
+	/* Are we unflipping after a failure that left our ScreenP in place? */
+	if (!sna_needs_page_flip(sna, bo))
+		goto notify;
+
 	if (sna->flags & SNA_HAS_ASYNC_FLIP) {
 		DBG(("%s: trying async flip restore\n", __FUNCTION__));
 		if (flip__async(sna, NULL, event_id, 0, bo))

@@ -6396,6 +6396,26 @@ static void sna_mode_restore(struct sna *sna)
 			   "Failed to restore display configuration\n");
 }
 
+bool sna_needs_page_flip(struct sna *sna, struct kgem_bo *bo)
+{
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	int i;
+
+	for (i = 0; i < sna->mode.num_real_crtc; i++) {
+		struct sna_crtc *crtc = config->crtc[i]->driver_private;
+
+		if (crtc->bo == NULL)
+			continue;
+
+		if (crtc->bo == bo)
+			continue;
+
+		return true;
+	}
+
+	return false;
+}
+
 int
 sna_page_flip(struct sna *sna,
 	      struct kgem_bo *bo,

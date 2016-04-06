@@ -467,6 +467,7 @@ extern bool sna_cursors_init(ScreenPtr screen, struct sna *sna);
 typedef void (*sna_flip_handler_t)(struct drm_event_vblank *e,
 				   void *data);
 
+extern bool sna_needs_page_flip(struct sna *sna, struct kgem_bo *bo);
 extern int sna_page_flip(struct sna *sna,
 			 struct kgem_bo *bo,
 			 sna_flip_handler_t handler,
