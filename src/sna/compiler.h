@@ -59,8 +59,8 @@
 #define HAS_GCC(major, minor) defined(__GNUC__) && (__GNUC__ > (major) || __GNUC__ == (major) && __GNUC_MINOR__ >= (minor))
 
 #if HAS_GCC(4, 5)
-#define sse2 __attribute__((target("sse2,fpmath=sse")))
-#define sse4_2 __attribute__((target("sse4.2,sse2,fpmath=sse")))
+#define sse2 fast __attribute__((target("sse2,fpmath=sse")))
+#define sse4_2 fast __attribute__((target("sse4.2,sse2,fpmath=sse")))
 #endif
 
 #if HAS_GCC(4, 6) && defined(__OPTIMIZE__)
