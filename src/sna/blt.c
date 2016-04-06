@@ -339,7 +339,7 @@ memcpy_from_tiled_x__swizzle_0(const void *src, void *dst, int bpp,
 	}
 }
 
-#if defined(sse2) || defined(__x86_64__)
+#if defined(sse2) && defined(__x86_64__)
 
 sse2 static force_inline void
 memcpy_sse64xN(uint8_t *dst, const uint8_t *src, int bytes)
@@ -830,7 +830,7 @@ void choose_memcpy_tiled_x(struct kgem *kgem, int swizzling, unsigned cpu)
 		break;
 	case I915_BIT_6_SWIZZLE_NONE:
 		DBG(("%s: no swizzling\n", __FUNCTION__));
-#if defined(sse2) || defined(__x86_64__)
+#if defined(sse2) && defined(__x86_64__)
 		if (cpu & SSE2) {
 			kgem->memcpy_to_tiled_x = memcpy_to_tiled_x__swizzle_0__sse2;
 			kgem->memcpy_from_tiled_x = memcpy_from_tiled_x__swizzle_0__sse2;
