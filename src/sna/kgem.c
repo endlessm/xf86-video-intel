@@ -1674,7 +1674,9 @@ static void kgem_init_swizzling(struct kgem *kgem)
 		goto out;
 
 	if (!DBG_NO_DETILING)
-		choose_memcpy_tiled_x(kgem, tiling.swizzle_mode);
+		choose_memcpy_tiled_x(kgem,
+				      tiling.swizzle_mode,
+				      __to_sna(kgem)->cpu_features);
 out:
 	gem_close(kgem->fd, tiling.handle);
 	DBG(("%s: can fence?=%d\n", __FUNCTION__, kgem->can_fence));

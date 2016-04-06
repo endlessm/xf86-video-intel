@@ -891,6 +891,6 @@ memcpy_from_tiled_x(struct kgem *kgem,
 					 width, height);
 }
 
-void choose_memcpy_tiled_x(struct kgem *kgem, int swizzling);
+void choose_memcpy_tiled_x(struct kgem *kgem, int swizzling, unsigned cpu);
 
 #endif /* KGEM_H */
