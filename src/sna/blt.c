@@ -467,10 +467,8 @@ memcpy_to_tiled_x__swizzle_0__sse2(const void *src, void *dst, int bpp,
 			src = (const uint8_t *)src + 16;
 			w -= 16;
 		}
-		if (w) {
-			memcpy(tile_row, src, w);
-			src = (const uint8_t *)src + src_stride + w;
-		}
+		memcpy(tile_row, src, w);
+		src = (const uint8_t *)src + src_stride + w;
 		dst_y++;
 	}
 }
@@ -546,10 +544,8 @@ memcpy_from_tiled_x__swizzle_0__sse2(const void *src, void *dst, int bpp,
 			dst = (uint8_t *)dst + 16;
 			w -= 16;
 		}
-		if (w) {
-			memcpy(dst, assume_aligned(tile_row, tile_width), w);
-			dst = (uint8_t *)dst + dst_stride + w;
-		}
+		memcpy(dst, assume_aligned(tile_row, tile_width), w);
+		dst = (uint8_t *)dst + dst_stride + w;
 		src_y++;
 	}
 }
