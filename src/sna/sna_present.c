@@ -126,7 +126,7 @@ static void vblank_complete(struct sna_present_event *info,
 	DBG(("%s: %d events complete\n", __FUNCTION__, info->n_event_id));
 	for (n = 0; n < info->n_event_id; n++) {
 		DBG(("%s: pipe=%d tv=%d.%06d msc=%lld (target=%lld), event=%lld complete%s\n", __FUNCTION__,
-		     sna_crtc_pipe(unmask_crtc(info->crtc)),
+		     sna_crtc_pipe(info->crtc),
 		     (int)(ust / 1000000), (int)(ust % 1000000),
 		     (long long)msc, (long long)info->target_msc,
 		     (long long)info->event_id[n],
@@ -360,18 +360,22 @@ void
 sna_present_vblank_handler(struct drm_event_vblank *event)
 {
 	struct sna_present_event *info = to_present_event(event->user_data);
-	xf86CrtcPtr crtc = info->crtc;
 
 	if (!info->queued) {
 		DBG(("%s: arrived unexpectedly early (not queued)\n", __FUNCTION__));
+		assert(!has_vblank(info->crtc));
 		return;
+	}
+
+	if (has_vblank(info->crtc)) {
+		DBG(("%s: clearing immediate flag\n", __FUNCTION__));
+		info->crtc = unmask_crtc(info->crtc);
+		sna_crtc_clear_vblank(info->crtc);
 	}
 
 	vblank_complete(info,
 			ust64(event->tv_sec, event->tv_usec),
-			sna_crtc_record_event(unmask_crtc(crtc), event));
-	if (has_vblank(crtc))
-		sna_crtc_clear_vblank(unmask_crtc(crtc));
+			sna_crtc_record_event(info->crtc, event));
 }
 
 static int
