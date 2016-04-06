@@ -406,6 +406,7 @@ struct sna {
 		struct gen6_render_state gen6;
 		struct gen7_render_state gen7;
 		struct gen8_render_state gen8;
+		struct gen9_render_state gen9;
 	} render_state;
 
 	/* Broken-out options. */

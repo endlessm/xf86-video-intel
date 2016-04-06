@@ -18015,8 +18015,7 @@ static bool sna_option_accel_blt(struct sna *sna)
 {
 	const char *s;
 
-	if (sna->kgem.gen >= 0110)
-		return true;
+	assert(sna->kgem.gen < 0120);
 
 	s = xf86GetOptValString(sna->Options, OPTION_ACCEL_METHOD);
 	if (s == NULL)
@@ -18108,6 +18107,8 @@ bool sna_accel_init(ScreenPtr screen, struct sna *sna)
 		sna_render_mark_wedged(sna);
 	} else if (sna_option_accel_blt(sna))
 		(void)backend;
+	else if (sna->kgem.gen >= 0110)
+		backend = gen9_render_init(sna, backend);
 	else if (sna->kgem.gen >= 0100)
 		backend = gen8_render_init(sna, backend);
 	else if (sna->kgem.gen >= 070)
