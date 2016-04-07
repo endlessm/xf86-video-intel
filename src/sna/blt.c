@@ -127,6 +127,12 @@ xmm_create_mask_32(uint32_t mask)
 }
 
 static inline __m128i
+xmm_load_128(const __m128i *src)
+{
+	return _mm_load_si128(src);
+}
+
+static inline __m128i
 xmm_load_128u(const __m128i *src)
 {
 	return _mm_loadu_si128(src);
@@ -136,6 +142,12 @@ static inline void
 xmm_save_128(__m128i *dst, __m128i data)
 {
 	_mm_store_si128(dst, data);
+}
+
+static inline void
+xmm_save_128u(__m128i *dst, __m128i data)
+{
+	_mm_storeu_si128(dst, data);
 }
 #endif
 
@@ -342,7 +354,7 @@ memcpy_from_tiled_x__swizzle_0(const void *src, void *dst, int bpp,
 #if defined(sse2) && defined(__x86_64__)
 
 sse2 static force_inline void
-memcpy_sse64xN(uint8_t *dst, const uint8_t *src, int bytes)
+to_sse64xN(uint8_t *dst, const uint8_t *src, int bytes)
 {
 	int i;
 
@@ -365,23 +377,13 @@ memcpy_sse64xN(uint8_t *dst, const uint8_t *src, int bytes)
 }
 
 sse2 static force_inline void
-memcpy_sse64(uint8_t *dst, const uint8_t *src)
+to_sse64(uint8_t *dst, const uint8_t *src)
 {
-	__m128i xmm1, xmm2, xmm3, xmm4;
-
-	xmm1 = xmm_load_128u((const __m128i*)src + 0);
-	xmm2 = xmm_load_128u((const __m128i*)src + 1);
-	xmm3 = xmm_load_128u((const __m128i*)src + 2);
-	xmm4 = xmm_load_128u((const __m128i*)src + 3);
-
-	xmm_save_128((__m128i*)dst + 0, xmm1);
-	xmm_save_128((__m128i*)dst + 1, xmm2);
-	xmm_save_128((__m128i*)dst + 2, xmm3);
-	xmm_save_128((__m128i*)dst + 3, xmm4);
+	to_sse64xN(dst, src, 64);
 }
 
 sse2 static force_inline void
-memcpy_sse32(uint8_t *dst, const uint8_t *src)
+to_sse32(uint8_t *dst, const uint8_t *src)
 {
 	__m128i xmm1, xmm2;
 
@@ -393,7 +395,7 @@ memcpy_sse32(uint8_t *dst, const uint8_t *src)
 }
 
 sse2 static force_inline void
-memcpy_sse16(uint8_t *dst, const uint8_t *src)
+to_sse16(uint8_t *dst, const uint8_t *src)
 {
 	xmm_save_128((__m128i*)dst, xmm_load_128u((const __m128i*)src));
 }
@@ -443,26 +445,26 @@ memcpy_to_tiled_x__swizzle_0__sse2(const void *src, void *dst, int bpp,
 			}
 		}
 		while (w >= tile_width) {
-			memcpy_sse64xN(assume_aligned(tile_row, tile_width),
+			to_sse64xN(assume_aligned(tile_row, tile_width),
 				       src, tile_width);
 			tile_row += tile_size;
 			src = (const uint8_t *)src + tile_width;
 			w -= tile_width;
 		}
 		while (w >= 64) {
-			memcpy_sse64(tile_row, src);
+			to_sse64(tile_row, src);
 			tile_row += 64;
 			src = (const uint8_t *)src + 64;
 			w -= 64;
 		}
 		if (w & 32) {
-			memcpy_sse32(tile_row, src);
+			to_sse32(tile_row, src);
 			tile_row += 32;
 			src = (const uint8_t *)src + 32;
 			w -= 32;
 		}
 		if (w & 16) {
-			memcpy_sse32(tile_row, src);
+			to_sse16(tile_row, src);
 			tile_row += 16;
 			src = (const uint8_t *)src + 16;
 			w -= 16;
@@ -471,6 +473,53 @@ memcpy_to_tiled_x__swizzle_0__sse2(const void *src, void *dst, int bpp,
 		src = (const uint8_t *)src + src_stride + w;
 		dst_y++;
 	}
+}
+
+sse2 static force_inline void
+from_sse64xN(uint8_t *dst, const uint8_t *src, int bytes)
+{
+	int i;
+
+	for (i = 0; i < bytes / 64; i++) {
+		__m128i xmm1, xmm2, xmm3, xmm4;
+
+		xmm1 = xmm_load_128((const __m128i*)src + 0);
+		xmm2 = xmm_load_128((const __m128i*)src + 1);
+		xmm3 = xmm_load_128((const __m128i*)src + 2);
+		xmm4 = xmm_load_128((const __m128i*)src + 3);
+
+		xmm_save_128u((__m128i*)dst + 0, xmm1);
+		xmm_save_128u((__m128i*)dst + 1, xmm2);
+		xmm_save_128u((__m128i*)dst + 2, xmm3);
+		xmm_save_128u((__m128i*)dst + 3, xmm4);
+
+		dst += 64;
+		src += 64;
+	}
+}
+
+sse2 static force_inline void
+from_sse64(uint8_t *dst, const uint8_t *src)
+{
+	from_sse64xN(dst, src, 64);
+}
+
+sse2 static force_inline void
+from_sse32(uint8_t *dst, const uint8_t *src)
+{
+	__m128i xmm1, xmm2;
+
+	xmm1 = xmm_load_128((const __m128i*)src + 0);
+	xmm2 = xmm_load_128((const __m128i*)src + 1);
+
+	xmm_save_128u((__m128i*)dst + 0, xmm1);
+	xmm_save_128u((__m128i*)dst + 1, xmm2);
+}
+
+sse2 static force_inline void
+from_sse16(uint8_t *dst, const uint8_t *src)
+{
+	xmm_save_128u((__m128i*)dst, xmm_load_128((const __m128i*)src));
 }
 
 sse2 static fast_memcpy void
@@ -519,27 +568,27 @@ memcpy_from_tiled_x__swizzle_0__sse2(const void *src, void *dst, int bpp,
 			}
 		}
 		while (w >= tile_width) {
-			memcpy_sse64xN(dst,
-				       assume_aligned(tile_row, tile_width),
-				       tile_width);
+			from_sse64xN(dst,
+				     assume_aligned(tile_row, tile_width),
+				     tile_width);
 			tile_row += tile_size;
 			dst = (uint8_t *)dst + tile_width;
 			w -= tile_width;
 		}
 		while (w >= 64) {
-			memcpy_sse64(dst, tile_row);
+			from_sse64(dst, tile_row);
 			tile_row += 64;
 			dst = (uint8_t *)dst + 64;
 			w -= 64;
 		}
 		if (w & 32) {
-			memcpy_sse32(dst, tile_row);
+			from_sse32(dst, tile_row);
 			tile_row += 32;
 			dst = (uint8_t *)dst + 32;
 			w -= 32;
 		}
 		if (w & 16) {
-			memcpy_sse32(dst, tile_row);
+			from_sse16(dst, tile_row);
 			tile_row += 16;
 			dst = (uint8_t *)dst + 16;
 			w -= 16;
