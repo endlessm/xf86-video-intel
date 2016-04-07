@@ -164,7 +164,7 @@ static uint32_t msc_to_delay(xf86CrtcPtr crtc, uint64_t target)
 	DBG(("%s: sleep %d frames, %llu ms\n", __FUNCTION__,
 	     (int)(target - swap->msc), (long long)delay));
 	assert(delay >= 0);
-	return delay;
+	return MIN(delay, INT32_MAX);
 }
 
 static CARD32 sna_fake_vblank_handler(OsTimerPtr timer, CARD32 now, void *data)
