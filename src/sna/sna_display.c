@@ -192,6 +192,7 @@ struct sna_cursor {
 
 struct sna_crtc {
 	unsigned long flags;
+	uint32_t id;
 	xf86CrtcPtr base;
 	struct drm_mode_modeinfo kmode;
 	PixmapPtr slave_pixmap;
@@ -414,7 +415,12 @@ static inline unsigned __sna_crtc_pipe(struct sna_crtc *crtc)
 
 static inline unsigned __sna_crtc_id(struct sna_crtc *crtc)
 {
-	return crtc->flags >> 16 & 0xff;
+	return crtc->id;
+}
+
+uint32_t sna_crtc_id(xf86CrtcPtr crtc)
+{
+	return __sna_crtc_id(to_sna_crtc(crtc));
 }
 
 static inline bool event_pending(int fd)
@@ -3260,8 +3266,7 @@ sna_crtc_add(ScrnInfoPtr scrn, unsigned id)
 	if (sna_crtc == NULL)
 		return false;
 
-	assert(id < 256);
-	sna_crtc->flags = id << 16;
+	sna_crtc->id = id;
 
 	VG_CLEAR(get_pipe);
 	get_pipe.pipe = 0;
