@@ -120,31 +120,31 @@ static bool have_sse2(void)
 }
 #endif
 
-static inline __m128i
+static force_inline __m128i
 xmm_create_mask_32(uint32_t mask)
 {
 	return _mm_set_epi32(mask, mask, mask, mask);
 }
 
-static inline __m128i
+static force_inline __m128i
 xmm_load_128(const __m128i *src)
 {
 	return _mm_load_si128(src);
 }
 
-static inline __m128i
+static force_inline __m128i
 xmm_load_128u(const __m128i *src)
 {
 	return _mm_loadu_si128(src);
 }
 
-static inline void
+static force_inline void
 xmm_save_128(__m128i *dst, __m128i data)
 {
 	_mm_store_si128(dst, data);
 }
 
-static inline void
+static force_inline void
 xmm_save_128u(__m128i *dst, __m128i data)
 {
 	_mm_storeu_si128(dst, data);
