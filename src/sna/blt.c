@@ -419,6 +419,74 @@ to_sse16(uint8_t *dst, const uint8_t *src)
 	xmm_save_128((__m128i*)dst, xmm_load_128u((const __m128i*)src));
 }
 
+sse2 static void to_memcpy(uint8_t *dst, const uint8_t *src, int len)
+{
+	if ((uintptr_t)dst & 15) {
+		if (len <= ((uintptr_t)dst & 15)) {
+			memcpy(dst, src, len);
+			return;
+		}
+
+		if ((uintptr_t)dst & 1) {
+			*dst++ = *src++;
+			len--;
+		}
+		if ((uintptr_t)dst & 2) {
+			*(uint16_t *)dst = *(const uint16_t *)src;
+			dst += 2;
+			src += 2;
+			len -= 2;
+		}
+		if ((uintptr_t)dst & 4) {
+			*(uint32_t *)dst = *(const uint32_t *)src;
+			dst += 4;
+			src += 4;
+			len -= 4;
+		}
+		if ((uintptr_t)dst & 8) {
+			*(uint64_t *)dst = *(const uint64_t *)src;
+			dst += 8;
+			src += 8;
+			len -= 8;
+		}
+
+		if (len == 0)
+			return;
+	}
+
+	assert(((uintptr_t)dst & 15) == 0);
+	while (len >= 64) {
+		to_sse64(dst, src);
+		dst += 64;
+		src = (const uint8_t *)src + 64;
+		len -= 64;
+	}
+	if (len == 0)
+		return;
+
+	if (len & 32) {
+		to_sse32(dst, src);
+		dst += 32;
+		src = (const uint8_t *)src + 32;
+	}
+	if (len & 16) {
+		to_sse16(dst, src);
+		dst += 16;
+		src = (const uint8_t *)src + 16;
+	}
+	if (len & 8) {
+		*(uint64_t *)dst = *(uint64_t *)src;
+		dst += 8;
+		src = (const uint8_t *)src + 8;
+	}
+	if (len & 4) {
+		*(uint32_t *)dst = *(uint32_t *)src;
+		dst += 4;
+		src = (const uint8_t *)src + 4;
+	}
+	memcpy(dst, src, len & 3);
+}
+
 sse2 static fast_memcpy void
 memcpy_to_tiled_x__swizzle_0__sse2(const void *src, void *dst, int bpp,
 				   int32_t src_stride, int32_t dst_stride,
@@ -443,11 +511,13 @@ memcpy_to_tiled_x__swizzle_0__sse2(const void *src, void *dst, int bpp,
 		src = (const uint8_t *)src + src_y * src_stride + src_x * cpp;
 	width *= cpp;
 	assert(src_stride >= width);
-	src_stride -= width;
 
 	while (height--) {
 		unsigned w = width;
+		const uint8_t *src_row = src;
 		uint8_t *tile_row = dst;
+
+		src = (const uint8_t *)src + src_stride;
 
 		tile_row += dst_y / tile_height * dst_stride * tile_height;
 		tile_row += (dst_y & (tile_height-1)) * tile_width;
@@ -458,39 +528,21 @@ memcpy_to_tiled_x__swizzle_0__sse2(const void *src, void *dst, int bpp,
 			if (dst_x & tile_mask) {
 				const unsigned x = (dst_x & tile_mask) * cpp;
 				const unsigned len = min(tile_width - x, w);
-				memcpy(assume_misaligned(tile_row + x, tile_width, x),
-				       src, len);
+				to_memcpy(tile_row + x, src_row, len);
 
 				tile_row += tile_size;
-				src = (const uint8_t *)src + len;
+				src_row = (const uint8_t *)src_row + len;
 				w -= len;
 			}
 		}
 		while (w >= tile_width) {
 			to_sse128xN(assume_aligned(tile_row, tile_width),
-				    src, tile_width);
+				    src_row, tile_width);
 			tile_row += tile_size;
-			src = (const uint8_t *)src + tile_width;
+			src_row = (const uint8_t *)src_row + tile_width;
 			w -= tile_width;
 		}
-		while (w >= 64) {
-			to_sse64(tile_row, src);
-			tile_row += 64;
-			src = (const uint8_t *)src + 64;
-			w -= 64;
-		}
-		if (w & 32) {
-			to_sse32(tile_row, src);
-			tile_row += 32;
-			src = (const uint8_t *)src + 32;
-		}
-		if (w & 16) {
-			to_sse16(tile_row, src);
-			tile_row += 16;
-			src = (const uint8_t *)src + 16;
-		}
-		memcpy(assume_aligned(tile_row, 16), src, w & 15);
-		src = (const uint8_t *)src + src_stride + (w & 15);
+		to_memcpy(tile_row, src_row, w);
 	}
 }
 
