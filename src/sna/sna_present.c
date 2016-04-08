@@ -145,6 +145,10 @@ static uint32_t msc_to_delay(xf86CrtcPtr crtc, uint64_t target)
 	const struct ust_msc *swap = sna_crtc_last_swap(crtc);
 	int64_t delay, subframe;
 
+	/* XXX How to handle CRTC being off? */
+	if (mode->Clock == 0)
+		return 0;
+
 	delay = target - swap->msc;
 	assert(delay >= 0);
 	if (delay > 1) { /* try to use the hw vblank for the last frame */
@@ -241,21 +245,30 @@ fixup:
 
 static bool sna_fake_vblank(struct sna_present_event *info)
 {
-	uint64_t msc = sna_crtc_last_swap(info->crtc)->msc;
+	const struct ust_msc *swap = sna_crtc_last_swap(info->crtc);
 	uint32_t delay;
 
-	if (msc < info->target_msc)
+	if (swap->msc < info->target_msc)
 		delay = msc_to_delay(info->crtc, info->target_msc);
 	else
 		delay = 0;
 
-	DBG(("%s(event=%lld, target_msc=%lld, msc=%lld, delay=%ums)\n",
-	     __FUNCTION__, (long long)info->event_id[0], (long long)info->target_msc, (long long)msc, delay));
+	DBG(("%s(event=%lldx%d, target_msc=%lld, msc=%lld, delay=%ums)\n",
+	     __FUNCTION__, (long long)info->event_id[0], info->n_event_id,
+	     (long long)info->target_msc, (long long)swap->msc, delay));
 	if (delay == 0) {
-		const struct ust_msc *swap = sna_crtc_last_swap(info->crtc);
-		present_event_notify(info->event_id[0], swap_ust(swap), swap->msc);
-		list_del(&info->link);
-		free(info);
+		uint64_t ust, msc;
+
+		if (swap->msc < info->target_msc) {
+			/* Fixup and pretend it completed immediately */
+			msc = info->target_msc;
+			ust = gettime_ust64();
+		} else {
+			msc = swap->msc;
+			ust = swap_ust(swap);
+		}
+
+		vblank_complete(info, ust, msc);
 		return true;
 	}
 
