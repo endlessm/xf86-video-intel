@@ -58,6 +58,11 @@ to_present_event(uintptr_t  data)
 	return (struct sna_present_event *)(data & ~3);
 }
 
+static inline bool msc_before(uint64_t msc, uint64_t target)
+{
+	return (int64_t)(msc - target) < 0;
+}
+
 #define MARK_PRESENT(x) ((void *)((uintptr_t)(x) | 2))
 
 static inline xf86CrtcPtr unmask_crtc(xf86CrtcPtr crtc)
@@ -114,7 +119,7 @@ static void vblank_complete(struct sna_present_event *info,
 {
 	int n;
 
-	if (msc < info->target_msc) {
+	if (msc_before(msc, info->target_msc)) {
 		DBG(("%s: event=%d too early, now %lld, expected %lld\n",
 		     __FUNCTION__,
 		     info->event_id[0],
@@ -187,7 +192,7 @@ static CARD32 sna_fake_vblank_handler(OsTimerPtr timer, CARD32 now, void *data)
 		msc = sna_crtc_record_vblank(info->crtc, &vbl);
 		DBG(("%s: event=%lld, target msc=%lld, now %lld\n",
 		     __FUNCTION__, (long long)info->event_id[0], (long long)info->target_msc, (long long)msc));
-		if (msc < info->target_msc) {
+		if (msc_before(msc, info->target_msc)) {
 			int delta = info->target_msc - msc;
 			uint32_t delay;
 
@@ -248,7 +253,7 @@ static bool sna_fake_vblank(struct sna_present_event *info)
 	const struct ust_msc *swap = sna_crtc_last_swap(info->crtc);
 	uint32_t delay;
 
-	if (swap->msc < info->target_msc)
+	if (msc_before(swap->msc, info->target_msc))
 		delay = msc_to_delay(info->crtc, info->target_msc);
 	else
 		delay = 0;
@@ -259,7 +264,7 @@ static bool sna_fake_vblank(struct sna_present_event *info)
 	if (delay == 0) {
 		uint64_t ust, msc;
 
-		if (swap->msc < info->target_msc) {
+		if (msc_before(swap->msc, info->target_msc)) {
 			/* Fixup and pretend it completed immediately */
 			msc = info->target_msc;
 			ust = gettime_ust64();
