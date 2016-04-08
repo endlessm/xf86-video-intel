@@ -354,32 +354,31 @@ memcpy_from_tiled_x__swizzle_0(const void *src, void *dst, int bpp,
 #if defined(sse2) && defined(__x86_64__)
 
 sse2 static force_inline void
+to_sse64(uint8_t *dst, const uint8_t *src)
+{
+	__m128i xmm1, xmm2, xmm3, xmm4;
+
+	xmm1 = xmm_load_128u((const __m128i*)src + 0);
+	xmm2 = xmm_load_128u((const __m128i*)src + 1);
+	xmm3 = xmm_load_128u((const __m128i*)src + 2);
+	xmm4 = xmm_load_128u((const __m128i*)src + 3);
+
+	xmm_save_128((__m128i*)dst + 0, xmm1);
+	xmm_save_128((__m128i*)dst + 1, xmm2);
+	xmm_save_128((__m128i*)dst + 2, xmm3);
+	xmm_save_128((__m128i*)dst + 3, xmm4);
+}
+
+sse2 static force_inline void
 to_sse64xN(uint8_t *dst, const uint8_t *src, int bytes)
 {
 	int i;
 
 	for (i = 0; i < bytes / 64; i++) {
-		__m128i xmm1, xmm2, xmm3, xmm4;
-
-		xmm1 = xmm_load_128u((const __m128i*)src + 0);
-		xmm2 = xmm_load_128u((const __m128i*)src + 1);
-		xmm3 = xmm_load_128u((const __m128i*)src + 2);
-		xmm4 = xmm_load_128u((const __m128i*)src + 3);
-
-		xmm_save_128((__m128i*)dst + 0, xmm1);
-		xmm_save_128((__m128i*)dst + 1, xmm2);
-		xmm_save_128((__m128i*)dst + 2, xmm3);
-		xmm_save_128((__m128i*)dst + 3, xmm4);
-
+		to_sse64(dst, src);
 		dst += 64;
 		src += 64;
 	}
-}
-
-sse2 static force_inline void
-to_sse64(uint8_t *dst, const uint8_t *src)
-{
-	to_sse64xN(dst, src, 64);
 }
 
 sse2 static force_inline void
@@ -476,32 +475,31 @@ memcpy_to_tiled_x__swizzle_0__sse2(const void *src, void *dst, int bpp,
 }
 
 sse2 static force_inline void
+from_sse64(uint8_t *dst, const uint8_t *src)
+{
+	__m128i xmm1, xmm2, xmm3, xmm4;
+
+	xmm1 = xmm_load_128((const __m128i*)src + 0);
+	xmm2 = xmm_load_128((const __m128i*)src + 1);
+	xmm3 = xmm_load_128((const __m128i*)src + 2);
+	xmm4 = xmm_load_128((const __m128i*)src + 3);
+
+	xmm_save_128u((__m128i*)dst + 0, xmm1);
+	xmm_save_128u((__m128i*)dst + 1, xmm2);
+	xmm_save_128u((__m128i*)dst + 2, xmm3);
+	xmm_save_128u((__m128i*)dst + 3, xmm4);
+}
+
+sse2 static force_inline void
 from_sse64xN(uint8_t *dst, const uint8_t *src, int bytes)
 {
 	int i;
 
 	for (i = 0; i < bytes / 64; i++) {
-		__m128i xmm1, xmm2, xmm3, xmm4;
-
-		xmm1 = xmm_load_128((const __m128i*)src + 0);
-		xmm2 = xmm_load_128((const __m128i*)src + 1);
-		xmm3 = xmm_load_128((const __m128i*)src + 2);
-		xmm4 = xmm_load_128((const __m128i*)src + 3);
-
-		xmm_save_128u((__m128i*)dst + 0, xmm1);
-		xmm_save_128u((__m128i*)dst + 1, xmm2);
-		xmm_save_128u((__m128i*)dst + 2, xmm3);
-		xmm_save_128u((__m128i*)dst + 3, xmm4);
-
+		from_sse64(dst, src);
 		dst += 64;
 		src += 64;
 	}
-}
-
-sse2 static force_inline void
-from_sse64(uint8_t *dst, const uint8_t *src)
-{
-	from_sse64xN(dst, src, 64);
 }
 
 sse2 static force_inline void
