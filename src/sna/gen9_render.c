@@ -68,6 +68,7 @@
 #endif
 
 #define GEN9_MAX_SIZE 16384
+#define GEN9_GT_BIAS 1 /* Each GT is bigger than previous gen */
 
 /* XXX Todo
  *
@@ -3975,7 +3976,7 @@ static bool gen9_render_setup(struct sna *sna)
 
 	devid = intel_get_device_id(sna->dev);
 	if (devid & 0xf)
-		state->gt = ((devid >> 4) & 0xf) + 1;
+		state->gt = GEN9_GT_BIAS + ((devid >> 4) & 0xf) + 1;
 	DBG(("%s: gt=%d\n", __FUNCTION__, state->gt));
 
 	state->info = &skl_gt_info;
