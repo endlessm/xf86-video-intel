@@ -150,9 +150,7 @@ static uint32_t msc_to_delay(xf86CrtcPtr crtc, uint64_t target)
 	const struct ust_msc *swap = sna_crtc_last_swap(crtc);
 	int64_t delay, subframe;
 
-	/* XXX How to handle CRTC being off? */
-	if (mode->Clock == 0)
-		return 0;
+	assert(mode->Clock);
 
 	delay = target - swap->msc;
 	assert(delay >= 0);
@@ -402,6 +400,9 @@ sna_present_queue_vblank(RRCrtcPtr crtc, uint64_t event_id, uint64_t msc)
 	struct sna *sna = to_sna_from_screen(crtc->pScreen);
 	struct sna_present_event *info, *tmp;
 	const struct ust_msc *swap;
+
+	if (!sna_crtc_is_on(crtc->devPrivate))
+		return BadAlloc;
 
 	swap = sna_crtc_last_swap(crtc->devPrivate);
 	DBG(("%s(pipe=%d, event=%lld, msc=%lld, last swap=%lld)\n",
