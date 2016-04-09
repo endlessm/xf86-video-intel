@@ -2598,6 +2598,7 @@ sna_blt_composite(struct sna *sna,
 clear:
 		if (was_clear && sna_pixmap(tmp->dst.pixmap)->clear_color == 0) {
 			sna_pixmap(tmp->dst.pixmap)->clear = true;
+nop:
 			return prepare_blt_nop(sna, tmp);
 		}
 
@@ -2652,22 +2653,32 @@ clear:
 			if (sna_pixmap(tmp->dst.pixmap)->clear_color == 0)
 				op = PictOpSrc;
 			if (op == PictOpOver) {
+				unsigned dst_color = solid_color(dst->format, sna_pixmap(tmp->dst.pixmap)->clear_color);
 				color = over(get_solid_color(src, PICT_a8r8g8b8),
-					     solid_color(dst->format, sna_pixmap(tmp->dst.pixmap)->clear_color));
+					     dst_color);
 				op = PictOpSrc;
 				DBG(("%s: precomputing solid OVER (%08x, %08x) -> %08x\n",
 				     __FUNCTION__, get_solid_color(src, PICT_a8r8g8b8),
 				     solid_color(dst->format, sna_pixmap(tmp->dst.pixmap)->clear_color),
 				     color));
+				if (color == dst_color)
+					goto nop;
+				else
+					goto fill;
 			}
 			if (op == PictOpAdd) {
+				unsigned dst_color = solid_color(dst->format, sna_pixmap(tmp->dst.pixmap)->clear_color);
 				color = add(get_solid_color(src, PICT_a8r8g8b8),
-					    solid_color(dst->format, sna_pixmap(tmp->dst.pixmap)->clear_color));
+					    dst_color);
 				op = PictOpSrc;
 				DBG(("%s: precomputing solid ADD (%08x, %08x) -> %08x\n",
 				     __FUNCTION__, get_solid_color(src, PICT_a8r8g8b8),
 				     solid_color(dst->format, sna_pixmap(tmp->dst.pixmap)->clear_color),
 				     color));
+				if (color == dst_color)
+					goto nop;
+				else
+					goto fill;
 			}
 		}
 		if (op == PictOpOutReverse && is_opaque_solid(src))
