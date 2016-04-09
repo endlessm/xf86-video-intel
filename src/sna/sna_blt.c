@@ -2647,7 +2647,9 @@ nop:
 		}
 		if (op == PictOpOver && is_opaque_solid(src))
 			op = PictOpSrc;
-		if (op == PictOpAdd && is_white(src))
+		if (op == PictOpAdd &&
+		    PICT_FORMAT_RGB(src->format) == PICT_FORMAT_RGB(dst->format) &&
+		    is_white(src))
 			op = PictOpSrc;
 		if (was_clear && (op == PictOpAdd || op == PictOpOver)) {
 			if (sna_pixmap(tmp->dst.pixmap)->clear_color == 0)
