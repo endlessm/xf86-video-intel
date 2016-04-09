@@ -327,9 +327,7 @@ memcpy_from_tiled_x__swizzle_0(const void *src, void *dst, int bpp,
 			if (src_x & tile_mask) {
 				const unsigned x = (src_x & tile_mask) * cpp;
 				const unsigned len = min(tile_width - x, w);
-				memcpy(dst,
-				       assume_misaligned(tile_row, tile_width, x),
-				       len);
+				memcpy(dst, assume_misaligned(tile_row + x, tile_width, x), len);
 
 				tile_row += tile_size;
 				dst = (uint8_t *)dst + len;
@@ -712,7 +710,7 @@ memcpy_from_tiled_x__swizzle_0__sse2(const void *src, void *dst, int bpp,
 	const unsigned tile_shift = ffs(tile_pixels) - 1;
 	const unsigned tile_mask = tile_pixels - 1;
 
-	unsigned offset_x;
+	unsigned length_x, offset_x;
 
 	DBG(("%s(bpp=%d): src=(%d, %d), dst=(%d, %d), size=%dx%d, pitch=%d/%d\n",
 	     __FUNCTION__, bpp, src_x, src_y, dst_x, dst_y, width, height, src_stride, dst_stride));
@@ -723,10 +721,10 @@ memcpy_from_tiled_x__swizzle_0__sse2(const void *src, void *dst, int bpp,
 	width *= cpp;
 	assert(dst_stride >= width);
 	if (src_x & tile_mask) {
-		const unsigned x = (src_x & tile_mask) * cpp;
 		dst_stride -= width;
-		offset_x = min(tile_width - x, width);
-		dst_stride += (width - offset_x) & 15;
+		offset_x = (src_x & tile_mask) * cpp;
+		length_x = min(tile_width - offset_x, width);
+		dst_stride += (width - length_x) & 15;
 	} else
 		dst_stride -= width & ~15;
 	assert(dst_stride >= 0);
@@ -742,10 +740,10 @@ memcpy_from_tiled_x__swizzle_0__sse2(const void *src, void *dst, int bpp,
 		if (src_x) {
 			tile_row += (src_x >> tile_shift) * tile_size;
 			if (src_x & tile_mask) {
-				memcpy(dst, tile_row, offset_x);
+				memcpy(dst, tile_row + offset_x, length_x);
 				tile_row += tile_size;
-				dst = (uint8_t *)dst + offset_x;
-				w -= offset_x;
+				dst = (uint8_t *)dst + length_x;
+				w -= length_x;
 			}
 		}
 		if ((uintptr_t)dst & 15) {
