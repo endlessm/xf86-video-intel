@@ -1483,8 +1483,10 @@ static bool wait_for_shadow(struct sna *sna,
 	int flip_active;
 	bool ret = true;
 
-	DBG(("%s: flags=%x, flips=%d, handle=%d, shadow=%d\n",
-	     __FUNCTION__, flags, sna->mode.flip_active,
+	DBG(("%s: enabled? %d waiting? %d, flags=%x, flips=%d, pixmap=%ld [front?=%d], handle=%d, shadow=%d\n",
+	     __FUNCTION__, sna->mode.shadow_enabled, sna->mode.shadow_wait,
+	     flags, sna->mode.flip_active,
+	     pixmap->drawable.serialNumber, pixmap == sna->front,
 	     priv->gpu_bo->handle, sna->mode.shadow->handle));
 
 	assert(priv->move_to_gpu_data == sna);

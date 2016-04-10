@@ -376,6 +376,7 @@ void
 sna_present_vblank_handler(struct drm_event_vblank *event)
 {
 	struct sna_present_event *info = to_present_event(event->user_data);
+	uint64_t msc;
 
 	if (!info->queued) {
 		DBG(("%s: arrived unexpectedly early (not queued)\n", __FUNCTION__));
@@ -389,9 +390,15 @@ sna_present_vblank_handler(struct drm_event_vblank *event)
 		sna_crtc_clear_vblank(info->crtc);
 	}
 
-	vblank_complete(info,
-			ust64(event->tv_sec, event->tv_usec),
-			sna_crtc_record_event(info->crtc, event));
+	msc = sna_crtc_record_event(info->crtc, event);
+
+	if (info->sna->mode.shadow_wait) {
+		DBG(("%s: recursed from TearFree\n", __FUNCTION__));
+		if (sna_present_queue(info, msc + 1))
+			return;
+	}
+
+	vblank_complete(info, ust64(event->tv_sec, event->tv_usec), msc);
 }
 
 static int
