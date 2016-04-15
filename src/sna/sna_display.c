@@ -5684,8 +5684,14 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 	cursor->rotation = rotation;
 	cursor->transformed = transformed;
 	cursor->serial = sna->cursor.serial;
-	cursor->last_width = width;
-	cursor->last_height = height;
+	if (transformed) {
+		/* mark the transformed rectangle as dirty, not input */
+		cursor->last_width = size;
+		cursor->last_height = size;
+	} else {
+		cursor->last_width = width;
+		cursor->last_height = height;
+	}
 	return cursor;
 }
 
