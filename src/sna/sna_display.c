@@ -6438,6 +6438,7 @@ sna_page_flip(struct sna *sna,
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
 	const int width = sna->scrn->virtualX;
 	const int height = sna->scrn->virtualY;
+	int sigio;
 	int count = 0;
 	int i;
 
@@ -6455,6 +6456,7 @@ sna_page_flip(struct sna *sna,
 
 	kgem_bo_submit(&sna->kgem, bo);
 
+	sigio = sigio_block();
 	for (i = 0; i < sna->mode.num_real_crtc; i++) {
 		struct sna_crtc *crtc = config->crtc[i]->driver_private;
 		struct drm_mode_crtc_page_flip arg;
@@ -6478,7 +6480,7 @@ sna_page_flip(struct sna *sna,
 		arg.fb_id = get_fb(sna, bo, width, height);
 		if (arg.fb_id == 0) {
 			assert(count == 0);
-			return 0;
+			break;
 		}
 
 		fixup = 0;
@@ -6551,7 +6553,7 @@ retry_flip:
 					goto fixup_flip;
 
 				if (count == 0)
-					return 0;
+					break;
 
 				DBG(("%s: throttling on busy flip / waiting for kernel to catch up\n", __FUNCTION__));
 				drmIoctl(sna->kgem.fd, DRM_IOCTL_I915_GEM_THROTTLE, 0);
@@ -6572,7 +6574,8 @@ error:
 				sna_mode_restore(sna);
 
 			sna->flags &= ~(data ? SNA_HAS_FLIP : SNA_HAS_ASYNC_FLIP);
-			return 0;
+			count = 0;
+			break;
 		}
 
 		if (data) {
@@ -6593,6 +6596,7 @@ error:
 next_crtc:
 		count++;
 	}
+	sigio_unblock(sigio);
 
 	DBG(("%s: page flipped %d crtcs\n", __FUNCTION__, count));
 	return count;
@@ -8741,6 +8745,7 @@ void sna_mode_redisplay(struct sna *sna)
 		xf86CrtcPtr crtc = config->crtc[i];
 		struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
 		RegionRec damage;
+		int sigio;
 
 		assert(sna_crtc != NULL);
 		DBG(("%s: crtc[%d] transformed? %d\n",
@@ -8762,6 +8767,7 @@ void sna_mode_redisplay(struct sna *sna)
 		     region_num_rects(&damage),
 		     damage.extents.x1, damage.extents.y1,
 		     damage.extents.x2, damage.extents.y2));
+		sigio = sigio_block();
 		if (!box_empty(&damage.extents)) {
 			if (sna->flags & SNA_TEAR_FREE) {
 				struct drm_mode_crtc_page_flip arg;
@@ -8861,6 +8867,7 @@ disable1:
 			}
 		}
 		RegionUninit(&damage);
+		sigio_unblock(sigio);
 
 		if (sna_crtc->slave_damage)
 			DamageEmpty(sna_crtc->slave_damage);
@@ -8871,6 +8878,7 @@ disable1:
 		struct kgem_bo *old = sna->mode.shadow;
 		struct drm_mode_crtc_page_flip arg;
 		uint32_t fb = 0;
+		int sigio;
 
 		DBG(("%s: flipping TearFree outputs, current scanout handle=%d [active?=%d], new handle=%d [active=%d]\n",
 		     __FUNCTION__, old->handle, old->active_scanout, new->handle, new->active_scanout));
@@ -8883,6 +8891,7 @@ disable1:
 
 		kgem_bo_submit(&sna->kgem, new);
 
+		sigio = sigio_block();
 		for (i = 0; i < sna->mode.num_real_crtc; i++) {
 			struct sna_crtc *crtc = config->crtc[i]->driver_private;
 			struct kgem_bo *flip_bo;
@@ -8930,6 +8939,7 @@ fixup_shadow:
 						}
 					}
 
+					sigio_unblock(sigio);
 					return;
 				}
 
@@ -9021,6 +9031,7 @@ fixup_flip:
 				}
 			}
 		}
+		sigio_unblock(sigio);
 
 		DBG(("%s: flipped %d outputs, shadow active? %d\n",
 		     __FUNCTION__,
