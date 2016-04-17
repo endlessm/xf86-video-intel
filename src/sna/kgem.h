@@ -422,7 +422,7 @@ static inline void kgem_set_mode(struct kgem *kgem,
 	kgem_submit(kgem);
 #endif
 
-	if (kgem->nreloc && bo->exec == NULL && kgem_ring_is_idle(kgem, kgem->ring)) {
+	if (kgem->nreloc && bo->rq == NULL && kgem_ring_is_idle(kgem, kgem->ring)) {
 		DBG(("%s: flushing before new bo\n", __FUNCTION__));
 		_kgem_submit(kgem);
 	}
