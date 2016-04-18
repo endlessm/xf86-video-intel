@@ -394,8 +394,7 @@ sna_present_vblank_handler(struct drm_event_vblank *event)
 
 	if (info->sna->mode.shadow_wait) {
 		DBG(("%s: recursed from TearFree\n", __FUNCTION__));
-		info->target_msc = msc + 1;
-		if (sna_present_queue(info, msc))
+		if (TimerSet(NULL, 0, 1, sna_fake_vblank_handler, info))
 			return;
 	}
 
