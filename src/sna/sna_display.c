@@ -2841,7 +2841,7 @@ retry: /* Attach per-crtc pixmap or direct */
 
 		kgem_bo_destroy(&sna->kgem, bo);
 
-		if (!sna_crtc->shadow) {
+		if (!sna_crtc->fallback_shadow) {
 			sna_crtc->fallback_shadow = true;
 			goto retry;
 		}
