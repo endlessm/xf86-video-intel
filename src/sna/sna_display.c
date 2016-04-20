@@ -1333,7 +1333,7 @@ static void kmsg_open(struct kmsg *k) {}
 static void kmsg_close(struct kmsg *k, int dump) {}
 #endif
 
-static bool
+static int
 sna_crtc_apply(xf86CrtcPtr crtc)
 {
 	struct sna *sna = to_sna(crtc->scrn);
@@ -1344,7 +1344,7 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 	int output_count = 0;
 	int sigio, i;
 	struct kmsg kmsg;
-	bool ret = false;
+	int ret = EINVAL;
 
 	DBG(("%s CRTC:%d [pipe=%d], handle=%d\n", __FUNCTION__,
 	     __sna_crtc_id(sna_crtc), __sna_crtc_pipe(sna_crtc),
@@ -1352,7 +1352,7 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 	if (!sna_crtc->kmode.clock) {
 		ERR(("%s(CRTC:%d [pipe=%d]): attempted to set an invalid mode\n",
 		     __FUNCTION__, __sna_crtc_id(sna_crtc), __sna_crtc_pipe(sna_crtc)));
-		return false;
+		return EINVAL;
 	}
 
 	sigio = sigio_block();
@@ -1410,13 +1410,11 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 		if (++output_count == ARRAY_SIZE(output_ids)) {
 			DBG(("%s: too many outputs (%d) for me!\n",
 			     __FUNCTION__, output_count));
-			errno = EINVAL;
 			goto unblock;
 		}
 	}
 	if (output_count == 0) {
 		DBG(("%s: no outputs\n", __FUNCTION__));
-		errno = EINVAL;
 		goto unblock;
 	}
 
@@ -1448,13 +1446,14 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 	     sna_crtc->transform ? " [transformed]" : "",
 	     output_count, output_count ? output_ids[0] : 0));
 
-	ret = drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_SETCRTC, &arg) == 0;
-	if (ret) {
+	ret = 0;
+	if (unlikely(drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_SETCRTC, &arg))) {
+		ret = errno;
 		sna_crtc->mode_serial++;
 		sna_crtc_force_outputs_on(crtc);
 	}
 unblock:
-	kmsg_close(&kmsg, !ret);
+	kmsg_close(&kmsg, ret);
 	sigio_unblock(sigio);
 	return ret;
 }
@@ -2810,6 +2809,7 @@ __sna_crtc_set_mode(xf86CrtcPtr crtc)
 	bool saved_transform;
 	bool saved_hwcursor;
 	bool saved_cursor_transform;
+	int ret;
 
 	DBG(("%s: CRTC=%d, pipe=%d, hidden?=%d\n", __FUNCTION__,
 	     __sna_crtc_id(sna_crtc), __sna_crtc_pipe(sna_crtc), sna->mode.hidden));
@@ -2836,9 +2836,8 @@ retry: /* Attach per-crtc pixmap or direct */
 		_kgem_submit(&sna->kgem);
 
 	sna_crtc->bo = bo;
-	if (!sna_crtc_apply(crtc)) {
-		int err = errno;
-
+	ret = sna_crtc_apply(crtc);
+	if (ret) {
 		kgem_bo_destroy(&sna->kgem, bo);
 
 		if (!sna_crtc->fallback_shadow) {
@@ -2847,7 +2846,7 @@ retry: /* Attach per-crtc pixmap or direct */
 		}
 
 		xf86DrvMsg(crtc->scrn->scrnIndex, X_ERROR,
-			   "failed to set mode: %s [%d]\n", strerror(err), err);
+			   "failed to set mode: %s [%d]\n", strerror(ret), ret);
 		goto error;
 	}
 
