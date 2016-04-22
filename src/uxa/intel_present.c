@@ -244,6 +244,7 @@ intel_present_check_flip(RRCrtcPtr              crtc,
 	ScrnInfoPtr             scrn = xf86ScreenToScrn(screen);
 	intel_screen_private    *intel = intel_get_screen_private(scrn);
         dri_bo                  *bo;
+	uint32_t		tiling, swizzle;
 
 	if (!scrn->vtSema)
 		return FALSE;
@@ -265,6 +266,12 @@ intel_present_check_flip(RRCrtcPtr              crtc,
         bo = intel_get_pixmap_bo(pixmap);
         if (!bo)
                 return FALSE;
+
+	if (drm_intel_bo_get_tiling(bo, &tiling, &swizzle))
+		return FALSE;
+
+	if (tiling == I915_TILING_Y)
+		return FALSE;
 
 	return TRUE;
 }

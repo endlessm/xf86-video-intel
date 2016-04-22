@@ -168,6 +168,7 @@ typedef struct intel_screen_private {
 	const struct intel_device_info *info;
 
 	unsigned int BR[20];
+	unsigned int BR_tiling[2];
 
 	CloseScreenProcPtr CloseScreen;
 
