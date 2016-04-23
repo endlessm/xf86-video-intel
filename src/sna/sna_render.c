@@ -1326,6 +1326,8 @@ sna_render_picture_convolve(struct sna *sna,
 	 */
 	DBG(("%s: origin=(%d,%d) kernel=%dx%d, size=%dx%d\n",
 	     __FUNCTION__, x_off, y_off, cw, ch, w, h));
+	if (cw*ch > 32) /* too much loss of precision from quantization! */
+		return -1;
 
 	assert(picture->pDrawable);
 	assert(picture->filter == PictFilterConvolution);
@@ -1376,9 +1378,9 @@ sna_render_picture_convolve(struct sna *sna,
 			alpha = CreateSolidPicture(0, &color, &error);
 			if (alpha) {
 				sna_composite(PictOpAdd, picture, alpha, tmp,
-					      x, y,
+					      x-(x_off+i), y-(y_off+j),
 					      0, 0,
-					      x_off+i, y_off+j,
+					      0, 0,
 					      w, h);
 				FreePicture(alpha, 0);
 			}
