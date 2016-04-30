@@ -2648,7 +2648,9 @@ void sna_dri2_vblank_handler(struct drm_event_vblank *event)
 		}
 
 		if (info->pending.bo) {
-			DBG(("%s: swapping old back handle=%d [name=%d, active=%d] for pending handle=%d [name=%d, active=%d], front handle=%d [name=%d, active=%d]\n",
+			struct copy current_back;
+
+			DBG(("%s: swapping back handle=%d [name=%d, active=%d] for pending handle=%d [name=%d, active=%d], front handle=%d [name=%d, active=%d]\n",
 			     __FUNCTION__,
 			     get_private(info->back)->bo->handle, info->back->name, get_private(info->back)->bo->active_scanout,
 			     info->pending.bo->handle, info->pending.name, info->pending.bo->active_scanout,
@@ -2664,11 +2666,10 @@ void sna_dri2_vblank_handler(struct drm_event_vblank *event)
 			assert(info->pending.bo->active_scanout > 0);
 			info->pending.bo->active_scanout--;
 
-			sna_dri2_cache_bo(info->sna, info->draw,
-					  get_private(info->back)->bo,
-					  info->back->name,
-					  get_private(info->back)->size,
-					  info->back->flags);
+			current_back.bo = get_private(info->back)->bo;
+			current_back.size = get_private(info->back)->size;
+			current_back.name = info->back->name;
+			current_back.flags = info->back->flags;
 
 			get_private(info->back)->bo = info->pending.bo;
 			get_private(info->back)->size = info->pending.size;
@@ -2687,6 +2688,23 @@ void sna_dri2_vblank_handler(struct drm_event_vblank *event)
 						   info->front, info->back);
 			else
 				__sna_dri2_copy_event(info, info->sync | DRI2_BO);
+
+			sna_dri2_cache_bo(info->sna, info->draw,
+					  get_private(info->back)->bo,
+					  info->back->name,
+					  get_private(info->back)->size,
+					  info->back->flags);
+
+			get_private(info->back)->bo = current_back.bo;
+			get_private(info->back)->size = current_back.size;
+			info->back->name = current_back.name;
+			info->back->pitch = current_back.bo->pitch;
+			info->back->flags = current_back.flags;
+
+			DBG(("%s: restored current back handle=%d [name=%d, active=%d], active=%d], front handle=%d [name=%d, active=%d]\n",
+			     __FUNCTION__,
+			     get_private(info->back)->bo->handle, info->back->name, get_private(info->back)->bo->active_scanout,
+			     get_private(info->front)->bo->handle, info->front->name, get_private(info->front)->bo->active_scanout));
 
 			assert(info->draw);
 			info->keepalive++;
