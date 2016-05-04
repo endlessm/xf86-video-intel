@@ -280,6 +280,9 @@ PKG_CHECK_MODULES(X11_DRI3, [xcb-dri3 xcb-sync xcb-xfixes xcb-present x11-xcb xs
 AM_CONDITIONAL(X11_DRI3, test "x$x11_dri3" = "xyes" -a "x$shm" = "xyes")
 AM_CONDITIONAL(X11_SHM, test "x$shm" = "xyes")
 
+PKG_CHECK_MODULES(X11_VM, [xxf86vm], [x11_vm="yes"], [x11_vm="no"])
+AM_CONDITIONAL(X11_VM, test "x$x11_vm" = "xyes")
+
 AC_ARG_ENABLE(tools,
               AS_HELP_STRING([--disable-tools],
 			     [Enable building and installing the miscellaneous tools [default=auto]]),

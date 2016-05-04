@@ -28,6 +28,12 @@ stress_TESTS = \
 	shm-test \
 	$(NULL)
 
+if X11_VM
+stress_TESTS += \
+	xvidmode \
+	$(NULL)
+endif
+
 if DRI2
 stress_TESTS += \
 	dri2-race \
