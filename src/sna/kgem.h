@@ -113,6 +113,12 @@ enum {
 	NUM_MAP_TYPES,
 };
 
+typedef void (*memcpy_box_func)(const void *src, void *dst, int bpp,
+				int32_t src_stride, int32_t dst_stride,
+				int16_t src_x, int16_t src_y,
+				int16_t dst_x, int16_t dst_y,
+				uint16_t width, uint16_t height);
+
 struct kgem {
 	unsigned wedged;
 	int fd;
@@ -212,16 +218,9 @@ struct kgem {
 	void (*retire)(struct kgem *kgem);
 	void (*expire)(struct kgem *kgem);
 
-	void (*memcpy_to_tiled_x)(const void *src, void *dst, int bpp,
-				  int32_t src_stride, int32_t dst_stride,
-				  int16_t src_x, int16_t src_y,
-				  int16_t dst_x, int16_t dst_y,
-				  uint16_t width, uint16_t height);
-	void (*memcpy_from_tiled_x)(const void *src, void *dst, int bpp,
-				    int32_t src_stride, int32_t dst_stride,
-				    int16_t src_x, int16_t src_y,
-				    int16_t dst_x, int16_t dst_y,
-				    uint16_t width, uint16_t height);
+	memcpy_box_func memcpy_to_tiled_x;
+	memcpy_box_func memcpy_from_tiled_x;
+	memcpy_box_func memcpy_between_tiled_x;
 
 	struct kgem_bo *batch_bo;
 
