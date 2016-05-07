@@ -1246,6 +1246,7 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 
 	src_bo = src_priv->bo;
 	assert(src_bo->refcnt);
+	kgem_bo_unclean(&sna->kgem, src_bo);
 	if (is_front(src->attachment)) {
 		struct sna_pixmap *priv;
 
