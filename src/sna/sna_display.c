@@ -210,8 +210,6 @@ struct sna_crtc {
 
 	struct pict_f_transform cursor_to_fb, fb_to_cursor;
 
-	RegionRec client_damage; /* XXX overlap with shadow damage? */
-
 	uint16_t shadow_bo_width, shadow_bo_height;
 
 	uint32_t rotation;
@@ -1665,12 +1663,13 @@ static bool wait_for_shadow(struct sna *sna,
 		     sna->mode.shadow_region.extents.y1,
 		     sna->mode.shadow_region.extents.x2,
 		     sna->mode.shadow_region.extents.y2));
-		ret = sna->render.copy_boxes(sna, GXcopy,
-					     &pixmap->drawable, priv->gpu_bo, 0, 0,
-					     &pixmap->drawable, bo, 0, 0,
-					     region_rects(&sna->mode.shadow_region),
-					     region_num_rects(&sna->mode.shadow_region),
-					     0);
+		if (!sna->render.copy_boxes(sna, GXcopy,
+					    &pixmap->drawable, priv->gpu_bo, 0, 0,
+					    &pixmap->drawable, bo, 0, 0,
+					    region_rects(&sna->mode.shadow_region),
+					    region_num_rects(&sna->mode.shadow_region),
+					    0))
+			ERR(("%s: copy failed\n", __FUNCTION__));
 	}
 
 	if (priv->cow)
@@ -2552,7 +2551,7 @@ out_shadow:
 				return NULL;
 			}
 
-			if (sna->mode.shadow == NULL && !wedged(sna)) {
+			if (sna->mode.shadow == NULL) {
 				struct kgem_bo *shadow;
 
 				DBG(("%s: creating TearFree shadow bo\n", __FUNCTION__));
@@ -2743,7 +2742,6 @@ sna_crtc_damage(xf86CrtcPtr crtc)
 	     __FUNCTION__, sna_crtc_id(crtc),
 	     region.extents.x1, region.extents.y1,
 	     region.extents.x2, region.extents.y2));
-	to_sna_crtc(crtc)->client_damage = region;
 
 	assert(sna->mode.shadow_damage && sna->mode.shadow_active);
 	damage = DamageRegion(sna->mode.shadow_damage);
@@ -8516,6 +8514,9 @@ static bool move_crtc_to_gpu(struct sna *sna)
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
 	int i;
 
+	if (sna->flags & SNA_TEAR_FREE)
+		return true;
+
 	for (i = 0; i < sna->mode.num_real_crtc; i++) {
 		struct sna_crtc *crtc = to_sna_crtc(config->crtc[i]);
 
@@ -8528,6 +8529,9 @@ static bool move_crtc_to_gpu(struct sna *sna)
 			continue;
 
 		if (crtc->client_bo)
+			continue;
+
+		if (crtc->shadow_bo)
 			continue;
 
 		DBG(("%s: CRTC %d [pipe=%d] requires frontbuffer\n",
@@ -8592,7 +8596,7 @@ void sna_mode_redisplay(struct sna *sna)
 			return;
 	}
 
-	if (wedged(sna) || !move_crtc_to_gpu(sna)) {
+	if (!move_crtc_to_gpu(sna)) {
 		DBG(("%s: forcing scanout update using the CPU\n", __FUNCTION__));
 		if (!sna_pixmap_move_to_cpu(sna->front, MOVE_READ))
 			return;
@@ -8613,97 +8617,14 @@ void sna_mode_redisplay(struct sna *sna)
 			damage.data = NULL;
 			RegionIntersect(&damage, &damage, region);
 			if (!box_empty(&damage.extents)) {
-				struct kgem_bo *bo = NULL;
-
 				DBG(("%s: fallback intersects pipe=%d [(%d, %d), (%d, %d)]\n",
 				     __FUNCTION__, __sna_crtc_pipe(sna_crtc),
 				     damage.extents.x1, damage.extents.y1,
 				     damage.extents.x2, damage.extents.y2));
 
-				if (sna->flags & SNA_TEAR_FREE) {
-					RegionRec new_damage;
-
-					RegionNull(&new_damage);
-					RegionCopy(&new_damage, &damage);
-
-					bo = sna_crtc->cache_bo;
-					if (bo == NULL) {
-						damage.extents = crtc->bounds;
-						damage.data = NULL;
-						bo = kgem_create_2d(&sna->kgem,
-								crtc->mode.HDisplay,
-								crtc->mode.VDisplay,
-								crtc->scrn->bitsPerPixel,
-								sna_crtc->bo->tiling,
-								CREATE_SCANOUT);
-					} else
-						RegionUnion(&damage, &damage, &sna_crtc->client_damage);
-
-					DBG(("%s: TearFree fallback, shadow handle=%d, crtc handle=%d\n", __FUNCTION__, bo->handle, sna_crtc->bo->handle));
-
-					sna_crtc->client_damage = new_damage;
-				}
-
-				if (bo == NULL)
-					bo = sna_crtc->bo;
-				sna_crtc_redisplay__fallback(crtc, &damage, bo);
-
-				if (bo != sna_crtc->bo) {
-					struct drm_mode_crtc_page_flip arg;
-
-					arg.crtc_id = __sna_crtc_id(sna_crtc);
-					arg.fb_id = get_fb(sna, bo,
-							   crtc->mode.HDisplay,
-							   crtc->mode.VDisplay);
-
-					arg.user_data = (uintptr_t)sna_crtc;
-					arg.flags = DRM_MODE_PAGE_FLIP_EVENT;
-					arg.reserved = 0;
-
-					if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_PAGE_FLIP, &arg)) {
-						if (sna_crtc_flip(sna, sna_crtc, bo, 0, 0)) {
-							DBG(("%s: removing handle=%d [active_scanout=%d] from scanout, installing handle=%d [active_scanout=%d]\n",
-							     __FUNCTION__, sna_crtc->bo->handle, sna_crtc->bo->active_scanout,
-							     bo->handle, bo->active_scanout));
-							assert(sna_crtc->bo->active_scanout);
-							assert(sna_crtc->bo->refcnt >= sna_crtc->bo->active_scanout);
-							sna_crtc->bo->active_scanout--;
-							kgem_bo_destroy(&sna->kgem, sna_crtc->bo);
-
-							sna_crtc->bo = bo;
-							sna_crtc->bo->active_scanout++;
-							sna_crtc->cache_bo = NULL;
-						} else {
-							DBG(("%s: flip [fb=%d] on crtc %d [%d, pipe=%d] failed - %d\n",
-							     __FUNCTION__, arg.fb_id, i, __sna_crtc_id(sna_crtc), __sna_crtc_pipe(sna_crtc), errno));
-							xf86DrvMsg(sna->scrn->scrnIndex, X_ERROR,
-								   "Page flipping failed, disabling TearFree\n");
-							sna->flags &= ~SNA_TEAR_FREE;
-
-							damage.extents = crtc->bounds;
-							damage.data = NULL;
-							sna_crtc_redisplay__fallback(crtc, &damage, sna_crtc->bo);
-
-							kgem_bo_destroy(&sna->kgem, bo);
-							sna_crtc->cache_bo = NULL;
-						}
-					} else {
-						sna->mode.flip_active++;
-
-						assert(sna_crtc->flip_bo == NULL);
-						sna_crtc->flip_handler = shadow_flip_handler;
-						sna_crtc->flip_data = sna;
-						sna_crtc->flip_bo = bo;
-						sna_crtc->flip_bo->active_scanout++;
-						sna_crtc->flip_serial = sna_crtc->mode_serial;
-						sna_crtc->flip_pending = true;
-
-						sna_crtc->cache_bo = kgem_bo_reference(sna_crtc->bo);
-
-						DBG(("%s: recording flip on CRTC:%d handle=%d, active_scanout=%d, serial=%d\n",
-						     __FUNCTION__, __sna_crtc_id(sna_crtc), sna_crtc->flip_bo->handle, sna_crtc->flip_bo->active_scanout, sna_crtc->flip_serial));
-					}
-				}
+				sna_crtc_redisplay__fallback(crtc,
+							     &damage,
+							     sna_crtc->bo);
 			}
 			RegionUninit(&damage);
 
