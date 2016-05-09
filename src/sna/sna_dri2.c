@@ -1617,6 +1617,9 @@ static void fake_swap_complete(struct sna *sna, ClientPtr client,
 
 	assert(draw);
 
+	if (crtc == NULL)
+		crtc = sna_primary_crtc(sna);
+
 	swap = sna_crtc_last_swap(crtc);
 	DBG(("%s(type=%d): draw=%ld, pipe=%d, frame=%lld [msc %lld], tv=%d.%06d\n",
 	     __FUNCTION__, type, (long)draw->id, crtc ? sna_crtc_pipe(crtc) : -1,
@@ -3340,7 +3343,7 @@ sna_dri2_schedule_swap(ClientPtr client, DrawablePtr draw, DRI2BufferPtr front,
 		     __FUNCTION__,
 		     get_private(front)->pixmap->drawable.serialNumber,
 		     get_drawable_pixmap(draw)->drawable.serialNumber));
-		goto fake;
+		goto skip;
 	}
 
 	if (get_private(back)->stale) {
@@ -3484,7 +3487,7 @@ skip:
 		if (!sna_next_vblank(info))
 			goto fake;
 
-		swap_limit(draw, 2);
+		swap_limit(draw, 1);
 	} else {
 fake:
 		/* XXX Use a Timer to throttle the client? */
