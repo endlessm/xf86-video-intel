@@ -8734,7 +8734,6 @@ void sna_mode_redisplay(struct sna *sna)
 
 						sna_crtc->bo = kgem_bo_reference(bo);
 						sna_crtc->bo->active_scanout++;
-						sna_crtc->cache_bo = kgem_bo_reference(bo);
 					} else {
 						BoxRec box;
 						DrawableRec tmp;
@@ -8762,10 +8761,10 @@ disable1:
 								   __FUNCTION__, __sna_crtc_id(sna_crtc), __sna_crtc_pipe(sna_crtc));
 							sna_crtc_disable(crtc, false);
 						}
-
-						kgem_bo_destroy(&sna->kgem, bo);
-						sna_crtc->cache_bo = NULL;
 					}
+
+					kgem_bo_destroy(&sna->kgem, bo);
+					sna_crtc->cache_bo = NULL;
 					continue;
 				}
 				sna->mode.flip_active++;
@@ -8778,6 +8777,8 @@ disable1:
 				sna_crtc->flip_serial = sna_crtc->mode_serial;
 				sna_crtc->flip_pending = true;
 
+				assert_scanout(&sna->kgem, sna_crtc->bo,
+					       crtc->mode.HDisplay, crtc->mode.VDisplay);
 				sna_crtc->cache_bo = kgem_bo_reference(sna_crtc->bo);
 				DBG(("%s: recording flip on CRTC:%d handle=%d, active_scanout=%d, serial=%d\n",
 				     __FUNCTION__, __sna_crtc_id(sna_crtc), sna_crtc->flip_bo->handle, sna_crtc->flip_bo->active_scanout, sna_crtc->flip_serial));
