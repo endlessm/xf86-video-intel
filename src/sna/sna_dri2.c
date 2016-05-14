@@ -2573,6 +2573,8 @@ static bool sna_dri2_blit_complete(struct sna_dri2_event *info)
 		     __FUNCTION__));
 		if (sna_next_vblank(info))
 			return false;
+
+		kgem_bo_sync__gtt(&info->sna->kgem, info->bo);
 	}
 
 	DBG(("%s: blit finished\n", __FUNCTION__));
