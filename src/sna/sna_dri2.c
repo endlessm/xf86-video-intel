@@ -2553,22 +2553,15 @@ static inline bool rq_is_busy(struct kgem *kgem, struct kgem_bo *bo)
 	if (bo == NULL)
 		return false;
 
-	DBG(("%s: handle=%d, domain: %d exec? %d, rq? %d\n", __FUNCTION__,
-	     bo->handle, bo->domain, bo->exec != NULL, bo->rq != NULL));
-	assert(bo->refcnt);
-
-	if (bo->exec)
-		return true;
-
-	if (bo->rq == NULL)
-		return false;
-
-	return __kgem_busy(kgem, bo->handle);
+	return __kgem_bo_is_busy(kgem, bo);
 }
 
 static bool sna_dri2_blit_complete(struct sna_dri2_event *info)
 {
-	if (rq_is_busy(&info->sna->kgem, info->bo)) {
+	if (!info->bo)
+		return true;
+
+	if (__kgem_bo_is_busy(&info->sna->kgem, info->bo)) {
 		DBG(("%s: vsync'ed blit is still busy, postponing\n",
 		     __FUNCTION__));
 		if (sna_next_vblank(info))
@@ -2578,10 +2571,9 @@ static bool sna_dri2_blit_complete(struct sna_dri2_event *info)
 	}
 
 	DBG(("%s: blit finished\n", __FUNCTION__));
-	if (info->bo) {
-		kgem_bo_destroy(&info->sna->kgem, info->bo);
-		info->bo = NULL;
-	}
+	kgem_bo_destroy(&info->sna->kgem, info->bo);
+	info->bo = NULL;
+
 	return true;
 }
 
