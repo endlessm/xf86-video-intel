@@ -8777,9 +8777,11 @@ disable1:
 				sna_crtc->flip_serial = sna_crtc->mode_serial;
 				sna_crtc->flip_pending = true;
 
-				assert_scanout(&sna->kgem, sna_crtc->bo,
-					       crtc->mode.HDisplay, crtc->mode.VDisplay);
-				sna_crtc->cache_bo = kgem_bo_reference(sna_crtc->bo);
+				if (sna_crtc->bo != sna->mode.shadow) {
+					assert_scanout(&sna->kgem, sna_crtc->bo,
+						       crtc->mode.HDisplay, crtc->mode.VDisplay);
+					sna_crtc->cache_bo = kgem_bo_reference(sna_crtc->bo);
+				}
 				DBG(("%s: recording flip on CRTC:%d handle=%d, active_scanout=%d, serial=%d\n",
 				     __FUNCTION__, __sna_crtc_id(sna_crtc), sna_crtc->flip_bo->handle, sna_crtc->flip_bo->active_scanout, sna_crtc->flip_serial));
 			} else {
