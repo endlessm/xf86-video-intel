@@ -8519,11 +8519,9 @@ static bool move_crtc_to_gpu(struct sna *sna)
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
 	int i;
 
-	if (sna->flags & SNA_TEAR_FREE)
-		return true;
-
 	for (i = 0; i < sna->mode.num_real_crtc; i++) {
 		struct sna_crtc *crtc = to_sna_crtc(config->crtc[i]);
+		unsigned hint;
 
 		assert(crtc);
 
@@ -8539,10 +8537,13 @@ static bool move_crtc_to_gpu(struct sna *sna)
 		if (crtc->shadow_bo)
 			continue;
 
+		hint = MOVE_READ | MOVE_ASYNC_HINT | __MOVE_SCANOUT;
+		if (sna->flags & SNA_TEAR_FREE)
+			hint |= __MOVE_FORCE;
+
 		DBG(("%s: CRTC %d [pipe=%d] requires frontbuffer\n",
 		     __FUNCTION__, __sna_crtc_id(crtc), __sna_crtc_pipe(crtc)));
-		return sna_pixmap_move_to_gpu(sna->front,
-					      MOVE_READ | MOVE_ASYNC_HINT | __MOVE_SCANOUT);
+		return sna_pixmap_move_to_gpu(sna->front, hint);
 	}
 
 	return true;
