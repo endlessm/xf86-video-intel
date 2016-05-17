@@ -1447,9 +1447,12 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 	ret = 0;
 	if (unlikely(drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_SETCRTC, &arg))) {
 		ret = errno;
-		sna_crtc->mode_serial++;
-		sna_crtc_force_outputs_on(crtc);
+		goto unblock;
 	}
+
+	sna_crtc->mode_serial++;
+	sna_crtc_force_outputs_on(crtc);
+
 unblock:
 	kmsg_close(&kmsg, ret);
 	sigio_unblock(sigio);
