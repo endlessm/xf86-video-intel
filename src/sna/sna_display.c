@@ -210,6 +210,7 @@ struct sna_crtc {
 
 	struct pict_f_transform cursor_to_fb, fb_to_cursor;
 
+	RegionRec crtc_damage;
 	uint16_t shadow_bo_width, shadow_bo_height;
 
 	uint32_t rotation;
@@ -2749,6 +2750,7 @@ sna_crtc_damage(xf86CrtcPtr crtc)
 	assert(sna->mode.shadow_damage && sna->mode.shadow_active);
 	damage = DamageRegion(sna->mode.shadow_damage);
 	RegionUnion(damage, damage, &region);
+	to_sna_crtc(crtc)->crtc_damage = region;
 
 	DBG(("%s: damage now %dx[(%d, %d), (%d, %d)]\n",
 	     __FUNCTION__,
@@ -8693,23 +8695,28 @@ void sna_mode_redisplay(struct sna *sna)
 		sigio = sigio_block();
 		if (!box_empty(&damage.extents)) {
 			if (sna->flags & SNA_TEAR_FREE) {
+				RegionRec new_damage;
 				struct drm_mode_crtc_page_flip arg;
 				struct kgem_bo *bo;
 
-				RegionUninit(&damage);
-				damage.extents = crtc->bounds;
-				damage.data = NULL;
+				RegionNull(&new_damage);
+				RegionCopy(&new_damage, &damage);
 
 				bo = sna_crtc->cache_bo;
-				if (bo == NULL)
+				if (bo == NULL) {
+					damage.extents = crtc->bounds;
+					damage.data = NULL;
 					bo = kgem_create_2d(&sna->kgem,
 							    crtc->mode.HDisplay,
 							    crtc->mode.VDisplay,
 							    crtc->scrn->bitsPerPixel,
 							    sna_crtc->bo->tiling,
 							    CREATE_SCANOUT);
-				if (bo == NULL)
-					continue;
+					if (bo == NULL)
+						continue;
+				} else
+					RegionUnion(&damage, &damage, &sna_crtc->crtc_damage);
+				sna_crtc->crtc_damage = new_damage;
 
 				sna_crtc_redisplay(crtc, &damage, bo);
 				kgem_bo_submit(&sna->kgem, bo);
