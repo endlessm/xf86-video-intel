@@ -5021,19 +5021,25 @@ output_check_status(struct sna *sna, struct sna_output *output)
 {
 	union compat_mode_get_connector compat_conn;
 	struct drm_mode_modeinfo dummy;
+	struct drm_mode_get_blob blob;
 	xf86OutputStatus status;
+	char *edid;
 
 	VG_CLEAR(compat_conn);
 
+	compat_conn.conn.connection = -1;
 	compat_conn.conn.connector_id = output->id;
 	compat_conn.conn.count_modes = 1; /* skip detect */
 	compat_conn.conn.modes_ptr = (uintptr_t)&dummy;
 	compat_conn.conn.count_encoders = 0;
-	compat_conn.conn.count_props = 0;
+	compat_conn.conn.props_ptr = (uintptr_t)output->prop_ids;
+	compat_conn.conn.prop_values_ptr = (uintptr_t)output->prop_values;
+	compat_conn.conn.count_props = output->num_props;
 
-	(void)drmIoctl(sna->kgem.fd,
-		       DRM_IOCTL_MODE_GETCONNECTOR,
-		       &compat_conn.conn);
+	if (drmIoctl(sna->kgem.fd,
+		     DRM_IOCTL_MODE_GETCONNECTOR,
+		     &compat_conn.conn) == 0)
+		output->update_properties = false;
 
 	switch (compat_conn.conn.connection) {
 	case DRM_MODE_CONNECTED:
@@ -5047,7 +5053,25 @@ output_check_status(struct sna *sna, struct sna_output *output)
 		status = XF86OutputStatusUnknown;
 		break;
 	}
-	return output->status == status;
+	if (output->status != status)
+		return false;
+
+	if (output->edid_len == 0)
+		return false;
+
+	edid = alloca(output->edid_len);
+
+	VG_CLEAR(blob);
+	blob.blob_id = output->prop_values[output->edid_idx];
+	blob.length = output->edid_len;
+	blob.data = (uintptr_t)edid;
+	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPBLOB, &blob))
+		return false;
+
+	if (blob.length != output->edid_len)
+		return false;
+
+	return memcmp(edid, output->edid_raw, output->edid_len) == 0;
 }
 
 void sna_mode_discover(struct sna *sna, bool tell)
