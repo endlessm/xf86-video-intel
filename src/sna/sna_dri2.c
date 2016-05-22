@@ -2792,9 +2792,8 @@ sna_dri2_immediate_blit(struct sna *sna,
 	     get_private(chain->front)->bo->handle, chain->front->name, get_private(chain->front)->bo->active_scanout,
 	     get_private(chain->back)->bo->handle, chain->back->name, get_private(chain->back)->bo->active_scanout));
 
-	if (chain->type == SWAP_COMPLETE) {
+	if (chain->type == SWAP_COMPLETE && chain->front == info->front) {
 		assert(chain->draw == info->draw);
-		assert(chain->front == info->front);
 		assert(chain->client == info->client);
 		assert(chain->event_complete == info->event_complete);
 		assert(chain->event_data == info->event_data);
