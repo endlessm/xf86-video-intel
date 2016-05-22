@@ -5819,8 +5819,8 @@ sna_show_cursors(ScrnInfoPtr scrn)
 			sna_crtc->cursor = cursor;
 			sna_crtc->last_cursor_size = cursor->size;
 		} else {
-			ERR(("%s: failed to show cursor on CRTC:%d [pipe=%d], disabling hwcursor\n",
-			     __FUNCTION__, sna_crtc_id(crtc), sna_crtc_pipe(crtc)));
+			ERR(("%s: failed to show cursor on CRTC:%d [pipe=%d], disabling hwcursor: errno=%d\n",
+			     __FUNCTION__, sna_crtc_id(crtc), sna_crtc_pipe(crtc), errno));
 			sna->cursor.disable = true;
 		}
 	}
@@ -6051,8 +6051,8 @@ disable:
 					sna_crtc->last_cursor_size = 0;
 			}
 		} else {
-			ERR(("%s: failed to update cursor on CRTC:%d [pipe=%d], disabling hwcursor\n",
-			     __FUNCTION__, sna_crtc_id(crtc), sna_crtc_pipe(crtc)));
+			ERR(("%s: failed to update cursor on CRTC:%d [pipe=%d], disabling hwcursor: errno=%d\n",
+			     __FUNCTION__, sna_crtc_id(crtc), sna_crtc_pipe(crtc), errno));
 			/* XXX How to force switch back to SW cursor?
 			 * Right now we just want until the next cursor image
 			 * change, which is fairly frequent.
