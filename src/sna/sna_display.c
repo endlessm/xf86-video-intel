@@ -5056,6 +5056,9 @@ output_check_status(struct sna *sna, struct sna_output *output)
 	if (output->status != status)
 		return false;
 
+	if (status != XF86OutputStatusConnected)
+		return true;
+
 	if (output->edid_len == 0)
 		return false;
 
