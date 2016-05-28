@@ -481,7 +481,7 @@ static bool setup_tear_free(struct sna *sna)
 		from = X_CONFIG;
 
 	if (enable)
-		sna->flags |= SNA_TEAR_FREE;
+		sna->flags |= SNA_WANT_TEAR_FREE | SNA_TEAR_FREE;
 
 done:
 	xf86DrvMsg(sna->scrn->scrnIndex, from, "TearFree %sabled\n",

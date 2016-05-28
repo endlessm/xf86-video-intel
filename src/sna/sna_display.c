@@ -7076,6 +7076,15 @@ sna_crtc_config_notify(ScreenPtr screen)
 	probe_capabilities(sna);
 	sna_present_update(sna);
 
+	/* Allow TearFree to come back on when everything is off */
+	if (!sna->mode.front_active && sna->flags & SNA_WANT_TEAR_FREE) {
+		if ((sna->flags & SNA_TEAR_FREE) == 0)
+			DBG(("%s: enable TearFree next modeset\n",
+			     __FUNCTION__));
+
+		sna->flags |= SNA_TEAR_FREE;
+	}
+
 	sna->mode.dirty = false;
 }
 
