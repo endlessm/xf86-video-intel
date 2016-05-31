@@ -3445,6 +3445,8 @@ sna_output_detect(xf86OutputPtr output)
 	switch (compat_conn.conn.connection) {
 	case DRM_MODE_CONNECTED:
 		sna_output->status = XF86OutputStatusConnected;
+		output->mm_width = compat_conn.conn.mm_width;
+		output->mm_height = compat_conn.conn.mm_height;
 		break;
 	case DRM_MODE_DISCONNECTED:
 		sna_output->status = XF86OutputStatusDisconnected;
@@ -3485,6 +3487,27 @@ sna_output_mode_valid(xf86OutputPtr output, DisplayModePtr mode)
 	}
 
 	return MODE_OK;
+}
+
+static void sna_output_set_parsed_edid(xf86OutputPtr output, xf86MonPtr mon)
+{
+	unsigned conn_mm_width, conn_mm_height;
+
+	/* We set the output size based on values from the kernel */
+	conn_mm_width = output->mm_width;
+	conn_mm_height = output->mm_height;
+
+	xf86OutputSetEDID(output, mon);
+
+	if (output->mm_width != conn_mm_width || output->mm_height != conn_mm_height) {
+		DBG(("%s)%s): kernel and Xorg disagree over physical size: kernel=%dx%dmm, Xorg=%dx%dmm\n",
+		     __FUNCION__, output->name,
+		     conn_mm_width, conn_mm_height,
+		     output->mm_width, output->mm_height));
+	}
+
+	output->mm_width = conn_mm_width;
+	output->mm_height = conn_mm_height;
 }
 
 static void
@@ -3594,7 +3617,7 @@ skip_read:
 	}
 
 done:
-	xf86OutputSetEDID(output, mon);
+	sna_output_set_parsed_edid(output, mon);
 	if (raw) {
 		sna_output->edid_raw = raw;
 		sna_output->edid_len = blob.length;
