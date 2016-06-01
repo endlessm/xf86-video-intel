@@ -978,7 +978,16 @@ done:
 		   sna_output->backlight.iface, best_iface, output->name);
 }
 
-#if XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,12,99,901,0)
+#if ABI_VIDEODRV_VERSION >= SET_ABI_VERSION(22, 0)
+static inline int sigio_block(void)
+{
+	return 0;
+}
+static inline void sigio_unblock(int was_blocked)
+{
+	(void)was_blocked;
+}
+#elif XORG_VERSION_CURRENT >= XORG_VERSION_NUMERIC(1,12,99,901,0)
 static inline int sigio_block(void)
 {
 	OsBlockSIGIO();

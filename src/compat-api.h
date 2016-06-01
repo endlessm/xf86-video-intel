@@ -30,7 +30,6 @@
 
 #include <xorg-server.h>
 #include <xorgVersion.h>
-#include <xf86Module.h>
 
 #include <picturestr.h>
 #ifndef GLYPH_HAS_GLYPH_PICTURE_ACCESSOR
@@ -249,11 +248,6 @@ static inline void FreePixmap(PixmapPtr pixmap)
 
 #if HAS_DIRTYTRACKING_ROTATION
 #define PixmapSyncDirtyHelper(d, dd) PixmapSyncDirtyHelper(d)
-#endif
-
-#if ABI_VIDEODRV_VERSION >= SET_ABI_VERSION(22, 0)
-#define OsBlockSIGIO()
-#define OsReleaseSIGIO()
 #endif
 
 #endif
