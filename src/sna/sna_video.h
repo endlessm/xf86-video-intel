@@ -72,6 +72,8 @@ THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 struct sna_video {
 	struct sna *sna;
 
+	int idx; /* XXX expose struct plane instead? */
+
 	int brightness;
 	int contrast;
 	int saturation;

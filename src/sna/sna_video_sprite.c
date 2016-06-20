@@ -91,7 +91,7 @@ static int sna_video_sprite_stop(ddStopVideo_ARGS)
 			continue;
 
 		memset(&s, 0, sizeof(s));
-		s.plane_id = sna_crtc_to_sprite(crtc, 0);
+		s.plane_id = sna_crtc_to_sprite(crtc, video->idx);
 		if (drmIoctl(video->sna->kgem.fd, LOCAL_IOCTL_MODE_SETPLANE, &s))
 			xf86DrvMsg(video->sna->scrn->scrnIndex, X_ERROR,
 				   "failed to disable plane\n");
@@ -224,7 +224,7 @@ sna_video_sprite_show(struct sna *sna,
 	/* XXX handle video spanning multiple CRTC */
 
 	VG_CLEAR(s);
-	s.plane_id = sna_crtc_to_sprite(crtc, 0);
+	s.plane_id = sna_crtc_to_sprite(crtc, video->idx);
 
 #define DRM_I915_SET_SPRITE_COLORKEY 0x2b
 #define LOCAL_IOCTL_I915_SET_SPRITE_COLORKEY DRM_IOWR(DRM_COMMAND_BASE + DRM_I915_SET_SPRITE_COLORKEY, struct local_intel_sprite_colorkey)
@@ -422,7 +422,7 @@ off:
 			if (video->bo[pipe]) {
 				struct local_mode_set_plane s;
 				memset(&s, 0, sizeof(s));
-				s.plane_id = sna_crtc_to_sprite(crtc, 0);
+				s.plane_id = sna_crtc_to_sprite(crtc, video->idx);
 				if (drmIoctl(video->sna->kgem.fd, LOCAL_IOCTL_MODE_SETPLANE, &s))
 					xf86DrvMsg(video->sna->scrn->scrnIndex, X_ERROR,
 						   "failed to disable plane\n");
@@ -461,8 +461,8 @@ off:
 
 		/* if sprite can't handle rotation natively, store it for the copy func */
 		rotation = RR_Rotate_0;
-		if (!sna_crtc_set_sprite_rotation(crtc, 0, crtc->rotation)) {
-			sna_crtc_set_sprite_rotation(crtc, 0, RR_Rotate_0);
+		if (!sna_crtc_set_sprite_rotation(crtc, video->idx, crtc->rotation)) {
+			sna_crtc_set_sprite_rotation(crtc, video->idx, RR_Rotate_0);
 			rotation = crtc->rotation;
 		}
 		sna_video_frame_set_rotation(video, &frame, rotation);
@@ -651,7 +651,7 @@ static int sna_video_sprite_color_key(struct sna *sna)
 	return color_key & ((1 << scrn->depth) - 1);
 }
 
-static bool sna_video_has_sprites(struct sna *sna)
+static int sna_video_has_sprites(struct sna *sna)
 {
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
 	int i;
@@ -659,17 +659,17 @@ static bool sna_video_has_sprites(struct sna *sna)
 	DBG(("%s: num_crtc=%d\n", __FUNCTION__, sna->mode.num_real_crtc));
 
 	if (sna->mode.num_real_crtc == 0)
-		return false;
+		return 0;
 
 	for (i = 0; i < sna->mode.num_real_crtc; i++) {
 		if (!sna_crtc_to_sprite(config->crtc[i], 0)) {
 			DBG(("%s: no sprite found on pipe %d\n", __FUNCTION__, sna_crtc_pipe(config->crtc[i])));
-			return false;
+			return 0;
 		}
 	}
 
 	DBG(("%s: yes\n", __FUNCTION__));
-	return true;
+	return 1;
 }
 
 void sna_video_sprite_setup(struct sna *sna, ScreenPtr screen)
@@ -677,16 +677,18 @@ void sna_video_sprite_setup(struct sna *sna, ScreenPtr screen)
 	XvAdaptorPtr adaptor;
 	struct sna_video *video;
 	XvPortPtr port;
+	int count, i;
 
-	if (!sna_video_has_sprites(sna))
+	count = sna_video_has_sprites(sna);
+	if (!count)
 		return;
 
 	adaptor = sna_xv_adaptor_alloc(sna);
 	if (!adaptor)
 		return;
 
-	video = calloc(1, sizeof(*video));
-	port = calloc(1, sizeof(*port));
+	video = calloc(count, sizeof(*video));
+	port = calloc(count, sizeof(*port));
 	if (video == NULL || port == NULL) {
 		free(video);
 		free(port);
@@ -731,36 +733,43 @@ void sna_video_sprite_setup(struct sna *sna, ScreenPtr screen)
 	adaptor->ddPutImage = sna_video_sprite_put_image;
 	adaptor->ddQueryImageAttributes = sna_video_sprite_query;
 
-	adaptor->nPorts = 1;
+	adaptor->nPorts = count;
 	adaptor->pPorts = port;
 
-	adaptor->base_id = port->id = FakeClientID(0);
-	AddResource(port->id, XvGetRTPort(), port);
-	port->pAdaptor = adaptor;
-	port->pNotify =  NULL;
-	port->pDraw =  NULL;
-	port->client =  NULL;
-	port->grab.client =  NULL;
-	port->time = currentTime;
-	port->devPriv.ptr = video;
+	for (i = 0; i < count; i++) {
+		port->id = FakeClientID(0);
+		AddResource(port->id, XvGetRTPort(), port);
+		port->pAdaptor = adaptor;
+		port->pNotify =  NULL;
+		port->pDraw =  NULL;
+		port->client =  NULL;
+		port->grab.client =  NULL;
+		port->time = currentTime;
+		port->devPriv.ptr = video;
 
-	video->sna = sna;
-	video->alignment = 64;
-	video->color_key = sna_video_sprite_color_key(sna);
-	video->color_key_changed = ~0;
-	video->has_color_key = true;
-	video->brightness = -19;	/* (255/219) * -16 */
-	video->contrast = 75;	/* 255/219 * 64 */
-	video->saturation = 146;	/* 128/112 * 128 */
-	video->desired_crtc = NULL;
-	video->gamma5 = 0xc0c0c0;
-	video->gamma4 = 0x808080;
-	video->gamma3 = 0x404040;
-	video->gamma2 = 0x202020;
-	video->gamma1 = 0x101010;
-	video->gamma0 = 0x080808;
-	RegionNull(&video->clip);
-	video->SyncToVblank = 1;
+		video->sna = sna;
+		video->idx = i;
+		video->alignment = 64;
+		video->color_key = sna_video_sprite_color_key(sna);
+		video->color_key_changed = ~0;
+		video->has_color_key = true;
+		video->brightness = -19;	/* (255/219) * -16 */
+		video->contrast = 75;	/* 255/219 * 64 */
+		video->saturation = 146;	/* 128/112 * 128 */
+		video->desired_crtc = NULL;
+		video->gamma5 = 0xc0c0c0;
+		video->gamma4 = 0x808080;
+		video->gamma3 = 0x404040;
+		video->gamma2 = 0x202020;
+		video->gamma1 = 0x101010;
+		video->gamma0 = 0x080808;
+		RegionNull(&video->clip);
+		video->SyncToVblank = 1;
+
+		port++;
+		video++;
+	}
+	adaptor->base_id = adaptor->pPorts[0].id;
 
 	xvColorKey = MAKE_ATOM("XV_COLORKEY");
 	xvAlwaysOnTop = MAKE_ATOM("XV_ALWAYS_ON_TOP");
