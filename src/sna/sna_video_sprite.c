@@ -654,6 +654,7 @@ static int sna_video_sprite_color_key(struct sna *sna)
 static int sna_video_has_sprites(struct sna *sna)
 {
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	unsigned min;
 	int i;
 
 	DBG(("%s: num_crtc=%d\n", __FUNCTION__, sna->mode.num_real_crtc));
@@ -661,15 +662,17 @@ static int sna_video_has_sprites(struct sna *sna)
 	if (sna->mode.num_real_crtc == 0)
 		return 0;
 
+	min = -1;
 	for (i = 0; i < sna->mode.num_real_crtc; i++) {
-		if (!sna_crtc_to_sprite(config->crtc[i], 0)) {
-			DBG(("%s: no sprite found on pipe %d\n", __FUNCTION__, sna_crtc_pipe(config->crtc[i])));
-			return 0;
-		}
+		unsigned count =  sna_crtc_count_sprites(config->crtc[i]);
+		DBG(("%s: %d sprites found on pipe %d\n", __FUNCTION__,
+		     count, sna_crtc_pipe(config->crtc[i])));
+		if (count < min)
+			min = count;
 	}
 
-	DBG(("%s: yes\n", __FUNCTION__));
-	return 1;
+	DBG(("%s: min=%d\n", __FUNCTION__, min));
+	return min;
 }
 
 void sna_video_sprite_setup(struct sna *sna, ScreenPtr screen)

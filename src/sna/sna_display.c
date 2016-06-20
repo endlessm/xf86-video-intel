@@ -445,6 +445,18 @@ static inline uint32_t fb_id(struct kgem_bo *bo)
 	return bo->delta;
 }
 
+unsigned sna_crtc_count_sprites(xf86CrtcPtr crtc)
+{
+	struct plane *sprite;
+	unsigned count;
+
+	count = 0;
+	list_for_each_entry(sprite, &to_sna_crtc(crtc)->sprites, link)
+		count++;
+
+	return count;
+}
+
 static struct plane *lookup_sprite(struct sna_crtc *crtc, unsigned idx)
 {
 	struct plane *sprite;
