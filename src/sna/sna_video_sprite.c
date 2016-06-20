@@ -91,7 +91,7 @@ static int sna_video_sprite_stop(ddStopVideo_ARGS)
 			continue;
 
 		memset(&s, 0, sizeof(s));
-		s.plane_id = sna_crtc_to_sprite(crtc);
+		s.plane_id = sna_crtc_to_sprite(crtc, 0);
 		if (drmIoctl(video->sna->kgem.fd, LOCAL_IOCTL_MODE_SETPLANE, &s))
 			xf86DrvMsg(video->sna->scrn->scrnIndex, X_ERROR,
 				   "failed to disable plane\n");
@@ -224,7 +224,7 @@ sna_video_sprite_show(struct sna *sna,
 	/* XXX handle video spanning multiple CRTC */
 
 	VG_CLEAR(s);
-	s.plane_id = sna_crtc_to_sprite(crtc);
+	s.plane_id = sna_crtc_to_sprite(crtc, 0);
 
 #define DRM_I915_SET_SPRITE_COLORKEY 0x2b
 #define LOCAL_IOCTL_I915_SET_SPRITE_COLORKEY DRM_IOWR(DRM_COMMAND_BASE + DRM_I915_SET_SPRITE_COLORKEY, struct local_intel_sprite_colorkey)
@@ -422,7 +422,7 @@ off:
 			if (video->bo[pipe]) {
 				struct local_mode_set_plane s;
 				memset(&s, 0, sizeof(s));
-				s.plane_id = sna_crtc_to_sprite(crtc);
+				s.plane_id = sna_crtc_to_sprite(crtc, 0);
 				if (drmIoctl(video->sna->kgem.fd, LOCAL_IOCTL_MODE_SETPLANE, &s))
 					xf86DrvMsg(video->sna->scrn->scrnIndex, X_ERROR,
 						   "failed to disable plane\n");
@@ -461,8 +461,8 @@ off:
 
 		/* if sprite can't handle rotation natively, store it for the copy func */
 		rotation = RR_Rotate_0;
-		if (!sna_crtc_set_sprite_rotation(crtc, crtc->rotation)) {
-			sna_crtc_set_sprite_rotation(crtc, RR_Rotate_0);
+		if (!sna_crtc_set_sprite_rotation(crtc, 0, crtc->rotation)) {
+			sna_crtc_set_sprite_rotation(crtc, 0, RR_Rotate_0);
 			rotation = crtc->rotation;
 		}
 		sna_video_frame_set_rotation(video, &frame, rotation);
@@ -662,7 +662,7 @@ static bool sna_video_has_sprites(struct sna *sna)
 		return false;
 
 	for (i = 0; i < sna->mode.num_real_crtc; i++) {
-		if (!sna_crtc_to_sprite(config->crtc[i])) {
+		if (!sna_crtc_to_sprite(config->crtc[i], 0)) {
 			DBG(("%s: no sprite found on pipe %d\n", __FUNCTION__, sna_crtc_pipe(config->crtc[i])));
 			return false;
 		}

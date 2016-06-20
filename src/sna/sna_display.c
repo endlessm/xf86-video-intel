@@ -221,7 +221,9 @@ struct sna_crtc {
 			uint32_t supported;
 			uint32_t current;
 		} rotation;
-	} primary, sprite;
+		struct list link;
+	} primary;
+	struct list sprites;
 
 	uint32_t mode_serial, flip_serial;
 
@@ -443,10 +445,25 @@ static inline uint32_t fb_id(struct kgem_bo *bo)
 	return bo->delta;
 }
 
-uint32_t sna_crtc_to_sprite(xf86CrtcPtr crtc)
+static struct plane *lookup_sprite(struct sna_crtc *crtc, unsigned idx)
 {
+	struct plane *sprite;
+
+	list_for_each_entry(sprite, &crtc->sprites, link)
+		if (idx-- == 0)
+			return sprite;
+
+	return NULL;
+}
+
+uint32_t sna_crtc_to_sprite(xf86CrtcPtr crtc, unsigned idx)
+{
+	struct plane *sprite;
+
 	assert(to_sna_crtc(crtc));
-	return to_sna_crtc(crtc)->sprite.id;
+
+	sprite = lookup_sprite(to_sna_crtc(crtc), idx);
+	return sprite ? sprite->id : 0;
 }
 
 bool sna_crtc_is_transformed(xf86CrtcPtr crtc)
@@ -1253,17 +1270,23 @@ rotation_reset(struct plane *p)
 	p->rotation.current = 0;
 }
 
-bool sna_crtc_set_sprite_rotation(xf86CrtcPtr crtc, uint32_t rotation)
+bool sna_crtc_set_sprite_rotation(xf86CrtcPtr crtc,
+				  unsigned idx,
+				  uint32_t rotation)
 {
+	struct plane *sprite;
 	assert(to_sna_crtc(crtc));
 	DBG(("%s: CRTC:%d [pipe=%d], sprite=%u set-rotation=%x\n",
 	     __FUNCTION__,
 	     sna_crtc_id(crtc), sna_crtc_pipe(crtc),
 	     to_sna_crtc(crtc)->sprite.id, rotation));
 
-	return rotation_set(to_sna(crtc->scrn),
-			    &to_sna_crtc(crtc)->sprite,
-			    rotation_reduce(&to_sna_crtc(crtc)->sprite, rotation));
+	sprite = lookup_sprite(to_sna_crtc(crtc), idx);
+	if (!sprite)
+		return false;
+
+	return rotation_set(to_sna(crtc->scrn), sprite,
+			    rotation_reduce(sprite, rotation));
 }
 
 #if HAS_DEBUG_FULL
@@ -3005,9 +3028,13 @@ static void
 sna_crtc_destroy(xf86CrtcPtr crtc)
 {
 	struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
+	struct plane *sprite, *sn;
 
 	if (sna_crtc == NULL)
 		return;
+
+	list_for_each_entry_safe(sprite, sn, &sna_crtc->sprites, link)
+		free(sprite);
 
 	free(sna_crtc);
 	crtc->driver_private = NULL;
@@ -3158,6 +3185,17 @@ static int plane_details(struct sna *sna, struct plane *p)
 	return type;
 }
 
+static void add_sprite_plane(struct sna_crtc *crtc,
+			     struct plane *details)
+{
+	struct plane *sprite = malloc(sizeof(*sprite));
+	if (!sprite)
+		return;
+
+	memcpy(sprite, details, sizeof(*sprite));
+	list_add(&sprite->link, &crtc->sprites);
+}
+
 static void
 sna_crtc_find_planes(struct sna *sna, struct sna_crtc *crtc)
 {
@@ -3231,8 +3269,7 @@ sna_crtc_find_planes(struct sna *sna, struct sna_crtc *crtc)
 			break;
 
 		case DRM_PLANE_TYPE_OVERLAY:
-			if (crtc->sprite.id == 0)
-				crtc->sprite = details;
+			add_sprite_plane(crtc, &details);
 			break;
 		}
 	}
@@ -3247,7 +3284,6 @@ sna_crtc_init__rotation(struct sna *sna, struct sna_crtc *crtc)
 	crtc->rotation = RR_Rotate_0;
 	crtc->primary.rotation.supported = RR_Rotate_0;
 	crtc->primary.rotation.current = RR_Rotate_0;
-	crtc->sprite.rotation = crtc->primary.rotation;
 }
 
 static void
@@ -3299,8 +3335,8 @@ sna_crtc_add(ScrnInfoPtr scrn, unsigned id)
 		return true;
 	}
 
+	list_init(&sna_crtc->sprites);
 	sna_crtc_init__rotation(sna, sna_crtc);
-
 	sna_crtc_find_planes(sna, sna_crtc);
 
 	DBG(("%s: CRTC:%d [pipe=%d], primary id=%x: supported-rotations=%x, current-rotation=%x, sprite id=%x: supported-rotations=%x, current-rotation=%x\n",
@@ -8084,6 +8120,7 @@ static bool
 sna_crtc_hide_planes(struct sna *sna, struct sna_crtc *crtc)
 {
 	struct local_mode_set_plane s;
+	struct plane *plane;
 
 	if (crtc->primary.id == 0)
 		return false;
@@ -8093,8 +8130,10 @@ sna_crtc_hide_planes(struct sna *sna, struct sna_crtc *crtc)
 	if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_MODE_SETPLANE, &s))
 		return false;
 
-	s.plane_id = crtc->sprite.id;
-	(void)drmIoctl(sna->kgem.fd, LOCAL_IOCTL_MODE_SETPLANE, &s);
+	list_for_each_entry(plane, &crtc->sprites, link) {
+		s.plane_id = plane->id;
+		(void)drmIoctl(sna->kgem.fd, LOCAL_IOCTL_MODE_SETPLANE, &s);
+	}
 
 	__sna_crtc_disable(sna, crtc);
 	return true;
@@ -8118,12 +8157,14 @@ void sna_mode_reset(struct sna *sna)
 
 	for (i = 0; i < sna->mode.num_real_crtc; i++) {
 		struct sna_crtc *sna_crtc = to_sna_crtc(config->crtc[i]);
+		struct plane *plane;
 
 		assert(sna_crtc != NULL);
 
 		/* Force the rotation property to be reset on next use */
 		rotation_reset(&sna_crtc->primary);
-		rotation_reset(&sna_crtc->sprite);
+		list_for_each_entry(plane, &sna_crtc->sprites, link)
+			rotation_reset(plane);
 	}
 
 	/* VT switching, likely to be fbcon so make the backlight usable */
