@@ -1619,7 +1619,9 @@ gen2_composite_set_target(struct sna *sna,
 	} else
 		sna_render_picture_extents(dst, &box);
 
-	hint = PREFER_GPU | FORCE_GPU | RENDER_GPU;
+	hint = PREFER_GPU | RENDER_GPU;
+	if (!need_tiling(sna, op->dst.width, op->dst.height))
+		hint |= FORCE_GPU;
 	if (!partial) {
 		hint |= IGNORE_DAMAGE;
 		if (w == op->dst.width && h == op->dst.height)
