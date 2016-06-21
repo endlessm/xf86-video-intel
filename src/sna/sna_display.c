@@ -7928,142 +7928,45 @@ static bool sna_mode_shutdown_crtc(xf86CrtcPtr crtc)
 	return disabled;
 }
 
-static xf86CrtcPtr
-lookup_crtc_by_id(struct sna *sna, int id)
-{
-	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
-	int c;
-
-	for (c = 0; c < sna->mode.num_real_crtc; c++) {
-		xf86CrtcPtr crtc = config->crtc[c];
-		if (__sna_crtc_id(to_sna_crtc(crtc)) == id)
-			return crtc;
-	}
-
-	return NULL;
-}
-
-static int plane_type(struct sna *sna, int id)
-{
-	struct local_mode_obj_get_properties arg;
-	uint64_t stack_props[24];
-	uint32_t *props = (uint32_t *)stack_props;
-	uint64_t *values = stack_props + 8;
-	int i, type = -1;
-
-	memset(&arg, 0, sizeof(struct local_mode_obj_get_properties));
-	arg.obj_id = id;
-	arg.obj_type = LOCAL_MODE_OBJECT_PLANE;
-
-	arg.props_ptr = (uintptr_t)props;
-	arg.prop_values_ptr = (uintptr_t)values;
-	arg.count_props = 16;
-
-	if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_MODE_OBJ_GETPROPERTIES, &arg))
-		return -1;
-
-	DBG(("%s: object %d (type %x) has %d props\n", __FUNCTION__,
-	     id, LOCAL_MODE_OBJECT_PLANE, arg.count_props));
-
-	if (arg.count_props > 16) {
-		props = malloc(2*sizeof(uint64_t)*arg.count_props);
-		if (props == NULL)
-			return -1;
-
-		values = (uint64_t *)props + arg.count_props;
-
-		arg.props_ptr = (uintptr_t)props;
-		arg.prop_values_ptr = (uintptr_t)values;
-
-		if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_MODE_OBJ_GETPROPERTIES, &arg))
-			arg.count_props = 0;
-	}
-	VG(VALGRIND_MAKE_MEM_DEFINED(arg.props_ptr, sizeof(uint32_t)*arg.count_props));
-	VG(VALGRIND_MAKE_MEM_DEFINED(arg.prop_values_ptr, sizeof(uint64_t)*arg.count_props));
-
-	for (i = 0; i < arg.count_props; i++) {
-		struct drm_mode_get_property prop;
-
-		memset(&prop, 0, sizeof(prop));
-		prop.prop_id = props[i];
-		if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPERTY, &prop)) {
-			ERR(("%s: prop[%d].id=%d GETPROPERTY failed with errno=%d\n",
-			     __FUNCTION__, i, props[i], errno));
-			continue;
-		}
-
-		DBG(("%s: prop[%d] .id=%ld, .name=%s, .flags=%x, .value=%ld\n", __FUNCTION__, i,
-		     (long)props[i], prop.name, (unsigned)prop.flags, (long)values[i]));
-
-		if (strcmp(prop.name, "type") == 0) {
-			type = values[i];
-			break;
-		}
-	}
-
-	if (props != (uint32_t *)stack_props)
-		free(props);
-
-	return type;
-}
-
 static bool
 sna_mode_disable_secondary_planes(struct sna *sna)
 {
-	struct local_mode_get_plane_res r;
-	uint32_t stack_planes[64];
-	uint32_t *planes = stack_planes;
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
 	bool disabled = false;
-	int i;
+	int c;
 
-	VG_CLEAR(r);
-	r.plane_id_ptr = (uintptr_t)planes;
-	r.count_planes = ARRAY_SIZE(stack_planes);
-	if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_MODE_GETPLANERESOURCES, &r))
-		return false;
+	/* Disable all secondary planes on our CRTCs, just in case
+	 * other userspace left garbage in them.
+	 */
+	for (c = 0; c < sna->mode.num_real_crtc; c++) {
+		xf86CrtcPtr crtc = config->crtc[c];
+		struct sna_crtc *sna_crtc = to_sna_crtc(crtc);
+		struct plane *plane;
 
-	DBG(("%s: %d planes\n", __FUNCTION__, (int)r.count_planes));
+		list_for_each_entry(plane, &sna_crtc->sprites, link) {
+			struct local_mode_get_plane p;
+			struct local_mode_set_plane s;
 
-	if (r.count_planes > ARRAY_SIZE(stack_planes)) {
-		planes = malloc(sizeof(uint32_t)*r.count_planes);
-		if (planes == NULL)
-			return false;
+			VG_CLEAR(p);
+			p.plane_id = plane->id;
+			p.count_format_types = 0;
+			if (drmIoctl(sna->kgem.fd,
+				     LOCAL_IOCTL_MODE_GETPLANE,
+				     &p))
+				continue;
 
-		r.plane_id_ptr = (uintptr_t)planes;
-		if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_MODE_GETPLANERESOURCES, &r))
-			r.count_planes = 0;
-	}
+			if (p.fb_id == 0 || p.crtc_id == 0)
+				continue;
 
-	VG(VALGRIND_MAKE_MEM_DEFINED(planes, sizeof(uint32_t)*r.count_planes));
-
-	for (i = 0; i < r.count_planes; i++) {
-		struct local_mode_get_plane p;
-		struct local_mode_set_plane s;
-
-		VG_CLEAR(p);
-		p.plane_id = planes[i];
-		p.count_format_types = 0;
-		if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_MODE_GETPLANE, &p))
-			continue;
-
-		if (p.fb_id == 0 || p.crtc_id == 0)
-			continue;
-
-		if (plane_type(sna, p.plane_id) == DRM_PLANE_TYPE_PRIMARY)
-			continue;
-
-		memset(&s, 0, sizeof(s));
-		s.plane_id = p.plane_id;
-		s.crtc_id = p.crtc_id;
-		if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_MODE_SETPLANE, &s)) {
-			xf86CrtcPtr crtc = lookup_crtc_by_id(sna, p.crtc_id);
-			if (crtc)
+			memset(&s, 0, sizeof(s));
+			s.plane_id = p.plane_id;
+			s.crtc_id = p.crtc_id;
+			if (drmIoctl(sna->kgem.fd,
+				     LOCAL_IOCTL_MODE_SETPLANE,
+				     &s))
 				disabled |= sna_mode_shutdown_crtc(crtc);
 		}
 	}
-
-	if (planes != stack_planes)
-		free(planes);
 
 	return disabled;
 }
