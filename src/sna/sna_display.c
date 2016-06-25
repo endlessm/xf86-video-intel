@@ -1288,14 +1288,15 @@ bool sna_crtc_set_sprite_rotation(xf86CrtcPtr crtc,
 {
 	struct plane *sprite;
 	assert(to_sna_crtc(crtc));
-	DBG(("%s: CRTC:%d [pipe=%d], sprite=%u set-rotation=%x\n",
-	     __FUNCTION__,
-	     sna_crtc_id(crtc), sna_crtc_pipe(crtc),
-	     to_sna_crtc(crtc)->sprite.id, rotation));
 
 	sprite = lookup_sprite(to_sna_crtc(crtc), idx);
 	if (!sprite)
 		return false;
+
+	DBG(("%s: CRTC:%d [pipe=%d], sprite=%u set-rotation=%x\n",
+	     __FUNCTION__,
+	     sna_crtc_id(crtc), sna_crtc_pipe(crtc),
+	     sprite->id, rotation));
 
 	return rotation_set(to_sna(crtc->scrn), sprite,
 			    rotation_reduce(sprite, rotation));
@@ -3351,10 +3352,9 @@ sna_crtc_add(ScrnInfoPtr scrn, unsigned id)
 	sna_crtc_init__rotation(sna, sna_crtc);
 	sna_crtc_find_planes(sna, sna_crtc);
 
-	DBG(("%s: CRTC:%d [pipe=%d], primary id=%x: supported-rotations=%x, current-rotation=%x, sprite id=%x: supported-rotations=%x, current-rotation=%x\n",
+	DBG(("%s: CRTC:%d [pipe=%d], primary id=%x: supported-rotations=%x, current-rotation=%x\n",
 	     __FUNCTION__, id, get_pipe.pipe,
-	     sna_crtc->primary.id, sna_crtc->primary.rotation.supported, sna_crtc->primary.rotation.current,
-	     sna_crtc->sprite.id, sna_crtc->sprite.rotation.supported, sna_crtc->sprite.rotation.current));
+	     sna_crtc->primary.id, sna_crtc->primary.rotation.supported, sna_crtc->primary.rotation.current));
 
 	list_init(&sna_crtc->shadow_link);
 
@@ -3558,7 +3558,7 @@ static void sna_output_set_parsed_edid(xf86OutputPtr output, xf86MonPtr mon)
 
 	if (output->mm_width != conn_mm_width || output->mm_height != conn_mm_height) {
 		DBG(("%s)%s): kernel and Xorg disagree over physical size: kernel=%dx%dmm, Xorg=%dx%dmm\n",
-		     __FUNCION__, output->name,
+		     __FUNCTION__, output->name,
 		     conn_mm_width, conn_mm_height,
 		     output->mm_width, output->mm_height));
 	}
