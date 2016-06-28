@@ -2513,7 +2513,7 @@ static void chain_swap(struct sna_dri2_event *chain)
 	switch (chain->type) {
 	case SWAP_COMPLETE:
 		DBG(("%s: emitting chained vsync'ed blit\n", __FUNCTION__));
-		if (chain->sna->mode.shadow && chain->sna->mode.shadow_wait) {
+		if (chain->sna->mode.shadow_wait) {
 			/* recursed from wait_for_shadow(), simply requeue */
 			DBG(("%s -- recursed from wait_for_shadow(), requeuing\n", __FUNCTION__));
 			if (sna_next_vblank(chain))
@@ -2608,7 +2608,7 @@ void sna_dri2_vblank_handler(struct drm_event_vblank *event)
 		/* else fall through to blit */
 	case SWAP:
 		assert(info->signal);
-		if (sna->mode.shadow && sna->mode.shadow_wait) {
+		if (sna->mode.shadow_wait) {
 			/* recursed from wait_for_shadow(), simply requeue */
 			DBG(("%s -- recursed from wait_for_shadow(), requeuing\n", __FUNCTION__));
 		} else if (can_xchg(info->sna, draw, info->front, info->back)) {
@@ -2654,7 +2654,7 @@ void sna_dri2_vblank_handler(struct drm_event_vblank *event)
 			     info->pending.bo->handle, info->pending.name, info->pending.bo->active_scanout,
 			     get_private(info->front)->bo->handle, info->front->name, get_private(info->front)->bo->active_scanout));
 
-			if (sna->mode.shadow && sna->mode.shadow_wait) {
+			if (sna->mode.shadow_wait) {
 				/* recursed from wait_for_shadow(), simply requeue */
 				DBG(("%s -- recursed from wait_for_shadow(), requeuing\n", __FUNCTION__));
 				if (sna_next_vblank(info))
