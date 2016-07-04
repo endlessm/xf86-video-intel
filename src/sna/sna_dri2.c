@@ -1037,8 +1037,8 @@ static void set_bo(PixmapPtr pixmap, struct kgem_bo *bo)
 	assert(bo->flush);
 
 	if (APPLY_DAMAGE) {
-		DamageRegionProcessPending(&pixmap->drawable);
 		sna->ignore_copy_area = false;
+		DamageRegionProcessPending(&pixmap->drawable);
 	}
 }
 
@@ -1394,8 +1394,8 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 	}
 
 	if (APPLY_DAMAGE || flags & DRI2_DAMAGE) {
-		DamageRegionProcessPending(&pixmap->drawable);
 		sna->ignore_copy_area = false;
+		DamageRegionProcessPending(&pixmap->drawable);
 	}
 
 	if (clip.data)
@@ -2421,8 +2421,8 @@ static void sna_dri2_xchg_crtc(struct sna *sna, DrawablePtr draw, xf86CrtcPtr cr
 	}
 	sna_shadow_set_crtc(sna, crtc, get_private(back)->bo);
 	if (APPLY_DAMAGE) {
-		DamageRegionProcessPending(&win->drawable);
 		sna->ignore_copy_area = false;
+		DamageRegionProcessPending(&win->drawable);
 	}
 
 	if (priv->front == NULL) {
