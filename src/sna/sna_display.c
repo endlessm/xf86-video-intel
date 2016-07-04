@@ -1726,11 +1726,13 @@ static bool wait_for_shadow(struct sna *sna,
 	sna_pixmap_unmap(pixmap, priv);
 
 	DBG(("%s: setting front pixmap to handle=%d\n", __FUNCTION__, bo->handle));
+	sna->mode.shadow->active_scanout--;
 	tmp = priv->gpu_bo;
 	priv->gpu_bo = bo;
 	if (bo != sna->mode.shadow)
 		kgem_bo_destroy(&sna->kgem, sna->mode.shadow);
 	sna->mode.shadow = tmp;
+	sna->mode.shadow->active_scanout++;
 
 	sna_dri2_pixmap_update_bo(sna, pixmap, bo);
 
@@ -1852,6 +1854,7 @@ static void sna_mode_disable_shadow(struct sna *sna)
 	sna->mode.shadow_enabled = false;
 
 	if (sna->mode.shadow) {
+		sna->mode.shadow->active_scanout--;
 		kgem_bo_destroy(&sna->kgem, sna->mode.shadow);
 		sna->mode.shadow = NULL;
 	}
@@ -2323,6 +2326,7 @@ static void set_shadow(struct sna *sna, RegionPtr region)
 
 	assert(priv->gpu_bo);
 	assert(sna->mode.shadow);
+	assert(sna->mode.shadow->active_scanout);
 
 	DBG(("%s: waiting for region %dx[(%d, %d), (%d, %d)], front handle=%d, shadow handle=%d\n",
 	     __FUNCTION__,
@@ -2631,6 +2635,7 @@ out_shadow:
 				assert(__sna_pixmap_get_bo(sna->front) == NULL ||
 				       __sna_pixmap_get_bo(sna->front)->pitch == shadow->pitch);
 				sna->mode.shadow = shadow;
+				sna->mode.shadow->active_scanout++;
 			}
 			set_shadow(sna, &region);
 
