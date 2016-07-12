@@ -643,6 +643,27 @@ err_path:
 	return -1;
 }
 
+void intel_close_device(int entity_num)
+{
+	struct intel_device *dev;
+
+	if (intel_device_key == -1)
+		return;
+
+	dev = xf86GetEntityPrivate(entity_num, intel_device_key)->ptr;
+	xf86GetEntityPrivate(entity_num, intel_device_key)->ptr = NULL;
+	if (!dev)
+		return;
+
+	if (dev->master_count == 0) /* Don't close server-fds */
+		close(dev->fd);
+
+	if (dev->render_node != dev->master_node)
+		free(dev->render_node);
+	free(dev->master_node);
+	free(dev);
+}
+
 int __intel_peek_fd(ScrnInfoPtr scrn)
 {
 	struct intel_device *dev;

@@ -631,6 +631,8 @@ static Bool intel_pci_probe(DriverPtr		driver,
 			    struct pci_device	*pci,
 			    intptr_t		match_data)
 {
+	Bool ret;
+
 	if (intel_open_device(entity_num, pci, NULL) == -1) {
 #if UMS
 		switch (pci->device_id) {
@@ -648,7 +650,11 @@ static Bool intel_pci_probe(DriverPtr		driver,
 #endif
 	}
 
-	return intel_scrn_create(driver, entity_num, match_data, 0);
+	ret = intel_scrn_create(driver, entity_num, match_data, 0);
+	if (!ret)
+		intel_close_device(entity_num);
+
+	return ret;
 }
 
 #ifdef XSERVER_PLATFORM_BUS
@@ -671,9 +677,16 @@ intel_platform_probe(DriverPtr driver,
 
 	/* if we get any flags we don't understand fail to probe for now */
 	if (flags)
-		return FALSE;
+		goto err;
 
-	return intel_scrn_create(driver, entity_num, match_data, scrn_flags);
+	if (!intel_scrn_create(driver, entity_num, match_data, scrn_flags))
+		goto err;
+
+	return TRUE;
+
+err:
+	intel_close_device(entity_num);
+	return FALSE;
 }
 #endif
 
