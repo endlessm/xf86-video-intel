@@ -1172,8 +1172,6 @@ static Bool I830CloseScreen(CLOSE_SCREEN_ARGS_DECL)
 
 	intel_sync_close(screen);
 
-	xf86GARTCloseScreen(scrn->scrnIndex);
-
 	scrn->vtSema = FALSE;
 	return TRUE;
 }
