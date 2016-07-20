@@ -5832,8 +5832,8 @@ static void __restore_swcursor(ScrnInfoPtr scrn)
 	enable_fb_access(scrn, FALSE);
 	enable_fb_access(scrn, TRUE);
 
-	RemoveBlockAndWakeupHandlers((BlockHandlerProcPtr)__restore_swcursor,
-				     (WakeupHandlerProcPtr)NoopDDA,
+	RemoveBlockAndWakeupHandlers((void *)__restore_swcursor,
+				     (void *)NoopDDA,
 				     scrn);
 }
 
@@ -5843,8 +5843,8 @@ static void restore_swcursor(struct sna *sna)
 	FreeCursor(sna->cursor.ref, None);
 	sna->cursor.ref = NULL;
 
-	RegisterBlockAndWakeupHandlers((BlockHandlerProcPtr)__restore_swcursor,
-				       (WakeupHandlerProcPtr)NoopDDA,
+	RegisterBlockAndWakeupHandlers((void *)__restore_swcursor,
+				       (void *)NoopDDA,
 				       sna->scrn);
 }
 

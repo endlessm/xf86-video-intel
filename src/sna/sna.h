@@ -388,8 +388,10 @@ struct sna {
 	EntityInfoPtr pEnt;
 	const struct intel_device_info *info;
 
+#if !HAVE_NOTIFY_FD
 	ScreenBlockHandlerProcPtr BlockHandler;
 	ScreenWakeupHandlerProcPtr WakeupHandler;
+#endif
 	CloseScreenProcPtr CloseScreen;
 
 	PicturePtr clear;

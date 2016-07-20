@@ -18024,6 +18024,13 @@ static bool sna_option_accel_blt(struct sna *sna)
 	return strcasecmp(s, "blt") == 0;
 }
 
+#if HAVE_NOTIFY_FD
+static void sna_accel_notify(int fd, int ready, void *data)
+{
+	sna_mode_wakeup(data);
+}
+#endif
+
 bool sna_accel_init(ScreenPtr screen, struct sna *sna)
 {
 	const char *backend;
@@ -18035,7 +18042,7 @@ bool sna_accel_init(ScreenPtr screen, struct sna *sna)
 	list_init(&sna->flush_pixmaps);
 	list_init(&sna->active_pixmaps);
 
-	AddGeneralSocket(sna->kgem.fd);
+	SetNotifyFd(sna->kgem.fd, sna_accel_notify, X_NOTIFY_READ, sna);
 
 #ifdef DEBUG_MEMORY
 	sna->timer_expire[DEBUG_MEMORY_TIMER] = GetTimeInMillis()+ 10 * 1000;
@@ -18214,7 +18221,7 @@ void sna_accel_close(struct sna *sna)
 	sna_pixmap_expire(sna);
 
 	DeleteCallback(&FlushCallback, sna_accel_flush_callback, sna);
-	RemoveGeneralSocket(sna->kgem.fd);
+	RemoveNotifyFd(sna->kgem.fd);
 
 	kgem_cleanup_cache(&sna->kgem);
 }
