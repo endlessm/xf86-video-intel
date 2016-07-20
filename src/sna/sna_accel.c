@@ -117,6 +117,11 @@
 #define RECTILINEAR	0x4
 #define OVERWRITES	0x8
 
+#if XFONT2_CLIENT_FUNCS_VERSION >= 1
+#define AllocateFontPrivateIndex() xfont2_allocate_font_private_index()
+#define FontSetPrivate(font, idx, data) xfont2_font_set_private(font, idx, data)
+#endif
+
 #if 0
 static void __sna_fallback_flush(DrawablePtr d)
 {
