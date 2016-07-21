@@ -949,6 +949,12 @@ static Bool sna_early_close_screen(CLOSE_SCREEN_ARGS_DECL)
 
 	/* XXX Note that we will leak kernel resources if !vtSema */
 
+#if HAVE_NOTIFY_FD
+	RemoveBlockAndWakeupHandlers(sna_block_handler,
+				     (ServerWakeupHandlerProcPtr)NoopDDA,
+				     sna);
+#endif
+
 	sna_uevent_fini(sna);
 	sna_mode_close(sna);
 
