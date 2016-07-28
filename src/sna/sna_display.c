@@ -5842,6 +5842,8 @@ static void __restore_swcursor(ScrnInfoPtr scrn)
 
 static void restore_swcursor(struct sna *sna)
 {
+	sna->cursor.info->HideCursor(sna->scrn);
+
 	/* XXX Force the cursor to be restored (avoiding recursion) */
 	FreeCursor(sna->cursor.ref, None);
 	sna->cursor.ref = NULL;
