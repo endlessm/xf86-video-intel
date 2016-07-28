@@ -1006,7 +1006,7 @@ static void set_bo(PixmapPtr pixmap, struct kgem_bo *bo)
 		 * causing recursion and mayhem.
 		 */
 		DBG(("%s: marking whole pixmap as damaged\n", __FUNCTION__));
-		sna->ignore_copy_area = true;
+		sna->ignore_copy_area = sna->flags & SNA_TEAR_FREE;
 		DamageRegionAppend(&pixmap->drawable, &region);
 	}
 
@@ -1358,7 +1358,7 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 	}
 	if (APPLY_DAMAGE || flags & DRI2_DAMAGE) {
 		DBG(("%s: marking region as damaged\n", __FUNCTION__));
-		sna->ignore_copy_area = true;
+		sna->ignore_copy_area = sna->flags & SNA_TEAR_FREE;
 		DamageRegionAppend(&pixmap->drawable, region);
 	}
 
@@ -2416,7 +2416,7 @@ static void sna_dri2_xchg_crtc(struct sna *sna, DrawablePtr draw, xf86CrtcPtr cr
 
 	if (APPLY_DAMAGE) {
 		DBG(("%s: marking drawable as damaged\n", __FUNCTION__));
-		sna->ignore_copy_area = true;
+		sna->ignore_copy_area = sna->flags & SNA_TEAR_FREE;
 		DamageRegionAppend(&win->drawable, &win->clipList);
 	}
 	sna_shadow_set_crtc(sna, crtc, get_private(back)->bo);
