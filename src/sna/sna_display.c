@@ -1303,6 +1303,9 @@ bool sna_crtc_set_sprite_rotation(xf86CrtcPtr crtc,
 }
 
 #if HAS_DEBUG_FULL
+#if !HAS_DEBUG_FULL
+#define LogF ErrorF
+#endif
 struct kmsg {
 	int fd;
 	int saved_loglevel;
@@ -1399,8 +1402,8 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 		return EINVAL;
 	}
 
-	sigio = sigio_block();
 	kmsg_open(&kmsg);
+	sigio = sigio_block();
 
 	assert(sna->mode.num_real_output < ARRAY_SIZE(output_ids));
 	sna_crtc_disable_cursor(sna, sna_crtc);
@@ -1500,8 +1503,8 @@ sna_crtc_apply(xf86CrtcPtr crtc)
 	sna_crtc_force_outputs_on(crtc);
 
 unblock:
-	kmsg_close(&kmsg, ret);
 	sigio_unblock(sigio);
+	kmsg_close(&kmsg, ret);
 	return ret;
 }
 
@@ -5853,12 +5856,14 @@ sna_show_cursors(ScrnInfoPtr scrn)
 {
 	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
 	struct sna *sna = to_sna(scrn);
+	struct kmsg kmsg;
 	int sigio, c;
 
 	DBG(("%s: cursor?=%d\n", __FUNCTION__, sna->cursor.ref != NULL));
 	if (sna->cursor.ref == NULL)
 		return;
 
+	kmsg_open(&kmsg);
 	sigio = sigio_block();
 	for (c = 0; c < sna->mode.num_real_crtc; c++) {
 		xf86CrtcPtr crtc = xf86_config->crtc[c];
@@ -5910,6 +5915,7 @@ sna_show_cursors(ScrnInfoPtr scrn)
 	}
 	sigio_unblock(sigio);
 	sna->cursor.active = true;
+	kmsg_close(&kmsg, sna->cursor.disable);
 
 	if (unlikely(sna->cursor.disable))
 		restore_swcursor(sna);
@@ -6032,6 +6038,7 @@ sna_set_cursor_position(ScrnInfoPtr scrn, int x, int y)
 {
 	xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
 	struct sna *sna = to_sna(scrn);
+	struct kmsg kmsg;
 	int sigio, c;
 
 	__DBG(("%s(%d, %d), cursor? %d\n", __FUNCTION__,
@@ -6039,6 +6046,7 @@ sna_set_cursor_position(ScrnInfoPtr scrn, int x, int y)
 	if (sna->cursor.ref == NULL)
 		return;
 
+	kmsg_open(&kmsg);
 	sigio = sigio_block();
 	sna->cursor.last_x = x;
 	sna->cursor.last_y = y;
@@ -6145,6 +6153,7 @@ disable:
 		}
 	}
 	sigio_unblock(sigio);
+	kmsg_close(&kmsg, sna->cursor.disable);
 
 	if (unlikely(sna->cursor.disable))
 		restore_swcursor(sna);
