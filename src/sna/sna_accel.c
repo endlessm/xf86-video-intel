@@ -50,6 +50,8 @@
 #endif
 #include <shmint.h>
 
+#include <X11/extensions/damageproto.h>
+
 #include <sys/time.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
@@ -3461,6 +3463,7 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 	if (priv->shm) {
 		assert(!priv->flush);
 		sna_add_flush_pixmap(sna, priv, priv->cpu_bo);
+		sna->needs_flush = true;
 	}
 
 	assert(priv->cpu_damage);
@@ -4075,6 +4078,8 @@ prefer_gpu_bo:
 		/* As we may have flushed and retired,, recheck for busy bo */
 		if ((flags & FORCE_GPU) == 0 && !kgem_bo_is_busy(priv->cpu_bo))
 			return NULL;
+
+		sna->needs_flush = true;
 	}
 	if (priv->flush) {
 		assert(!priv->shm);
@@ -4381,6 +4386,7 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 	if (priv->shm) {
 		assert(!priv->flush);
 		sna_add_flush_pixmap(sna, priv, priv->cpu_bo);
+		sna->needs_flush = true;
 	}
 
 	n = sna_damage_get_boxes(priv->cpu_damage, &box);
@@ -5025,8 +5031,10 @@ done:
 			sna_damage_all(&priv->gpu_damage, pixmap);
 		}
 
-		if (priv->shm)
+		if (priv->shm) {
 			sna_add_flush_pixmap(sna, priv, priv->cpu_bo);
+			sna->needs_flush = true;
+		}
 	}
 
 	assert(!priv->clear);
@@ -6629,8 +6637,10 @@ discard_cow:
 					sna_damage_all(&dst_priv->gpu_damage, dst_pixmap);
 					sna_damage_destroy(&dst_priv->cpu_damage);
 					list_del(&dst_priv->flush_list);
-					if (dst_priv->shm)
+					if (dst_priv->shm) {
 						sna_add_flush_pixmap(sna, dst_priv, dst_priv->cpu_bo);
+						sna->needs_flush = true;
+					}
 					return;
 				}
 			}
@@ -6712,6 +6722,7 @@ discard_cow:
 			if (src_priv->shm) {
 				assert(!src_priv->flush);
 				sna_add_flush_pixmap(sna, src_priv, src_priv->cpu_bo);
+				sna->needs_flush = true;
 			}
 
 			if (!sna->render.copy_boxes(sna, alu,
@@ -17381,7 +17392,32 @@ static void
 sna_accel_flush_callback(CallbackListPtr *list,
 			 pointer user_data, pointer call_data)
 {
-	sna_accel_flush(user_data);
+	struct sna *sna = user_data;
+
+	if (!sna->needs_flush)
+		return;
+
+	sna_accel_flush(sna);
+	sna->needs_flush = false;
+}
+
+static void
+sna_accel_event_callback(CallbackListPtr *list,
+			 pointer user_data, pointer call_data)
+{
+	EventInfoRec *eventinfo = call_data;
+	struct sna *sna = user_data;
+	int i;
+
+	if (sna->needs_flush)
+		return;
+
+	for (i = 0; i < eventinfo->count; i++) {
+		if (eventinfo->events[i].u.u.type == sna->damage_event) {
+			sna->needs_flush = true;
+			return;
+		}
+	}
 }
 
 static struct sna_pixmap *sna_accel_scanout(struct sna *sna)
@@ -18151,7 +18187,13 @@ bool sna_accel_init(ScreenPtr screen, struct sna *sna)
 
 void sna_accel_create(struct sna *sna)
 {
+	ExtensionEntry *damage;
+
 	DBG(("%s\n", __FUNCTION__));
+
+	damage = CheckExtension("DAMAGE");
+	if (damage)
+		sna->damage_event = damage->eventBase + XDamageNotify;
 
 	if (!sna_glyphs_create(sna))
 		goto fail;
@@ -18176,12 +18218,23 @@ void sna_accel_watch_flush(struct sna *sna, int enable)
 	assert(enable);
 
 	if (sna->watch_flush == 0) {
+		int err = 0;
+
 		DBG(("%s: installing watchers\n", __FUNCTION__));
 		assert(enable > 0);
-		if (!AddCallback(&FlushCallback, sna_accel_flush_callback, sna)) {
+
+		if (sna->damage_event &&
+		    !AddCallback(&EventCallback, sna_accel_event_callback, sna))
+			err = 1;
+
+		if (!AddCallback(&FlushCallback, sna_accel_flush_callback, sna))
+			err = 1;
+
+		if (err) {
 			xf86DrvMsg(sna->scrn->scrnIndex, X_Error,
 				   "Failed to attach ourselves to the flush callbacks, expect missing synchronisation with DRI clients (e.g a compositor)\n");
 		}
+
 		sna->watch_flush++;
 	}
 
@@ -18226,6 +18279,7 @@ void sna_accel_close(struct sna *sna)
 	sna_pixmap_expire(sna);
 
 	DeleteCallback(&FlushCallback, sna_accel_flush_callback, sna);
+	DeleteCallback(&EventCallback, sna_accel_event_callback, sna);
 	RemoveNotifyFd(sna->kgem.fd);
 
 	kgem_cleanup_cache(&sna->kgem);
@@ -18274,7 +18328,11 @@ restart:
 
 	if (sna->watch_flush == 1) {
 		DBG(("%s: removing watchers\n", __FUNCTION__));
-		DeleteCallback(&FlushCallback, sna_accel_flush_callback, sna);
+		DeleteCallback(&FlushCallback,
+			       sna_accel_flush_callback, sna);
+		if (sna->damage_event)
+			DeleteCallback(&EventCallback,
+				       sna_accel_event_callback, sna);
 		sna->watch_flush = 0;
 	}
 

@@ -283,6 +283,8 @@ struct sna {
 	bool ignore_copy_area : 1;
 
 	unsigned watch_flush;
+	unsigned damage_event;
+	bool needs_flush;
 
 	struct timeval timer_tv;
 	uint32_t timer_expire[NUM_TIMERS];

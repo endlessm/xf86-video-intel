@@ -396,6 +396,7 @@ use_cpu_bo(struct sna *sna, PixmapPtr pixmap, const BoxRec *box, bool blt)
 	if (priv->shm) {
 		assert(!priv->flush);
 		sna_add_flush_pixmap(sna, priv, priv->cpu_bo);
+		sna->needs_flush = true;
 	}
 
 	DBG(("%s for box=(%d, %d), (%d, %d)\n",
@@ -617,6 +618,7 @@ sna_render_pixmap_bo(struct sna *sna,
 			if (priv->shm) {
 				assert(!priv->flush);
 				sna_add_flush_pixmap(sna, priv, priv->cpu_bo);
+				sna->needs_flush = true;
 			}
 			goto done;
 		}

@@ -445,7 +445,7 @@ if test "x$UXA" != "xno"; then
 	UXA=yes
 fi
 
-PKG_CHECK_MODULES(XORG, [xorg-server >= $required_xorg_server_version xproto fontsproto pixman-1 >= $required_pixman_version $REQUIRED_MODULES])
+PKG_CHECK_MODULES(XORG, [xorg-server >= $required_xorg_server_version xproto fontsproto damageproto pixman-1 >= $required_pixman_version $REQUIRED_MODULES])
 ABI_VERSION=`$PKG_CONFIG --variable=abi_videodrv xorg-server`
 XSERVER_VERSION=`$PKG_CONFIG --modversion xorg-server`
 PIXMAN_VERSION=`$PKG_CONFIG --modversion pixman-1`
