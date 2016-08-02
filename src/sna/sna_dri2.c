@@ -794,7 +794,7 @@ sna_dri2_create_buffer(DrawablePtr draw,
 			priv->flush |= FLUSH_WRITE;
 		}
 
-		sna_accel_watch_flush(sna, 1);
+		sna_watch_flush(sna, 1);
 	}
 
 	return buffer;
@@ -924,7 +924,7 @@ static void _sna_dri2_destroy_buffer(struct sna *sna,
 			priv->gpu_bo->flush = false;
 			priv->flush = false;
 		}
-		sna_accel_watch_flush(sna, -1);
+		sna_watch_flush(sna, -1);
 
 		sna_pixmap_set_buffer(pixmap, NULL);
 		pixmap->drawable.pScreen->DestroyPixmap(pixmap);

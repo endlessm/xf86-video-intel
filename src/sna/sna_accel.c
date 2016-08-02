@@ -222,6 +222,7 @@ static GCOps sna_gc_ops__tmp;
 static const GCFuncs sna_gc_funcs;
 static const GCFuncs sna_gc_funcs__cpu;
 
+static void sna_shm_watch_flush(struct sna *sna, int enable);
 static void
 sna_poly_fill_rect__gpu(DrawablePtr draw, GCPtr gc, int n, xRectangle *rect);
 
@@ -589,7 +590,7 @@ static void __sna_pixmap_free_cpu(struct sna *sna, struct sna_pixmap *priv)
 		if (priv->cpu_bo->flush) {
 			assert(!priv->cpu_bo->reusable);
 			kgem_bo_sync__cpu(&sna->kgem, priv->cpu_bo);
-			sna_accel_watch_flush(sna, -1);
+			sna_shm_watch_flush(sna, -1);
 		}
 		kgem_bo_destroy(&sna->kgem, priv->cpu_bo);
 	} else if (!IS_STATIC_PTR(priv->ptr))
@@ -1001,7 +1002,7 @@ fallback:
 	}
 	priv->cpu_bo->pitch = pitch;
 	kgem_bo_mark_unreusable(priv->cpu_bo);
-	sna_accel_watch_flush(sna, 1);
+	sna_shm_watch_flush(sna, 1);
 #ifdef DEBUG_MEMORY
 	sna->debug_memory.cpu_bo_allocs++;
 	sna->debug_memory.cpu_bo_bytes += kgem_bo_size(priv->cpu_bo);
@@ -1440,7 +1441,7 @@ static void __sna_free_pixmap(struct sna *sna,
 	__sna_pixmap_free_cpu(sna, priv);
 
 	if (priv->flush)
-		sna_accel_watch_flush(sna, -1);
+		sna_watch_flush(sna, -1);
 
 #if !NDEBUG
 	pixmap->devKind = 0xdeadbeef;
@@ -1511,7 +1512,7 @@ static Bool sna_destroy_pixmap(PixmapPtr pixmap)
 	if (priv->shm && kgem_bo_is_busy(priv->cpu_bo)) {
 		DBG(("%s: deferring release of active SHM pixmap=%ld\n",
 		     __FUNCTION__, pixmap->drawable.serialNumber));
-		sna_add_flush_pixmap(sna, priv, priv->cpu_bo);
+		add_shm_flush(sna, priv);
 		kgem_bo_submit(&sna->kgem, priv->cpu_bo); /* XXX ShmDetach */
 	} else
 		__sna_free_pixmap(sna, pixmap, priv);
@@ -3460,11 +3461,7 @@ sna_pixmap_move_area_to_gpu(PixmapPtr pixmap, const BoxRec *box, unsigned int fl
 		return priv;
 	}
 
-	if (priv->shm) {
-		assert(!priv->flush);
-		sna_add_flush_pixmap(sna, priv, priv->cpu_bo);
-		sna->needs_flush = true;
-	}
+	add_shm_flush(sna, priv);
 
 	assert(priv->cpu_damage);
 	region_set(&r, box);
@@ -4072,14 +4069,10 @@ prefer_gpu_bo:
 	}
 
 	if (priv->shm) {
-		assert(!priv->flush);
-		sna_add_flush_pixmap(sna, priv, priv->cpu_bo);
-
+		add_shm_flush(sna, priv);
 		/* As we may have flushed and retired,, recheck for busy bo */
 		if ((flags & FORCE_GPU) == 0 && !kgem_bo_is_busy(priv->cpu_bo))
 			return NULL;
-
-		sna->needs_flush = true;
 	}
 	if (priv->flush) {
 		assert(!priv->shm);
@@ -4383,11 +4376,7 @@ sna_pixmap_move_to_gpu(PixmapPtr pixmap, unsigned flags)
 		goto done;
 	}
 
-	if (priv->shm) {
-		assert(!priv->flush);
-		sna_add_flush_pixmap(sna, priv, priv->cpu_bo);
-		sna->needs_flush = true;
-	}
+	add_shm_flush(sna, priv);
 
 	n = sna_damage_get_boxes(priv->cpu_damage, &box);
 	assert(n);
@@ -5031,10 +5020,7 @@ done:
 			sna_damage_all(&priv->gpu_damage, pixmap);
 		}
 
-		if (priv->shm) {
-			sna_add_flush_pixmap(sna, priv, priv->cpu_bo);
-			sna->needs_flush = true;
-		}
+		add_shm_flush(sna, priv);
 	}
 
 	assert(!priv->clear);
@@ -6637,10 +6623,7 @@ discard_cow:
 					sna_damage_all(&dst_priv->gpu_damage, dst_pixmap);
 					sna_damage_destroy(&dst_priv->cpu_damage);
 					list_del(&dst_priv->flush_list);
-					if (dst_priv->shm) {
-						sna_add_flush_pixmap(sna, dst_priv, dst_priv->cpu_bo);
-						sna->needs_flush = true;
-					}
+					add_shm_flush(sna, dst_priv);
 					return;
 				}
 			}
@@ -6719,11 +6702,7 @@ discard_cow:
 			if (replaces && UNDO)
 				kgem_bo_pair_undo(&sna->kgem, dst_priv->gpu_bo, dst_priv->cpu_bo);
 
-			if (src_priv->shm) {
-				assert(!src_priv->flush);
-				sna_add_flush_pixmap(sna, src_priv, src_priv->cpu_bo);
-				sna->needs_flush = true;
-			}
+			add_shm_flush(sna, src_priv);
 
 			if (!sna->render.copy_boxes(sna, alu,
 						    &src_pixmap->drawable, src_priv->cpu_bo, src_dx, src_dy,
@@ -17389,32 +17368,43 @@ void sna_accel_flush(struct sna *sna)
 }
 
 static void
-sna_accel_flush_callback(CallbackListPtr *list,
-			 pointer user_data, pointer call_data)
+sna_shm_flush_callback(CallbackListPtr *list,
+		       pointer user_data, pointer call_data)
 {
 	struct sna *sna = user_data;
 
-	if (!sna->needs_flush)
+	if (!sna->needs_shm_flush)
 		return;
 
 	sna_accel_flush(sna);
-	sna->needs_flush = false;
+	sna->needs_shm_flush = false;
 }
 
 static void
-sna_accel_event_callback(CallbackListPtr *list,
-			 pointer user_data, pointer call_data)
+sna_flush_callback(CallbackListPtr *list, pointer user_data, pointer call_data)
+{
+	struct sna *sna = user_data;
+
+	if (!sna->needs_dri_flush)
+		return;
+
+	sna_accel_flush(sna);
+	sna->needs_dri_flush = false;
+}
+
+static void
+sna_event_callback(CallbackListPtr *list, pointer user_data, pointer call_data)
 {
 	EventInfoRec *eventinfo = call_data;
 	struct sna *sna = user_data;
 	int i;
 
-	if (sna->needs_flush)
+	if (sna->needs_dri_flush)
 		return;
 
 	for (i = 0; i < eventinfo->count; i++) {
 		if (eventinfo->events[i].u.u.type == sna->damage_event) {
-			sna->needs_flush = true;
+			sna->needs_dri_flush = true;
 			return;
 		}
 	}
@@ -18212,22 +18202,42 @@ fail:
 	no_render_init(sna);
 }
 
-void sna_accel_watch_flush(struct sna *sna, int enable)
+static void sna_shm_watch_flush(struct sna *sna, int enable)
 {
 	DBG(("%s: enable=%d\n", __FUNCTION__, enable));
 	assert(enable);
 
-	if (sna->watch_flush == 0) {
+	if (sna->watch_shm_flush == 0) {
+		DBG(("%s: installing shm watchers\n", __FUNCTION__));
+		assert(enable > 0);
+
+		if (!AddCallback(&FlushCallback, sna_shm_flush_callback, sna))
+			return;
+
+		sna->watch_shm_flush++;
+	}
+
+	sna->watch_shm_flush += enable;
+}
+
+void sna_watch_flush(struct sna *sna, int enable)
+{
+	DBG(("%s: enable=%d\n", __FUNCTION__, enable));
+	assert(enable);
+
+	if (sna->watch_dri_flush == 0) {
 		int err = 0;
 
 		DBG(("%s: installing watchers\n", __FUNCTION__));
 		assert(enable > 0);
 
-		if (sna->damage_event &&
-		    !AddCallback(&EventCallback, sna_accel_event_callback, sna))
+		if (!sna->damage_event)
+			return;
+
+		if (!AddCallback(&EventCallback, sna_event_callback, sna))
 			err = 1;
 
-		if (!AddCallback(&FlushCallback, sna_accel_flush_callback, sna))
+		if (!AddCallback(&FlushCallback, sna_flush_callback, sna))
 			err = 1;
 
 		if (err) {
@@ -18235,10 +18245,10 @@ void sna_accel_watch_flush(struct sna *sna, int enable)
 				   "Failed to attach ourselves to the flush callbacks, expect missing synchronisation with DRI clients (e.g a compositor)\n");
 		}
 
-		sna->watch_flush++;
+		sna->watch_dri_flush++;
 	}
 
-	sna->watch_flush += enable;
+	sna->watch_dri_flush += enable;
 }
 
 void sna_accel_leave(struct sna *sna)
@@ -18278,8 +18288,9 @@ void sna_accel_close(struct sna *sna)
 
 	sna_pixmap_expire(sna);
 
-	DeleteCallback(&FlushCallback, sna_accel_flush_callback, sna);
-	DeleteCallback(&EventCallback, sna_accel_event_callback, sna);
+	DeleteCallback(&FlushCallback, sna_shm_flush_callback, sna);
+	DeleteCallback(&FlushCallback, sna_flush_callback, sna);
+	DeleteCallback(&EventCallback, sna_event_callback, sna);
 	RemoveNotifyFd(sna->kgem.fd);
 
 	kgem_cleanup_cache(&sna->kgem);
@@ -18326,14 +18337,17 @@ restart:
 	if (sna_accel_do_debug_memory(sna))
 		sna_accel_debug_memory(sna);
 
-	if (sna->watch_flush == 1) {
-		DBG(("%s: removing watchers\n", __FUNCTION__));
-		DeleteCallback(&FlushCallback,
-			       sna_accel_flush_callback, sna);
-		if (sna->damage_event)
-			DeleteCallback(&EventCallback,
-				       sna_accel_event_callback, sna);
-		sna->watch_flush = 0;
+	if (sna->watch_shm_flush == 1) {
+		DBG(("%s: removing shm watchers\n", __FUNCTION__));
+		DeleteCallback(&FlushCallback, sna_shm_flush_callback, sna);
+		sna->watch_shm_flush = 0;
+	}
+
+	if (sna->watch_dri_flush == 1) {
+		DBG(("%s: removing dri watchers\n", __FUNCTION__));
+		DeleteCallback(&FlushCallback, sna_flush_callback, sna);
+		DeleteCallback(&EventCallback, sna_event_callback, sna);
+		sna->watch_dri_flush = 0;
 	}
 
 	if (sna->timer_active & 1) {

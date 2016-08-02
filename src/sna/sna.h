@@ -282,9 +282,11 @@ struct sna {
 
 	bool ignore_copy_area : 1;
 
-	unsigned watch_flush;
+	unsigned watch_shm_flush;
+	unsigned watch_dri_flush;
 	unsigned damage_event;
-	bool needs_flush;
+	bool needs_shm_flush;
+	bool needs_dri_flush;
 
 	struct timeval timer_tv;
 	uint32_t timer_expire[NUM_TIMERS];
@@ -1077,13 +1079,13 @@ static inline uint32_t pixmap_size(PixmapPtr pixmap)
 bool sna_accel_init(ScreenPtr sreen, struct sna *sna);
 void sna_accel_create(struct sna *sna);
 void sna_accel_block(struct sna *sna, struct timeval **tv);
-void sna_accel_watch_flush(struct sna *sna, int enable);
 void sna_accel_flush(struct sna *sna);
 void sna_accel_enter(struct sna *sna);
 void sna_accel_leave(struct sna *sna);
 void sna_accel_close(struct sna *sna);
 void sna_accel_free(struct sna *sna);
 
+void sna_watch_flush(struct sna *sna, int enable);
 void sna_copy_fbcon(struct sna *sna);
 
 bool sna_composite_create(struct sna *sna);
@@ -1348,5 +1350,15 @@ static inline void sigtrap_put(void)
 #include <stdio.h>
 extern int getline(char **line, size_t *len, FILE *file);
 #endif
+
+static inline void add_shm_flush(struct sna *sna, struct sna_pixmap *priv)
+{
+	if (!priv->shm)
+		return;
+
+	assert(!priv->flush);
+	sna_add_flush_pixmap(sna, priv, priv->cpu_bo);
+	sna->needs_shm_flush = true;
+}
 
 #endif /* _SNA_H */

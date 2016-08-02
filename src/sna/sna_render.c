@@ -393,11 +393,7 @@ use_cpu_bo(struct sna *sna, PixmapPtr pixmap, const BoxRec *box, bool blt)
 		}
 	}
 
-	if (priv->shm) {
-		assert(!priv->flush);
-		sna_add_flush_pixmap(sna, priv, priv->cpu_bo);
-		sna->needs_flush = true;
-	}
+	add_shm_flush(sna, priv);
 
 	DBG(("%s for box=(%d, %d), (%d, %d)\n",
 	     __FUNCTION__, box->x1, box->y1, box->x2, box->y2));
@@ -615,11 +611,7 @@ sna_render_pixmap_bo(struct sna *sna,
 		    !priv->cpu_bo->snoop && priv->cpu_bo->pitch < 4096) {
 			DBG(("%s: CPU all damaged\n", __FUNCTION__));
 			channel->bo = priv->cpu_bo;
-			if (priv->shm) {
-				assert(!priv->flush);
-				sna_add_flush_pixmap(sna, priv, priv->cpu_bo);
-				sna->needs_flush = true;
-			}
+			add_shm_flush(sna, priv);
 			goto done;
 		}
 	}
