@@ -643,6 +643,7 @@ sna_dri2_create_buffer(DrawablePtr draw,
 			assert(private->bo->pitch == buffer->pitch);
 			assert(private->bo->active_scanout);
 
+			kgem_bo_submit(&sna->kgem, private->bo);
 			private->refcnt++;
 			return buffer;
 		}
