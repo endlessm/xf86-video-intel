@@ -5625,7 +5625,6 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 	const uint32_t *argb;
 	uint32_t *image;
 	int width, height, pitch, size, x, y;
-	PictTransform cursor_to_fb;
 	bool transformed;
 	Rotation rotation;
 
@@ -5677,16 +5676,53 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 
 		pixman_f_transform_bounds(&crtc->f_crtc_to_framebuffer, &box);
 		size = __cursor_size(box.x2 - box.x1, box.y2 - box.y1);
+		__DBG(("%s: transformed cursor %dx%d -> %dx%d\n",
+		       __FUNCTION__ ,
+		       sna->cursor.ref->bits->width,
+		       sna->cursor.ref->bits->height,
+		       box.x2 - box.x1, box.y2 - box.y1));
 	} else
 		size = sna->cursor.size;
 
-	if (crtc->transform_in_use)
-                RRTransformCompute(0, 0, size, size,
-                                   crtc->rotation,
-                                   crtc->transformPresent ? &crtc->transform : NULL,
-                                   &cursor_to_fb,
-                                   &to_sna_crtc(crtc)->cursor_to_fb,
-                                   &to_sna_crtc(crtc)->fb_to_cursor);
+	if (crtc->transform_in_use) {
+		RRTransformPtr T = NULL;
+		struct pixman_vector v;
+
+		if (crtc->transformPresent) {
+			T = &crtc->transform;
+
+			/* Cancel any translation from this affine
+			 * transformation. We just want to rotate and scale
+			 * the cursor image.
+			 */
+			v.vector[0] = 0;
+			v.vector[1] = 0;
+			v.vector[2] = pixman_fixed_1;
+			pixman_transform_point(&crtc->transform.transform, &v);
+		}
+
+		RRTransformCompute(0, 0, size, size, crtc->rotation, T, NULL,
+				   &to_sna_crtc(crtc)->cursor_to_fb,
+				   &to_sna_crtc(crtc)->fb_to_cursor);
+		if (T)
+			pixman_f_transform_translate(
+					&to_sna_crtc(crtc)->cursor_to_fb,
+					&to_sna_crtc(crtc)->fb_to_cursor,
+					-pixman_fixed_to_double(v.vector[0]),
+					-pixman_fixed_to_double(v.vector[1]));
+
+		__DBG(("%s: cursor_to_fb [%f %f %f, %f %f %f, %f %f %f]\n",
+		       __FUNCTION__,
+		       to_sna_crtc(crtc)->cursor_to_fb.m[0][0],
+		       to_sna_crtc(crtc)->cursor_to_fb.m[0][1],
+		       to_sna_crtc(crtc)->cursor_to_fb.m[0][2],
+		       to_sna_crtc(crtc)->cursor_to_fb.m[1][0],
+		       to_sna_crtc(crtc)->cursor_to_fb.m[1][1],
+		       to_sna_crtc(crtc)->cursor_to_fb.m[1][2],
+		       to_sna_crtc(crtc)->cursor_to_fb.m[2][0],
+		       to_sna_crtc(crtc)->cursor_to_fb.m[2][1],
+		       to_sna_crtc(crtc)->cursor_to_fb.m[2][2]));
+	}
 
 	cursor = to_sna_crtc(crtc)->cursor;
 	if (cursor && cursor->alloc < 4*size*size)
@@ -5740,6 +5776,7 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 				source += pitch;
 			}
 			if (transformed) {
+				__DBG(("%s: Applying affine BLT to bitmap\n", __FUNCTION__));
 				affine_blt(image, cursor->image, 32,
 					   0, 0, width, height, size * 4,
 					   0, 0, size, size, size * 4,
@@ -5747,6 +5784,7 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 				image = cursor->image;
 			}
 		} else if (transformed) {
+			__DBG(("%s: Applying affine BLT to ARGB\n", __FUNCTION__));
 			affine_blt(argb, cursor->image, 32,
 				   0, 0, width, height, width * 4,
 				   0, 0, size, size, size * 4,
