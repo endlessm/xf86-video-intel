@@ -1523,6 +1523,48 @@ static bool overlap(const BoxRec *a, const BoxRec *b)
 	return true;
 }
 
+static void defer_event(struct sna *sna, struct drm_event *base)
+{
+	if (sna->mode.shadow_nevent == sna->mode.shadow_size) {
+		int size = sna->mode.shadow_size * 2;
+		void *ptr;
+
+		ptr = realloc(sna->mode.shadow_events,
+			      sizeof(struct drm_event_vblank)*size);
+		if (!ptr)
+			return;
+
+		sna->mode.shadow_events = ptr;
+		sna->mode.shadow_size = size;
+	}
+
+	memcpy(&sna->mode.shadow_events[sna->mode.shadow_nevent++],
+	       base, sizeof(struct drm_event_vblank));
+	DBG(("%s: deferring event count=%d\n", sna->mode.shadow_nevent));
+}
+
+static void flush_events(struct sna *sna)
+{
+	int n;
+
+	if (!sna->mode.shadow_nevent)
+		return;
+
+	DBG(("%s: flushing %d events=%d\n", sna->mode.shadow_nevent));
+
+	for (n = 0; n < sna->mode.shadow_nevent; n++) {
+		struct drm_event_vblank *vb = &sna->mode.shadow_events[n];
+
+		if ((uintptr_t)(vb->user_data) & 2)
+			sna_present_vblank_handler(vb);
+		else
+			sna_dri2_vblank_handler(vb);
+	}
+
+	sna->mode.shadow_nevent = 0;
+}
+
+
 static bool wait_for_shadow(struct sna *sna,
 			    struct sna_pixmap *priv,
 			    unsigned flags)
@@ -1545,8 +1587,7 @@ static bool wait_for_shadow(struct sna *sna,
 		goto done;
 
 	assert(sna->mode.shadow_damage);
-	if (sna->mode.shadow_wait)
-		return ret;
+	assert(!sna->mode.shadow_wait);
 
 	if ((flags & MOVE_WRITE) == 0) {
 		if ((flags & __MOVE_SCANOUT) == 0) {
@@ -1748,6 +1789,7 @@ done:
 	priv->move_to_gpu = NULL;
 
 	assert(!sna->mode.shadow_wait);
+	flush_events(sna);
 
 	return ret;
 }
@@ -7308,6 +7350,11 @@ bool sna_mode_pre_init(ScrnInfoPtr scrn, struct sna *sna)
 	if (!sna_mode_fake_init(sna, num_fake))
 		return false;
 
+	sna->mode.shadow_size = 256;
+	sna->mode.shadow_events = malloc(sna->mode.shadow_size * sizeof(struct drm_event_vblank));
+	if (!sna->mode.shadow_events)
+		return false;
+
 	if (!sna_probe_initial_configuration(sna)) {
 		xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(scrn);
 
@@ -8504,7 +8551,10 @@ sna_crtc_redisplay(xf86CrtcPtr crtc, RegionPtr region, struct kgem_bo *bo)
 static void shadow_flip_handler(struct drm_event_vblank *e,
 				void *data)
 {
-	sna_mode_redisplay(data);
+	struct sna *sna = data;
+
+	if (!sna->mode.shadow_wait)
+		sna_mode_redisplay(sna);
 }
 
 void sna_shadow_set_crtc(struct sna *sna,
@@ -9098,7 +9148,9 @@ again:
 		struct drm_event *e = (struct drm_event *)&buffer[i];
 		switch (e->type) {
 		case DRM_EVENT_VBLANK:
-			if (((uintptr_t)((struct drm_event_vblank *)e)->user_data) & 2)
+			if (sna->mode.shadow_wait)
+				defer_event(sna, e);
+			else if (((uintptr_t)((struct drm_event_vblank *)e)->user_data) & 2)
 				sna_present_vblank_handler((struct drm_event_vblank *)e);
 			else
 				sna_dri2_vblank_handler((struct drm_event_vblank *)e);

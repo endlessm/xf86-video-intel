@@ -2514,15 +2514,6 @@ static void chain_swap(struct sna_dri2_event *chain)
 	switch (chain->type) {
 	case SWAP_COMPLETE:
 		DBG(("%s: emitting chained vsync'ed blit\n", __FUNCTION__));
-		if (chain->sna->mode.shadow_wait) {
-			/* recursed from wait_for_shadow(), simply requeue */
-			DBG(("%s -- recursed from wait_for_shadow(), requeuing\n", __FUNCTION__));
-			if (sna_next_vblank(chain))
-				return;
-
-			DBG(("%s -- requeue failed, errno=%d\n", __FUNCTION__, errno));
-		}
-
 		if (can_xchg(chain->sna, chain->draw, chain->front, chain->back)) {
 			sna_dri2_xchg(chain->draw, chain->front, chain->back);
 		} else if (can_xchg_crtc(chain->sna, chain->draw, chain->crtc,
@@ -2609,10 +2600,7 @@ void sna_dri2_vblank_handler(struct drm_event_vblank *event)
 		/* else fall through to blit */
 	case SWAP:
 		assert(info->signal);
-		if (sna->mode.shadow_wait) {
-			/* recursed from wait_for_shadow(), simply requeue */
-			DBG(("%s -- recursed from wait_for_shadow(), requeuing\n", __FUNCTION__));
-		} else if (can_xchg(info->sna, draw, info->front, info->back)) {
+		if (can_xchg(info->sna, draw, info->front, info->back)) {
 			sna_dri2_xchg(draw, info->front, info->back);
 			info->type = SWAP_COMPLETE;
 		} else if (can_xchg_crtc(sna, draw, info->crtc,
@@ -2654,13 +2642,6 @@ void sna_dri2_vblank_handler(struct drm_event_vblank *event)
 			     get_private(info->back)->bo->handle, info->back->name, get_private(info->back)->bo->active_scanout,
 			     info->pending.bo->handle, info->pending.name, info->pending.bo->active_scanout,
 			     get_private(info->front)->bo->handle, info->front->name, get_private(info->front)->bo->active_scanout));
-
-			if (sna->mode.shadow_wait) {
-				/* recursed from wait_for_shadow(), simply requeue */
-				DBG(("%s -- recursed from wait_for_shadow(), requeuing\n", __FUNCTION__));
-				if (sna_next_vblank(info))
-					return;
-			}
 
 			assert(info->pending.bo->active_scanout > 0);
 			info->pending.bo->active_scanout--;

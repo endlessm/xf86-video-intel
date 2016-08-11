@@ -312,6 +312,10 @@ struct sna {
 		bool shadow_wait;
 		bool dirty;
 
+		struct drm_event_vblank *shadow_events;
+		int shadow_nevent;
+		int shadow_size;
+
 		int max_crtc_width, max_crtc_height;
 		RegionRec shadow_region;
 		RegionRec shadow_cancel;
