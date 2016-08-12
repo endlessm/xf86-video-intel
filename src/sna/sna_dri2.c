@@ -1385,6 +1385,7 @@ __sna_dri2_copy_region(struct sna *sna, DrawablePtr draw, RegionPtr region,
 				  dst_draw, dst_bo, dx, dy,
 				  boxes, n, hint);
 
+	sna->needs_dri_flush = true;
 	if (flags & (DRI2_SYNC | DRI2_BO)) { /* STAT! */
 		struct kgem_request *rq = RQ(dst_bo->rq);
 		if (rq && rq != (void *)&sna->kgem) {
