@@ -434,25 +434,29 @@ sna_dri2_swap_limit_validate(DrawablePtr draw, int swap_limit)
 static void
 sna_dri2_reuse_buffer(DrawablePtr draw, DRI2BufferPtr buffer)
 {
+	struct sna *sna = to_sna_from_drawable(draw);
+
 	DBG(("%s: reusing buffer pixmap=%ld, attachment=%d, handle=%d, name=%d\n",
 	     __FUNCTION__, get_drawable_pixmap(draw)->drawable.serialNumber,
 	     buffer->attachment, get_private(buffer)->bo->handle, buffer->name));
 	assert(get_private(buffer)->refcnt);
 	assert(get_private(buffer)->bo->refcnt >= get_private(buffer)->bo->active_scanout);
-	assert(kgem_bo_flink(&to_sna_from_drawable(draw)->kgem, get_private(buffer)->bo) == buffer->name);
+	assert(kgem_bo_flink(&sna->kgem, get_private(buffer)->bo) == buffer->name);
 
 	if (buffer->attachment == DRI2BufferBackLeft &&
 	    draw->type != DRAWABLE_PIXMAP) {
 		DBG(("%s: replacing back buffer on window %ld\n", __FUNCTION__, draw->id));
-		sna_dri2_get_back(to_sna_from_drawable(draw), draw, buffer);
+		sna_dri2_get_back(sna, draw, buffer);
 
 		assert(get_private(buffer)->bo->refcnt);
 		assert(get_private(buffer)->bo->active_scanout == 0);
-		assert(kgem_bo_flink(&to_sna_from_drawable(draw)->kgem, get_private(buffer)->bo) == buffer->name);
+		assert(kgem_bo_flink(&sna->kgem, get_private(buffer)->bo) == buffer->name);
 		DBG(("%s: reusing back buffer handle=%d, name=%d, pitch=%d, age=%d\n",
 		     __FUNCTION__, get_private(buffer)->bo->handle,
 		     buffer->name, buffer->pitch, buffer->flags));
 	}
+
+	kgem_bo_submit(&sna->kgem, get_private(buffer)->bo);
 }
 
 static bool swap_limit(DrawablePtr draw, int limit)
