@@ -2470,6 +2470,10 @@ done:
 			DBG(("%s: discarding idle GPU bo\n", __FUNCTION__));
 			sna_pixmap_free_gpu(sna, priv);
 		}
+		if (priv->flush) {
+			assert(!priv->shm);
+			sna_add_flush_pixmap(sna, priv, priv->gpu_bo);
+		}
 		priv->source_count = SOURCE_BIAS;
 	}
 
@@ -2718,6 +2722,10 @@ sna_drawable_move_region_to_cpu(DrawablePtr drawable,
 					}
 				}
 				sna_damage_add_to_pixmap(&priv->cpu_damage, region, pixmap);
+				if (priv->flush) {
+					assert(!priv->shm);
+					sna_add_flush_pixmap(sna, priv, priv->gpu_bo);
+				}
 
 				if (dx | dy)
 					RegionTranslate(region, -dx, -dy);
