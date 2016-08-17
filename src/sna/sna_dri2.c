@@ -647,7 +647,12 @@ sna_dri2_create_buffer(DrawablePtr draw,
 			assert(private->bo->pitch == buffer->pitch);
 			assert(private->bo->active_scanout);
 
+			sna_pixmap_move_to_gpu(pixmap,
+					       MOVE_READ |
+					       __MOVE_FORCE |
+					       __MOVE_DRI);
 			kgem_bo_submit(&sna->kgem, private->bo);
+
 			private->refcnt++;
 			return buffer;
 		}
