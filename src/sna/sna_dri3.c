@@ -60,6 +60,8 @@ static inline void mark_dri3_pixmap(struct sna *sna, struct sna_pixmap *priv, st
 		priv->shm = true;
 
 	sna_watch_flush(sna, 1);
+
+	kgem_bo_submit(&sna->kgem, bo);
 	kgem_bo_unclean(&sna->kgem, bo);
 }
 
