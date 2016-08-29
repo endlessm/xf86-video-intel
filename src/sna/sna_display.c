@@ -3901,7 +3901,7 @@ sna_output_add_default_modes(xf86OutputPtr output, DisplayModePtr modes)
 {
 	xf86MonPtr mon = output->MonInfo;
 	DisplayModePtr i, m, preferred = NULL;
-	int max_x = 0, max_y = 0;
+	int max_x = 0, max_y = 0, max_clock = 0;
 	float max_vrefresh = 0.0;
 
 	if (mon && GTF_SUPPORTED(mon->features.msc))
@@ -3912,16 +3912,17 @@ sna_output_add_default_modes(xf86OutputPtr output, DisplayModePtr modes)
 			preferred = m;
 		max_x = max(max_x, m->HDisplay);
 		max_y = max(max_y, m->VDisplay);
+		max_clock = max(max_clock, m->Clock);
 		max_vrefresh = max(max_vrefresh, xf86ModeVRefresh(m));
 	}
-
-	max_vrefresh = max(max_vrefresh, 60.0);
 	max_vrefresh *= (1 + SYNC_TOLERANCE);
 
 	m = default_modes(preferred);
 	xf86ValidateModesSize(output->scrn, m, max_x, max_y, 0);
 
 	for (i = m; i; i = i->next) {
+		if (i->Clock > max_clock)
+			i->status = MODE_CLOCK_HIGH;
 		if (xf86ModeVRefresh(i) > max_vrefresh)
 			i->status = MODE_VSYNC;
 		if (preferred &&
