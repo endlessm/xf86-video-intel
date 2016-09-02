@@ -230,10 +230,31 @@ static const struct gt_info skl_gt_info = {
 	.urb = { .max_vs_entries = 960 },
 };
 
+static const struct gt_info bxt_gt_info = {
+	.name = "Broxton (gen9)",
+	.urb = { .max_vs_entries = 320 },
+};
+
+static const struct gt_info kbl_gt_info = {
+	.name = "Kayblake (gen9)",
+	.urb = { .max_vs_entries = 960 },
+};
+
 static bool is_skl(struct sna *sna)
 {
 	return sna->kgem.gen == 0110;
 }
+
+static bool is_bxt(struct sna *sna)
+{
+	return sna->kgem.gen == 0111;
+}
+
+static bool is_kbl(struct sna *sna)
+{
+	return sna->kgem.gen == 0112;
+}
+
 
 static inline bool too_large(int width, int height)
 {
@@ -3982,11 +4003,13 @@ static bool gen9_render_setup(struct sna *sna)
 		state->gt = GEN9_GT_BIAS + ((devid >> 4) & 0xf) + 1;
 	DBG(("%s: gt=%d\n", __FUNCTION__, state->gt));
 
-	state->info = &skl_gt_info;
+	state->info = &min_gt_info;
 	if (is_skl(sna))
 		state->info = &skl_gt_info;
-	else
-		return false;
+	if (is_bxt(sna))
+		state->info = &bxt_gt_info;
+	if (is_kbl(sna))
+		state->info = &kbl_gt_info;
 
 	sna_static_stream_init(&general);
 
