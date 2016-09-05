@@ -236,7 +236,7 @@ static const struct gt_info bxt_gt_info = {
 };
 
 static const struct gt_info kbl_gt_info = {
-	.name = "Kayblake (gen9)",
+	.name = "Kabylake (gen9)",
 	.urb = { .max_vs_entries = 960 },
 };
 
