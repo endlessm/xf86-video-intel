@@ -1139,7 +1139,7 @@ static void sna_dri2_select_mode(struct sna *sna, struct kgem_bo *dst, struct kg
 	 * the cost of the query.
 	 */
 	mode = KGEM_RENDER;
-	if ((busy.busy & 0xffff) == KGEM_BLT)
+	if ((busy.busy & 0xffff) == I915_EXEC_BLT)
 		mode = KGEM_BLT;
 	kgem_bo_mark_busy(&sna->kgem,
 			  busy.handle == src->handle ? src : dst,
