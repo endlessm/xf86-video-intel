@@ -2036,6 +2036,8 @@ gen9_composite_set_target(struct sna *sna,
 	if (op->dst.bo == NULL)
 		return false;
 
+	assert(!op->damage || !DAMAGE_IS_ALL(*op->damage));
+
 	if (unaligned(op->dst.bo, dst->pDrawable->bitsPerPixel))
 		return false;
 

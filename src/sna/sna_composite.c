@@ -452,6 +452,8 @@ static void apply_damage(struct sna_composite_op *op, RegionPtr region)
 		op->damage = NULL;
 	} else
 		sna_damage_add(op->damage, region);
+
+	assert(!op->damage || !DAMAGE_IS_ALL(*op->damage));
 }
 
 static inline bool use_cpu(PixmapPtr pixmap, struct sna_pixmap *priv,
@@ -757,6 +759,7 @@ sna_composite(CARD8 op,
 		DBG(("%s: fallback due unhandled composite op\n", __FUNCTION__));
 		goto fallback;
 	}
+	assert(!tmp.damage || !DAMAGE_IS_ALL(*tmp.damage));
 
 	if (region.data == NULL)
 		tmp.box(sna, &tmp, &region.extents);
