@@ -1105,7 +1105,8 @@ sna_screen_init(SCREEN_INIT_ARGS_DECL)
 	DBG(("%s\n", __FUNCTION__));
 
 	assert(sna->scrn == scrn);
-	assert(to_screen_from_sna(sna) == NULL); /* set afterwards */
+	assert(to_screen_from_sna(sna) == NULL || /* set afterwards */
+	       to_screen_from_sna(sna) == screen);
 
 	assert(sna->freed_pixmap == NULL);
 
