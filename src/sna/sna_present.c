@@ -58,6 +58,29 @@ to_present_event(uintptr_t  data)
 	return (struct sna_present_event *)(data & ~3);
 }
 
+static struct sna_present_event *info_alloc(struct sna *sna)
+{
+	struct sna_present_event *info;
+
+	info = sna->present.freed_info;
+	if (info) {
+		sna->present.freed_info = NULL;
+		return info;
+	}
+
+	return malloc(sizeof(struct sna_present_event) + sizeof(uint64_t));
+}
+
+static void info_free(struct sna_present_event *info)
+{
+	struct sna *sna = info->sna;
+
+	if (sna->present.freed_info)
+		free(sna->present.freed_info);
+
+	sna->present.freed_info = info;
+}
+
 static inline bool msc_before(uint64_t msc, uint64_t target)
 {
 	return (int64_t)(msc - target) < 0;
@@ -141,7 +164,7 @@ static void vblank_complete(struct sna_present_event *info,
 	if (info->n_event_id > 1)
 		free(info->event_id);
 	list_del(&info->link);
-	free(info);
+	info_free(info);
 }
 
 static uint32_t msc_to_delay(xf86CrtcPtr crtc, uint64_t target)
@@ -354,8 +377,34 @@ sna_present_get_ust_msc(RRCrtcPtr crtc, CARD64 *ust, CARD64 *msc)
 	vbl.request.type = DRM_VBLANK_RELATIVE;
 	vbl.request.sequence = 0;
 	if (sna_wait_vblank(sna, &vbl, sna_crtc_pipe(crtc->devPrivate)) == 0) {
+		struct sna_present_event *info;
+
 		*ust = ust64(vbl.reply.tval_sec, vbl.reply.tval_usec);
 		*msc = sna_crtc_record_vblank(crtc->devPrivate, &vbl);
+
+		info = info_alloc(sna);
+		if (info) {
+			info->crtc = crtc->devPrivate;
+			info->sna = sna;
+			info->target_msc = *msc + 1;
+			info->event_id = (uint64_t *)(info + 1);
+			info->n_event_id = 0;
+
+			vbl.request.type =
+				DRM_VBLANK_ABSOLUTE | DRM_VBLANK_EVENT;
+			vbl.request.sequence = info->target_msc;
+			vbl.request.signal = (uintptr_t)MARK_PRESENT(info);
+
+			if (sna_wait_vblank(info->sna, &vbl,
+					    sna_crtc_pipe(info->crtc)) == 0) {
+				list_add(&info->link,
+					 &sna->present.vblank_queue);
+				info->queued = true;
+				sna_crtc_set_vblank(info->crtc);
+				info->crtc = mark_crtc(info->crtc);
+			} else
+				info_free(info);
+		}
 	} else {
 		const struct ust_msc *swap;
 last:
@@ -433,7 +482,8 @@ sna_present_queue_vblank(RRCrtcPtr crtc, uint64_t event_id, uint64_t msc)
 		    unmask_crtc(tmp->crtc) == crtc->devPrivate) {
 			uint64_t *events = tmp->event_id;
 
-			if (is_power_of_two(tmp->n_event_id)) {
+			if (tmp->n_event_id &&
+			    is_power_of_two(tmp->n_event_id)) {
 				events = malloc(2*sizeof(uint64_t)*tmp->n_event_id);
 				if (events == NULL)
 					return BadAlloc;
@@ -458,7 +508,7 @@ sna_present_queue_vblank(RRCrtcPtr crtc, uint64_t event_id, uint64_t msc)
 		}
 	}
 
-	info = malloc(sizeof(struct sna_present_event) + sizeof(uint64_t));
+	info = info_alloc(sna);
 	if (info == NULL)
 		return BadAlloc;
 
@@ -473,7 +523,7 @@ sna_present_queue_vblank(RRCrtcPtr crtc, uint64_t event_id, uint64_t msc)
 
 	if (!sna_present_queue(info, swap->msc)) {
 		list_del(&info->link);
-		free(info);
+		info_free(info);
 		return BadAlloc;
 	}
 
@@ -661,7 +711,7 @@ present_flip_handler(struct drm_event_vblank *event, void *data)
 				   info->sna->present.unflip);
 		info->sna->present.unflip = 0;
 	}
-	free(info);
+	info_free(info);
 }
 
 static Bool
@@ -679,7 +729,7 @@ flip(struct sna *sna,
 	     (long long)event_id,
 	     bo->handle));
 
-	info = malloc(sizeof(struct sna_present_event)+sizeof(uint64_t));
+	info = info_alloc(sna);
 	if (info == NULL)
 		return FALSE;
 
@@ -693,7 +743,7 @@ flip(struct sna *sna,
 
 	if (!sna_page_flip(sna, bo, present_flip_handler, info)) {
 		DBG(("%s: pageflip failed\n", __FUNCTION__));
-		free(info);
+		info_free(info);
 		return FALSE;
 	}
 

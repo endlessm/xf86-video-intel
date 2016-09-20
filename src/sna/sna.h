@@ -385,6 +385,7 @@ struct sna {
 #if HAVE_PRESENT
 		struct list vblank_queue;
 		uint64_t unflip;
+		void *freed_info;
 #endif
 	} present;
 
