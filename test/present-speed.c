@@ -149,6 +149,7 @@ struct buffer {
 
 #define DRI3 1
 #define NOCOPY 2
+#define ASYNC 4
 static void run(Display *dpy, Window win, const char *name, unsigned options)
 {
 	xcb_connection_t *c = XGetXCBConnection(dpy);
@@ -160,7 +161,7 @@ static void run(Display *dpy, Window win, const char *name, unsigned options)
 	Window root;
 	unsigned int width, height;
 	unsigned border, depth;
-	unsigned present_flags = XCB_PRESENT_OPTION_ASYNC;
+	unsigned present_flags = 0;
 	xcb_xfixes_region_t update = 0;
 	int completed = 0;
 	int queued = 0;
@@ -203,6 +204,8 @@ static void run(Display *dpy, Window win, const char *name, unsigned options)
 		buffer[n].busy = 0;
 		list_add(&buffer[n].link, &mru);
 	}
+	if (options & ASYNC)
+		present_flags |= XCB_PRESENT_OPTION_ASYNC;
 	if (options & NOCOPY) {
 		update = xcb_generate_id(c);
 		xcb_xfixes_create_region(c, update, 0, NULL);
@@ -312,20 +315,16 @@ static void run(Display *dpy, Window win, const char *name, unsigned options)
 		XFreePixmap(dpy, buffer[n].pixmap);
 	}
 
-	XSync(dpy, True);
-	if (_x_error_occurred)
-		abort();
-
-	_x_error_occurred = -1;
-	xcb_present_select_input(c, eid, win, 0);
+	xcb_discard_reply(c, xcb_present_select_input_checked(c, eid, win, 0).sequence);
 	XSync(dpy, True);
 	xcb_unregister_for_special_event(c, Q);
 
 	test_name[0] = '\0';
 	if (options) {
-		snprintf(test_name, sizeof(test_name), "(%s%s )",
+		snprintf(test_name, sizeof(test_name), "(%s%s%s )",
 			 options & NOCOPY ? " no-copy" : "",
-			 options & DRI3 ? " dri3" : "");
+			 options & DRI3 ? " dri3" : "",
+			 options & ASYNC ? " async" : "");
 	}
 	printf("%s%s: Completed %d presents in %.1fs, %.3fus each (%.1f FPS)\n",
 	       name, test_name,
@@ -343,7 +342,56 @@ static int isqrt(int x)
 	return i;
 }
 
-static void siblings(int max_width, int max_height, int ncpus, unsigned options)
+struct sibling {
+	pthread_t thread;
+	Display *dpy;
+	int x, y;
+	int width, height;
+	unsigned options;
+};
+
+static void *sibling(void *arg)
+{
+	struct sibling *s = arg;
+	XSetWindowAttributes attr = { .override_redirect = 1 };
+	Window win = XCreateWindow(s->dpy, DefaultRootWindow(s->dpy),
+				   s->x, s->y, s->width, s->height, 0,
+				   DefaultDepth(s->dpy, DefaultScreen(s->dpy)),
+				   InputOutput,
+				   DefaultVisual(s->dpy, DefaultScreen(s->dpy)),
+				   CWOverrideRedirect, &attr);
+	XMapWindow(s->dpy, win);
+	run(s->dpy, win, "sibling", s->options);
+	return NULL;
+}
+
+static void siblings(Display *dpy,
+		     int max_width, int max_height, int ncpus, unsigned options)
+{
+	int sq_ncpus = isqrt(ncpus);
+	int width = max_width / sq_ncpus;
+	int height = max_height/ sq_ncpus;
+	struct sibling s[ncpus];
+	int child;
+
+	if (ncpus <= 1)
+		return;
+
+	for (child = 0; child < ncpus; child++) {
+		s[child].dpy = dpy;
+		s[child].x = (child % sq_ncpus) * width;
+		s[child].y = (child / sq_ncpus) * height;
+		s[child].width = width;
+		s[child].height = height;
+		s[child].options = options;
+		pthread_create(&s[child].thread, NULL, sibling, &s[child]);
+	}
+
+	for (child = 0; child < ncpus; child++)
+		pthread_join(s[child].thread, NULL);
+}
+
+static void cousins(int max_width, int max_height, int ncpus, unsigned options)
 {
 	int sq_ncpus = isqrt(ncpus);
 	int width = max_width / sq_ncpus;
@@ -366,7 +414,7 @@ static void siblings(int max_width, int max_height, int ncpus, unsigned options)
 						   DefaultVisual(dpy, DefaultScreen(dpy)),
 						   CWOverrideRedirect, &attr);
 			XMapWindow(dpy, win);
-			run(dpy, win, "sibling", options);
+			run(dpy, win, "cousin", options);
 		}
 	}
 
@@ -580,7 +628,7 @@ static void loop(Display *dpy, XRRScreenResources *res, unsigned options)
 						    DefaultVisual(dpy, DefaultScreen(dpy)),
 						    CWOverrideRedirect, &attr);
 				XCompositeRedirectWindow(dpy, win, CompositeRedirectManual);
-				damage = XDamageCreate(dpy, win, XDamageReportRawRectangles);
+				damage = XDamageCreate(dpy, win, XDamageReportNonEmpty);
 				XMapWindow(dpy, win);
 				XSync(dpy, True);
 				if (!_x_error_occurred)
@@ -601,9 +649,13 @@ static void loop(Display *dpy, XRRScreenResources *res, unsigned options)
 			XDestroyWindow(dpy, win);
 			XSync(dpy, True);
 
-			siblings(mode->width, mode->height,
+			siblings(dpy, mode->width, mode->height,
 				 sysconf(_SC_NPROCESSORS_ONLN),
 				 options);
+
+			cousins(mode->width, mode->height,
+				sysconf(_SC_NPROCESSORS_ONLN),
+				options);
 
 			XRRSetCrtcConfig(dpy, res, output->crtcs[c], CurrentTime,
 					 0, 0, None, RR_Rotate_0, NULL, 0);
@@ -611,6 +663,7 @@ static void loop(Display *dpy, XRRScreenResources *res, unsigned options)
 
 		XRRFreeOutputInfo(output);
 	}
+
 }
 
 int main(void)
@@ -619,6 +672,8 @@ int main(void)
 	XRRScreenResources *res;
 	XRRCrtcInfo **original_crtc;
 	int i;
+
+	XInitThreads();
 
 	dpy = XOpenDisplay(NULL);
 	if (dpy == NULL)
@@ -649,10 +704,13 @@ int main(void)
 				 0, 0, None, RR_Rotate_0, NULL, 0);
 
 	loop(dpy, res, 0);
+	loop(dpy, res, ASYNC);
 	if (has_xfixes(dpy))
 		loop(dpy, res, NOCOPY);
-	if (has_dri3(dpy))
+	if (has_dri3(dpy)) {
 		loop(dpy, res, DRI3);
+		loop(dpy, res, DRI3 | ASYNC);
+	}
 
 	for (i = 0; i < res->ncrtc; i++)
 		XRRSetCrtcConfig(dpy, res, res->crtcs[i], CurrentTime,

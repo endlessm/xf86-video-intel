@@ -50,6 +50,7 @@ stress_TESTS += \
 	present-speed \
 	present-test \
 	$(NULL)
+present_speed_CFLAGS = ${AM_CFLAGS} -pthread
 endif
 check_PROGRAMS = $(stress_TESTS)
 
