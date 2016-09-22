@@ -166,8 +166,8 @@ static void run(Display *dpy, Window win, const char *name, unsigned options)
 	xcb_xfixes_region_t update = 0;
 	int completed = 0;
 	int queued = 0;
-	uint32_t eid;
-	void *Q;
+	uint32_t eid = 0;
+	void *Q = NULL;
 	int i, n;
 
 	list_init(&mru);
@@ -215,23 +215,35 @@ static void run(Display *dpy, Window win, const char *name, unsigned options)
 		present_flags |= XCB_PRESENT_OPTION_COPY;
 	}
 
-	eid = xcb_generate_id(c);
-	xcb_present_select_input(c, eid, win,
-				 (options & NOCOPY ? 0 : XCB_PRESENT_EVENT_MASK_IDLE_NOTIFY) |
-				 XCB_PRESENT_EVENT_MASK_COMPLETE_NOTIFY);
-	Q = xcb_register_for_special_xge(c, &xcb_present_id, eid, &stamp);
+	if (!(options & DRI3)) {
+		eid = xcb_generate_id(c);
+		xcb_present_select_input(c, eid, win,
+					 (options & NOCOPY ? 0 : XCB_PRESENT_EVENT_MASK_IDLE_NOTIFY) |
+					 XCB_PRESENT_EVENT_MASK_COMPLETE_NOTIFY);
+		Q = xcb_register_for_special_xge(c, &xcb_present_id, eid, &stamp);
+	}
 
 	clock_gettime(CLOCK_MONOTONIC, &start);
 	do {
 		for (n = 0; n < 1000; n++) {
 			struct buffer *tmp, *b = NULL;
+retry:
 			list_for_each_entry(tmp, &mru, link) {
+				if (tmp->fence.xid)
+					tmp->busy = !xshmfence_query(tmp->fence.addr);
 				if (!tmp->busy) {
 					b = tmp;
 					break;
 				}
 			}
-			while (b == NULL) {
+			if (options & DRI3) {
+				if (b == NULL)
+					goto retry;
+
+				xshmfence_reset(b->fence.addr);
+				queued--;
+				completed++;
+			} else while (b == NULL) {
 				xcb_present_generic_event_t *ev;
 
 				ev = (xcb_present_generic_event_t *)
@@ -261,10 +273,6 @@ static void run(Display *dpy, Window win, const char *name, unsigned options)
 			}
 
 			b->busy = (options & NOCOPY) == 0;
-			if (b->fence.xid) {
-				xshmfence_await(b->fence.addr);
-				xshmfence_reset(b->fence.addr);
-			}
 			xcb_present_pixmap(c, win, b->pixmap, b->id,
 					   0, /* valid */
 					   update, /* update */
@@ -285,7 +293,33 @@ static void run(Display *dpy, Window win, const char *name, unsigned options)
 		clock_gettime(CLOCK_MONOTONIC, &end);
 	} while (end.tv_sec < start.tv_sec + 10);
 
-	while (queued) {
+	if (options & DRI3) {
+		struct buffer *b;
+		XID pixmap;
+
+		pixmap = xcb_generate_id(c);
+		xcb_create_pixmap(c, depth, pixmap, win, width, height);
+		xcb_present_pixmap(c, win, pixmap, 0xdeadbeef,
+				   0, /* valid */
+				   None, /* update */
+				   0, /* x_off */
+				   0, /* y_off */
+				   None,
+				   None, /* wait fence */
+				   None,
+				   0,
+				   0, /* target msc */
+				   0, /* divisor */
+				   0, /* remainder */
+				   0, NULL);
+		xcb_flush(c);
+
+		list_for_each_entry(b, &mru, link)
+			xshmfence_await(b->fence.addr);
+
+		xcb_free_pixmap(c, pixmap);
+		completed += queued;
+	} else while (queued) {
 		xcb_present_generic_event_t *ev;
 
 		ev = (xcb_present_generic_event_t *)
@@ -318,9 +352,11 @@ static void run(Display *dpy, Window win, const char *name, unsigned options)
 		xcb_free_pixmap(c, buffer[n].pixmap);
 	}
 
-	xcb_discard_reply(c, xcb_present_select_input_checked(c, eid, win, 0).sequence);
-	XSync(dpy, True);
-	xcb_unregister_for_special_event(c, Q);
+	if (Q) {
+		xcb_discard_reply(c, xcb_present_select_input_checked(c, eid, win, 0).sequence);
+		XSync(dpy, True);
+		xcb_unregister_for_special_event(c, Q);
+	}
 
 	test_name[0] = '\0';
 	if (options) {
@@ -359,7 +395,7 @@ static void perpixel(Display *dpy,
 	int completed = 0;
 	int i, n;
 
-	pp = malloc(sz*sizeof(*pp));
+	pp = calloc(sz, sizeof(*pp));
 	if (!pp)
 		return;
 
@@ -404,11 +440,13 @@ static void perpixel(Display *dpy,
 			list_add(&pp[i].buffer[n].link, &pp[i].mru);
 		}
 
-		pp[i].eid = xcb_generate_id(c);
-		xcb_present_select_input(c, pp[i].eid, pp[i].win,
-					 (options & NOCOPY ? 0 : XCB_PRESENT_EVENT_MASK_IDLE_NOTIFY) |
-					 XCB_PRESENT_EVENT_MASK_COMPLETE_NOTIFY);
-		pp[i].Q = xcb_register_for_special_xge(c, &xcb_present_id, pp[i].eid, &stamp);
+		if (!(options & DRI3)) {
+			pp[i].eid = xcb_generate_id(c);
+			xcb_present_select_input(c, pp[i].eid, pp[i].win,
+						 (options & NOCOPY ? 0 : XCB_PRESENT_EVENT_MASK_IDLE_NOTIFY) |
+						 XCB_PRESENT_EVENT_MASK_COMPLETE_NOTIFY);
+			pp[i].Q = xcb_register_for_special_xge(c, &xcb_present_id, pp[i].eid, &stamp);
+		}
 		pp[i].queued = 0;
 	}
 
@@ -427,13 +465,23 @@ static void perpixel(Display *dpy,
 	do {
 		for (i = 0; i < sz; i++) {
 			struct buffer *tmp, *b = NULL;
+retry:
 			list_for_each_entry(tmp, &pp[i].mru, link) {
+				if (tmp->fence.xid)
+					tmp->busy = !xshmfence_query(tmp->fence.addr);
 				if (!tmp->busy) {
 					b = tmp;
 					break;
 				}
 			}
-			while (b == NULL) {
+			if (options & DRI3) {
+				if (b == NULL)
+					goto retry;
+
+				xshmfence_reset(b->fence.addr);
+				pp[i].queued--;
+				completed++;
+			} else while (b == NULL) {
 				xcb_present_generic_event_t *ev;
 
 				ev = (xcb_present_generic_event_t *)
@@ -463,10 +511,6 @@ static void perpixel(Display *dpy,
 			}
 
 			b->busy = (options & NOCOPY) == 0;
-			if (b->fence.xid) {
-				xshmfence_await(b->fence.addr);
-				xshmfence_reset(b->fence.addr);
-			}
 			xcb_present_pixmap(c, pp[i].win, b->pixmap, b->id,
 					   0, /* valid */
 					   update, /* update */
@@ -488,7 +532,34 @@ static void perpixel(Display *dpy,
 	} while (end.tv_sec < start.tv_sec + 10);
 
 	for (i = 0; i < sz; i++) {
-		while (pp[i].queued) {
+		if (options & DRI3) {
+			int depth = DefaultDepth(dpy, DefaultScreen(dpy));
+			struct buffer *b;
+			XID pixmap;
+
+			pixmap = xcb_generate_id(c);
+			xcb_create_pixmap(c, depth, pixmap, pp[i].win, 1, 1);
+			xcb_present_pixmap(c, pp[i].win, pixmap, 0xdeadbeef,
+					   0, /* valid */
+					   None, /* update */
+					   0, /* x_off */
+					   0, /* y_off */
+					   None,
+					   None, /* wait fence */
+					   None,
+					   0,
+					   0, /* target msc */
+					   0, /* divisor */
+					   0, /* remainder */
+					   0, NULL);
+			xcb_flush(c);
+
+			list_for_each_entry(b, &pp[i].mru, link)
+				xshmfence_await(b->fence.addr);
+
+			xcb_free_pixmap(c, pixmap);
+			completed += pp[i].queued;
+		} else while (pp[i].queued) {
 			xcb_present_generic_event_t *ev;
 
 			ev = (xcb_present_generic_event_t *)
@@ -524,9 +595,11 @@ static void perpixel(Display *dpy,
 			xcb_free_pixmap(c, pp[i].buffer[n].pixmap);
 		}
 
-		xcb_discard_reply(c, xcb_present_select_input_checked(c, pp[i].eid, pp[i].win, 0).sequence);
-		XSync(dpy, True);
-		xcb_unregister_for_special_event(c, pp[i].Q);
+		if (pp[i].Q) {
+			xcb_discard_reply(c, xcb_present_select_input_checked(c, pp[i].eid, pp[i].win, 0).sequence);
+			XSync(dpy, True);
+			xcb_unregister_for_special_event(c, pp[i].Q);
+		}
 
 		XDestroyWindow(dpy, pp[i].win);
 	}
