@@ -17191,8 +17191,7 @@ sna_get_image(DrawablePtr drawable,
 	if (ACCEL_GET_IMAGE &&
 	    !FORCE_FALLBACK &&
 	    format == ZPixmap &&
-	    drawable->bitsPerPixel >= 8 &&
-	    PM_IS_SOLID(drawable, mask)) {
+	    drawable->bitsPerPixel >= 8) {
 		PixmapPtr pixmap = get_drawable_pixmap(drawable);
 		int16_t dx, dy;
 
@@ -17204,7 +17203,7 @@ sna_get_image(DrawablePtr drawable,
 		region.data = NULL;
 
 		if (sna_get_image__fast(pixmap, &region, dst, flags))
-			return;
+			goto apply_planemask;
 
 		if (!sna_drawable_move_region_to_cpu(&pixmap->drawable,
 						     &region, flags))
@@ -17221,6 +17220,16 @@ sna_get_image(DrawablePtr drawable,
 				   pixmap->devKind, PixmapBytePad(w, drawable->depth),
 				   region.extents.x1, region.extents.y1, 0, 0, w, h);
 			sigtrap_put();
+		}
+
+apply_planemask:
+		if (!PM_IS_SOLID(drawable, mask)) {
+			FbStip pm = fbReplicatePixel(mask, drawable->bitsPerPixel);
+			FbStip *d = (FbStip *)dst;
+			int i, n = PixmapBytePad(w, drawable->depth) / sizeof(FbStip) * h;
+
+			for (i = 0; i < n; i++)
+				d[i] &= pm;
 		}
 	} else {
 		region.extents.x1 = x + drawable->x;
