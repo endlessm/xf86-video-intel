@@ -1540,7 +1540,8 @@ static void defer_event(struct sna *sna, struct drm_event *base)
 
 	memcpy(&sna->mode.shadow_events[sna->mode.shadow_nevent++],
 	       base, sizeof(struct drm_event_vblank));
-	DBG(("%s: deferring event count=%d\n", sna->mode.shadow_nevent));
+	DBG(("%s: deferring event count=%d\n",
+	     __func__, sna->mode.shadow_nevent));
 }
 
 static void flush_events(struct sna *sna)
@@ -1550,7 +1551,7 @@ static void flush_events(struct sna *sna)
 	if (!sna->mode.shadow_nevent)
 		return;
 
-	DBG(("%s: flushing %d events=%d\n", sna->mode.shadow_nevent));
+	DBG(("%s: flushing %d events=%d\n", __func__, sna->mode.shadow_nevent));
 
 	for (n = 0; n < sna->mode.shadow_nevent; n++) {
 		struct drm_event_vblank *vb = &sna->mode.shadow_events[n];

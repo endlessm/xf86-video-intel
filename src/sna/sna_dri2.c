@@ -2697,6 +2697,7 @@ void sna_dri2_vblank_handler(struct drm_event_vblank *event)
 			     get_private(info->front)->bo->handle, info->front->name, get_private(info->front)->bo->active_scanout));
 
 			assert(info->draw);
+			assert(!info->signal);
 			info->keepalive++;
 			info->signal = true;
 		}
@@ -2847,6 +2848,9 @@ sna_dri2_flip_continue(struct sna_dri2_event *info)
 	if (info->draw == NULL)
 		return false;
 
+	assert(!info->signal);
+	info->signal = info->type == FLIP_THROTTLE;
+
 	if (info->sna->mode.front_active == 0)
 		return false;
 
@@ -2863,7 +2867,6 @@ sna_dri2_flip_continue(struct sna_dri2_event *info)
 	info->sna->dri2.flip_pending = info;
 	info->queued = true;
 	assert(info->draw);
-	info->signal = info->type == FLIP_THROTTLE;
 
 	return true;
 }
