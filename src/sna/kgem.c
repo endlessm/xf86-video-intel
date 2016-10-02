@@ -443,6 +443,19 @@ static void kgem_sna_flush(struct kgem *kgem)
 		sna_render_flush_solid(sna);
 }
 
+static bool kgem_bo_rmfb(struct kgem *kgem, struct kgem_bo *bo)
+{
+	if (bo->scanout && bo->delta) {
+		DBG(("%s: releasing fb=%d for handle=%d\n",
+		     __FUNCTION__, bo->delta, bo->handle));
+		/* XXX will leak if we are not DRM_MASTER. *shrug* */
+		do_ioctl(kgem->fd, DRM_IOCTL_MODE_RMFB, &bo->delta);
+		bo->delta = 0;
+		return true;
+	} else
+		return false;
+}
+
 static bool kgem_set_tiling(struct kgem *kgem, struct kgem_bo *bo,
 			    int tiling, int stride)
 {
@@ -486,6 +499,9 @@ restart:
 		sched_yield();
 		goto restart;
 	}
+
+	if (err == EBUSY && kgem_bo_rmfb(kgem, bo))
+		goto restart;
 
 	ERR(("%s: failed to set-tiling(tiling=%d, pitch=%d) for handle=%d: %d\n",
 	     __FUNCTION__, tiling, stride, bo->handle, err));
@@ -2514,17 +2530,6 @@ static void kgem_bo_binding_free(struct kgem *kgem, struct kgem_bo *bo)
 		struct kgem_bo_binding *next = b->next;
 		free(b);
 		b = next;
-	}
-}
-
-static void kgem_bo_rmfb(struct kgem *kgem, struct kgem_bo *bo)
-{
-	if (bo->scanout && bo->delta) {
-		DBG(("%s: releasing fb=%d for handle=%d\n",
-		     __FUNCTION__, bo->delta, bo->handle));
-		/* XXX will leak if we are not DRM_MASTER. *shrug* */
-		do_ioctl(kgem->fd, DRM_IOCTL_MODE_RMFB, &bo->delta);
-		bo->delta = 0;
 	}
 }
 
