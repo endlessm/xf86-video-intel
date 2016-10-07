@@ -9186,6 +9186,15 @@ again:
 					     crtc->flip_bo->handle, crtc->flip_bo->active_scanout));
 					assert(crtc->bo->active_scanout);
 					assert(crtc->bo->refcnt >= crtc->bo->active_scanout);
+
+#ifndef NDEBUG
+					{
+						struct drm_mode_crtc mode = { .crtc_id = __sna_crtc_id(crtc) };
+						drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETCRTC, &mode);
+						assert(mode.fb_id == fb_id(crtc->flip_bo));
+					}
+#endif
+
 					crtc->bo->active_scanout--;
 					kgem_bo_destroy(&sna->kgem, crtc->bo);
 
