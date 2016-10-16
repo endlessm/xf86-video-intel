@@ -4126,7 +4126,7 @@ __sna_output_dpms(xf86OutputPtr output, int dpms, int fixup)
 					dpms)) {
 		DBG(("%s(%s:%d): failed to set DPMS to %d (fixup? %d)\n",
 		     __FUNCTION__, output->name, sna_output->id, dpms, fixup));
-		if (fixup) {
+		if (fixup && dpms != DPMSModeOn) {
 			sna_crtc_disable(output->crtc, false);
 			return;
 		}
