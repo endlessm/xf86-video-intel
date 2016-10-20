@@ -34,6 +34,9 @@ override_dh_install:
 	find debian/tmp -name '*.la' -delete
 	rm -f debian/tmp/usr/lib/libI810XvMC.so
 	rm -f debian/tmp/usr/lib/libIntelXvMC.so
+	mkdir -p debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)
+	mv debian/tmp/usr/lib/libI810XvMC.so.* debian/tmp/usr/lib/libIntelXvMC.so.* \
+		debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/.
 	dh_install --fail-missing
 
 # Debug package:
@@ -48,11 +51,11 @@ override_dh_installchangelogs:
 	dh_installchangelogs debian/upstream.changelog
 
 %:
-	dh $@ --with quilt,autoreconf,xsf --builddirectory=build/
+	dh $@ --parallel --with quilt,autoreconf,xsf --builddirectory=build/
 
 # Snapshots should only target experimental:
 generate-snapshot: UPSTREAM_VERSION = $(shell echo $(SOURCE_VERSION) | sed 's/^[0-9]*://;s/-.*$$//')
-generate-snapshot: UPSTREAM_BRANCH ?= upstream-experimental
+generate-snapshot: UPSTREAM_BRANCH ?= upstream-unstable
 generate-snapshot: ORIG             = ../$(SOURCE_NAME)_$(UPSTREAM_VERSION).orig.tar.gz
 generate-snapshot:
 	if [ -f $(ORIG) ]; then \

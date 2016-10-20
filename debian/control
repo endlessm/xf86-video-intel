@@ -1,4 +1,4 @@
-Source: xf86-video-intel
+Source: xserver-xorg-video-intel
 Section: x11
 Priority: optional
 Maintainer: Debian X Strike Force <debian-x@lists.debian.org>
@@ -37,7 +37,7 @@ Build-Depends:
  libudev-dev [linux-any],
  quilt,
  xutils-dev (>= 1:7.5+4),
- valgrind [amd64 armel armhf i386 mips mipsel powerpc s390x],
+ valgrind [amd64 arm64 armhf i386 mips mipsel mips64 mips64el powerpc ppc64 ppc64el s390x x32],
 # intel-virtual-output:
  libxinerama-dev,
  libxrandr-dev,
@@ -46,13 +46,19 @@ Build-Depends:
  libxtst-dev,
  libxrender-dev,
  libpixman-1-dev,
+ libxss-dev,
+# dri3info:
+# libxcomposite-dev,
+# tests, benchmarks:
+# libcairo2-dev,
+# libpng12-dev,
 Standards-Version: 3.9.6
 Vcs-Git: git://anonscm.debian.org/pkg-xorg/driver/xserver-xorg-video-intel
-Vcs-Browser: http://anonscm.debian.org/gitweb/?p=pkg-xorg/driver/xserver-xorg-video-intel.git
+Vcs-Browser: http://anonscm.debian.org/cgit/pkg-xorg/driver/xserver-xorg-video-intel.git
 Homepage: http://www.x.org/
 
 Package: xserver-xorg-video-intel
-Architecture: amd64 i386 kfreebsd-amd64 kfreebsd-i386
+Architecture: amd64 i386 kfreebsd-amd64 kfreebsd-i386 x32
 Depends:
  ${shlibs:Depends},
  ${misc:Depends},
@@ -68,9 +74,13 @@ Description: X.Org X server -- Intel i8xx, i9xx display driver
  for i810/i815 and i9xx and newer chipsets.
  .
  This package is built from the X.org xf86-video-intel driver module.
+ .
+ The use of this driver is discouraged if your hw is new enough (ca.
+ 2007 and newer). You can try uninstalling this driver and let the
+ server use it's builtin modesetting driver instead.
 
 Package: xserver-xorg-video-intel-dbg
-Architecture: amd64 i386 kfreebsd-amd64 kfreebsd-i386
+Architecture: amd64 i386 kfreebsd-amd64 kfreebsd-i386 x32
 Depends:
  xserver-xorg-video-intel (= ${binary:Version}),
  ${shlibs:Depends},
