@@ -1,10 +1,115 @@
-xf86-video-intel (3:2.99.917) eos; urgency=medium
+xserver-xorg-video-intel (2:2.99.917+git20160706-1) unstable; urgency=medium
 
-  * Import into Endless git
-  * Bump epoch
-  * Rename source package to match upstream project name
+  * New upstream snapshot.
+  * fix-fd-leak-when-intel-scrn-create-fails.diff, sna-let-modesetting-
+    handle-gen9+.diff: Dropped as the fallback to modesetting will be
+    fully handled in the xserver.
+  * .docs: Include a minimal xorg.conf.
 
- -- Daniel Drake <drake@endlessm.com>  Tue, 28 Apr 2015 08:16:44 -0600
+ -- Timo Aaltonen <tjaalton@debian.org>  Wed, 06 Jul 2016 22:34:40 +0300
+
+xserver-xorg-video-intel (2:2.99.917+git20160522-1) unstable; urgency=medium
+
+  * New upstream snapshot. (Closes: #823116)
+  * fix-fd-leak-when-intel-scrn-create-fails.diff: Fix a failure falling back
+    on another driver when scrn create fails.
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Tue, 24 May 2016 11:40:02 +0300
+
+xserver-xorg-video-intel (2:2.99.917+git20160325-1) unstable; urgency=medium
+
+  * New upstream snapshot.
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Tue, 29 Mar 2016 10:29:35 +0300
+
+xserver-xorg-video-intel (2:2.99.917+git20160307-2) unstable; urgency=medium
+
+  * Disable the patch to use modesetting on skylake for now, since it reveals
+    modeset/server bugs. (Closes: #817784)
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Thu, 10 Mar 2016 22:16:19 +0200
+
+xserver-xorg-video-intel (2:2.99.917+git20160307-1) unstable; urgency=medium
+
+  [ Timo Aaltonen ]
+  * New upstream snapshot.
+  * control: Update the description, older hw likely still wants this
+    driver.
+  * sna-let-modesetting-handle-gen9+.diff: Use modesetting+glamor on
+    Skylake and up.
+
+  [ Matthias Klose ]
+  * Move the shared libraries into multiarch libdir.
+  * rules: Enable parallel builds.
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Wed, 09 Mar 2016 21:26:17 +0200
+
+xserver-xorg-video-intel (2:2.99.917+git20160218-1) unstable; urgency=medium
+
+  * New upstream snapshot.
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Fri, 19 Feb 2016 00:06:43 +0200
+
+xserver-xorg-video-intel (2:2.99.917+git20160127-1) unstable; urgency=medium
+
+  * New upstream snapshot.
+  * control: Document build-depends for dri3info and tests, benchmarks.
+  * control: Update description to mention that this driver is
+    deprecated in favor of -modesetting.
+  * rules: Use upstream-unstable branch to build a snapshot tarball.
+  * control: Add libxss-dev to build-depends for intel-virtual-output.
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Wed, 27 Jan 2016 14:56:38 +0200
+
+xserver-xorg-video-intel (2:2.99.917+git20151217-1~exp1) experimental; urgency=medium
+
+  * New upstream snapshot.
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Thu, 17 Dec 2015 15:10:01 +0200
+
+xserver-xorg-video-intel (2:2.99.917+git20151019-1~exp1) experimental; urgency=medium
+
+  * New upstream snapshot.
+  * rules: Fix valgrind-enabling check.
+  * README.source: Mention that dpkg-source complains about symlinks
+    which are real files on the tarball, and add a command to clean
+    those before source build (copied from libdrm).
+  * patches: Dropped, all upstream.
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Tue, 27 Oct 2015 19:07:45 +0200
+
+xserver-xorg-video-intel (2:2.99.917-2) unstable; urgency=medium
+
+  [ Robert Ancell ]
+  * debian/patches/fix-sna-fstat-include.patch:
+  * debian/patches/fix-uxa-fstat-include.patch:
+    - Fix missing include for fstat (Closes: #790911)
+
+  [ Alessio Treglia ]
+  * fix-yuv-to-rgb-shared-on-intel-gen8.patch: Fix faulty yuv2rgb translation
+    on Intel Generation 8 Graphics. (LP: #1449892, Closes: #787142)
+
+  [ Timo Aaltonen ]
+  * rules: Fix valgrind-enabling check.
+  * source: Add extend-diff-ignore to not complain about symlinks.
+  * README.source: Mention that dpkg-source complains about symlinks
+    which are real files on the tarball, and add a command to clean
+    those before source build (copied from libdrm).
+
+  [ Adam Borowski ]
+  * Add x32 to the list of architectures. (Closes: #775200)
+
+  [ Vincent Cheng ]
+  * Explicitly declare source format 1.0.
+  * Update valgrind build-dependency architecture list.
+
+ -- Vincent Cheng <vcheng@debian.org>  Thu, 16 Jul 2015 01:00:41 -0700
+
+xserver-xorg-video-intel (2:2.99.917-1) unstable; urgency=medium
+
+  * Upload to unstable. (Closes: #748753)
+
+ -- Vincent Cheng <vcheng@debian.org>  Thu, 07 May 2015 00:46:06 -0700
 
 xserver-xorg-video-intel (2:2.99.917-1~exp1) experimental; urgency=medium
 
