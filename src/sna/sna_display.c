@@ -272,6 +272,7 @@ struct sna_output {
 
 	uint32_t last_detect;
 	uint32_t status;
+	unsigned int hotplug_count;
 	bool update_properties;
 	bool reprobe;
 
@@ -3971,7 +3972,7 @@ sna_output_get_modes(xf86OutputPtr output)
 	sna_output_attach_tile(output);
 
 	current = NULL;
-	if (output->crtc) {
+	if (output->crtc && !sna_output->hotplug_count) {
 		struct drm_mode_crtc mode;
 
 		VG_CLEAR(mode);
@@ -5302,6 +5303,7 @@ void sna_mode_discover(struct sna *sna, bool tell)
 			} else {
 				DBG(("%s: output %s (id=%d), changed state, reprobing\n",
 				     __FUNCTION__, output->name, sna_output->id));
+				sna_output->hotplug_count++;
 				sna_output->last_detect = 0;
 				changed |= 4;
 			}
