@@ -273,6 +273,7 @@ struct sna_output {
 	uint32_t last_detect;
 	uint32_t status;
 	bool update_properties;
+	bool reprobe;
 
 	int num_modes;
 	struct drm_mode_modeinfo *modes;
@@ -3548,6 +3549,7 @@ sna_output_detect(xf86OutputPtr output)
 	DBG(("%s(%s): found %d modes, connection status=%d\n",
 	     __FUNCTION__, output->name, sna_output->num_modes, compat_conn.conn.connection));
 
+	sna_output->reprobe = false;
 	sna_output->last_detect = now;
 	switch (compat_conn.conn.connection) {
 	case DRM_MODE_CONNECTED:
@@ -5147,6 +5149,22 @@ static bool disable_unused_crtc(struct sna *sna)
 	return update;
 }
 
+bool sna_mode_find_hotplug_connector(struct sna *sna, unsigned id)
+{
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	int i;
+
+	for (i = 0; i < sna->mode.num_real_output; i++) {
+		struct sna_output *output = to_sna_output(config->output[i]);
+		if (output->id == id) {
+			output->reprobe = true;
+			return true;
+		}
+	}
+
+	return false;
+}
+
 static bool
 output_check_status(struct sna *sna, struct sna_output *output)
 {
@@ -5155,6 +5173,9 @@ output_check_status(struct sna *sna, struct sna_output *output)
 	struct drm_mode_get_blob blob;
 	xf86OutputStatus status;
 	char *edid;
+
+	if (output->reprobe)
+		return false;
 
 	VG_CLEAR(compat_conn);
 
@@ -5237,7 +5258,7 @@ void sna_mode_discover(struct sna *sna, bool tell)
 	     res.count_connectors, sna->mode.num_real_output,
 	     res.count_encoders, res.count_crtcs));
 	if (res.count_connectors > 32)
-		return;
+		res.count_connectors = 32;
 
 	assert(sna->mode.num_real_crtc == res.count_crtcs || is_zaphod(sna->scrn));
 	assert(sna->mode.max_crtc_width  == res.max_width);

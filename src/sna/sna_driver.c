@@ -796,8 +796,13 @@ sna_handle_uevents(int fd, void *closure)
 			const char *str;
 
 			str = udev_device_get_property_value(dev, "HOTPLUG");
-			if (str && atoi(str) == 1)
-				hotplug = true;
+			if (str && atoi(str) == 1) {
+				str = udev_device_get_property_value(dev, "CONNECTOR");
+				if (str)
+					hotplug |= sna_mode_find_hotplug_connector(sna, atoi(str));
+				else
+					hotplug = true;
+			}
 		}
 
 		udev_device_unref(dev);
