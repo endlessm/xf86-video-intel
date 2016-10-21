@@ -264,6 +264,7 @@ struct sna {
 #define SNA_FLUSH_GTT		0x800
 #define SNA_PERFORMANCE		0x1000
 #define SNA_POWERSAVE		0x2000
+#define SNA_NO_DPMS		0x4000
 #define SNA_HAS_FLIP		0x10000
 #define SNA_HAS_ASYNC_FLIP	0x20000
 #define SNA_LINEAR_FB		0x40000

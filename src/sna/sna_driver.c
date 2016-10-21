@@ -296,7 +296,7 @@ static void sna_dpms_set(ScrnInfoPtr scrn, int mode, int flags)
 
 	DBG(("%s(mode=%d, flags=%d), vtSema=%d => off?=%d\n",
 	     __FUNCTION__, mode, flags, scrn->vtSema, mode!=DPMSModeOn));
-	if (!scrn->vtSema)
+	if (!scrn->vtSema || sna->flags & SNA_NO_DPMS)
 		return;
 
 	/* Opencoded version of xf86DPMSSet().
@@ -1209,6 +1209,8 @@ sna_screen_init(SCREEN_INIT_ARGS_DECL)
 				 CMAP_PALETTED_TRUECOLOR))
 		return FALSE;
 
+	if (!xf86CheckBoolOption(scrn->options, "dpms", TRUE))
+		sna->flags |= SNA_NO_DPMS;
 	xf86DPMSInit(screen, sna_dpms_set, 0);
 
 	sna_uevent_init(sna);
