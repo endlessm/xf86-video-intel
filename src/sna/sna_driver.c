@@ -296,7 +296,7 @@ static void sna_dpms_set(ScrnInfoPtr scrn, int mode, int flags)
 
 	DBG(("%s(mode=%d, flags=%d), vtSema=%d => off?=%d\n",
 	     __FUNCTION__, mode, flags, scrn->vtSema, mode!=DPMSModeOn));
-	if (!scrn->vtSema || sna->flags & SNA_NO_DPMS)
+	if (!scrn->vtSema)
 		return;
 
 	/* Opencoded version of xf86DPMSSet().
@@ -308,7 +308,7 @@ static void sna_dpms_set(ScrnInfoPtr scrn, int mode, int flags)
 	 * back on.
 	 */
 	if (mode != DPMSModeOn) {
-		if (sna->mode.hidden == 0) {
+		if (sna->mode.hidden == 0 && !(sna->flags & SNA_NO_DPMS)) {
 			DBG(("%s: hiding %d outputs\n",
 			     __FUNCTION__, config->num_output));
 			for (i = 0; i < config->num_output; i++) {
