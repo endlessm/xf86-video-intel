@@ -5353,7 +5353,7 @@ bool kgem_bo_is_fenced(struct kgem *kgem, struct kgem_bo *bo)
 
 	VG_CLEAR(tiling);
 	tiling.handle = bo->handle;
-	tiling.tiling_mode = 0;
+	tiling.tiling_mode = bo->tiling;
 	(void)do_ioctl(kgem->fd, DRM_IOCTL_I915_GEM_GET_TILING, &tiling);
 	return tiling.tiling_mode == bo->tiling; /* assume pitch is fine! */
 }

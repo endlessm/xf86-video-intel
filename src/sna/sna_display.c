@@ -564,6 +564,15 @@ static void assert_scanout(struct kgem *kgem, struct kgem_bo *bo,
 #define assert_scanout(k, b, w, h)
 #endif
 
+static void assert_crtc_fb(struct sna *sna, struct sna_crtc *crtc)
+{
+#ifndef NDEBUG
+	struct drm_mode_crtc mode = { .crtc_id = __sna_crtc_id(crtc) };
+	drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETCRTC, &mode);
+	assert(mode.fb_id == fb_id(crtc->bo));
+#endif
+}
+
 static unsigned get_fb(struct sna *sna, struct kgem_bo *bo,
 		       int width, int height)
 {
@@ -6709,6 +6718,7 @@ sna_page_flip(struct sna *sna,
 		assert(crtc->bo->refcnt >= crtc->bo->active_scanout);
 		assert(crtc->flip_bo == NULL);
 
+		assert_crtc_fb(sna, crtc);
 		if (data == NULL && crtc->bo == bo)
 			goto next_crtc;
 
@@ -8881,6 +8891,7 @@ void sna_mode_redisplay(struct sna *sna)
 				sna_crtc_redisplay(crtc, &damage, bo);
 				kgem_bo_submit(&sna->kgem, bo);
 
+				assert_crtc_fb(sna, sna_crtc);
 				arg.crtc_id = __sna_crtc_id(sna_crtc);
 				arg.fb_id = get_fb(sna, bo,
 						   crtc->mode.HDisplay,
@@ -8998,6 +9009,7 @@ disable1:
 
 			assert(config->crtc[i]->enabled);
 			assert(crtc->flip_bo == NULL);
+			assert_crtc_fb(sna, crtc);
 
 			arg.crtc_id = __sna_crtc_id(crtc);
 			arg.user_data = (uintptr_t)crtc;
@@ -9213,14 +9225,6 @@ again:
 					assert(crtc->bo->active_scanout);
 					assert(crtc->bo->refcnt >= crtc->bo->active_scanout);
 
-#ifndef NDEBUG
-					{
-						struct drm_mode_crtc mode = { .crtc_id = __sna_crtc_id(crtc) };
-						drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETCRTC, &mode);
-						assert(mode.fb_id == fb_id(crtc->flip_bo));
-					}
-#endif
-
 					crtc->bo->active_scanout--;
 					kgem_bo_destroy(&sna->kgem, crtc->bo);
 
@@ -9231,6 +9235,8 @@ again:
 
 					crtc->bo = crtc->flip_bo;
 					crtc->flip_bo = NULL;
+
+					assert_crtc_fb(sna, crtc);
 				} else {
 					crtc->flip_bo->active_scanout--;
 					kgem_bo_destroy(&sna->kgem, crtc->flip_bo);
