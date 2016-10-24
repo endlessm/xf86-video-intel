@@ -39,6 +39,7 @@
 #include <errno.h>
 #include <poll.h>
 #include <ctype.h>
+#include <dirent.h>
 
 #if HAVE_ALLOCA_H
 #include <alloca.h>
@@ -253,6 +254,8 @@ struct sna_output {
 
 	unsigned int is_panel : 1;
 	unsigned int add_default_modes : 1;
+	int connector_type;
+	int connector_type_id;
 
 	uint32_t edid_idx;
 	uint32_t edid_blob_id;
@@ -974,11 +977,97 @@ has_user_backlight_override(xf86OutputPtr output)
 	return strdup(str);
 }
 
+static int get_device_minor(int fd)
+{
+	struct stat st;
+
+	if (fstat(fd, &st) || !S_ISCHR(st.st_mode))
+		return -1;
+
+	return st.st_rdev & 0x63;
+}
+
+static const char * const sysfs_connector_types[] = {
+	/* DRM_MODE_CONNECTOR_Unknown */	"Unknown",
+	/* DRM_MODE_CONNECTOR_VGA */		"VGA",
+	/* DRM_MODE_CONNECTOR_DVII */		"DVI-I",
+	/* DRM_MODE_CONNECTOR_DVID */		"DVI-D",
+	/* DRM_MODE_CONNECTOR_DVIA */		"DVI-A",
+	/* DRM_MODE_CONNECTOR_Composite */	"Composite",
+	/* DRM_MODE_CONNECTOR_SVIDEO */		"SVIDEO",
+	/* DRM_MODE_CONNECTOR_LVDS */		"LVDS",
+	/* DRM_MODE_CONNECTOR_Component */	"Component",
+	/* DRM_MODE_CONNECTOR_9PinDIN */	"DIN",
+	/* DRM_MODE_CONNECTOR_DisplayPort */	"DP",
+	/* DRM_MODE_CONNECTOR_HDMIA */		"HDMI-A",
+	/* DRM_MODE_CONNECTOR_HDMIB */		"HDMI-B",
+	/* DRM_MODE_CONNECTOR_TV */		"TV",
+	/* DRM_MODE_CONNECTOR_eDP */		"eDP",
+	/* DRM_MODE_CONNECTOR_VIRTUAL */	"Virtual",
+	/* DRM_MODE_CONNECTOR_DSI */		"DSI",
+	/* DRM_MODE_CONNECTOR_DPI */		"DPI"
+};
+
+static char *has_connector_backlight(xf86OutputPtr output, char *buf)
+{
+	struct sna_output *sna_output = output->driver_private;
+	struct sna *sna = to_sna(output->scrn);
+	char path[1024];
+	DIR *dir;
+	struct dirent *de;
+	int minor, len;
+	char *ret = NULL;
+
+	if (sna_output->connector_type >= ARRAY_SIZE(sysfs_connector_types))
+		return NULL;
+
+	minor = get_device_minor(sna->kgem.fd);
+	if (minor < 0)
+		return NULL;
+
+	len = snprintf(path, sizeof(path),
+		       "/sys/class/drm/card%d-%s-%d",
+		       minor,
+		       sysfs_connector_types[sna_output->connector_type],
+		       sna_output->connector_type_id);
+	DBG(("%s: lookup %s\n", __FUNCTION__, path));
+
+	dir = opendir(path);
+	while ((de = readdir(dir))) {
+		struct stat st;
+
+		if (*de->d_name == '.')
+			continue;
+
+		snprintf(path + len, sizeof(path) - len,
+			 "/%s", de->d_name);
+
+		if (stat(path, &st))
+			continue;
+
+		if (!S_ISDIR(st.st_mode))
+			continue;
+
+		DBG(("%s: testing %s as backlight\n",
+		     __FUNCTION__, de->d_name));
+
+		if (backlight_exists(de->d_name)) {
+			snprintf(buf, 128, "%s", de->d_name);
+			ret = buf;
+			break;
+		}
+	}
+
+	closedir(dir);
+	return ret;
+}
+
 static void
 sna_output_backlight_init(xf86OutputPtr output)
 {
 	struct sna_output *sna_output = output->driver_private;
 	struct pci_device *pci;
+	char buf[128];
 	MessageType from;
 	char *best_iface;
 
@@ -986,10 +1075,19 @@ sna_output_backlight_init(xf86OutputPtr output)
 	return;
 #endif
 
-	from = X_CONFIG;
-	best_iface = has_user_backlight_override(output);
+	if (sna_output->is_panel) {
+		from = X_CONFIG;
+		best_iface = has_user_backlight_override(output);
+		if (best_iface)
+			goto done;
+	}
+
+	best_iface = has_connector_backlight(output, buf);
 	if (best_iface)
 		goto done;
+
+	if (!sna_output->is_panel)
+		return;
 
 	/* XXX detect right backlight for multi-GPU/panels */
 	from = X_PROBED;
@@ -4487,7 +4585,8 @@ static const char * const output_names[] = {
 	/* DRM_MODE_CONNECTOR_TV */		"TV",
 	/* DRM_MODE_CONNECTOR_eDP */		"eDP",
 	/* DRM_MODE_CONNECTOR_VIRTUAL */	"Virtual",
-	/* DRM_MODE_CONNECTOR_DSI */		"DSI"
+	/* DRM_MODE_CONNECTOR_DSI */		"DSI",
+	/* DRM_MODE_CONNECTOR_DPI */		"DPI"
 };
 
 static bool
@@ -4911,6 +5010,8 @@ sna_output_add(struct sna *sna, unsigned id, unsigned serial)
 	if (!sna_output)
 		return -1;
 
+	sna_output->connector_type = compat_conn.conn.connector_type;
+	sna_output->connector_type_id = compat_conn.conn.connector_type_id;
 	sna_output->num_props = compat_conn.conn.count_props;
 	sna_output->prop_ids = malloc(sizeof(uint32_t)*compat_conn.conn.count_props);
 	sna_output->prop_values = malloc(sizeof(uint64_t)*compat_conn.conn.count_props);
@@ -5040,8 +5141,7 @@ reset:
 	sna_output->base = output;
 
 	backlight_init(&sna_output->backlight);
-	if (sna_output->is_panel)
-		sna_output_backlight_init(output);
+	sna_output_backlight_init(output);
 
 	output->possible_crtcs = possible_crtcs & count_to_mask(sna->mode.num_real_crtc);
 	output->interlaceAllowed = TRUE;
