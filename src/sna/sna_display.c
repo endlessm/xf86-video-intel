@@ -1008,7 +1008,7 @@ static const char * const sysfs_connector_types[] = {
 	/* DRM_MODE_CONNECTOR_DPI */		"DPI"
 };
 
-static char *has_connector_backlight(xf86OutputPtr output, char *buf)
+static char *has_connector_backlight(xf86OutputPtr output)
 {
 	struct sna_output *sna_output = output->driver_private;
 	struct sna *sna = to_sna(output->scrn);
@@ -1016,7 +1016,7 @@ static char *has_connector_backlight(xf86OutputPtr output, char *buf)
 	DIR *dir;
 	struct dirent *de;
 	int minor, len;
-	char *ret = NULL;
+	char *str = NULL;
 
 	if (sna_output->connector_type >= ARRAY_SIZE(sysfs_connector_types))
 		return NULL;
@@ -1052,14 +1052,13 @@ static char *has_connector_backlight(xf86OutputPtr output, char *buf)
 		     __FUNCTION__, de->d_name));
 
 		if (backlight_exists(de->d_name)) {
-			snprintf(buf, 128, "%s", de->d_name);
-			ret = buf;
+			str = strdup(de->d_name); /* leak! */
 			break;
 		}
 	}
 
 	closedir(dir);
-	return ret;
+	return str;
 }
 
 static void
@@ -1067,7 +1066,6 @@ sna_output_backlight_init(xf86OutputPtr output)
 {
 	struct sna_output *sna_output = output->driver_private;
 	struct pci_device *pci;
-	char buf[128];
 	MessageType from;
 	char *best_iface;
 
@@ -1082,7 +1080,7 @@ sna_output_backlight_init(xf86OutputPtr output)
 			goto done;
 	}
 
-	best_iface = has_connector_backlight(output, buf);
+	best_iface = has_connector_backlight(output);
 	if (best_iface)
 		goto done;
 
