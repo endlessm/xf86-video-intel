@@ -433,16 +433,24 @@ static void setup_dri(struct sna *sna)
 	unsigned level;
 
 	sna->dri2.available = false;
+	sna->dri2.enable = false;
 	sna->dri3.available = false;
+	sna->dri3.enable = false;
+	sna->dri3.override = false;
 
 	level = intel_option_cast_to_unsigned(sna->Options, OPTION_DRI, DEFAULT_DRI_LEVEL);
 #if HAVE_DRI3
+	sna->dri3.available = !!xf86LoadSubModule(sna->scrn, "dri3");
+	sna->dri3.override =
+		!sna->dri3.available ||
+		xf86IsOptionSet(sna->Options, OPTION_DRI);
 	if (level >= 3 && sna->kgem.gen >= 040)
-		sna->dri3.available = !!xf86LoadSubModule(sna->scrn, "dri3");
+		sna->dri3.enable = sna->dri3.available;
 #endif
 #if HAVE_DRI2
+	sna->dri2.available = !!xf86LoadSubModule(sna->scrn, "dri2");
 	if (level >= 2)
-		sna->dri2.available = !!xf86LoadSubModule(sna->scrn, "dri2");
+		sna->dri2.enable = sna->dri2.available;
 #endif
 }
 
@@ -1059,12 +1067,13 @@ static void sna_dri_init(struct sna *sna, ScreenPtr screen)
 {
 	char str[128] = "";
 
-	if (sna->dri2.available)
+	if (sna->dri2.enable)
 		sna->dri2.open = sna_dri2_open(sna, screen);
 	if (sna->dri2.open)
 		strcat(str, "DRI2 ");
 
-	if (sna->dri3.available)
+	/* Load DRI3 in case DRI2 doesn't work, e.g. vgaarb */
+	if (sna->dri3.enable || (!sna->dri2.open && !sna->dri3.override))
 		sna->dri3.open = sna_dri3_open(sna, screen);
 	if (sna->dri3.open)
 		strcat(str, "DRI3 ");

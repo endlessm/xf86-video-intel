@@ -362,8 +362,9 @@ struct sna {
 	} cursor;
 
 	struct sna_dri2 {
-		bool available;
-		bool open;
+		bool available : 1;
+		bool enable : 1;
+		bool open : 1;
 
 #if HAVE_DRI2
 		void *flip_pending;
@@ -372,8 +373,11 @@ struct sna {
 	} dri2;
 
 	struct sna_dri3 {
-		bool available;
-		bool open;
+		bool available :1;
+		bool override : 1;
+		bool enable : 1;
+		bool open :1;
+
 #if HAVE_DRI3
 		SyncScreenCreateFenceFunc create_fence;
 		struct list pixmaps;
