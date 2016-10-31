@@ -6303,7 +6303,6 @@ sna_set_cursor_position(ScrnInfoPtr scrn, int x, int y)
 	struct sna *sna = to_sna(scrn);
 	struct kmsg kmsg;
 	int sigio, c, xu, yu;
-	int sigio, c, xu, yu;
 
 	__DBG(("%s(%d, %d), cursor? %d\n", __FUNCTION__,
 	       x, y, sna->cursor.ref!=NULL));
