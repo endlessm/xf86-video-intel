@@ -2846,7 +2846,7 @@ sna_dri2_flip_continue(struct sna_dri2_event *info)
 	info->flip_continue = 0;
 
 	assert(!info->signal);
-	info->signal = info->type == FLIP_THROTTLE;
+	info->signal = info->type == FLIP_THROTTLE && info->draw;
 
 	if (info->sna->mode.front_active == 0)
 		return false;
