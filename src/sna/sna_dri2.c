@@ -2845,9 +2845,6 @@ sna_dri2_flip_continue(struct sna_dri2_event *info)
 	info->type = info->flip_continue;
 	info->flip_continue = 0;
 
-	if (info->draw == NULL)
-		return false;
-
 	assert(!info->signal);
 	info->signal = info->type == FLIP_THROTTLE;
 
@@ -2866,7 +2863,6 @@ sna_dri2_flip_continue(struct sna_dri2_event *info)
 	       info->sna->dri2.flip_pending == info);
 	info->sna->dri2.flip_pending = info;
 	info->queued = true;
-	assert(info->draw);
 
 	return true;
 }
