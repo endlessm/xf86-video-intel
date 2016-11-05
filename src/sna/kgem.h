@@ -638,15 +638,22 @@ static inline void kgem_bo_mark_busy(struct kgem *kgem, struct kgem_bo *bo, int 
 	}
 }
 
+static inline void __kgem_bo_clear_dirty(struct kgem_bo *bo)
+{
+	DBG(("%s: handle=%d\n", __FUNCTION__, bo->handle));
+
+	bo->domain = DOMAIN_NONE;
+	bo->needs_flush = false;
+	bo->gtt_dirty = false;
+}
+
 inline static void __kgem_bo_clear_busy(struct kgem_bo *bo)
 {
 	DBG(("%s: handle=%d\n", __FUNCTION__, bo->handle));
 	bo->rq = NULL;
 	list_del(&bo->request);
 
-	bo->domain = DOMAIN_NONE;
-	bo->needs_flush = false;
-	bo->gtt_dirty = false;
+	__kgem_bo_clear_dirty(bo);
 }
 
 static inline bool kgem_bo_is_busy(struct kgem_bo *bo)

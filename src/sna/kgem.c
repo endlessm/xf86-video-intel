@@ -6179,9 +6179,7 @@ void kgem_scanout_flush(struct kgem *kgem, struct kgem_bo *bo)
 	/* Whatever actually happens, we can regard the GTT write domain
 	 * as being flushed.
 	 */
-	bo->gtt_dirty = false;
-	bo->needs_flush = false;
-	bo->domain = DOMAIN_NONE;
+	__kgem_bo_clear_dirty(bo);
 }
 
 inline static bool nearly_idle(struct kgem *kgem)
@@ -7107,6 +7105,7 @@ void kgem_bo_sync__cpu(struct kgem *kgem, struct kgem_bo *bo)
 		bo->needs_flush = false;
 		kgem_bo_retire(kgem, bo);
 		bo->domain = DOMAIN_CPU;
+		bo->gtt_dirty = true;
 	}
 }
 
@@ -7147,10 +7146,11 @@ void kgem_bo_sync__cpu_full(struct kgem *kgem, struct kgem_bo *bo, bool write)
 			DBG(("%s: sync: GPU hang detected\n", __FUNCTION__));
 			kgem_throttle(kgem);
 		}
+		bo->needs_flush = false;
 		if (write) {
-			bo->needs_flush = false;
 			kgem_bo_retire(kgem, bo);
 			bo->domain = DOMAIN_CPU;
+			bo->gtt_dirty = true;
 		} else {
 			if (bo->exec == NULL)
 				kgem_bo_maybe_retire(kgem, bo);

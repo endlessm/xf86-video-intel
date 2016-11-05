@@ -3037,8 +3037,10 @@ retry: /* Attach per-crtc pixmap or direct */
 	}
 
 	/* Prevent recursion when enabling outputs during execbuffer */
-	if (bo->exec && RQ(bo->rq)->bo == NULL)
+	if (bo->exec && RQ(bo->rq)->bo == NULL) {
 		_kgem_submit(&sna->kgem);
+		__kgem_bo_clear_dirty(bo);
+	}
 
 	sna_crtc->bo = bo;
 	ret = sna_crtc_apply(crtc);
@@ -6716,6 +6718,7 @@ sna_crtc_flip(struct sna *sna, struct sna_crtc *crtc, struct kgem_bo *bo, int x,
 		return false;
 
 	crtc->offset = y << 16 | x;
+	__kgem_bo_clear_dirty(bo);
 	return true;
 }
 
@@ -6798,6 +6801,7 @@ sna_page_flip(struct sna *sna,
 		return 0;
 
 	kgem_bo_submit(&sna->kgem, bo);
+	__kgem_bo_clear_dirty(bo);
 
 	sigio = sigio_block();
 	for (i = 0; i < sna->mode.num_real_crtc; i++) {
@@ -8988,6 +8992,7 @@ void sna_mode_redisplay(struct sna *sna)
 
 				sna_crtc_redisplay(crtc, &damage, bo);
 				kgem_bo_submit(&sna->kgem, bo);
+				__kgem_bo_clear_dirty(bo);
 
 				assert_crtc_fb(sna, sna_crtc);
 				arg.crtc_id = __sna_crtc_id(sna_crtc);
@@ -9092,6 +9097,7 @@ disable1:
 		arg.reserved = 0;
 
 		kgem_bo_submit(&sna->kgem, new);
+		__kgem_bo_clear_dirty(new);
 
 		sigio = sigio_block();
 		for (i = 0; i < sna->mode.num_real_crtc; i++) {
