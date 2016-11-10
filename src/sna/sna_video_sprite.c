@@ -370,7 +370,7 @@ sna_video_sprite_show(struct sna *sna,
 		return false;
 	}
 
-	frame->bo->domain = DOMAIN_NONE;
+	__kgem_bo_clear_dirty(frame->bo);
 
 	if (video->bo[pipe])
 		kgem_bo_destroy(&sna->kgem, video->bo[pipe]);
@@ -580,7 +580,6 @@ off:
 			ret = BadAlloc;
 		}
 
-		frame.bo->domain = DOMAIN_NONE;
 		if (cache_bo)
 			sna_video_buffer_fini(video);
 		else
