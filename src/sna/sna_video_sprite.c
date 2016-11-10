@@ -261,10 +261,6 @@ sna_video_sprite_show(struct sna *sna,
 		video->color_key_changed &= ~(1 << pipe);
 	}
 
-	assert(pipe < ARRAY_SIZE(video->bo));
-	if (video->bo[pipe] == frame->bo)
-		return true;
-
 	update_dst_box_to_crtc_coords(sna, crtc, dstBox);
 	if (frame->rotation & (RR_Rotate_90 | RR_Rotate_270)) {
 		int tmp = frame->width;
