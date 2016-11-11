@@ -178,7 +178,7 @@ validate_reg(struct brw_instruction *insn, struct brw_reg reg)
 	}
 
 	if (reg.file == BRW_ARCHITECTURE_REGISTER_FILE &&
-	    reg.file == BRW_ARF_NULL)
+	    reg.nr == BRW_ARF_NULL)
 		return;
 
 	assert(reg.hstride >= 0 && reg.hstride < ARRAY_SIZE(hstride_for_reg));
