@@ -2878,6 +2878,13 @@ static void sna_crtc_randr(xf86CrtcPtr crtc)
 	} else
 		crtc->transform_in_use = sna_crtc->rotation != RR_Rotate_0;
 
+	/* Recompute the cursor after a potential change in transform */
+	if (sna_crtc->cursor) {
+		assert(sna_crtc->cursor->ref > 0);
+		sna_crtc->cursor->ref--;
+		sna_crtc->cursor = NULL;
+	}
+
 	if (needs_transform) {
 		sna_crtc->hwcursor = is_affine(&f_fb_to_crtc);
 		sna_crtc->cursor_transform =
