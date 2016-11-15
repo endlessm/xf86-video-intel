@@ -6296,6 +6296,14 @@ sna_set_cursor_position(ScrnInfoPtr scrn, int x, int y)
 		if (sna_crtc->bo == NULL)
 			goto disable;
 
+		cursor = __sna_get_cursor(sna, crtc);
+		if (cursor == NULL)
+			cursor = sna_crtc->cursor;
+		if (cursor == NULL) {
+			__DBG(("%s: failed to grab cursor, disabling\n", __FUNCTION__));
+			goto disable;
+		}
+
 		if (crtc->transform_in_use) {
 			int xhot = sna->cursor.ref->bits->xhot;
 			int yhot = sna->cursor.ref->bits->yhot;
@@ -6320,15 +6328,6 @@ sna_set_cursor_position(ScrnInfoPtr scrn, int x, int y)
 
 		if (arg.x < crtc->mode.HDisplay && arg.x > -sna->cursor.size &&
 		    arg.y < crtc->mode.VDisplay && arg.y > -sna->cursor.size) {
-			cursor = __sna_get_cursor(sna, crtc);
-			if (cursor == NULL)
-				cursor = sna_crtc->cursor;
-			if (cursor == NULL) {
-				__DBG(("%s: failed to grab cursor, disabling\n",
-				       __FUNCTION__));
-				goto disable;
-			}
-
 			if (sna_crtc->cursor != cursor || sna_crtc->last_cursor_size != cursor->size) {
 				arg.flags |= DRM_MODE_CURSOR_BO;
 				arg.handle = cursor->handle;
