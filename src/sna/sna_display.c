@@ -5839,20 +5839,6 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 	transformed = to_sna_crtc(crtc)->cursor_transform;
 	rotation = (!transformed && crtc->transform_in_use) ? crtc->rotation : RR_Rotate_0;
 
-	/* Don't allow phys cursor sharing */
-	if (sna->cursor.use_gtt && !transformed) {
-		for (cursor = sna->cursor.cursors; cursor; cursor = cursor->next) {
-			if (cursor->serial == sna->cursor.serial &&
-			    cursor->rotation == rotation &&
-			    !cursor->transformed) {
-				__DBG(("%s: reusing handle=%d, serial=%d, rotation=%d, size=%d\n",
-				       __FUNCTION__, cursor->handle, cursor->serial, cursor->rotation, cursor->size));
-				assert(cursor->size == sna->cursor.size);
-				return cursor;
-			}
-		}
-	}
-
 	if (transformed) {
 		struct pixman_box16 box;
 
@@ -5908,6 +5894,20 @@ static struct sna_cursor *__sna_get_cursor(struct sna *sna, xf86CrtcPtr crtc)
 		       to_sna_crtc(crtc)->cursor_to_fb.m[2][0],
 		       to_sna_crtc(crtc)->cursor_to_fb.m[2][1],
 		       to_sna_crtc(crtc)->cursor_to_fb.m[2][2]));
+	}
+
+	/* Don't allow phys cursor sharing */
+	if (sna->cursor.use_gtt && !transformed) {
+		for (cursor = sna->cursor.cursors; cursor; cursor = cursor->next) {
+			if (cursor->serial == sna->cursor.serial &&
+			    cursor->rotation == rotation &&
+			    !cursor->transformed) {
+				__DBG(("%s: reusing handle=%d, serial=%d, rotation=%d, size=%d\n",
+				       __FUNCTION__, cursor->handle, cursor->serial, cursor->rotation, cursor->size));
+				assert(cursor->size == sna->cursor.size);
+				return cursor;
+			}
+		}
 	}
 
 	cursor = to_sna_crtc(crtc)->cursor;
