@@ -48,6 +48,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <dirent.h>
+#include <errno.h>
 
 #include <xorg-server.h>
 #include <xf86.h>
@@ -216,6 +217,24 @@ __backlight_read(const char *iface, const char *file)
 }
 
 static int
+writen(int fd, const char *value, int len)
+{
+	int ret;
+
+	do {
+		ret = write(fd, value, len);
+		if (ret < 0) {
+			if (errno == EAGAIN || errno == EINTR)
+				continue;
+
+			return ret;
+		}
+	} while (value += ret, len -= ret);
+
+	return 0;
+}
+
+static int
 __backlight_write(const char *iface, const char *file, const char *value)
 {
 	int fd, ret;
@@ -224,7 +243,7 @@ __backlight_write(const char *iface, const char *file, const char *value)
 	if (fd < 0)
 		return -1;
 
-	ret = write(fd, value, strlen(value)+1);
+	ret = writen(fd, value, strlen(value)+1);
 	close(fd);
 
 	return ret;
@@ -458,7 +477,7 @@ err:
 int backlight_set(struct backlight *b, int level)
 {
 	char val[BACKLIGHT_VALUE_LEN];
-	int len, ret = 0;
+	int len;
 
 	if (b->iface == NULL)
 		return 0;
@@ -467,10 +486,7 @@ int backlight_set(struct backlight *b, int level)
 		level = b->max;
 
 	len = snprintf(val, BACKLIGHT_VALUE_LEN, "%d\n", level);
-	if (write(b->fd, val, len) != len)
-		ret = -1;
-
-	return ret;
+	return writen(b->fd, val, len);
 }
 
 int backlight_get(struct backlight *b)
