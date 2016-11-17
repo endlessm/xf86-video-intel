@@ -276,6 +276,33 @@ static const SymTabRec intel_chipsets[] = {
 	{0x22b2, "HD Graphics"},
 	{0x22b3, "HD Graphics"},
 
+	/* Skylake */
+	{0x1902, "HD Graphics 510"},
+	{0x1906, "HD Graphics 510"},
+	{0x190B, "HD Graphics 510"},
+	{0x1912, "HD Graphics 530"},
+	{0x1916, "HD Graphics 520"},
+	{0x191B, "HD Graphics 530"},
+	{0x191D, "HD Graphics P530"},
+	{0x191E, "HD Graphics 515"},
+	{0x1921, "HD Graphics 520"},
+	{0x1926, "Iris Graphics 540"},
+	{0x1927, "Iris Graphics 550"},
+	{0x192B, "Iris Graphics 555"},
+	{0x192D, "Iris Graphics P555"},
+	{0x1932, "Iris Pro Graphics 580"},
+	{0x193A, "Iris Pro Graphics P580"},
+	{0x193B, "Iris Pro Graphics 580"},
+	{0x193D, "Iris Pro Graphics P580"},
+
+	/* Broxton (Apollolake) */
+	{0x5A84, "HD Graphics 505"},
+	{0x5A85, "HD Graphics 500"},
+
+	/* Kabylake */
+	{0x5916, "HD Graphics 620"},
+	{0x591E, "HD Graphics 615"},
+
 	/* When adding new identifiers, also update:
 	 * 1. intel_identify()
 	 * 2. man/intel.man
