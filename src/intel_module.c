@@ -471,9 +471,9 @@ static void intel_identify(int flags)
 	if (unique != stack)
 		free(unique);
 
-	xf86Msg(X_INFO, INTEL_NAME ": Driver for Intel(R) HD Graphics: 2000-6000\n");
-	xf86Msg(X_INFO, INTEL_NAME ": Driver for Intel(R) Iris(TM) Graphics: 5100, 6100\n");
-	xf86Msg(X_INFO, INTEL_NAME ": Driver for Intel(R) Iris(TM) Pro Graphics: 5200, 6200, P6300\n");
+	xf86Msg(X_INFO, INTEL_NAME ": Driver for Intel(R) HD Graphics\n");
+	xf86Msg(X_INFO, INTEL_NAME ": Driver for Intel(R) Iris(TM) Graphics\n");
+	xf86Msg(X_INFO, INTEL_NAME ": Driver for Intel(R) Iris(TM) Pro Graphics\n");
 }
 
 static Bool intel_driver_func(ScrnInfoPtr pScrn,
