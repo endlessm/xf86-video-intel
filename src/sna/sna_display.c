@@ -3011,6 +3011,21 @@ static const char *reflection_to_str(Rotation rotation)
 	}
 }
 
+static void reprobe_connectors(xf86CrtcPtr crtc)
+{
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(crtc->scrn);
+	struct sna *sna = to_sna(crtc->scrn);
+	int i;
+
+	for (i = 0; i < sna->mode.num_real_output; i++) {
+		xf86OutputPtr output = config->output[i];
+		if (output->crtc == crtc)
+			to_sna_output(output)->reprobe = true;
+	}
+
+	sna_mode_discover(sna, true);
+}
+
 static Bool
 __sna_crtc_set_mode(xf86CrtcPtr crtc)
 {
@@ -3105,7 +3120,8 @@ error:
 	sna_crtc->cursor_transform = saved_cursor_transform;
 	sna_crtc->hwcursor = saved_hwcursor;
 	sna_crtc->bo = saved_bo;
-	sna_mode_discover(sna, true);
+
+	reprobe_connectors(crtc);
 	return FALSE;
 }
 
