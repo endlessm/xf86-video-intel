@@ -96,12 +96,6 @@ sna_crtc_set_mode_major(xf86CrtcPtr crtc, DisplayModePtr mode,
 }
 
 static void
-sna_crtc_gamma_set(xf86CrtcPtr crtc,
-		       CARD16 *red, CARD16 *green, CARD16 *blue, int size)
-{
-}
-
-static void
 sna_crtc_destroy(xf86CrtcPtr crtc)
 {
 }
@@ -109,7 +103,6 @@ sna_crtc_destroy(xf86CrtcPtr crtc)
 static const xf86CrtcFuncsRec sna_crtc_funcs = {
 	.dpms = sna_crtc_dpms,
 	.set_mode_major = sna_crtc_set_mode_major,
-	.gamma_set = sna_crtc_gamma_set,
 	.destroy = sna_crtc_destroy,
 };
 
@@ -298,7 +291,8 @@ static bool add_fake_output(struct sna *sna, bool late)
 
 		RRCrtcSetRotations(crtc->randr_crtc,
 				   RR_Rotate_All | RR_Reflect_All);
-		RRCrtcGammaGet(crtc->randr_crtc);
+		if (!RRCrtcGammaSetSize(crtc->randr_crtc, 256))
+			goto err;
 	}
 
 	sna->mode.num_fake++;
