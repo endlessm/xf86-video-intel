@@ -5369,6 +5369,7 @@ void sna_mode_discover(struct sna *sna, bool tell)
 {
 	ScreenPtr screen = xf86ScrnToScreen(sna->scrn);
 	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	bool force = sna->flags & SNA_REPROBE;
 	struct drm_mode_card_res res;
 	uint32_t connectors[32], now;
 	unsigned changed = 0;
@@ -5402,7 +5403,11 @@ void sna_mode_discover(struct sna *sna, bool tell)
 	if (serial == 0)
 		serial = ++sna->mode.serial;
 
-	now = GetTimeInMillis();
+	if (force) {
+		changed = 4;
+		now = 0;
+	} else
+		now = GetTimeInMillis();
 	for (i = 0; i < res.count_connectors; i++) {
 		DBG(("%s: connector[%d] = %d\n", __FUNCTION__, i, connectors[i]));
 		for (j = 0; j < sna->mode.num_real_output; j++) {

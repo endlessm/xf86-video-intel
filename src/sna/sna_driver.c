@@ -806,10 +806,12 @@ sna_handle_uevents(int fd, void *closure)
 			str = udev_device_get_property_value(dev, "HOTPLUG");
 			if (str && atoi(str) == 1) {
 				str = udev_device_get_property_value(dev, "CONNECTOR");
-				if (str)
+				if (str) {
 					hotplug |= sna_mode_find_hotplug_connector(sna, atoi(str));
-				else
+				} else {
+					sna->flags |= SNA_REPROBE;
 					hotplug = true;
+				}
 			}
 		}
 
