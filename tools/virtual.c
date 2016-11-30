@@ -3392,6 +3392,7 @@ int main(int argc, char **argv)
 	uint64_t count;
 	int daemonize = 1, bumblebee = 0, siblings = 0, singleton = 1;
 	int i, ret, open, fail;
+	int idle;
 
 	signal(SIGPIPE, SIG_IGN);
 
@@ -3572,21 +3573,30 @@ int main(int argc, char **argv)
 
 	ctx.command_continuation = 0;
 	update_cursor_image(&ctx);
+
+	idle = 0;
 	while (!done) {
 		XEvent e;
 		int reconfigure = 0;
 		int rr_update = 0;
 
-		DBG(POLL, ("polling - enable timer? %d, nfd=%d, ndisplay=%d\n", ctx.timer_active, ctx.nfd, ctx.ndisplay));
-		ret = poll(ctx.pfd + !ctx.timer_active, ctx.nfd - !ctx.timer_active, -1);
-		if (ret <= 0)
-			break;
+		if (idle) {
+			DBG(POLL, ("polling - enable timer? %d, nfd=%d, ndisplay=%d\n", ctx.timer_active, ctx.nfd, ctx.ndisplay));
+			ret = poll(ctx.pfd + !ctx.timer_active, ctx.nfd - !ctx.timer_active, -1);
+			if (ret <= 0)
+				break;
+
+			DBG(POLL, ("poll reports %d fd awake\n", ret));
+		}
+		idle = 1;
 
 		/* pfd[0] is the timer, pfd[1] is the local display, pfd[2] is the mouse, pfd[3+] are the remotes */
 
-		DBG(POLL, ("poll reports %d fd awake\n", ret));
 		if (ctx.pfd[1].revents || XPending(ctx.display[0].dpy)) {
 			DBG(POLL,("%s woken up\n", DisplayString(ctx.display[0].dpy)));
+			ctx.pfd[1].revents = 0;
+			idle = 0;
+
 			do {
 				XNextEvent(ctx.display->dpy, &e);
 
@@ -3662,6 +3672,9 @@ int main(int argc, char **argv)
 		for (i = 1; i < ctx.ndisplay; i++) {
 			if (ctx.pfd[i+2].revents == 0 && !XPending(ctx.display[i].dpy))
 				continue;
+
+			ctx.pfd[i+2].revents = 0;
+			idle = 0;
 
 			DBG(POLL, ("%s woken up\n", DisplayString(ctx.display[i].dpy)));
 			do {
@@ -3742,6 +3755,7 @@ int main(int argc, char **argv)
 
 			DBG(TIMER, ("%s timer still active? %d\n", DisplayString(ctx.display->dpy), ret != 0));
 			ctx.timer_active = ret != 0;
+			idle = 0;
 		}
 	}
 
