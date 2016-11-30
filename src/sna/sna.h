@@ -1367,6 +1367,9 @@ static inline void add_shm_flush(struct sna *sna, struct sna_pixmap *priv)
 	if (!priv->shm)
 		return;
 
+	DBG(("%s: marking handle=%d for SHM flush\n",
+	     __FUNCTION__, priv->cpu_bo->handle));
+
 	assert(!priv->flush);
 	sna_add_flush_pixmap(sna, priv, priv->cpu_bo);
 	sna->needs_shm_flush = true;
