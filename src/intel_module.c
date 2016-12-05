@@ -134,6 +134,10 @@ static const struct intel_device_info intel_kabylake_info = {
 	.gen = 0112,
 };
 
+static const struct intel_device_info intel_geminilake_info = {
+	.gen = 0113,
+};
+
 static const SymTabRec intel_chipsets[] = {
 	{PCI_CHIP_I810,				"i810"},
 	{PCI_CHIP_I810_DC100,			"i810-dc100"},
@@ -334,6 +338,8 @@ static const struct pci_id_match intel_device_match[] = {
 	INTEL_BXT_IDS(&intel_broxton_info),
 
 	INTEL_KBL_IDS(&intel_kabylake_info),
+
+	INTEL_GLK_IDS(&intel_geminilake_info),
 
 	INTEL_VGA_DEVICE(PCI_MATCH_ANY, &intel_generic_info),
 #endif

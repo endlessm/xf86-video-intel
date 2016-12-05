@@ -240,6 +240,11 @@ static const struct gt_info kbl_gt_info = {
 	.urb = { .max_vs_entries = 960 },
 };
 
+static const struct gt_info glk_gt_info = {
+	.name = "Geminilake (gen9)",
+	.urb = { .max_vs_entries = 320 },
+};
+
 static bool is_skl(struct sna *sna)
 {
 	return sna->kgem.gen == 0110;
@@ -253,6 +258,11 @@ static bool is_bxt(struct sna *sna)
 static bool is_kbl(struct sna *sna)
 {
 	return sna->kgem.gen == 0112;
+}
+
+static bool is_glk(struct sna *sna)
+{
+	return sna->kgem.gen == 0113;
 }
 
 
@@ -4028,6 +4038,8 @@ static bool gen9_render_setup(struct sna *sna)
 		state->info = &bxt_gt_info;
 	if (is_kbl(sna))
 		state->info = &kbl_gt_info;
+	if (is_glk(sna))
+		state->info = &glk_gt_info;
 
 	sna_static_stream_init(&general);
 

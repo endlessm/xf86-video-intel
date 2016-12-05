@@ -336,4 +336,8 @@
 	INTEL_KBL_GT3_IDS(info), \
 	INTEL_KBL_GT4_IDS(info)
 
+#define INTEL_GLK_IDS(info) \
+	INTEL_VGA_DEVICE(0x3184, info), \
+	INTEL_VGA_DEVICE(0x3185, info)
+
 #endif /* _I915_PCIIDS_H */
