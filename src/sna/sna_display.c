@@ -5679,6 +5679,14 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 	assert(sna->mode.shadow_damage == NULL);
 	assert(sna->mode.shadow == NULL);
 
+	/* Flush pending shadow updates */
+	if (sna->mode.flip_active) {
+		DBG(("%s: waiting for %d outstanding TearFree flips\n",
+		     __FUNCTION__, sna->mode.flip_active));
+		while (sna->mode.flip_active && sna_mode_wait_for_event(sna))
+			sna_mode_wakeup(sna);
+	}
+
 	/* Cancel a pending [un]flip (as the pixmaps no longer match) */
 	sna_present_cancel_flip(sna);
 	copy_front(sna, sna->front, new_front);
@@ -5691,14 +5699,6 @@ sna_mode_resize(ScrnInfoPtr scrn, int width, int height)
 	scrn->virtualX = width;
 	scrn->virtualY = height;
 	scrn->displayWidth = width;
-
-	/* Flush pending shadow updates */
-	if (sna->mode.flip_active) {
-		DBG(("%s: waiting for %d outstanding TearFree flips\n",
-		     __FUNCTION__, sna->mode.flip_active));
-		while (sna->mode.flip_active && sna_mode_wait_for_event(sna))
-			sna_mode_wakeup(sna);
-	}
 
 	/* Only update the CRTCs if we are in control */
 	if (!scrn->vtSema)
