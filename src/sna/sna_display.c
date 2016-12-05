@@ -1033,6 +1033,9 @@ static char *has_connector_backlight(xf86OutputPtr output)
 	DBG(("%s: lookup %s\n", __FUNCTION__, path));
 
 	dir = opendir(path);
+	if (dir == NULL)
+		return NULL;
+
 	while ((de = readdir(dir))) {
 		struct stat st;
 
