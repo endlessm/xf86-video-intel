@@ -623,6 +623,7 @@ struct gen9_render_state {
 
 	bool needs_invariant;
 	bool emit_flush;
+	bool ve_dirty;
 };
 
 struct sna_static_stream {

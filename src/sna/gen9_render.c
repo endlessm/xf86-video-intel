@@ -1101,6 +1101,17 @@ gen9_emit_vertex_elements(struct sna *sna,
 		return;
 	render->ve_id = id;
 
+	if (render->ve_dirty) {
+		/* dummy primitive to flush vertex before change? */
+		OUT_BATCH(GEN9_3DPRIMITIVE | (7 - 2));
+		OUT_BATCH(0); /* ignored, see VF_TOPOLOGY */
+		OUT_BATCH(0);
+		OUT_BATCH(0);
+		OUT_BATCH(1);	/* single instance */
+		OUT_BATCH(0);	/* start instance location */
+		OUT_BATCH(0);	/* index buffer offset, ignored */
+	}
+
 	/* The VUE layout
 	 *    dword 0-3: pad (0.0, 0.0, 0.0. 0.0)
 	 *    dword 4-7: position (x, y, 1.0, 1.0),
@@ -1198,6 +1209,8 @@ gen9_emit_vertex_elements(struct sna *sna,
 			  offset << VE_OFFSET_SHIFT);
 		OUT_BATCH(dw);
 	}
+
+	render->ve_dirty = true;
 }
 
 inline static void
@@ -1322,6 +1335,7 @@ static bool gen9_magic_ca_pass(struct sna *sna,
 	OUT_BATCH(0);	/* index buffer offset, ignored */
 
 	state->last_primitive = sna->kgem.nbatch;
+	state->ve_dirty = false;
 	return true;
 }
 
@@ -1508,6 +1522,7 @@ static void gen9_emit_primitive(struct sna *sna)
 	sna->render.vertex_start = sna->render.vertex_index;
 
 	sna->render_state.gen9.last_primitive = sna->kgem.nbatch;
+	sna->render_state.gen9.ve_dirty = false;
 }
 
 static bool gen9_rectangle_begin(struct sna *sna,
@@ -3967,6 +3982,7 @@ static void gen9_render_reset(struct sna *sna)
 	sna->render_state.gen9.emit_flush = false;
 	sna->render_state.gen9.needs_invariant = true;
 	sna->render_state.gen9.ve_id = 3 << 2;
+	sna->render_state.gen9.ve_dirty = false;
 	sna->render_state.gen9.last_primitive = -1;
 
 	sna->render_state.gen9.num_sf_outputs = 0;
