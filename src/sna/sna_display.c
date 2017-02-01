@@ -5259,8 +5259,10 @@ static bool disable_unused_crtc(struct sna *sna)
 	for (c = 0; c < sna->mode.num_real_crtc; c++) {
 		xf86CrtcPtr crtc = config->crtc[c];
 
-		if (!crtc->enabled)
+		if (!crtc->enabled) {
+			sna_crtc_disable(crtc, false);
 			continue;
+		}
 
 		for (o = 0; o < sna->mode.num_real_output; o++) {
 			xf86OutputPtr output = config->output[o];
