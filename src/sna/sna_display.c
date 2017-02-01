@@ -5457,9 +5457,15 @@ void sna_mode_discover(struct sna *sna, bool tell)
 		xf86DrvMsg(sna->scrn->scrnIndex, X_INFO,
 			   "Disabled output %s\n",
 			   output->name);
+		if (output->crtc) {
+			DBG(("%s: output %s still active, force CRTC off\n",
+			     __FUNCTION__, output->name));
+			/* XXX DP-MST are not shared */
+			sna_crtc_disable(output->crtc, true);
+			output->crtc = NULL;
+		}
 		sna_output->id = 0;
 		sna_output->last_detect = 0;
-		output->crtc = NULL;
 		RROutputChanged(output->randr_output, TRUE);
 		changed |= 2;
 	}
