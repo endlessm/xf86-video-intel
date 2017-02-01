@@ -5095,7 +5095,6 @@ sna_output_add(struct sna *sna, unsigned id, unsigned serial)
 			if (strcmp(output->name, name) == 0) {
 				assert(output->scrn == scrn);
 				assert(output->funcs == &sna_output_funcs);
-				assert(to_sna_output(output)->id == 0);
 				sna_output_destroy(output);
 				goto reset;
 			}
