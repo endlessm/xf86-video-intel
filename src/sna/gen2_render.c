@@ -1166,9 +1166,6 @@ inline static int gen2_get_rectangles(struct sna *sna,
 {
 	int rem = batch_space(sna), size, need;
 
-	if (rem > MAX_INLINE)
-		rem = MAX_INLINE;
-
 	DBG(("%s: want=%d, floats_per_vertex=%d, rem=%d\n",
 	     __FUNCTION__, want, op->floats_per_vertex, rem));
 
@@ -1203,7 +1200,13 @@ inline static int gen2_get_rectangles(struct sna *sna,
 			sna->render.vertex_offset = sna->kgem.nbatch;
 			BATCH(PRIM3D_INLINE | PRIM3D_RECTLIST);
 		}
-	}
+
+		need = 0;
+	} else
+		need = sna->kgem.nbatch - sna->render.vertex_offset;
+
+	if (rem > MAX_INLINE - need)
+		rem = MAX_INLINE -need;
 
 	if (want > 1 && want * size > rem)
 		want = rem / size;
