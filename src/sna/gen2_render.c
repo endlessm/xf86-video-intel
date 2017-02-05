@@ -49,6 +49,7 @@
 
 #define MAX_3D_SIZE 2048
 #define MAX_3D_PITCH 8192
+#define MAX_INLINE (1 << 18)
 
 #define BATCH(v) batch_emit(sna, v)
 #define BATCH_F(v) batch_emit_float(sna, v)
@@ -1164,6 +1165,9 @@ inline static int gen2_get_rectangles(struct sna *sna,
 				      int want)
 {
 	int rem = batch_space(sna), size, need;
+
+	if (rem > MAX_INLINE)
+		rem = MAX_INLINE;
 
 	DBG(("%s: want=%d, floats_per_vertex=%d, rem=%d\n",
 	     __FUNCTION__, want, op->floats_per_vertex, rem));
@@ -3229,6 +3233,9 @@ gen2_get_inline_rectangles(struct sna *sna, int want, int floats_per_vertex)
 {
 	int size = floats_per_vertex * 3;
 	int rem = batch_space(sna) - 1;
+
+	if (rem > MAX_INLINE)
+		rem = MAX_INLINE;
 
 	if (size * want > rem)
 		want = rem / size;
