@@ -93,14 +93,9 @@ static const struct pci_id_match ids[] = {
 	INTEL_IVB_D_IDS(070),
 	INTEL_IVB_M_IDS(070),
 
-	INTEL_HSW_D_IDS(075),
-	INTEL_HSW_M_IDS(075),
-
-	INTEL_VLV_D_IDS(071),
-	INTEL_VLV_M_IDS(071),
-
-	INTEL_BDW_D_IDS(0100),
-	INTEL_BDW_M_IDS(0100),
+	INTEL_HSW_IDS(075),
+	INTEL_VLV_IDS(071),
+	INTEL_BDW_IDS(0100),
 };
 
 static int i915_gen(int device)

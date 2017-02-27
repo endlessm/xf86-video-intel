@@ -349,23 +349,13 @@ static const struct pci_id_match intel_device_match[] = {
 	INTEL_IVB_D_IDS(&intel_ivybridge_info),
 	INTEL_IVB_M_IDS(&intel_ivybridge_info),
 
-	INTEL_HSW_D_IDS(&intel_haswell_info),
-	INTEL_HSW_M_IDS(&intel_haswell_info),
-
-	INTEL_VLV_D_IDS(&intel_valleyview_info),
-	INTEL_VLV_M_IDS(&intel_valleyview_info),
-
-	INTEL_BDW_D_IDS(&intel_broadwell_info),
-	INTEL_BDW_M_IDS(&intel_broadwell_info),
-
+	INTEL_HSW_IDS(&intel_haswell_info),
+	INTEL_VLV_IDS(&intel_valleyview_info),
+	INTEL_BDW_IDS(&intel_broadwell_info),
 	INTEL_CHV_IDS(&intel_cherryview_info),
-
 	INTEL_SKL_IDS(&intel_skylake_info),
-
 	INTEL_BXT_IDS(&intel_broxton_info),
-
 	INTEL_KBL_IDS(&intel_kabylake_info),
-
 	INTEL_GLK_IDS(&intel_geminilake_info),
 
 	INTEL_VGA_DEVICE(PCI_MATCH_ANY, &intel_generic_info),
