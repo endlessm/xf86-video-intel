@@ -233,7 +233,7 @@ static int load_i915_kernel_module(void)
 	const char **kn;
 
 	for (kn = kernel_module_names; *kn; kn++)
-		if (xf86LoadKernelModule(*kn) == 0)
+		if (xf86LoadKernelModule(*kn))
 			return 0;
 
 	return -1;
