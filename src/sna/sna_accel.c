@@ -17618,8 +17618,6 @@ static void sna_accel_post_damage(struct sna *sna)
 		int16_t dx, dy;
 		int n;
 
-		assert(dirty->src == sna->front);
-
 		damage = DamageRegion(dirty->damage);
 		if (RegionNil(damage))
 			continue;
