@@ -10465,8 +10465,11 @@ sna_poly_zero_segment_blt(DrawablePtr drawable,
 				}
 				b->x2++;
 				b->y2++;
-				if (oc1 | oc2)
-					box_intersect(b, extents);
+
+				if ((oc1 | oc2) && !box_intersect(b, extents))
+					continue;
+
+				assert(!box_empty(b));
 				if (++b == last_box) {
 					ret = &&rectangle_continue;
 					goto *jump;
@@ -10529,6 +10532,7 @@ rectangle_continue:
 						     __FUNCTION__, x1, y1,
 						     b->x1, b->y1, b->x2, b->y2));
 
+						assert(!box_empty(b));
 						if (++b == last_box) {
 							ret = &&X_continue;
 							goto *jump;
@@ -10553,6 +10557,7 @@ X_continue:
 						b->x2 = x1 + 1;
 					b->y2 = b->y1 + 1;
 
+					assert(!box_empty(b));
 					if (++b == last_box) {
 						ret = &&X2_continue;
 						goto *jump;
@@ -10614,6 +10619,7 @@ X2_continue:
 							b->y2 = y1 + 1;
 						b->x2 = x1 + 1;
 
+						assert(!box_empty(b));
 						if (++b == last_box) {
 							ret = &&Y_continue;
 							goto *jump;
@@ -10637,6 +10643,7 @@ Y_continue:
 						b->y2 = y1 + 1;
 					b->x2 = x1 + 1;
 
+					assert(!box_empty(b));
 					if (++b == last_box) {
 						ret = &&Y2_continue;
 						goto *jump;
