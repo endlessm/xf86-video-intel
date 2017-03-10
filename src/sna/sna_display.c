@@ -3809,30 +3809,33 @@ sna_output_attach_edid(xf86OutputPtr output)
 	}
 
 	blob.data = (uintptr_t)raw;
-	if (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPBLOB, &blob)) {
-		DBG(("%s(%s): failed to read blob, reusing previous\n",
-		     __FUNCTION__, output->name));
-		goto skip_read;
-	}
+	do {
+		while (drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPBLOB, &blob)) {
+			update_properties(sna, sna_output);
+			if (blob.blob_id == sna_output->prop_values[sna_output->edid_idx]) {
+				DBG(("%s(%s): failed to read blob, reusing previous\n",
+				     __FUNCTION__, output->name));
+				goto done;
+			}
+			blob.blob_id = sna_output->prop_values[sna_output->edid_idx];
+		}
 
-	DBG(("%s(%s): retrieving blob id=%d, length=%d\n",
-	     __FUNCTION__, output->name, blob.blob_id, blob.length));
+		DBG(("%s(%s): retrieving blob id=%d, length=%d\n",
+		     __FUNCTION__, output->name, blob.blob_id, blob.length));
 
-	if (blob.length > sna_output->edid_len) {
-		raw = realloc(raw, blob.length);
-		if (raw == NULL)
+		if (blob.length < 128)
 			goto done;
 
-		VG(memset(raw, 0, blob.length));
-		blob.data = (uintptr_t)raw;
-	}
+		if (blob.length > sna_output->edid_len) {
+			raw = realloc(raw, blob.length);
+			if (raw == NULL)
+				goto done;
 
-	if (blob.length != sna_output->edid_len &&
-	    drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPBLOB, &blob))
-		goto done;
-
-	if (blob.length < 128)
-		goto done;
+			VG(memset(raw, 0, blob.length));
+			blob.data = (uintptr_t)raw;
+		}
+	} while (blob.length != sna_output->edid_len &&
+		 drmIoctl(sna->kgem.fd, DRM_IOCTL_MODE_GETPROPBLOB, &blob));
 
 	if (blob.length & 127) {
 		/* Truncated EDID! Make sure no one reads too far */
