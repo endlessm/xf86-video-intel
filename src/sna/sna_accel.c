@@ -10164,7 +10164,7 @@ out:
 	RegionUninit(&data.region);
 }
 
-static inline void box_from_seg(BoxPtr b, const xSegment *seg, GCPtr gc)
+static inline bool box_from_seg(BoxPtr b, const xSegment *seg, GCPtr gc)
 {
 	if (seg->x1 == seg->x2) {
 		if (seg->y1 > seg->y2) {
@@ -10178,6 +10178,9 @@ static inline void box_from_seg(BoxPtr b, const xSegment *seg, GCPtr gc)
 			if (gc->capStyle != CapNotLast)
 				b->y2++;
 		}
+		if (b->y1 >= b->y2)
+			return false;
+
 		b->x1 = seg->x1;
 		b->x2 = seg->x1 + 1;
 	} else {
@@ -10192,6 +10195,9 @@ static inline void box_from_seg(BoxPtr b, const xSegment *seg, GCPtr gc)
 			if (gc->capStyle != CapNotLast)
 				b->x2++;
 		}
+		if (b->x1 >= b->x2)
+			return false;
+
 		b->y1 = seg->y1;
 		b->y2 = seg->y1 + 1;
 	}
@@ -10200,6 +10206,7 @@ static inline void box_from_seg(BoxPtr b, const xSegment *seg, GCPtr gc)
 	     __FUNCTION__,
 	     seg->x1, seg->y1, seg->x2, seg->y2,
 	     b->x1, b->y1, b->x2, b->y2));
+	return true;
 }
 
 static bool
@@ -10234,12 +10241,13 @@ sna_poly_segment_blt(DrawablePtr drawable,
 					nbox = ARRAY_SIZE(boxes);
 				n -= nbox;
 				do {
-					box_from_seg(b, seg++, gc);
-					if (b->y2 > b->y1 && b->x2 > b->x1) {
+					if (box_from_seg(b, seg++, gc)) {
+						assert(!box_empty(b));
 						b->x1 += dx;
 						b->x2 += dx;
 						b->y1 += dy;
 						b->y2 += dy;
+						assert(!box_empty(b));
 						b++;
 					}
 				} while (--nbox);
@@ -10258,7 +10266,10 @@ sna_poly_segment_blt(DrawablePtr drawable,
 					nbox = ARRAY_SIZE(boxes);
 				n -= nbox;
 				do {
-					box_from_seg(b++, seg++, gc);
+					if (box_from_seg(b, seg++, gc)) {
+						assert(!box_empty(b));
+						b++;
+					}
 				} while (--nbox);
 
 				if (b != boxes) {
@@ -10283,7 +10294,10 @@ sna_poly_segment_blt(DrawablePtr drawable,
 			do {
 				BoxRec box;
 
-				box_from_seg(&box, seg++, gc);
+				if (!box_from_seg(&box, seg++, gc))
+					continue;
+
+				assert(!box_empty(&box));
 				box.x1 += drawable->x;
 				box.x2 += drawable->x;
 				box.y1 += drawable->y;
@@ -10301,6 +10315,7 @@ sna_poly_segment_blt(DrawablePtr drawable,
 						b->x2 += dx;
 						b->y1 += dy;
 						b->y2 += dy;
+						assert(!box_empty(b));
 						if (++b == last_box) {
 							fill.boxes(sna, &fill, boxes, last_box-boxes);
 							if (damage)
@@ -10312,7 +10327,10 @@ sna_poly_segment_blt(DrawablePtr drawable,
 			} while (--n);
 		} else {
 			do {
-				box_from_seg(b, seg++, gc);
+				if (!box_from_seg(b, seg++, gc))
+					continue;
+
+				assert(!box_empty(b));
 				b->x1 += drawable->x;
 				b->x2 += drawable->x;
 				b->y1 += drawable->y;
@@ -10322,6 +10340,7 @@ sna_poly_segment_blt(DrawablePtr drawable,
 					b->x2 += dx;
 					b->y1 += dy;
 					b->y2 += dy;
+					assert(!box_empty(b));
 					if (++b == last_box) {
 						fill.boxes(sna, &fill, boxes, last_box-boxes);
 						if (damage)
