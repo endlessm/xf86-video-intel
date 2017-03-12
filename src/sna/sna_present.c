@@ -862,12 +862,10 @@ sna_present_flip(RRCrtcPtr crtc,
 		DBG(("%s: flips still pending, stalling\n", __FUNCTION__));
 		pfd.fd = sna->kgem.fd;
 		pfd.events = POLLIN;
-		do {
-			if (poll(&pfd, 1, -1) != 1)
-				return FALSE;
-
+		while (poll(&pfd, 1, 0) == 1)
 			sna_mode_wakeup(sna);
-		} while (sna->mode.flip_active);
+		if (sna->mode.flip_active)
+			return FALSE;
 	}
 
 	bo = get_flip_bo(pixmap);
