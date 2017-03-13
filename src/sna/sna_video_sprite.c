@@ -47,6 +47,8 @@
 #define DRM_FORMAT_YUYV         fourcc_code('Y', 'U', 'Y', 'V') /* [31:0] Cr0:Y1:Cb0:Y0 8:8:8:8 little endian */
 #define DRM_FORMAT_UYVY         fourcc_code('U', 'Y', 'V', 'Y') /* [31:0] Y1:Cr0:Y0:Cb0 8:8:8:8 little endian */
 
+#define has_hw_scaling(sna) ((sna)->kgem.gen < 071)
+
 #define LOCAL_IOCTL_MODE_SETPLANE	DRM_IOWR(0xB7, struct local_mode_set_plane)
 struct local_mode_set_plane {
 	uint32_t plane_id;
@@ -151,7 +153,7 @@ static int sna_video_sprite_best_size(ddQueryBestSize_ARGS)
 	struct sna_video *video = port->devPriv.ptr;
 	struct sna *sna = video->sna;
 
-	if (sna->kgem.gen >= 075 && !sna->render.video) {
+	if (!has_hw_scaling(sna) && !sna->render.video) {
 		*p_w = vid_w;
 		*p_h = vid_h;
 	} else {
@@ -522,7 +524,7 @@ off:
 			cache_bo = true;
 		}
 
-		if (sna->kgem.gen >= 075 && sna->render.video &&
+		if (!has_hw_scaling(sna) && sna->render.video &&
 		    !((frame.src.x2 - frame.src.x1) == (dst.x2 - dst.x1) &&
 		      (frame.src.y2 - frame.src.y1) == (dst.y2 - dst.y1))) {
 			ScreenPtr screen = to_screen_from_sna(sna);
