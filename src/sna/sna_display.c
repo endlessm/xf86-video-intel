@@ -7905,7 +7905,9 @@ xf86CrtcPtr sna_primary_crtc(struct sna *sna)
 	rrScrPrivPtr rr = rrGetScrPriv(xf86ScrnToScreen(sna->scrn));
 	if (rr && rr->primaryOutput) {
 		xf86OutputPtr output = rr->primaryOutput->devPrivate;
-		if (output->crtc && to_sna_crtc(output->crtc))
+		if (output->crtc &&
+		    output->scrn == sna->scrn &&
+		    to_sna_crtc(output->crtc))
 			return output->crtc;
 	}
 

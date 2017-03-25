@@ -1464,6 +1464,7 @@ inline static uint32_t pipe_select(int pipe)
 	 * we can safely ignore the capability check - if we have more
 	 * than two pipes, we can assume that they are fully supported.
 	 */
+	assert(pipe < _DRM_VBLANK_HIGH_CRTC_MASK);
 	if (pipe > 1)
 		return pipe << DRM_VBLANK_HIGH_CRTC_SHIFT;
 	else if (pipe > 0)
