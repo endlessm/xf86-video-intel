@@ -7900,6 +7900,24 @@ sna_covering_crtc(struct sna *sna, const BoxRec *box, xf86CrtcPtr desired)
 	return best_crtc;
 }
 
+static xf86CrtcPtr first_active_crtc(struct sna *sna)
+{
+	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(sna->scrn);
+	int n;
+
+	for (n = 0; n < sna->mode.num_real_crtc; n++) {
+		xf86CrtcPtr crtc = config->crtc[n];
+		if (to_sna_crtc(crtc)->bo)
+			return crtc;
+	}
+
+	/* No active, use the first as a placeholder */
+	if (sna->mode.num_real_crtc)
+		return config->crtc[0];
+
+	return NULL;
+}
+
 xf86CrtcPtr sna_primary_crtc(struct sna *sna)
 {
 	rrScrPrivPtr rr = rrGetScrPriv(xf86ScrnToScreen(sna->scrn));
@@ -7911,10 +7929,7 @@ xf86CrtcPtr sna_primary_crtc(struct sna *sna)
 			return output->crtc;
 	}
 
-	if (sna->mode.num_real_crtc)
-		return XF86_CRTC_CONFIG_PTR(sna->scrn)->crtc[0];
-
-	return NULL;
+	return first_active_crtc(sna);
 }
 
 #define MI_LOAD_REGISTER_IMM			(0x22<<23)
