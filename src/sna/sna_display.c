@@ -3292,10 +3292,11 @@ inline static bool prop_is_rotation(struct drm_mode_get_property *prop)
 
 static int plane_details(struct sna *sna, struct plane *p)
 {
+#define N_STACK_PROPS 32 /* must be a multiple of 2 */
 	struct local_mode_obj_get_properties arg;
-	uint64_t stack_props[24];
+	uint64_t stack_props[N_STACK_PROPS + N_STACK_PROPS/2];
 	uint32_t *props = (uint32_t *)stack_props;
-	uint64_t *values = stack_props + 8;
+	uint64_t *values = props + N_STACK_PROPS;
 	int i, type = DRM_PLANE_TYPE_OVERLAY;
 
 	memset(&arg, 0, sizeof(struct local_mode_obj_get_properties));
@@ -3304,7 +3305,7 @@ static int plane_details(struct sna *sna, struct plane *p)
 
 	arg.props_ptr = (uintptr_t)props;
 	arg.prop_values_ptr = (uintptr_t)values;
-	arg.count_props = 16;
+	arg.count_props = N_STACK_PROPS;
 
 	if (drmIoctl(sna->kgem.fd, LOCAL_IOCTL_MODE_OBJ_GETPROPERTIES, &arg))
 		return -1;
@@ -3312,7 +3313,7 @@ static int plane_details(struct sna *sna, struct plane *p)
 	DBG(("%s: object %d (type %x) has %d props\n", __FUNCTION__,
 	     p->id, LOCAL_MODE_OBJECT_PLANE, arg.count_props));
 
-	if (arg.count_props > 16) {
+	if (arg.count_props > N_STACK_PROPS) {
 		props = malloc(2*sizeof(uint64_t)*arg.count_props);
 		if (props == NULL)
 			return -1;
@@ -3385,6 +3386,7 @@ static int plane_details(struct sna *sna, struct plane *p)
 
 	DBG(("%s: plane=%d type=%d\n", __FUNCTION__, p->id, type));
 	return type;
+#undef N_STACK_PROPS
 }
 
 static void add_sprite_plane(struct sna_crtc *crtc,
