@@ -2572,7 +2572,7 @@ static void shadow_clear(struct sna *sna,
 	if (!ok) {
 		void *ptr = kgem_bo_map__gtt(&sna->kgem, bo);
 		if (ptr)
-			memset(ptr, 0, bo->pitch * crtc->mode.HDisplay);
+			memset(ptr, 0, bo->pitch * crtc->mode.VDisplay);
 	}
 	sna->mode.shadow_dirty = true;
 }
