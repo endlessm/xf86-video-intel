@@ -17402,8 +17402,16 @@ sna_flush_callback(CallbackListPtr *list, pointer user_data, pointer call_data)
 {
 	struct sna *sna = user_data;
 
+/*
+ * FIXME: this optimization causes several glitches in apps that use gtkglsink
+ *        https://phabricator.endlessm.com/T14972
+ *
+ * https://cgit.freedesktop.org/~ickle/mesa/commit/?h=dri2&id=0848d39f6fbeca17c412c8b92e147c1b03dd7dfa
+ * should in theory fix this issues but it does not currently work with the mesa version we use.
+ *
 	if (!sna->needs_dri_flush)
 		return;
+ */
 
 	sna_accel_flush(sna);
 	sna->needs_dri_flush = false;
