@@ -899,8 +899,6 @@ notify:
 		     swap->tv_sec, swap->tv_usec, (long long)swap->msc,
 		     (long long)event_id));
 		present_event_notify(event_id, swap_ust(swap), swap->msc);
-		assert(!(sna->flags & SNA_TEAR_FREE) ||
-		       sna->mode.shadow_enabled);
 		return;
 	}
 
