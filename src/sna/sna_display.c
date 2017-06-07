@@ -1885,6 +1885,7 @@ static bool wait_for_shadow(struct sna *sna,
 	sna_pixmap_unmap(pixmap, priv);
 
 	DBG(("%s: setting front pixmap to handle=%d\n", __FUNCTION__, bo->handle));
+	assert(sna->mode.shadow->active_scanout);
 	sna->mode.shadow->active_scanout--;
 	tmp = priv->gpu_bo;
 	priv->gpu_bo = bo;
@@ -1892,6 +1893,7 @@ static bool wait_for_shadow(struct sna *sna,
 		kgem_bo_destroy(&sna->kgem, sna->mode.shadow);
 	sna->mode.shadow = tmp;
 	sna->mode.shadow->active_scanout++;
+	assert(sna->mode.shadow->active_scanout);
 
 	sna_dri2_pixmap_update_bo(sna, pixmap, bo);
 
@@ -1906,6 +1908,7 @@ done:
 	assert(!sna->mode.shadow_wait);
 	flush_events(sna);
 
+	assert(sna->mode.shadow->active_scanout);
 	return ret;
 }
 
