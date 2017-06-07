@@ -899,10 +899,11 @@ notify:
 		     swap->tv_sec, swap->tv_usec, (long long)swap->msc,
 		     (long long)event_id));
 		present_event_notify(event_id, swap_ust(swap), swap->msc);
+		assert(!(sna->flags & SNA_TEAR_FREE) ||
+		       sna->mode.shadow_enabled);
 		return;
 	}
 
-	assert(!sna->mode.shadow_enabled);
 	if (sna->mode.flip_active) {
 		DBG(("%s: %d outstanding flips, queueing unflip\n", __FUNCTION__, sna->mode.flip_active));
 		assert(sna->present.unflip == 0);
@@ -910,23 +911,25 @@ notify:
 		return;
 	}
 
+	bo = get_flip_bo(screen->GetScreenPixmap(screen));
+
+	/* Are we unflipping after a failure that left our ScreenP in place? */
+	if (!sna_needs_page_flip(sna, bo))
+		goto notify;
+
+	assert(!sna->mode.shadow_enabled);
 	if (sna->flags & SNA_TEAR_FREE) {
 		DBG(("%s: %s TearFree after Present flips\n",
 		     __FUNCTION__, sna->mode.shadow_damage != NULL ? "enabling" : "disabling"));
 		sna->mode.shadow_enabled = sna->mode.shadow_damage != NULL;
 	}
 
-	bo = get_flip_bo(screen->GetScreenPixmap(screen));
 	if (bo == NULL) {
 reset_mode:
 		DBG(("%s: failed, trying to restore original mode\n", __FUNCTION__));
 		xf86SetDesiredModes(sna->scrn);
 		goto notify;
 	}
-
-	/* Are we unflipping after a failure that left our ScreenP in place? */
-	if (!sna_needs_page_flip(sna, bo))
-		goto notify;
 
 	assert(sna_pixmap(screen->GetScreenPixmap(screen))->pinned & PIN_SCANOUT);
 
