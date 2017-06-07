@@ -3294,9 +3294,9 @@ static int plane_details(struct sna *sna, struct plane *p)
 {
 #define N_STACK_PROPS 32 /* must be a multiple of 2 */
 	struct local_mode_obj_get_properties arg;
-	uint64_t stack_props[N_STACK_PROPS + N_STACK_PROPS/2];
-	uint32_t *props = (uint32_t *)stack_props;
-	uint64_t *values = props + N_STACK_PROPS;
+	uint64_t stack[N_STACK_PROPS + N_STACK_PROPS/2];
+	uint64_t *values = stack;
+	uint32_t *props = (uint32_t *)(values + N_STACK_PROPS);
 	int i, type = DRM_PLANE_TYPE_OVERLAY;
 
 	memset(&arg, 0, sizeof(struct local_mode_obj_get_properties));
@@ -3314,11 +3314,11 @@ static int plane_details(struct sna *sna, struct plane *p)
 	     p->id, LOCAL_MODE_OBJECT_PLANE, arg.count_props));
 
 	if (arg.count_props > N_STACK_PROPS) {
-		props = malloc(2*sizeof(uint64_t)*arg.count_props);
-		if (props == NULL)
+		values = malloc(2*sizeof(uint64_t)*arg.count_props);
+		if (values == NULL)
 			return -1;
 
-		values = (uint64_t *)props + arg.count_props;
+		props = (uint32_t *)(values + arg.count_props);
 
 		arg.props_ptr = (uintptr_t)props;
 		arg.prop_values_ptr = (uintptr_t)values;
@@ -3381,8 +3381,8 @@ static int plane_details(struct sna *sna, struct plane *p)
 	if (!xf86ReturnOptValBool(sna->Options, OPTION_ROTATION, TRUE))
 		p->rotation.supported = RR_Rotate_0;
 
-	if (props != (uint32_t *)stack_props)
-		free(props);
+	if (values != stack)
+		free(values);
 
 	DBG(("%s: plane=%d type=%d\n", __FUNCTION__, p->id, type));
 	return type;
