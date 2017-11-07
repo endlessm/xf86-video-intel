@@ -5,4 +5,4 @@ usr/lib/*/libIntelXvMC.so*
 usr/lib/xf86-video-intel/xf86-video-intel-backlight-helper
 usr/share/polkit-1/actions/org.x.xf86-video-intel.backlight-helper.policy
 usr/share/man
-10-intel.conf usr/share/X11/xorg.conf.d
+debian/10-intel.conf usr/share/X11/xorg.conf.d
