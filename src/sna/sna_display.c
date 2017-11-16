@@ -2629,6 +2629,7 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 	ScrnInfoPtr scrn = crtc->scrn;
 	struct sna *sna = to_sna(scrn);
 	struct kgem_bo *bo;
+	struct sna_output *sna_output = NULL;
 
 	if (sna_crtc->transform) {
 		assert(sna->mode.rr_active);
@@ -2642,9 +2643,9 @@ static struct kgem_bo *sna_crtc_attach(xf86CrtcPtr crtc)
 		unsigned long tiled_limit;
 		int tiling;
 		int xu = 0, yu = 0;
-		struct sna_output *sna_output = crtc_get_sna_output(crtc);
 
 force_shadow:
+		sna_output = crtc_get_sna_output(crtc);
 		if (!sna_crtc_enable_shadow(sna, sna_crtc)) {
 			DBG(("%s: failed to enable crtc shadow\n", __FUNCTION__));
 			return NULL;
